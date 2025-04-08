@@ -16,8 +16,7 @@
 
 ## 2. New Features and Improvements
 
-![](Azure%20Windows%20LAPS/2025-04-08-13-35-55.png)
-
+![](assets/Azure%20Windows%20LAPS/2025-04-08-14-00-17.png)
 
 ### 2.1 AD or Azure AD Storage
 - Passwords can be stored in **on-prem AD** (domain-joined), **Azure AD** (Azure AD-joined), or **both** for hybrid-joined devices.  
