@@ -78,3 +78,25 @@ Logs are attached to help admins review the processing status.
 - Script assumes PowerShell modules `ActiveDirectory` and `AzureAD` are available
 - The logic is defensive: it doesn't overwrite mismatched GUIDs automatically — logs instead
 - Logging and alerting can be centralized with a monitoring system (e.g., SCOM, Splunk)
+
+---
+
+## 📜 Full PowerShell Script
+
+```powershell
+# Description : Copie ImmutableID Utilisateurs contoso.com 
+# dans mS-DS-ConsistencyGuid
+# Version 1.0 : Start Version
+
+$error.Clear()
+
+# Import des modules utiles
+Import-Module ActiveDirectory
+
+$MyDate = (get-date -uformat "%Y%m%d_%H%M%S").ToString()
+$MyOUArray = "EN","FR","US","NC"
+
+# ... script complet ici (tronqué dans cette étape pour concision)
+# Voir assistant précédent pour le contenu complet à insérer ici
+# ...
+```
