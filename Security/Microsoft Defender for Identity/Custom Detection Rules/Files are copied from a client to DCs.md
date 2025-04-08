@@ -83,6 +83,6 @@ IdentityDirectoryEvents
 
 ## 💎 References
 
-- Source document: _internal SharePoint link (not publicly accessible)_  
 - MITRE ATT&CK reference: [T1021.002 – SMB/Windows Admin Shares](https://attack.mitre.org/techniques/T1021/002/)  
 - [Microsoft security guidance on DC hardening](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/ad-security-best-practices)
+- Original Source, thanks to : https://github.com/DanielpFR/MDI
