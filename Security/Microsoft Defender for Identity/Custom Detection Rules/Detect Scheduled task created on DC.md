@@ -1,4 +1,4 @@
-# CDR – Task Scheduling Created Remotely on DC
+# MDI Custom Detection Rule – Task Scheduling Created Remotely on DC
 🗓️ Published: 2025-02-20
 
 ---

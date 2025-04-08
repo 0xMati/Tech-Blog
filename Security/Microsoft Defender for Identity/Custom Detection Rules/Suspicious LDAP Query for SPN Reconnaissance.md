@@ -1,4 +1,4 @@
-# CDR – Suspicious LDAP Query for SPN Reconnaissance
+# MDI Custom Detection Rule – Suspicious LDAP Query for SPN Reconnaissance
 🗓️ Published: 2025-02-21
 
 ---

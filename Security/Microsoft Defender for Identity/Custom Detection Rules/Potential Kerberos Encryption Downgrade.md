@@ -1,4 +1,4 @@
-# CDR – Potential Kerberos Encryption Downgrade
+# MDI Custom Detection Rule – Potential Kerberos Encryption Downgrade
 🗓️ Published: 2025-02-20
 
 ---

@@ -1,4 +1,4 @@
-# CDR – Anomalous Group Policy Discovery
+# MDI Custom Detection Rule – Anomalous Group Policy Discovery
 🗓️ Published: 2025-02-20
 
 ---

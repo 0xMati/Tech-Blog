@@ -1,4 +1,4 @@
-# CDR – Service Created Remotely on DC
+# MDI Custom Detection Rule – Service Created Remotely on DC
 🗓️ Published: 2025-03-20
 
 ---

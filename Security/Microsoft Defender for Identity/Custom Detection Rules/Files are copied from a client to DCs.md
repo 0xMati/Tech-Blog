@@ -1,4 +1,4 @@
-# MDI Custom Detection – Suspicious SMB File Copy to Domain Controllers  
+# MDI Custom Detection Rule – Suspicious SMB File Copy to Domain Controllers  
 🗓️ Published: 2024-03-22  
 
 ---

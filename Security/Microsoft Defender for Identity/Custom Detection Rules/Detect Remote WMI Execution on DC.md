@@ -1,4 +1,4 @@
-# CDR – Remote WMI Execution on DC
+# MDI Custom Detection Rule – Remote WMI Execution on DC
 🗓️ Published: 2025-02-20
 
 ---

@@ -1,4 +1,4 @@
-# MDI Custom Detection – Account with Password Never Expires  
+# MDI Custom Detection Rule – Account with Password Never Expires  
 🗓️ Published: 2024-03-22  
 
 ---

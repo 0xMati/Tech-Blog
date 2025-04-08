@@ -1,4 +1,4 @@
-# CDR – Hunt for Newly Identified Lateral Movement Paths to Sensitive Accounts
+# MDI Custom Detection Rule – Hunt for Newly Identified Lateral Movement Paths to Sensitive Accounts
 🗓️ Published: 2025-02-20
 
 ---

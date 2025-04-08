@@ -1,4 +1,4 @@
-# CDR – A User Is Added or Removed to the Most Sensitive AD Groups
+# MDI Custom Detection Rule – A User Is Added or Removed to the Most Sensitive AD Groups
 🗓️ Published: 2025-01-19
 
 ---

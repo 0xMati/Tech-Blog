@@ -1,4 +1,4 @@
-# MDI Custom Detection – PowerShell Execution
+# MDI Custom Detection Rule – PowerShell Execution
 🗓️ Published: 2024-04-09
 
 ---

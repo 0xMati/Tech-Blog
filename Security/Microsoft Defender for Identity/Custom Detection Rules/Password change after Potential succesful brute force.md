@@ -1,4 +1,4 @@
-# CDR – Password Change After Successful Brute Force
+# MDI Custom Detection Rule – Password Change After Successful Brute Force
 🗓️ Published: 2025-02-20
 
 ---
