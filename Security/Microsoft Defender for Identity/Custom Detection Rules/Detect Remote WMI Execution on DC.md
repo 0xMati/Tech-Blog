@@ -52,13 +52,5 @@ IdentityDirectoryEvents
 
 ---
 
-**Source**  
-_CDR – Remote WMI execution on DC (Feb 20, 2025, 9:41 AM).  
-PowerShell command executed remotely from or to a DC.  
-Custom Detection Rule: YES_
-
 > *Filter can be added to remove legitimate machine or DC to DC scenario*
 
----
-
-_Use this detection as part of your broader Microsoft Defender for Identity strategy to detect suspicious remote execution activities._

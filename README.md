@@ -20,7 +20,7 @@ This is my personal technical garden — a space to collect architecture notes, 
 ## 📁 Structure
 
 Each folder contains markdown posts, diagrams, or code samples related to a specific topic.  
-Posts are grouped by theme in subfolders, and visual content is stored in `/blog-assets`.
+Posts are grouped by theme in subfolders, and visual content is stored in `/assets` folders.
 
 ---
 
