@@ -26,7 +26,7 @@ Data Source=np:\\.\pipe\microsoft##WID\tsql\query;Initial Catalog=AdfsConfigurat
 ```
 ConfigurationDatabaseConnectionString
 -------------------------------------
-Data Source=\\.\pipe\mssql$microsoft##ssee\sql\query;Initial Catalog=AdfsConfiguration;Integrated Security=True
+data source=<SQL SERVER>\<INSTANCE>; initial catalog=AdfsConfiguration;integrated security=true
 ```
 
 This quick check can help you validate the underlying database configuration of your ADFS farm.
