@@ -50,7 +50,7 @@
 2. **Set** password rotation interval, encryption, history, and so on.
 3. **Apply** the GPO to target OUs or devices.
 
-(_Here you can insert your screenshots, e.g._ `![GPO Settings - Windows LAPS](path/to/laps-gpo.png)`)
+![](assets/Azure%20Windows%20LAPS/2025-04-08-14-02-41.png)
 
 ### 3.3 New AD Schema Attributes
 - `msLAPS-Password` (plain text password)  
@@ -64,9 +64,41 @@
 - **New ADUC tab** to view or reset the password on a computer account.  
 - **PowerShell module** (`LAPS`) for scripting and automation (read, reset, configure policies).
 
+![](assets/Azure%20Windows%20LAPS/2025-04-08-14-03-08.png)
+
+![](assets/Azure%20Windows%20LAPS/2025-04-08-14-03-43.png)
+
+![](assets/Azure%20Windows%20LAPS/2025-04-08-14-04-01.png)
 ---
 
-## 4. Migration from Legacy LAPS
+
+## 4. Architecture
+
+- Windows LAPS runs as a Windows tasks (not a scheduled task) which is triggered every hour
+- Windows LAPS uses a different set of attributes  A schema update is required:
+
+- **Legacy LAPS Attributes:
+ms-Mcs-AdmPwdmsLAPS-Password: Contains the password in clear text
+ms-Mcs-AdmPwdExpirationTime: Contains the expiration date of the password
+
+- **Windows LAPS:
+msLAPS-Password: Name of the local privileged account followed by the password in clear text
+msLAPS-PasswordExpirationTime: Expiration date of the password
+msLAPS-EncryptedPassword: Encrypted password
+msLAPS-EncryptedPasswordHistory: Encrypted earlier passwords 
+msLAPS-EncryptedDSRMPassword: DSRM password in clear text
+msLAPS-EncryptedDSRMPasswordHistory : Encrypted earlier DSRM password 
+Extended right: 
+Name: ms-LAPS-Encrypted-Password-Attribute
+GUID: f3531ec6-6330-4f8e-8d39-7a671fbac605
+
+
+
+
+![](assets/Azure%20Windows%20LAPS/2025-04-08-14-05-02.png)
+
+
+## 5. Migration from Legacy LAPS
 
 1. **Update the AD schema** for Windows LAPS attributes.  
 2. **Run** Windows LAPS in **emulation mode**:
@@ -80,7 +112,7 @@
 
 ---
 
-## 5. Key Points and Best Practices
+## 6. Key Points and Best Practices
 
 - **Avoid mixing** full Windows LAPS and Legacy LAPS on the same machine.  
 - **Rotate** local admin passwords at reasonable intervals (e.g., 30 days).  
@@ -89,18 +121,18 @@
 
 ---
 
-## 6. References and Useful Links
+## 7. References and Useful Links
 
 1. [“By popular demand: Windows LAPS available now!”](https://aka.ms/WindowsLAPSAnnouncement)  
 2. [Windows LAPS setup in Windows Server AD](https://aka.ms/WindowsLAPS-ADSetup)  
 3. [Windows LAPS setup in Azure AD](https://aka.ms/WindowsLAPS-AzureSetup)  
 4. [Migrating from Legacy LAPS to Windows LAPS](https://aka.ms/WindowsLAPS-LegacyMigration)
 
-(Feel free to add internal links or additional resources as needed.)
+
 
 ---
 
-## 7. Conclusion
+## 8. Conclusion
 
 **Windows LAPS** provides stronger security and richer functionality compared to Legacy LAPS, and it’s natively built into Windows for **on-prem** or **hybrid/cloud** use. Overall, it’s a step forward in **hardening** your servers and endpoints.
 
