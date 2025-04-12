@@ -33,12 +33,11 @@ This query detects when a device performs **Group Policy Discovery** for the fir
 
 ```kusto
 let PreviousActivity = materialize (
-    IdentityQueryEvents
-    | where Timestamp > ago(30d)
-    | where QueryType == "AllGroupPolicies"
-    | summarize make_set(DeviceName)
-);
-
+     IdentityQueryEvents
+     | where Timestamp > ago(30d)
+     | where QueryType == "AllGroupPolicies"
+     | summarize make_set(DeviceName)
+     );
 IdentityQueryEvents
 | where Timestamp > ago(1d)
 | where QueryType == "AllGroupPolicies"
