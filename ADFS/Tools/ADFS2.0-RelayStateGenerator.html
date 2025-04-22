@@ -1,0 +1,49 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>AD FS 2.0 RelayState Generator</title>
+    <style type="text/css">
+        .textbox {width: 500px;}
+    </style>
+    <script type="text/javascript">
+        function SubmitMe() {
+            var RPID = encodeURIComponent(document.getElementById('txtRPID').value);
+			var RelayState = encodeURIComponent(document.getElementById('txtRelayState').value);
+			var unencoded = "RPID=" + RPID + "&RelayState=" + RelayState;
+            var result = document.getElementById('txtURL').value + "?RelayState=" + encodeURIComponent(unencoded);
+            document.getElementById('lblDisplay').innerHTML = result;
+        }
+    </script>
+</head>
+<body style="background-color: blue; color: white">
+    <p><br />
+	<strong>AD FS 2.0 RelayState Generator for IDP Initiated Signon </strong></p>
+    <table>
+        <tr>
+            <td>IDP URL String</td>
+            <td><input type="text" value="https://adfs.contoso.com/adfs/ls/idpinitiatedsignon.aspx" class="textbox" id="txtURL" /></td>
+        </tr>
+        <tr>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+        </tr>
+        <tr>
+            <td>Relying Party Identifier</td>
+            <td><input type="text" value="URI:RelyingParty" class="textbox" id="txtRPID" /></td>
+        </tr>
+        <tr>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+        </tr>
+        <tr>
+            <td>Relay State / Target App</td>
+            <td><input type="text" value="https://app.relyingparty.com" class="textbox" id="txtRelayState" /></td>
+        </tr>
+    </table>
+    <br />
+    <strong>
+    <input type="button" onclick="SubmitMe()" value="Generate URL" /></strong>
+    <br /><hr /><strong>Results:</strong><br /><br />
+    <label id="lblDisplay"></label>
+</body>
+</html>
