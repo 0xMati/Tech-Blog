@@ -55,9 +55,6 @@ Steps:
 ![](assets/Token%20Protection%20Conditional%20Access/2025-04-22-17-32-02.png)
 
 
-You can also choose between:
-
-
 ---
 
 ### 🧪 Monitoring and Troubleshooting
@@ -70,7 +67,7 @@ You can monitor token protection events through **Sign-in logs** in the Entra po
 
 - Start in **Report-Only** mode to evaluate compatibility
 - Deploy to **pilot users** before enforcing
-- Combine with **device compliance** and **app restrictions**
+- Combine with **device compliance**, **app restrictions**, and **Location Restriction**
 
 ---
 
