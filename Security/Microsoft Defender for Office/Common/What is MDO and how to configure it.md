@@ -30,12 +30,21 @@ There is two differents configuration options :
 
 ### Access the Defender Portal
 
-    - Go to security.microsoft.com, and the "Email & Collaboration" blade:
+Go to security.microsoft.com, and the "Email & Collaboration" blade:
 
 ![](assets/What%20is%20MDO/2025-04-22-15-56-42.png)
 
 
-    - You'll see "Policies & Rules", and got to "Threat polocies"
+You'll see "Policies & Rules", and got to "Threat polocies"
 
 ![](assets/What%20is%20MDO/2025-04-22-15-58-13.png)
+
+
+In threat Policies, you can see 3 blocks here :
+
+![](assets/What%20is%20MDO%20and%20how%20to%20configure%20it/2025-04-22-16-12-57.png)
+
+     - Buit-in protection
+     - Standard protection
+     - Strict protection
 
