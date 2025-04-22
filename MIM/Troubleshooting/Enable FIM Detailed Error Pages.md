@@ -72,6 +72,9 @@ To enable detailed error pages:
 
 ![](assets/Enable%20FIM%20Detailed%20Error%20Pages/2025-04-22-17-42-02.png)
 
+
+You should now get a clear hint about what is going wrong.
+
 ---
 
 ### Disable Detailed Error Pages
