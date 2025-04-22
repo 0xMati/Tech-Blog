@@ -20,39 +20,34 @@ You can add or remove groups in the list below, including any custom security gr
 ## ⚙️ Detection Logic (KQL Query)
 
 ```kusto
-let SensitiveGroupName = pack_array(
-    'Account Operators',
-    'Administrators',
-    'Domain Admins',
-    'Backup Operators',
-    'Domain Controllers',
-    'Enterprise Admins',
-    'Enterprise Read-only Domain Controllers',
-    'Group Policy Creator Owners',
-    'Incoming Forest Trust Builders',
-    'Microsoft Exchange Servers',
-    'Network Configuration Operators',
-    'Print Operators',
-    'Read-only Domain Controllers',
-    'Replicator',
-    'Schema Admins',
-    'Server Operators',
-    'My custom Sensitive group'
+let SensitiveGroupName = pack_array( // Declare Sensitive Group names. Add any groups that you manually tagged as sensitive or nested groups in one of the default groups.
+'Account Operators',
+'Administrators',
+'Domain Admins',
+'Backup Operators',
+'Domain Controllers',
+'Enterprise Admins',
+'Enterprise Read-only Domain Controllers',
+'Group Policy Creator Owners',
+'Incoming Forest Trust Builders',
+'Microsoft Exchange Servers',
+'Network Configuration Operators',
+'Print Operators',
+'Read-only Domain Controllers',
+'Replicator',
+'Schema Admins',
+'Server Operators',
+'My Custom Group'
 );
-
 IdentityDirectoryEvents
 | where Application == "Active Directory"
 | where ActionType == "Group Membership changed"
-| extend ToGroup = tostring(parse_json(AdditionalFields).["TO.GROUP"])
-| extend FromGroup = tostring(parse_json(AdditionalFields).["FROM.GROUP"])
-| extend Action = iff(isempty(ToGroup), "Remove", "Add")
-| extend GroupName = iff(isempty(ToGroup), FromGroup, ToGroup)
+| extend ToGroup = tostring(parse_json(AdditionalFields).["TO.GROUP"]) // Extracts the group name if action is add entity to a group.
+| extend FromGroup = tostring(parse_json(AdditionalFields).["FROM.GROUP"]) // Extracts the group name if action is remove entity from a group.
+| extend Action = iff(isempty(ToGroup), "Remove", "Add") // Calculates if the action is Remove or Add.
+| extend GroupName = iff(isempty(ToGroup), FromGroup, ToGroup) // Group name that the action was taken on.
 | where GroupName in~ (SensitiveGroupName)
-| project Timestamp, ReportId, ToGroup, FromGroup,
-          Target_Account = TargetAccountDisplayName,
-          Target_UPN = TargetAccountUpn,
-          AccountSid, DC = DestinationDeviceName,
-          Actor = AccountName, ActorDomain = AccountDomain, AdditionalFields
+| project Timestamp, Action, ToGroup, FromGroup, Target_Account = TargetAccountDisplayName, Target_UPN = TargetAccountUpn, AccountSid, DC=DestinationDeviceName, Actor=AccountName, ActorDomain=AccountDomain, ReportId, AdditionalFields
 | sort by Timestamp desc
 ```
 
