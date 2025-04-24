@@ -1,5 +1,5 @@
 ---
-title: "Designing a High Availability Architecture for Entra ID Connect"
+title: "Designing a High Availability Architecture for Entra ID Connect, or performing a swing migration"
 date: 2023-07-18
 ---
 
