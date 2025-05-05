@@ -75,7 +75,8 @@ The script below enumerates all Organizational Units in the domain, extracts the
 If you're running this script in an audit or reporting context, you may want to keep a record of orphaned GPOs for later remediation or documentation.
 
 The script supports optional export to CSV. Simply uncomment the following line at the end:
-# $orphanedGpos | Export-Csv -Path "C:\Temp\Orphaned-GPOs.csv" -NoTypeInformation -Encoding UTF8
+
+--> $orphanedGpos | Export-Csv -Path "C:\Temp\Orphaned-GPOs.csv" -NoTypeInformation -Encoding UTF8
 
 Make sure the target directory (e.g., C:\Temp) exists or change the path to suit your environment.
 This will generate a file with the following columns:
