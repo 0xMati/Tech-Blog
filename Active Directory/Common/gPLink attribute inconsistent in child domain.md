@@ -239,6 +239,7 @@ Example :
 ## 🛠️ 4. Remediating Inconsistent `gPLink` References
 
 Once orphaned GPO links have been identified, the next step is to clean them up safely. This involves editing the `gPLink` attribute of affected OUs to remove the references to non-existent GPOs.
+Here is another version of the script that will delete automatically orphaned GPO and create a backup file.
 
 ### ⚙️ Remediation Strategy
 
@@ -253,9 +254,6 @@ Once tested, you can loop through the $orphanedGpos array and clean each OU. Alw
 
 4. Verify the result
 After cleanup, re-run the detection script to confirm that no orphaned links remain.
-
-🧠 Tip: Maintain a versioned export of your GPOs and links before any bulk remediation. Unexpected dependencies or delegation settings may otherwise cause policy gaps.
-
 
 ```powershell
 Import-Module ActiveDirectory
@@ -447,29 +445,42 @@ if ($orphanedGpos.Count -gt 0) {
         Write-Host "❎ Remediation canceled by user."
     }
 }
-
 ```
+
+Example :
+You can see that the script will prompt you to confirm deletion :
+
+![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-07-30.png)
+
+![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-07-47.png)
+
+--> You will be able to restore OUs modified with the backup file
+
 
 ## 🛠️ 5. Restore GPLinks from Backup
 
-If you need to restore the previous configuration, you can use this script :
+If you need to restore the previous configuration, you can use this script, just edit the backup file path :
+
+![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-09-59.png)
+
+![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-10-23.png)
 
 
 ```powershell
 Import-Module ActiveDirectory
 
-# 🔧 Éditer ici le chemin de votre fichier de sauvegarde :
-$backupPath = "C:\Temp\gPLink_Backup_20250505-230017.csv"
+# 🔧 Edit here the path to your backup file:
+$backupPath = "C:\Temp\gPLink_Backup_20250505-230737.csv"
 
 if (-not (Test-Path $backupPath)) {
-    Write-Error "❌ Le fichier spécifié est introuvable : $backupPath"
+    Write-Error "❌ The specified file was not found: $backupPath"
     exit 1
 }
 
-Write-Host "`n📂 Fichier de sauvegarde détecté : $backupPath" -ForegroundColor Cyan
-Write-Host "🔄 Début de la restauration des gPLink..." -ForegroundColor Yellow
+Write-Host "`n📂 Backup file detected: $backupPath" -ForegroundColor Cyan
+Write-Host "🔄 Starting gPLink restoration..." -ForegroundColor Yellow
 
-# 📥 Chargement du fichier
+# 📥 Load the backup file
 $backupData = Import-Csv -Path $backupPath
 
 foreach ($entry in $backupData) {
@@ -477,21 +488,22 @@ foreach ($entry in $backupData) {
     $originalGPlink = $entry.OriginalgPLink
     $domain = $entry.Domain
 
-    Write-Host "↩️ OU: $ouDn | Domaine: $domain" -ForegroundColor Yellow
+    Write-Host "↩️ OU: $ouDn | Domain: $domain" -ForegroundColor Yellow
 
     if ([string]::IsNullOrWhiteSpace($originalGPlink)) {
-        Write-Warning "⚠️ Valeur OriginalgPLink vide ou invalide pour $ouDn — aucun changement appliqué."
+        Write-Warning "⚠️ Empty or invalid OriginalgPLink value for $ouDn — no changes applied."
         continue
     }
 
     try {
         Set-ADOrganizationalUnit -Identity $ouDn -Server $domain -Replace @{gPLink = $originalGPlink}
-        Write-Host "✅ Restauration appliquée pour : $ouDn" -ForegroundColor Green
+        Write-Host "✅ Restoration applied for: $ouDn" -ForegroundColor Green
     } catch {
-        Write-Warning "❌ Erreur lors de la restauration de l'OU : $ouDn | $_"
+        Write-Warning "❌ Error while restoring OU: $ouDn | $_"
     }
 }
 
-Write-Host "`n🎉 Restauration terminée." -ForegroundColor Cyan
-
+Write-Host "`n🎉 Restoration complete." -ForegroundColor Cyan
 ```
+
+![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-10-50.png)
