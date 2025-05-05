@@ -40,6 +40,9 @@ When a GPO is deleted but its reference remains in a `gPLink` attribute:
 Maintaining consistency in `gPLink` values is therefore essential to ensure proper Group Policy behavior and clean administrative hygiene.
 
 
+![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-12-26.png)
+
+
 ## 2. Common Causes of `gPLink` Inconsistencies
 
 Inconsistent `gPLink` values usually appear when a GPO is deleted or moved without fully cleaning up the links that reference it. This is especially common in multi-domain Active Directory environments.
