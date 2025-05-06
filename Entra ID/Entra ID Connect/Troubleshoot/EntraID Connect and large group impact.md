@@ -110,7 +110,7 @@ If full exclusion is not possible, use sync rules to scope down group objects by
 
 ## 📌 Important Notes
 
-- The **10,000-member threshold** is not a hard limit — it's a guideline based on observed performance degradation. Impact varies by environment.
+- The **10,000-member threshold** is not a hard limit — it's a just an example based on observed performance degradation. Impact varies by environment.
 - This behavior affects the **import phase**, not delta sync or export.
 - Applies to **both inbound and outbound** group flows depending on your configuration.
 
