@@ -1,4 +1,5 @@
 # Rotating All Service Account Passwords in Microsoft Identity Manager (MIM)
+🗓️ Published: 2025-05-06
 
 Rotating service account passwords in a Microsoft Identity Manager (MIM) 2016 environment is a sensitive yet essential maintenance task. This article provides a step-by-step guide to perform the rotation and outlines the potential impacts to anticipate.
 

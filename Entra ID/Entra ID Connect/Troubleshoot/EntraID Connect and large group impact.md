@@ -1,4 +1,5 @@
 # ⚠️ Performance Pitfalls in Entra ID Connect (or MIM): Large Group Membership Impact on Import Cycles
+🗓️ Published: 2025-05-06
 
 ## 🔍 Overview
 
@@ -122,4 +123,4 @@ Understanding how Entra ID Connect and MIM process group memberships during impo
 
 By identifying large groups early and adjusting your sync strategy accordingly, you can greatly improve the efficiency and reliability of your synchronization engine.
 
-*Published on 2025-05-06*
+
