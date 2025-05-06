@@ -196,3 +196,9 @@ Set-SPManagedAccount -Identity $FarmAccount -NewPassword $Password -ConfirmPassw
 Keeping service accounts up-to-date with secure passwords is a best practice for any MIM deployment. This guide ensures minimal disruption while maintaining security compliance.
 
 > Do not forget to document the change and store credentials securely!
+
+---
+
+Sources:
+https://www.sharepointdiary.com/2017/08/change-farm-account-password-in-sharepoint-using-powershell.html
+https://learn.microsoft.com/en-us/answers/questions/1695987/change-sharepoint-2019-service-account-password
