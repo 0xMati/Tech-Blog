@@ -2,7 +2,11 @@
 # AD FS and MFA – Configuring Multiple Additional Authentication Rules
 🗓️ Published: 2025-05-06
 
-Ever since Microsoft bought PhoneFactor 3 years ago, they have been heavily investing in incorporating it into different products, both on-prem and in the cloud. They have no intention of slowing down – AD FS vNext will have ‘native’ integration with Azure MFA, eliminating the need to deploy the on-prem MFA server for organizations that sync to Azure AD. Apart from that, additional improvements have been made on how the authentication process works, with the switch to Modern authentication and the introduction of Access control policies for AD FS. Even with AD FS 3.0, it’s just a matter of a few simple clicks to set up AD FS to require MFA only when accessing resources from outside of the corporate network, and things get even better in vNext. So, there is no more need to play with those pesky claims rules?
+Ever since Microsoft bought PhoneFactor, they have been heavily investing in incorporating it into different products, both on-prem and in the cloud.
+We have no intention of slowing down – ADFS has now ‘native’ integration with Azure MFA, eliminating the need to deploy the on-prem MFA server for organizations that sync to Azure AD.
+Apart from that, additional improvements have been made on how the authentication process works, with the switch to Modern authentication and the introduction of Access control policies for AD FS.
+Even with AD FS 3.0, it’s just a matter of a few simple clicks to set up AD FS to require MFA only when accessing resources from outside of the corporate network, and things get even better.
+So, there is no more need to play with those pesky claims rules?
 
 ## Claims Rules in Older Versions of AD FS
 For those that will stick to an older version of AD FS, and for people who want even more customization, the claims rules are here to stay. In this post, I will briefly discuss how we can configure multiple additional authentication rules to achieve different MFA behaviors based on the device or client used, the location of the user, or any other information presented as a claim.
