@@ -68,6 +68,8 @@ c:[type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/windowsaccou
 #### Step 2: Transform into Name Identifier
 Use the built-in transformation rule to map `persistentId` to a `NameID` claim with the `persistent` format.
 
+![](assets/How%20to%20Request%20a%20Specific%20Name%20ID%20Format%20from%20a%20Claims%20Provider%20During%20SAML%202.0%20SSO/2025-05-06-14-10-21.png)
+
 ---
 
 ### 💾 Transient Name Identifier
@@ -90,6 +92,9 @@ c2:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/authenticat
 
 #### Step 2: Transform into transient Name Identifier
 Map the `sessionid` claim to a NameID with the `transient` format, similar to the persistent example.
+
+![](assets/How%20to%20Request%20a%20Specific%20Name%20ID%20Format%20from%20a%20Claims%20Provider%20During%20SAML%202.0%20SSO/2025-05-06-14-10-41.png)
+
 
 > 🔗 [Microsoft Identity Blog: Name Identifiers in SAML Assertions](https://learn.microsoft.com/en-us/archive/blogs/card/name-identifiers-in-saml-assertions)
 
