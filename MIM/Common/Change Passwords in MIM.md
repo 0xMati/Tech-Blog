@@ -74,7 +74,7 @@ Update each service account password using Active Directory Users and Computers 
 
 > ⚠️ **Important:** Do not change the SharePoint Farm account password directly in Active Directory unless you plan to synchronize it manually in SharePoint afterward. SharePoint managed accounts should preferably be updated through Central Administration or PowerShell to avoid configuration issues.
 
-You can use the following PowerShell command for other service accounts:
+You can use the following PowerShell example command for other service accounts:
 
 ```powershell
 Set-ADAccountPassword -Identity "DOMAIN\MIMService" -NewPassword (ConvertTo-SecureString "NewPassword!" -AsPlainText -Force)
