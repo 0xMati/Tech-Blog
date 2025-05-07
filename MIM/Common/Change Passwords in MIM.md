@@ -55,7 +55,7 @@ Or with the GUI in Sharepoint Central Admin :
 
 ---
 
-### Generate New Passwords
+### Recommandation during generation of New Passwords
 - Use a secure password manager or vault.
 - Ensure passwords meet security and complexity requirements.
 - Store them securely (e.g., Azure Key Vault, KeePass).
@@ -79,6 +79,8 @@ You can use the following PowerShell command for other service accounts:
 ```powershell
 Set-ADAccountPassword -Identity "DOMAIN\MIMService" -NewPassword (ConvertTo-SecureString "NewPassword!" -AsPlainText -Force)
 ```
+
+💡 Note: For some data sources—such as LDAP directories, databases, or web services—the connector account may not be an Active Directory account. Ensure you follow the appropriate password change process for each system.
 
 ---
 
