@@ -44,6 +44,15 @@ Add-PSSnapin Microsoft.SharePoint.PowerShell
 (Get-SPFarm).DefaultServiceAccount
 ```
 
+Or with the GUI in Sharepoint Central Admin :
+
+ - Go to SharePoint Central Administration
+ - Security > Configure Managed Accounts
+ - Check the Default Account
+
+![](assets/Change%20Passwords%20in%20MIM/2025-05-07-14-57-03.png)
+
+
 ---
 
 ### Generate New Passwords
