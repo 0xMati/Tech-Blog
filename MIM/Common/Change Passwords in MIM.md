@@ -21,6 +21,22 @@ Start by identifying all service accounts used in the MIM infrastructure:
 
 > ⚠️ Use the Synchronization Service Manager (`miisclient.exe`) to inspect each Management Agent (MA) and verify the account credentials.
 
+> You cand find MIM Sync and MIM Service Account with powershell :
+
+```powershell
+Get-WmiObject -Class Win32_Service -Filter "Name='FIMSynchronizationService' or Name='FIMService'" | Select-Object DisplayName, Name, StartName
+```
+
+> You can find the MIM Portal App Pool Account here in IIS Manager :
+
+![](assets/Change%20Passwords%20in%20MIM/2025-05-07-14-47-35.png)
+
+> You find all related SQL Account with this powershell command:
+
+```powershell
+Get-WmiObject -Class Win32_Service | Where-Object { $_.DisplayName -like "SQL Server*" } | Select DisplayName, StartName
+```
+
 ---
 
 ### Generate New Passwords
