@@ -37,7 +37,7 @@ Get-WmiObject -Class Win32_Service | Where-Object { $_.DisplayName -like "SQL Se
 
 > Use the Synchronization Service Manager (`miisclient.exe`) to inspect each Management Agent (MA) and verify the account credentials.
 
-> Retrieve Sharepoint Accounts information :
+> Retrieve Sharepoint Accounts information with Poershell :
 
 ```powershell
 Add-PSSnapin Microsoft.SharePoint.PowerShell
