@@ -19,8 +19,6 @@ Start by identifying all service accounts used in the MIM infrastructure:
 | Management Agents (MAs)           | Depends on connector (e.g. AD)   |
 | SharePoint Farm Account           | `DOMAIN\SPFarm`                  |
 
-> ⚠️ Use the Synchronization Service Manager (`miisclient.exe`) to inspect each Management Agent (MA) and verify the account credentials.
-
 > You cand find MIM Sync and MIM Service Account with powershell :
 
 ```powershell
@@ -36,6 +34,8 @@ Get-WmiObject -Class Win32_Service -Filter "Name='FIMSynchronizationService' or 
 ```powershell
 Get-WmiObject -Class Win32_Service | Where-Object { $_.DisplayName -like "SQL Server*" } | Select DisplayName, StartName
 ```
+
+> ⚠️ Use the Synchronization Service Manager (`miisclient.exe`) to inspect each Management Agent (MA) and verify the account credentials.
 
 ---
 
