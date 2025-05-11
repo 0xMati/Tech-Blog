@@ -198,13 +198,13 @@ Here’s how it works in the context of **Cloud Kerberos Trust**:
 - Domain controllers remain authoritative for Kerberos ticket issuance
 - Works over VPN, but also supports remote scenarios without line-of-sight to DC at sign-in
 
-### 🚀 Deployment of Cloud Kerberos Trust
+## 🚀 Deployment of Cloud Kerberos Trust
 
 Deploying **Cloud Kerberos Trust (CKT)** involves configuring several components across Microsoft Entra ID, Active Directory, and client devices. This section provides a **step-by-step guide**, including PowerShell, Intune, and GPO options for full flexibility.
 
 ---
 
-#### 1. ✅ Enable Microsoft Entra Kerberos in Active Directory
+### 1. ✅ Enable Microsoft Entra Kerberos in Active Directory
 
 You must first create a **Kerberos Server object** in Active Directory, which acts like a virtual Read-Only Domain Controller (RODC) for Entra ID. This object is used to sign **partial TGTs**.
 
@@ -236,23 +236,23 @@ Get-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName
 
 ---
 
-#### 2. ✅ Configure Entra Connect Authentication Type
+### 2. ✅ Configure Entra Connect Authentication Type
 
 Cloud Kerberos Trust works with:
 
 - **Password Hash Synchronization (PHS)** ✅ Recommended
 - **Pass-through Authentication (PTA)**
-- (Optionally) Federated auth with ADFS
+- **Federation authN with ADFS**
 
 Ensure your tenant uses one of these, and verify that **Hybrid Join is enabled** via “Device Options” in Azure AD Connect.
 
 ---
 
-#### 3. ✅ Configure Windows Hello for Business via Intune or GPO
+### 3. ✅ Configure Windows Hello for Business via Intune or GPO
 
 You must enable **Windows Hello for Business** and configure it to use **Cloud Kerberos Trust**.
 
-##### 🔧 Intune Settings Catalog (Recommended)
+#### 🔧 Intune Settings Catalog (Recommended)
 
 1. Go to **Intune Admin Center** → Devices → Configuration Profiles
 2. Create a new profile:
@@ -266,7 +266,7 @@ You must enable **Windows Hello for Business** and configure it to use **Cloud K
 
 > ⚠️ The “(User)” scope setting will apply per user even if targeting devices.
 
-##### 🛠️ GPO Equivalent
+#### 🛠️ GPO Equivalent
 
 | Path | Setting | Value |
 |------|---------|-------|
@@ -276,11 +276,11 @@ You must enable **Windows Hello for Business** and configure it to use **Cloud K
 
 ---
 
-#### 4. ✅ Optional: Configure Additional Cloud Kerberos OMA-URIs (Custom CSP)
+### 4. ✅ Optional: Configure Additional Cloud Kerberos OMA-URIs (Custom CSP)
 
 If you use **Custom Profiles in Intune**, you can manually define OMA-URIs.
 
-##### Enable Cloud Kerberos Ticket Retrieval
+#### Enable Cloud Kerberos Ticket Retrieval
 
 ```
 OMA-URI: ./Device/Vendor/MSFT/Policy/Config/Kerberos/CloudKerberosTicketRetrievalEnabled
@@ -288,7 +288,7 @@ Data type: Integer
 Value: 1
 ```
 
-##### Enable WHfB Cloud Trust
+#### Enable WHfB Cloud Trust
 
 ```
 OMA-URI: ./Device/Vendor/MSFT/PassportForWork/{TenantID}/Policies/UseCloudTrustForOnPremAuth
@@ -300,7 +300,7 @@ Value: True
 
 ---
 
-#### 5. 🔍 Validate Configuration and Functionality
+## 🔍 Validate Configuration and Functionality
 
 After deployment, validate using the following tools:
 
@@ -324,7 +324,7 @@ CloudTgt  : YES
 
 ---
 
-#### 6. 🔄 Rotate AzureADKerberos Keys (Optional)
+### 🔄 Rotate AzureADKerberos Keys (Optional)
 
 For security hygiene, rotate the key used by the `AzureADKerberos` object:
 
