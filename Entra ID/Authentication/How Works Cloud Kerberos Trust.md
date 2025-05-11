@@ -147,6 +147,8 @@ The following steps describe the technical flow behind Cloud Kerberos Trust auth
 
 ![](assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-20-35-01.png)
 
+![](assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-21-27-54.png)
+
 ### 🧭 How DC Locator Works with Entra ID Joined Devices
 
 When a device is **Azure AD Joined (AADJ)** and not domain-joined, it is treated as a **workgroup machine** from the perspective of the **DC Locator (DsGetDcName)** API. Although the machine has no computer account in Active Directory, it can still perform DC discovery — with some limitations.
@@ -195,12 +197,6 @@ Here’s how it works in the context of **Cloud Kerberos Trust**:
 - No dependency on PKI or Certificate Revocation Lists (CRLs)
 - Domain controllers remain authoritative for Kerberos ticket issuance
 - Works over VPN, but also supports remote scenarios without line-of-sight to DC at sign-in
-
-### 🖼️ Architecture Diagram
-
-![](assets/How%20Works%20Cloud%20Kerberos%20Trust/TO%20DO.png)
-
-
 
 ### 🚀 Deployment of Cloud Kerberos Trust
 
