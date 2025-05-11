@@ -11,7 +11,8 @@ At its core, Cloud Kerberos Trust simplifies authentication by removing two of t
 
 CKT works by having Entra ID issue a **partial Kerberos Ticket Granting Ticket (TGT)** as part of the Primary Refresh Token (PRT) process. This TGT is signed using a cryptographic key from a special **AzureADKerberos object**, which is synchronized into the on-premises Active Directory. Once a Windows client receives the partial TGT, it can seamlessly **exchange it with an on-premises domain controller for a full TGT**, enabling access to domain resources such as SMB shares or legacy apps—even on **Entra ID joined devices with no line-of-sight to a domain controller**.
 
-## Why Cloud Kerberos Trust matters
+
+## 1. Why Cloud Kerberos Trust matters
 
 - 🔐 **Passwordless-first**: Enables secure, phishing-resistant sign-ins through Windows Hello for Business (biometric or PIN backed by TPM).
 - ⚡ **Instant SSO**: Eliminates the wait for msDS-KeyCredentialLink synchronization—SSO works immediately after provisioning.
@@ -24,11 +25,12 @@ Cloud Kerberos Trust isn’t just a technical shortcut—it’s a strategic step
 This article will guide you through a **deep technical understanding** of how Cloud Kerberos Trust works—from concepts to packet flows, configuration details, and security architecture. Whether you're planning a deployment or just seeking to demystify the trust model, this series will cover all angles—**one validated step at a time**.
 
 
-## 👤 A Quick Refresher on Windows Hello for Business
+## 👤 2. A Quick Refresher on Windows Hello for Business
 
 Before diving deeper into Cloud Kerberos Trust, it’s important to understand the foundation it builds upon: **Windows Hello for Business (WHfB)**.
 
 WHfB is Microsoft’s **passwordless authentication framework**, designed to replace traditional passwords with **strong, device-bound credentials**. It supports both **PINs** and **biometric methods** (e.g., fingerprint, facial recognition), all backed by **asymmetric cryptographic key pairs** stored in the **Trusted Platform Module (TPM)** or in software (less secure fallback).
+
 
 ### Key Principles of WHfB
 
@@ -37,6 +39,7 @@ WHfB is Microsoft’s **passwordless authentication framework**, designed to rep
 - 🔐 **Phishing-Resistant**: Because there is no shared secret transmitted over the wire (no password), WHfB is immune to password replay attacks and common phishing techniques.
 - 🧠 **TPM-Backed Protection**: The private key is often protected in hardware, and incorrect PIN attempts are mitigated by **TPM anti-hammering** protections.
 - 🛡️ **Multi-Factor by Design**: WHfB meets MFA requirements by combining “something you have” (device/private key) with “something you know or are” (PIN or biometric).
+
 
 ### Trust Models in WHfB
 
@@ -47,23 +50,24 @@ WHfB can operate under three distinct trust models:
 
 Cloud Kerberos Trust extends WHfB to function **instantly after enrollment** and **without PKI**, making it the most efficient and cloud-optimized trust model available today.
 
-
 📘 **Deployment Guide**: For a full deployment guide on Windows Hello for Business, refer to the official Microsoft documentation:  
 [https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/deploy/](https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/deploy/)
 
 
-## ⚙️ Prerequisites for Cloud Kerberos Trust
+# ⚙️ Prerequisites for Cloud Kerberos Trust
 
 Before enabling **Cloud Kerberos Trust (CKT)** in your hybrid identity environment, you need to ensure that all key infrastructure components are in place: **operating system versions, domain controller capabilities, device join state, and user synchronization**. These requirements provide the foundation for a secure and functional deployment.
 
-### 1. Operating System Requirements
+
+## 1. Operating System Requirements
 
 - ✅ Devices must run at least:
   - **Windows 10 21H2** with **KB5010415** or later
   - **Windows 11 21H2** with **KB5010414** or later
 - ✅ **TPM 2.0** is strongly recommended for secure key storage
 
-### 2. Device Join State & Management
+
+## 2. Device Join State & Management
 
 - ✅ Devices must be **Entra ID Joined** or **Hybrid Entra ID Joined**
 - ✅ Devices **must be managed via Intune or Group Policy**, as **specific configuration must be pushed to clients**
@@ -72,7 +76,8 @@ Before enabling **Cloud Kerberos Trust (CKT)** in your hybrid identity environme
 
 > 💡 Cloud Kerberos Trust works only if the WHfB configuration is properly pushed to the device during provisioning.
 
-### 3. Directory Synchronization
+
+## 3. Directory Synchronization
 
 - ✅ A properly configured **Entra ID Connect (Entra Connect)** must be in place
 - ✅ User objects must be **synchronized from on-premises Active Directory to Entra ID**
@@ -87,10 +92,10 @@ Microsoft Entra Connect synchronizes these attributes by default. If you change 
 
 ![](assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-01-30.png)
 
-
 > 🔍 This eliminates the sync delay that previously prevented immediate WHfB SSO after provisioning.
 
-### 4. Domain Controller Requirements
+
+## 4. Domain Controller Requirements
 
 - ✅ Domain Controllers must run:
   - **Windows Server 2016 or newer**
@@ -101,7 +106,8 @@ Microsoft Entra Connect synchronizes these attributes by default. If you change 
 
 ---
 
-### Licensing
+## Licensing
+
 
 - ✅ **No paid license is required** for Cloud Kerberos Trust itself
   - **Microsoft Entra ID Free** is sufficient for basic use
@@ -112,15 +118,17 @@ Microsoft Entra Connect synchronizes these attributes by default. If you change 
 
 > 📘 License comparison: [https://m365maps.com](https://m365maps.com)
 
+
 ---
 
-## 🏗️ Architecture Overview – Cloud Kerberos Trust
+# 🏗️ Architecture Overview – Cloud Kerberos Trust
 
 Cloud Kerberos Trust introduces a new hybrid authentication model that enables **Entra ID to participate directly in Kerberos-based authentication flows**. This model reduces infrastructure complexity while maintaining compatibility with legacy on-premises applications and file shares.
 
 At a high level, Cloud Kerberos Trust establishes **a chain of trust** between the user, the device, Entra ID, and the on-premises Active Directory domain. The flow is streamlined and does not rely on public key infrastructures (PKI), certificate enrollment, or key credential synchronization.
 
-### 🔄 End-to-End Trust Flow
+
+## 1. 🔄 End-to-End Trust Flow
 
 The following steps describe the technical flow behind Cloud Kerberos Trust authentication, enabling Entra ID-joined or hybrid devices to securely access on-premises resources using Windows Hello for Business (WHfB):
 
@@ -152,7 +160,8 @@ The following steps describe the technical flow behind Cloud Kerberos Trust auth
 
 ![](assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-21-27-54.png)
 
-### 🧭 How DC Locator Works with Entra ID Joined Devices
+
+## 2. 🧭 How DC Locator Works with Entra ID Joined Devices
 
 When a device is **Entra ID Joined (AADJ)** and not domain-joined, it is treated as a **workgroup machine** from the perspective of the **DC Locator (DsGetDcName)** API. Although the machine has no computer account in Active Directory, it can still perform DC discovery — with some limitations.
 
@@ -183,7 +192,8 @@ Here’s how it works in the context of **Cloud Kerberos Trust**:
 > 🧪 You can manually trigger and test DC location using `nltest /dsgetdc:<domain>` or by inspecting Kerberos debug logs and SRV DNS queries via tools like `klist`, `nslookup`, and Event Viewer logs under:  
 > **Applications and Services Logs → Microsoft → Windows → Kerberos-Client → Operational**
 
-### 🔧 Key Components
+
+## 3. 🔧 Key Components
 
 | Component | Role |
 |----------|------|
@@ -193,7 +203,8 @@ Here’s how it works in the context of **Cloud Kerberos Trust**:
 | **Active Directory DC** | Validates partial TGT, issues full TGT for on-premises access |
 | **TPM (optional)** | Secure storage for private keys and PIN protection on the client |
 
-### 🔐 Trust Characteristics
+
+## 4. 🔐 Trust Characteristics
 
 - No certificate or smart card deployment needed
 - No synchronization of user key material (e.g., `msDS-KeyCredentialLink`)
@@ -201,13 +212,14 @@ Here’s how it works in the context of **Cloud Kerberos Trust**:
 - Domain controllers remain authoritative for Kerberos ticket issuance
 - Works over VPN, but also supports remote scenarios without line-of-sight to DC at sign-in
 
-## 🚀 Deployment of Cloud Kerberos Trust
+# 🚀 Deployment of Cloud Kerberos Trust
+
 
 Deploying **Cloud Kerberos Trust (CKT)** involves configuring several components across Microsoft Entra ID, Active Directory, and client devices. This section provides a **step-by-step guide**, including PowerShell, Intune, and GPO options for full flexibility.
 
 ---
 
-### 1. ✅ Enable Microsoft Entra Kerberos in Active Directory
+## 1. ✅ Enable Microsoft Entra Kerberos in Active Directory
 
 You must first create a **Kerberos Server object** in Active Directory, which acts like a virtual Read-Only Domain Controller (RODC) for Entra ID. This object is used to sign **partial TGTs**.
 
@@ -241,7 +253,7 @@ Get-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName
 
 ---
 
-### 2. ✅ Configure Entra Connect Authentication Type
+## 2. ✅ Configure Entra Connect Authentication Type
 
 Cloud Kerberos Trust works with:
 
@@ -253,11 +265,12 @@ Ensure your tenant uses one of these, and verify that **Hybrid Join is enabled**
 
 ---
 
-### 3. ✅ Configure Windows Hello for Business via Intune or GPO
+## 3. ✅ Configure Windows Hello for Business via Intune or GPO
 
 You must enable **Windows Hello for Business** and configure it to use **Cloud Kerberos Trust**.
 
-#### 🔧 Intune Settings Catalog (Recommended)
+
+### 🔧 Intune Settings Catalog (Recommended)
 
 1. Go to **Intune Admin Center** → Devices → Configuration Profiles
 2. Create a new profile:
@@ -271,7 +284,8 @@ You must enable **Windows Hello for Business** and configure it to use **Cloud K
 
 > ⚠️ The “(User)” scope setting will apply per user even if targeting devices.
 
-#### 🛠️ GPO Equivalent
+
+### 🛠️ GPO Equivalent
 
 | Path | Setting | Value |
 |------|---------|-------|
@@ -281,11 +295,12 @@ You must enable **Windows Hello for Business** and configure it to use **Cloud K
 
 ---
 
-### 4. ✅ Optional: Configure Additional Cloud Kerberos OMA-URIs (Custom CSP)
+## 4. ✅ Optional: Configure Additional Cloud Kerberos OMA-URIs (Custom CSP)
 
 If you use **Custom Profiles in Intune**, you can manually define OMA-URIs.
 
-#### Enable Cloud Kerberos Ticket Retrieval
+
+### Enable Cloud Kerberos Ticket Retrieval
 
 ```
 OMA-URI: ./Device/Vendor/MSFT/Policy/Config/Kerberos/CloudKerberosTicketRetrievalEnabled
@@ -293,7 +308,7 @@ Data type: Integer
 Value: 1
 ```
 
-#### Enable WHfB Cloud Trust
+### Enable WHfB Cloud Trust
 
 ```
 OMA-URI: ./Device/Vendor/MSFT/PassportForWork/{TenantID}/Policies/UseCloudTrustForOnPremAuth
@@ -305,7 +320,8 @@ Value: True
 
 ---
 
-## 🔍 Validate Configuration and Functionality
+
+# 🔍 Validate Configuration and Functionality
 
 After deployment, validate using the following tools:
 
@@ -356,7 +372,7 @@ CloudTgt  : YES
 
 ---
 
-### 🔄 Rotate AzureADKerberos Keys (Optional)
+## 🔄 Rotate AzureADKerberos Keys (Optional)
 
 For security hygiene, rotate the key used by the `AzureADKerberos` object:
 
@@ -368,6 +384,6 @@ This is similar to rotating the `krbtgt` password and helps mitigate long-term k
 
 
 
-### ✅ Summary
+# ✅ Summary
 
 Cloud Kerberos Trust bridges the cloud and on-prem worlds by allowing Entra ID to kickstart Kerberos authentication securely. It simplifies the infrastructure required for Windows Hello for Business and dramatically **reduces setup complexity** while **preserving compatibility** with on-prem Active Directory resources.
