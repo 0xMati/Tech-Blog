@@ -217,7 +217,6 @@ Here’s how it works in the context of **Cloud Kerberos Trust**:
 
 Deploying **Cloud Kerberos Trust (CKT)** involves configuring several components across Microsoft Entra ID, Active Directory, and client devices. This section provides a **step-by-step guide**, including PowerShell, Intune, and GPO options for full flexibility.
 
----
 
 ## 1. ✅ Enable Microsoft Entra Kerberos in Active Directory
 
@@ -251,7 +250,6 @@ Get-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName
 
 ![](assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-03-58.png)
 
----
 
 ## 2. ✅ Configure Entra Connect Authentication Type
 
@@ -263,7 +261,6 @@ Cloud Kerberos Trust works with:
 
 Ensure your tenant uses one of these, and verify that **Hybrid Join is enabled** via “Device Options” in Entra ID Connect.
 
----
 
 ## 3. ✅ Configure Windows Hello for Business via Intune or GPO
 
@@ -293,7 +290,6 @@ You must enable **Windows Hello for Business** and configure it to use **Cloud K
 | Computer Configuration > Windows Hello for Business | Use cloud Kerberos trust for on-premises authentication | Enabled |
 | Computer Configuration > Windows Hello for Business | Use a hardware security device | Enabled |
 
----
 
 ## 4. ✅ Optional: Configure Additional Cloud Kerberos OMA-URIs (Custom CSP)
 
