@@ -82,6 +82,7 @@ Before enabling **Cloud Kerberos Trust (CKT)** in your hybrid identity environme
 - ✅ A properly configured **Entra ID Connect (Entra Connect)** must be in place
 - ✅ User objects must be **synchronized from on-premises Active Directory to Entra ID**
 - ✅ The **`msDS-KeyCredentialLink` attribute is not required** with Cloud Kerberos Trust, in contrast to Key Trust deployments
+> 🔍 This eliminates the sync delay that previously prevented immediate WHfB SSO after provisioning.
 
 > ⚠️ Users must have the following Microsoft Entra attributes populated through Microsoft Entra Connect for Cloud Kerberos Trust to work:
 
@@ -92,7 +93,6 @@ Microsoft Entra Connect synchronizes these attributes by default. If you change 
 
 ![](assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-01-30.png)
 
-> 🔍 This eliminates the sync delay that previously prevented immediate WHfB SSO after provisioning.
 
 
 ## 4. Domain Controller Requirements
