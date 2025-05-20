@@ -1,7 +1,7 @@
----
+
 title: "Lab : Playing with Cloud Kerberos Trust in Disconnected Forest" - Work in Progress
 date: 2025-05-20
----
+
 
 # 🔐 Objective
 
