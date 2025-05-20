@@ -58,15 +58,16 @@ I don't focus on how to provision objects with MIM, the main idea here is to und
 
 ## Required attribut flow with MIM
 
-| Contoso.local                 | MIM Metaverse                                   | Fabrikam.com                    | Flow Direction
-|-------------------------------|-------------------------------------------------|-------------------------------------------------------
-| ObjectSID -->                 | ObjectSID -->                                   | ObjectSID2                      | Export to Fabrikam
-| ObjectSIDString* -->          | ObjectSIDString -->                             | msDS-cloudExtensionAttribute7   | Export to Fabrikam
-| sAMAccountName -->            | AccountName -->                                 | msDS-cloudExtensionAttribute20  | Export to Fabrikam
-| mS-DS-ConsistencyGuid <--     | mS-DS-ConsistencyGuid <--                       | mS-DS-ConsistencyGuid           | Export to Contoso
-| userPrincipalName -->         | userPrincipalName -->                           | msDS-cloudExtensionAttribute5   | Export to Fabrikam
-| "CONTOSO"** -->               | domain -->                                      | msDS-cloudExtensionAttribute6   | Export to Fabrikam
-| "CONTOSO.LOCAL"**  -->        | domainfqdn -->                                  | msDS-cloudExtensionAttribute3   | Export to Fabrikam
+| Contoso.local                 | MIM Metaverse                                   | Fabrikam.com                    | Flow Direction         |
+|------------------------------|-------------------------------------------------|----------------------------------|------------------------|
+| ObjectSID -->                | ObjectSID -->                                   | ObjectSID2                       | Export to Fabrikam     |
+| ObjectSIDString* -->         | ObjectSIDString -->                             | msDS-cloudExtensionAttribute7    | Export to Fabrikam     |
+| sAMAccountName -->           | AccountName -->                                 | msDS-cloudExtensionAttribute20   | Export to Fabrikam     |
+| mS-DS-ConsistencyGuid <--    | mS-DS-ConsistencyGuid <--                       | mS-DS-ConsistencyGuid            | Export to Contoso      |
+| userPrincipalName -->        | userPrincipalName -->                           | msDS-cloudExtensionAttribute5    | Export to Fabrikam     |
+| "CONTOSO"** -->              | domain -->                                      | msDS-cloudExtensionAttribute6    | Export to Fabrikam     |
+| "CONTOSO.LOCAL"** -->        | domainfqdn -->                                  | msDS-cloudExtensionAttribute3    | Export to Fabrikam     |
+
 
 
 *ObjectSIDString : A custom string representation of the SID, calculated in a Rule Extension or custom MIM code.
@@ -95,16 +96,17 @@ The idea here is to get values in Fabrikam that came from Contoso and push them 
 Manipulate Entra ID Connect Attribute flow to ensure that value from contoso.local are synced to Entra ID.
 It can be acheive with a custom Sync Rule, in this example I choose to implement an Inbound Rule, but outbound rule can be used.
 
-| Fabrikam.com                        | Entra ID Connect Metaverse                      | Entra ID MA                     | Flow Direction
-|-------------------------------------|-------------------------------------------------|-------------------------------------------------------
-| ObjectSID2 -->                      | ObjectSID -->                                   | onPremiseSecurityIdentifier     | Export to Entra ID
-| msDS-cloudExtensionAttribute7 -->   | ObjectSidString -->                             | ??                              | Export to Entra ID
-| msDS-cloudExtensionAttribute20 -->  | AccountName -->                                 | onPremisesSamAccountName        | Export to Entra ID
-| msDS-cloudExtensionAttribute5 -->   | userPrincipalName -->                           | onPremisesUserPrincipalName     | Export to Entra ID
-| msDS-cloudExtensionAttribute6 -->   | domainNetBios -->                               | netBiosName                     | Export to Entra ID
-| msDS-cloudExtensionAttribute6 -->   | ForestNetBios -->                               | ??                              | Export to Entra ID
-| msDS-cloudExtensionAttribute3 -->   | domainfqdn -->                                  | dnsDomainName                   | Export to Entra ID
-| msDS-cloudExtensionAttribute3 -->   | forestfqdn -->                                  | ??                              | Export to Entra ID
+| Fabrikam.com                        | Entra ID Connect Metaverse                      | Entra ID MA                     | Flow Direction         |
+|------------------------------------|-------------------------------------------------|----------------------------------|------------------------|
+| ObjectSID2 -->                     | ObjectSID -->                                   | onPremiseSecurityIdentifier     | Export to Entra ID     |
+| msDS-cloudExtensionAttribute7 -->  | ObjectSidString -->                             | ??                              | Export to Entra ID     |
+| msDS-cloudExtensionAttribute20 --> | AccountName -->                                 | onPremisesSamAccountName        | Export to Entra ID     |
+| msDS-cloudExtensionAttribute5 -->  | userPrincipalName -->                           | onPremisesUserPrincipalName     | Export to Entra ID     |
+| msDS-cloudExtensionAttribute6 -->  | domainNetBios -->                               | netBiosName                     | Export to Entra ID     |
+| msDS-cloudExtensionAttribute6 -->  | ForestNetBios -->                               | ??                              | Export to Entra ID     |
+| msDS-cloudExtensionAttribute3 -->  | domainfqdn -->                                  | dnsDomainName                   | Export to Entra ID     |
+| msDS-cloudExtensionAttribute3 -->  | forestfqdn -->                                  | ??                              | Export to Entra ID     |
+
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-11-25.png)
 
