@@ -24,6 +24,7 @@ This lab assumes:
 
 - 1 Entra ID Connect Server (in Fabrikam), that synchronize Users objects consolidated from Fabrikam.com to Entra ID, and Sync Computers object from Contoso Forest to perform Hybrid Join
 
+![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-55-53.png)
 ---
 
 # 📋 Prerequisites
@@ -41,11 +42,12 @@ This lab assumes:
 
 # ⚙️ Steps Overview
 
-2. [ ] Sync Users required attributes from contoso forests to Fabrikam
-3. [ ] Configure Entra ID Connect
-1. [ ] Create the AzureADKerberos object in the disconnected forest
-4. [ ] Deploy WHfB policy.
-5. [ ] Test authentication with partial and full TGT flow.
+1. [ ] Sync Users from contoso.local to fabrikam with MIM
+2. [ ] Entra ID Connect - Sync Users from fabrikam.com to Entra ID
+3. [ ] Implement Hybrid Join Configuration
+4. [ ] Create the AzureADKerberos object in the disconnected forest
+5. [ ] Deploy WHfB configuration
+6. [ ] Test Configuration
 
 ---
 
