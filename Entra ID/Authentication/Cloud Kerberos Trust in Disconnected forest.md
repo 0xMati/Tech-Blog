@@ -1,28 +1,28 @@
 ---
-title: "Lab : Playing with Cloud Kerberos Trust in Disconnected Forest - **Work in Progress** "
+title: "Lab: Playing with Cloud Kerberos Trust in a Disconnected Forest – **Work in Progress**"
 date: 2025-05-20
 ---
 
 # 🔐 Objective
 
-Demonstrate how it possible to manipulate attributes sync to configure **Cloud Kerberos Trust** in a disconnected (not directly synced by Entra ID Connect) Active Directory forest for hybrid identity scenarios.
-There is no advanced description of all steps, just general idea to make it work.
+Demonstrate how it is possible to manipulate attributes sync to configure **Cloud Kerberos Trust** in a disconnected (not directly synced by Entra ID Connect) Active Directory forest for hybrid identity scenarios.
+This document does not provide a detailed step-by-step guide but rather a high-level overview to achieve a working configuration.
 
 This lab assumes:
 - 1 Forest "contoso.local"
-    - The forest contains Users Accounts used in day to day local authentication for people
-    - The forest contains Computers objects, domain joined to "contoso.local", used by people with theirs contoso.local Users accounts.
+    - This forest contains user accounts used for daily local authentication
+    - It also contains computer objects, domain-joined to contoso.local, used by employees with their respective user accounts
 
 - 1 Forest "fabrikam.com"
-    - This forest contains Users Accounts consolidated from all contoso.local forests (if multiple exist)
+    - This forest contains user accounts consolidated from all contoso.local forests (if multiple exist)
 
-- No Trust exist between Fabrikam.com and Contoso Forests
+- No trust exists between fabrikam.com and any contoso.local forests.
 
 - 1 Tenant "0x1mati.online" with Managed (Password Hash Sync) authentication configuration
 
-- 1 MIM Sync Service (or equivalent) to Synchronize (and provision) required attribute from Contoso.local forest to fabrikam.com forest
+- 1 MIM Sync Service (or equivalent) to Synchronize (and provision) required attributes from Contoso.local forest to fabrikam.com forest
 
-- 1 Entra ID Connect Server (in Fabrikam), that synchronize Users objects consolidated from Fabrikam.com to Entra ID, and Sync Computers object from Contoso Forest to perform Hybrid Join
+- 1 Entra ID Connect server (located in fabrikam.com) that synchronizes user objects from fabrikam.com to Entra ID and synchronizes computer objects from contoso.local to enable Hybrid Join.
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-55-53.png)
 ---
@@ -53,12 +53,12 @@ This lab assumes:
 
 # 📋 Sync Users from contoso.local to fabrikam with MIM
 
-I don't focus on how to provision objects with MIM, the main idea here is to understand required attributes flow from the local AD contoso.local to fabrikam.com
+This section does not focus on how to provision objects with MIM. The main objective is to understand the required attribute flows from the contoso.local forest to the fabrikam.com forest.
 
---> Join Condition in MIM is based on "mail" attribute in this example, adapt to your needs
---> mS-DS-ConsistencyGuid is writebacked for consistency
+→ Join condition in MIM is based on the `mail` attribute in this example. Adapt as needed.  
+→ The `mS-DS-ConsistencyGuid` is written back for consistency.
 
-## Required attribut flow with MIM
+## Required attributes flow with MIM
 
 | Contoso.local                 | MIM Metaverse                                   | Fabrikam.com                    | Flow Direction         |
 |------------------------------|-------------------------------------------------|----------------------------------|------------------------|
@@ -91,12 +91,12 @@ Ex of a User account in Fabrikam with custom values populated:
 
 # 📋 Entra ID Connect - Sync Users from fabrikam.com to Entra ID
 
-The idea here is to get values in Fabrikam that came from Contoso and push them to the Entra ID Metaverse to populate theses values to the cloud
+The goal here is to take values in Fabrikam that originated from Contoso and push them into the Entra ID metaverse, making them available in the cloud.
 
-## Required attribut flow with EIDC for Users in Fabrikam to Entra ID (Fabrikam MA)
+## Required attributes flow with Entra ID Connect for Users in Fabrikam to Entra ID (Fabrikam MA)
 
-Manipulate Entra ID Connect Attribute flow to ensure that value from contoso.local are synced to Entra ID.
-It can be acheive with a custom Sync Rule, in this example I choose to implement an Inbound Rule, but outbound rule can be used.
+Configure Entra ID Connect attribute flows to ensure that values from contoso.local are synchronized to Entra ID.
+This can be achieved with a custom sync rule. In this example, I chose to implement an inbound rule, but an outbound rule could also be used.
 
 | Fabrikam.com                        | Entra ID Connect Metaverse                      | Entra ID MA                     | Flow Direction         |
 |------------------------------------|-------------------------------------------------|----------------------------------|------------------------|
@@ -112,11 +112,11 @@ It can be acheive with a custom Sync Rule, in this example I choose to implement
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-11-25.png)
 
-# 📋 Entra ID Connect - Implement Hybrid Join Configuration
+# 📋 Entra ID Connect – Implement Hybrid Join Configuration
 
-## Deploy Device Hybrid Join Configuration for Computers in Contoso
+## Deploy Hybrid Join Configuration for Devices in contoso.local
 
-* Option 1 - Configure SCP in the domain 
+* Option 1 – Configure the Service Connection Point (SCP) in the domain
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-13-24.png)
 
@@ -126,25 +126,25 @@ It can be acheive with a custom Sync Rule, in this example I choose to implement
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-15-27.png)
 
-* Option 2 - Deploy Reg key with GPO to Computers
+* Option 2 – Deploy registry keys via GPO to domain-joined computers
 
-HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CDJ\AAD
-TenantId (REG-SZ): ID of Entra Tenant 
-TenanName (REG-SZ): Name of Entra Tenant (tech name *.onmicrosoft.com)   
+HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CDJ\AAD  
+TenantId (REG_SZ): Entra tenant ID  
+TenantName (REG_SZ): Entra tenant name (e.g., *.onmicrosoft.com)    
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-16-29.png)
 
 ## Perform Hybrid Join of computer
 
-- Hybrid join is automatically done/try at every logon, lock/unlock, but you can trigger it manually by running this scheduled task :
+- Hybrid Join is automatically attempted at every logon or lock/unlock event. However, you can manually trigger it by running the following scheduled task:
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-25-32.png)
 
-- Verify that Hybrid Join is completed successfully in Event Viewer :
+- Verify that Hybrid Join completed successfully using Event Viewer:
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-27-46.png)
 
-- and with dsregcmd command :
+- And also with the dsregcmd command:
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-29-05.png)
 
@@ -155,6 +155,7 @@ TenanName (REG-SZ): Name of Entra Tenant (tech name *.onmicrosoft.com)
 # 📋 Create the AzureADKerberos object in the disconnected forest
 
 ```powershell
+# Register the AzureADKerberos object in the disconnected domain
 $domain = $env:USERDNSDOMAIN
 $userPrincipalName = "myadmin@0x1mati.onmicrosoft.com"
 $domainCred = Get-Credential
@@ -162,68 +163,67 @@ $domainCred = Get-Credential
 Set-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName -DomainCredential $domainCred
 ```
 
---> Check AzureADKerberos RODC Object
+→ Verify the presence of the AzureADKerberos RODC object
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-18-03.png)
 
---> Check krbtgt_AzureAD Object
+→ Verify the krbtgt_AzureAD object is created successfully
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-18-20.png)
 
 ---
 
-# 📋 Deploy WHfB configuration
+# 📋 Deploy Windows Hello for Business (WHfB) Configuration
 
-## Entra ID side
+## On the Entra ID Side
 
-- Enable WH4B in inTune with settings that fits your needs :
+- Enable Windows Hello for Business in Intune with settings that fit your needs:
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-21-28.png)
 
-## Active Directory side for Hybrid Join Computers (and/or Entra ID Join (only) Computers)
+## On the Active Directory Side for Hybrid Join and Entra ID Joined Devices
 
-- Enable Support of WH4B for your Hybrid Join machine
+- Enable support for Windows Hello for Business for your Hybrid Joined devices.
+This can be achieved using a GPO or Intune policy:
 
-Can be acheive by GPO (or inTune policies) with :
-
-* Enable MDM management :
+* Enable MDM enrollment for domain-joined devices:
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-31-32.png)
 
-* Enable support of Windows Hello and Support of Cloud Trust for Authentication :
+* Enable Windows Hello for Business and Cloud Kerberos Trust support:
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-33-38.png)
 
 
 ---
 
-# ⚙️ Verify configuration
+# ⚙️ Verify the Configuration
 
-## Entra ID Join machine
+## Entra ID Joined Device
 
-- Perform Entra ID Connect Join on the machine
+- Perform Entra ID Join on the device  
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-40-24.png)
 
-- log with a Synced User
-- Perform WH4B registration
-- logoff/logon with Windows Hello For Business Credential
-- Check presence of Azure PRT + Cloud TGT + Onprem TGT
+- Sign in with a synced user  
+- Complete Windows Hello for Business registration  
+- Log off and log on using WHfB credentials  
+- Verify the presence of the Azure PRT, Cloud TGT, and On-prem TGT
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-40-53.png)
 
-- Try to get an onprem TGS with klist
+- Use klist to request an on-prem TGS and verify it was issued successfully
 
-## Entra Hybrid Join machine
+## Entra Hybrid Joined Device
 
-- log with a Synced User
-- Perform WH4B registration
-- logoff/logon with Windows Hello For Business Credential
-- Check presence of Azure PRT + Cloud TGT + Onprem TGT with dsregcmd
+- Sign in with a synced user  
+- Complete Windows Hello for Business registration  
+- Log off and log on using WHfB credentials  
+- Use `dsregcmd` to verify the presence of Azure PRT, Cloud TGT, and On-prem TGT
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-38-28.png)
 
-- Check klist cloud_debug & klist
+- Use klist cloud_debug and klist to verify issued tickets
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-39-11.png)
 
