@@ -4,10 +4,10 @@
 
 ## ✅ Prerequisites
 
-- **Role required**: Hybrid Identity Administrator in Microsoft Entra ID or Global Administrator
+- **Role required**: Hybrid Identity Administrator or Global Administrator in Microsoft Entra ID
 - **Microsoft Entra Connect** installed and updated.
 - **PHS or PTA** must be enabled in your environment (PHS here in this example)
-- **Security groups** created in Microsoft Entra ID to scope which users will use PHS cloud authentication
+- **Security group** (or M365 Group) created in Microsoft Entra ID to scope which users will use PHS cloud authentication
   - Limit: max 10 groups per method (no nested or dynamic groups).
 
 ## ⚙️ Setup Steps
