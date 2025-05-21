@@ -24,7 +24,7 @@ This lab assumes:
 
 - 1 Entra ID Connect server (located in fabrikam.com) that synchronizes user objects from fabrikam.com to Entra ID and synchronizes computer objects from contoso.local to enable Hybrid Join.
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-55-53.png)
+![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-11-48.png)
 ---
 
 # 📋 Prerequisites
@@ -111,6 +111,16 @@ This can be achieved with a custom sync rule. In this example, I chose to implem
 
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-11-25.png)
+
+→ This sync rule can be scoped to test users by using a scoping filter. In this example, the rule is limited to affect only two accounts, ensuring that attribute flow changes are applied in a controlled manner :
+
+![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-09-47-36.png)
+
+→ This Sync rule should have a **lower** precedence than the default rules
+For example, assign a precedence value lower than `100` to ensure it takes priority over system-generated rules:
+
+![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-09-50-49.png)
+
 
 # 📋 Entra ID Connect – Implement Hybrid Join Configuration
 
@@ -213,6 +223,10 @@ This can be achieved using a GPO or Intune policy:
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-40-53.png)
 
 - Use klist to request an on-prem TGS and verify it was issued successfully
+
+![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-27-01.png)
+
+![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-28-41.png)
 
 ## Entra Hybrid Joined Device
 
