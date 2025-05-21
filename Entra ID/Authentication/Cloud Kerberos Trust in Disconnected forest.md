@@ -110,7 +110,7 @@ This can be achieved with a custom sync rule. In this example, I chose to implem
 | ~~msDS-cloudExtensionAttribute3 -->~~  | ~~forestfqdn -->~~                                  | ~~??~~                              | ~~Export to Entra ID~~     |
 
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-11-25.png)
+![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-11-23-18.png)
 
 → This sync rule can be scoped to test users by using a scoping filter. In this example, the rule is limited to affect only two accounts, ensuring that attribute flow changes are applied in a controlled manner :
 
