@@ -101,13 +101,13 @@ This can be achieved with a custom sync rule. In this example, I chose to implem
 | Fabrikam.com                        | Entra ID Connect Metaverse                      | Entra ID MA                     | Flow Direction         |
 |------------------------------------|-------------------------------------------------|----------------------------------|------------------------|
 | ObjectSID2 -->                     | ObjectSID -->                                   | onPremiseSecurityIdentifier     | Export to Entra ID     |
-| msDS-cloudExtensionAttribute7 -->  | ObjectSidString -->                             | ??                              | Export to Entra ID     |
+| ~~msDS-cloudExtensionAttribute7 -->~~  | ~~ObjectSidString -->~~                             | ~~??~~                             | ~~Export to Entra ID~~    |
 | msDS-cloudExtensionAttribute20 --> | AccountName -->                                 | onPremisesSamAccountName        | Export to Entra ID     |
 | msDS-cloudExtensionAttribute5 -->  | userPrincipalName -->                           | onPremisesUserPrincipalName     | Export to Entra ID     |
 | msDS-cloudExtensionAttribute6 -->  | domainNetBios -->                               | netBiosName                     | Export to Entra ID     |
-| msDS-cloudExtensionAttribute6 -->  | ForestNetBios -->                               | ??                              | Export to Entra ID     |
+| ~~msDS-cloudExtensionAttribute6 -->~~  | ~~ForestNetBios -->~~                               | ~~??~~                              | ~~Export to Entra ID~~     |
 | msDS-cloudExtensionAttribute3 -->  | domainfqdn -->                                  | dnsDomainName                   | Export to Entra ID     |
-| msDS-cloudExtensionAttribute3 -->  | forestfqdn -->                                  | ??                              | Export to Entra ID     |
+| ~~msDS-cloudExtensionAttribute3 -->~~  | ~~forestfqdn -->~~                                  | ~~??~~                              | ~~Export to Entra ID~~     |
 
 
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-11-25.png)
