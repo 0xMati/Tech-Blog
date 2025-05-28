@@ -86,6 +86,8 @@ The **Authorization Code Grant** flow helps with this by using a secret code as 
 5. The server checks the code and secret, then sends back the **access token**.  
 6. The app uses the access token to get your data from the resource server.  
 
+![](assets/Overview%20of%20OAuth/2025-05-28-17-52-12.png)
+
 ### 🛡️ Why This Is Safe
 
 - The access token is never exposed directly to your browser or device.  
