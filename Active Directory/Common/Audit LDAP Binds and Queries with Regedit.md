@@ -67,7 +67,7 @@ In this key, two DWORD values are of particular interest:
   - **1645–1649** → `SearchRequest`, `ModifyRequest`, `AddRequest`, etc.  
   - At verbose level, you'll see additional detail.
 
-![](assets/Audit%20LDAP%20Binds%20and%20Queries%20with%20Regedit/2025-06-17-15-04-21.png)
+![](assets/Audit%20LDAP%20Binds%20and%20Queries%20with%20Regedit/2025-06-17-15-12-55.png)
 ---
 
 ### 5. Difference between Category 15 and Category 16
