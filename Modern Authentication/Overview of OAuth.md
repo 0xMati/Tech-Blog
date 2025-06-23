@@ -114,7 +114,7 @@ That’s why we have **PKCE** — it’s like a secret handshake between the app
 
 This way, even if someone steals the authorization code, they can’t get a token without the secret code verifier.
 
-![](assets/Overview%20of%20OAuth/2025-06-23-18-14-01.png)
+
 
 ### Real-Life Example
 
