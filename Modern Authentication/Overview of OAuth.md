@@ -4,6 +4,12 @@
 
 Imagine you want to let an app use some of your data from another service — like letting a photo app access your pictures on a cloud storage — but without giving the app your password. How can you do that safely?  
 
+
+-> Remember how awful delegation to apps was back in the early 2000s—like when Yelp asked for your mailbox credentials to access your contacts:
+
+![](assets/Overview%20of%20OAuth/2025-06-23-20-32-56.png)
+
+
 That’s where **OAuth 2.0** comes in. It’s a framework that lets you authorize an application to access your data on another service, without sharing your password directly. Instead, you give the app a special key — called an **access token** — that allows it limited access to your data for a certain time.  
 
 ### Why use OAuth 2.0?  
