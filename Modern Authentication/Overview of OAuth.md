@@ -98,7 +98,7 @@ The **Authorization Code Grant** flow helps with this by using a secret code as 
 
 When you sign into a new app with **“Sign in with Google”**, you’re often using this flow. You’re sent to Google’s login page, then after you approve, the app gets an authorization code. The app then exchanges that code for tokens to access your data securely.
 
-## 🔐 PKCE — Proof Key for Code Exchange
+## 🔐 Authorization Code Grant with PKCE — Proof Key for Code Exchange
 
 Sometimes apps can’t keep a secret safe — like mobile apps or single-page apps running in your browser. This makes it easier for attackers to steal the authorization code and get access tokens.  
 
@@ -113,6 +113,8 @@ That’s why we have **PKCE** — it’s like a secret handshake between the app
 5. If it matches, the server sends the access token. If not, it refuses.
 
 This way, even if someone steals the authorization code, they can’t get a token without the secret code verifier.
+
+![](assets/Overview%20of%20OAuth/2025-06-23-18-14-01.png)
 
 ### Real-Life Example
 
