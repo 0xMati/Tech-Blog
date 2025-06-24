@@ -14,7 +14,7 @@ This is my personal technical garden — a space to collect architecture notes, 
 - **Entra ID**  
 - **Windows Server**  
 - **Security**
-
+- **...**
 ---
 
 ## 📁 Structure
