@@ -1,4 +1,4 @@
-# 🔐 OAuth 2.0 — Overview and Introduction
+# 🔐 OAuth 2.0 & OpenID Connect — Overview and Introduction
 
 🗓️ Published: 2025-05-28
 
@@ -42,7 +42,10 @@ OAuth 2.0 uses magic keys called **tokens** to open the doors to your data:
 
 ### 🎯 Scope
 
-Not every app needs all your data. The **scope** is like a permission slip that tells what the app can do. For example, a calendar app might only ask to see your events but not change them. When you log in with Google and see a screen asking “This app wants to see your email and contacts,” that’s the scope at work.  
+Not every app needs all your data. The **scope** is like a permission slip that tells what the app can do. For example, a calendar app might only ask to see your events but not change them. When you log in with Google and see a screen asking “This app wants to see your email and contacts,” that’s the scope at work.
+
+Example : scope=read:contacts%20write:calendar
+
 
 ### 🔒 HTTPS is a Must
 
@@ -215,6 +218,8 @@ It asks you to give your username and password directly to the app. That means t
 3. If they are correct, the server sends back an **access token**.  
 4. The app uses the token to access your data.
 
+![](assets/Overview%20of%20OAuth/2025-06-24-12-15-33.png)
+
 ### Why Avoid This Flow?
 
 - It exposes your password to the app, which might not be trustworthy.  
@@ -227,23 +232,55 @@ Some older enterprise systems still use this flow during migrations, but most mo
 
 ---
 
-## 📝 Summary
+## 🎉 OpenID Connect — Your Digital Passport
 
-OAuth 2.0 is like a magic key system that lets apps access your data safely — without giving them your password.  
+Now that we know OAuth 2.0 is a friendly guard who gives you a magic key (an access token) to enter a room (your data), how do you prove you’re really you? Enter **OpenID Connect (OIDC)**—it hands you a **digital passport** so the guard knows exactly who’s knocking!
 
-There are different ways (flows) for apps to get these keys, depending on the type of app and how secure it needs to be:  
+### 🆔 ID Token = Your Passport  
+- It’s a **JWT** (a long, secure code) that holds your info:  
+  - **`sub`**: your unique ID (like your passport number)  
+  - **`name`**, **`email`**, maybe **`picture`**  
+- It’s **signed** by the authentication server, so nobody can forge it!
 
-- **Authorization Code Grant** is the safest and most common way, using a secret code first and often PKCE for extra protection.  
-- **Implicit Grant** is quick but less secure, mostly used by apps running inside your browser.  
-- **Client Credentials Grant** is for apps talking to services without any user involved.  
-- **Device Code Grant** helps devices without browsers get permission through another device.  
-- **Resource Owner Password Credentials Grant** is old and risky — avoid it when you can!  
+### 🚀 Same Flows, Plus a Passport Stamp  
+- You still use the Authorization Code flow (with PKCE) or the Implicit flow, but now you add `scope=openid` to say “I want a passport, please!”  
+- If you want extra info—like your full name or avatar—you add `scope=profile email picture`.
 
-Using OAuth 2.0, you stay in control of your data, decide what apps can do, and keep your password safe.
+### 🛡️ How the Guard Checks Your Passport  
+1. **Signature**: “Did the right server stamp this?”  
+2. **Issuer (`iss`)**: “Is this passport from my trusted authority?”  
+3. **Audience (`aud`)**: “Is this passport meant for **my** app?”  
+4. **Expiry (`exp`)**: “Is this passport still valid, or has it expired?”
+
+
+🧩 **In Real Life:**  
+> When you click **“Sign in with Google”**, you not only get a key to enter (the access token), you also get your passport (`id_token`). Your app can then proudly display your name and picture without asking for more info.
+
+With OpenID Connect, you get both **“Who are you?”** and **“What can you do?”** in one smooth, secure step! 🚀  
+
+![](assets/Overview%20of%20OAuth/2025-06-24-12-52-03.png)
 
 ---
 
-Thanks for reading! Feel free to explore OAuth further and try out some flows with popular services like Google or Facebook.
+## 📝 Summary
+
+OAuth 2.0 is like a magic key system that lets apps access your data safely — without giving them your password. OpenID Connect (OIDC) builds on OAuth 2.0 by adding a **digital passport** (the ID token) so you can also prove **who** you are.
+
+There are different ways (flows) for apps to get these keys and passports, depending on the type of app and how secure it needs to be:
+
+- **Authorization Code Grant** is the safest and most common way, using a secret code first and often PKCE for extra protection.  
+- **Authorization Code Grant with PKCE** adds a one-time secret handshake to secure public clients (mobile, SPAs).  
+- **Implicit Grant** is quick but less secure, mostly used by apps running inside your browser (now discouraged).  
+- **Client Credentials Grant** is for machine-to-machine communication, no user involved.  
+- **Device Code Grant** helps devices without browsers get permission through another device.  
+- **Resource Owner Password Credentials Grant** is old and risky — avoid it when you can!  
+
+With OAuth 2.0 and OpenID Connect combined, you get both **“What can you do?”** (access tokens) and **“Who are you?”** (ID tokens) in one smooth, secure step — keeping you in control of your data and identity.  
+
+
+---
+
+Thanks for reading! Feel free to explore OAuth further and try out some flows with popular services like Google or Facebook or Microsoft and Azure !
 
 
 ## 📚 Sources & Further Reading
