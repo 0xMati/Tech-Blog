@@ -141,7 +141,7 @@ The **Implicit Grant** flow lets these apps get an access token right away — w
 
 1. The app sends you to the authorization server’s login page (like Facebook).  
 2. You log in and give permission.  
-3. Instead of sending a code, the server sends the **access token** directly back in the URL fragment (after the `#` symbol).  
+3. Instead of sending a code, the server sends the **access token** directly back in the URL fragment.  
 4. The app grabs the token from the URL and uses it to access your data.
 
 ![](assets/Overview%20of%20OAuth/2025-06-24-10-56-34.png)
