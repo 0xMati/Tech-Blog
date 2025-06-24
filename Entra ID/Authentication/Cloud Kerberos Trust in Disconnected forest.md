@@ -1,5 +1,5 @@
 ---
-title: "Lab: Playing with Cloud Kerberos Trust in a Disconnected Forest – **Work in Progress**"
+title: "Lab: Playing with Cloud Kerberos Trust in a Disconnected Forest"
 date: 2025-05-20
 ---
 
