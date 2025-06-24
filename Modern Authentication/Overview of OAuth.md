@@ -141,6 +141,8 @@ The **Implicit Grant** flow lets these apps get an access token right away — w
 3. Instead of sending a code, the server sends the **access token** directly back in the URL fragment (after the `#` symbol).  
 4. The app grabs the token from the URL and uses it to access your data.
 
+![](assets/Overview%20of%20OAuth/2025-06-24-10-56-34.png)
+
 ### Why It’s Riskier
 
 - The token is visible in the browser and can be exposed to malicious scripts.  
