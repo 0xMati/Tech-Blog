@@ -168,6 +168,8 @@ The **Client Credentials Grant** flow is made for this kind of situation.
 3. If everything is okay, it sends back an **access token**.  
 4. The app uses this token to access the resource server.
 
+![](assets/Overview%20of%20OAuth/2025-06-24-11-11-59.png)
+
 ### No User Needed!
 
 This flow is perfect for machine-to-machine communication, like a website automatically backing up files to Google Cloud Storage.
@@ -191,6 +193,8 @@ The **Device Code Grant** flow solves this problem.
 3. On that website, you enter the code and log in to give permission.  
 4. The device keeps asking the authorization server if permission was granted.  
 5. Once you approve, the device gets an **access token** and can access your data.
+
+![](assets/Overview%20of%20OAuth/2025-06-24-11-56-43.png)
 
 ### Real-Life Example
 
