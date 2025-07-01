@@ -14,10 +14,14 @@ Before we dive into Zero Trust and the Security Adoption Framework, let’s cove
    - First, block cheap and easy attacks so hackers can’t get in easily.  
    - Next, when something slips through, detect it fast and kick it out, every minute counts.
 
+![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-13-31.png)
+
 2. **Attackers have a shopping list.** 💸  
    - You can rent ransomware kits for about **\$66**, phishing as a service for **\$100–\$1,000**, or a DDoS attack for under **\$800 per month**.  
    - Stolen passwords sell for **\$0.97 per 1,000**, so attackers often buy rather than build.  
    - This makes attacks cheap and frequent, our defenses need to keep up.
+
+![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-19-23.png)
 
 3. **Threats continuously evolve.** 🔄  
    - Cutting-edge attackers invent new methods, while commoditization spreads those tools to everyone.  
@@ -55,6 +59,7 @@ Why it rocks
 
 → Zero Trust is not a one-time magic trick, it is a journey: map your most important data and apps, find where you trust by default, then apply these four rules everywhere, to build a security shield that grows with your needs.
 
+![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-23-03.png)
 ---
 
 ## 2. What are Microsoft SAF Offers?
@@ -75,6 +80,8 @@ Before diving into SAF modules, Microsoft offers two starter sessions to help yo
 ---
 
 ## 3. The Security Adoption Framework (SAF)
+
+![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-23-40.png)
 
 ### 1. Strategy & Governance 🗺️  
 **Objectives:**  
