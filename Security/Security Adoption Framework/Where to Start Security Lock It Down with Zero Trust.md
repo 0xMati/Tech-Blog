@@ -4,12 +4,12 @@
 ## Introduction
 
 Hello, security champions! 🛡️  
-Regarding CyberSecurity, there are no easy answers, but we are investing to make it easier.
-1Billion/year, we are 8500+ security guys to help you at the office.
+Regarding CyberSecurity, there are no easy answers, but we are investing to make it easier for you.
+Microsoft invest 1Billion/year in Security, and we are 8500+ security guys to help you at the office from Seattle to Paris.
 
 Before we dive into Zero Trust and the Security Adoption Framework, let’s cover four simple truths:
 
-1. **Security success = attacker failure + increased attacker cost/friction.**  
+1. **Security success = attacker failure + increased attacker cost/friction.** 🚨
    - First, block cheap and easy attacks so hackers can’t get in easily.  
    - Next, when something slips through, detect it fast and kick it out, every minute counts.
 
@@ -27,7 +27,7 @@ Before we dive into Zero Trust and the Security Adoption Framework, let’s cove
    - From clicking links to approving maintenance, any decision affects risk.  
    - The security team can’t handle it all alone, developers, ops, HR, finance, and yes, the bosses, must share responsibility and speak the same security language.
 
-With these points in mind, this guide will help you **get started**, focus on what really matters, face today’s attacker market, and bring security into every part of your organization. Ready, let’s lock it down!🔐
+--> With these points in mind, this guide will help you **get started**, focus on what really matters, face today’s attacker market, and bring security into every part of your organization. Ready, let’s lock it down!
 
 ---
 
@@ -56,7 +56,7 @@ Zero Trust is not a one-time magic trick, it is a journey: map your most importa
 
 ---
 
-## 2. Microsoft Unified Engagements
+## 2. What are Microsoft SAF Offers ?
 
 Think of SAF as your security GPS, guiding you through each step with hands-on workshops and clear checklists—plus the Microsoft tools you’ll actually use.
 
@@ -158,30 +158,9 @@ These stories prove it: when you blend SAF’s roadmap, Zero Trust principles an
 
 ---
 
-## 5. Embedding a Sustainable Security Practice
+## 5. Last Word
 
-Making security stick means weaving it into your culture, processes and daily habits:
-
-1. Build a security culture 🤝  
-   Involve everyone from interns to executives, celebrate wins big and small, share success stories and make security a team sport.
-
-2. Governance & roles 📋  
-   Define clear responsibilities and decision rights, set up a steering committee that keeps priorities in check, and use simple scorecards so everyone knows how you’re doing.
-
-3. DevSecOps collaboration 🔧  
-   Shift left by automating security tests in your CI/CD pipelines, run threat modeling with dev teams, and treat security as part of the build process, not an afterthought.
-
-4. Continuous measurement & improvement 📈  
-   Track metrics like mean time to detect, mean time to remediate, and security posture scores, then review them regularly, tweak your plans, and rinse and repeat.
-
-5. Change management & training 🎓  
-   Run phishing drills, host gamified workshops, offer bite-sized security micro-learning, and give teams time to practice new tools and techniques.
-
-By embedding security practices into every role and process, you turn one-off projects into lasting habits, and build an adaptive organization that stays ahead of the curve.  
-
----
-
-## 6. Resources & Next Steps
+Embedding security into your culture, processes and daily routines is key to making it stick. Define clear roles and a lean security committee with simple scorecards, bake in automated tests and threat modeling, continuously refine your defenses, and run regular drills and micro-trainings to keep everyone sharp.
 
 Ready for more? Check out these free guides and tools, then pick your next move:
 
@@ -189,8 +168,9 @@ Ready for more? Check out these free guides and tools, then pick your next move:
 * 🔗 [MCRA library](https://aka.ms/MCRA), reference architectures to wire up your Zero Trust design  
 * 🔗 [CISO Workshop guide](https://aka.ms/CISOWorkshop), frame your risk conversation with leadership  
 
-
 Let’s keep the momentum going, lock it down, and build a community of security champions! 🚀  
+
+
 
 
 
