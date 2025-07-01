@@ -1,10 +1,11 @@
-# 🛠️ Where to Start Security: Lock It Down with Zero Trust
+# 🛠️ Where to Start Security: Lock It Down with Zero Trust and SAF
 🗓️ Published: 2025-07-01
 
 ## Introduction
 
 Hello, security champions! 🛡️  
 Regarding CyberSecurity, there are no easy answers, but we are investing to make it easier for you.
+
 Microsoft invest 1Billion/year in Security, and we are 8500+ security guys to help you at the office from Seattle to Paris.
 
 Before we dive into Zero Trust and the Security Adoption Framework, let’s cover four simple truths:
@@ -27,7 +28,7 @@ Before we dive into Zero Trust and the Security Adoption Framework, let’s cove
    - From clicking links to approving maintenance, any decision affects risk.  
    - The security team can’t handle it all alone, developers, ops, HR, finance, and yes, the bosses, must share responsibility and speak the same security language.
 
---> With these points in mind, this guide will help you **get started**, focus on what really matters, face today’s attacker market, and bring security into every part of your organization. Ready, let’s lock it down!
+→ With these points in mind, this guide will help you **get started**, focus on what really matters, face today’s attacker market, and bring security into every part of your organization. Ready, let’s lock it down!
 
 ---
 
@@ -52,7 +53,7 @@ Why it rocks
 * You spot trouble in minutes, not days, thanks to constant monitoring.  
 * Hackers give up fast when they hit too much friction.
 
-Zero Trust is not a one-time magic trick, it is a journey: map your most important data and apps, find where you trust by default, then apply these four rules everywhere, to build a security shield that grows with your needs.
+→ Zero Trust is not a one-time magic trick, it is a journey: map your most important data and apps, find where you trust by default, then apply these four rules everywhere, to build a security shield that grows with your needs.
 
 ---
 
@@ -60,14 +61,16 @@ Zero Trust is not a one-time magic trick, it is a journey: map your most importa
 
 Think of SAF as your security GPS, guiding you through each step with hands-on workshops and clear checklists—plus the Microsoft tools you’ll actually use.
 
-Before diving into SAF modules, Microsoft offers two starter sessions:
+Before diving into SAF modules, Microsoft offers two starter sessions, and one security check session:
 
 ### Overview & Scoping
 **Use case:** Getting started, pick the right path based on current needs and priorities  
-**Topic summary:** Overview & Scoping
 
 ### Security Capability Adoption Planning (SCAP)
 **Use case:** Maximize value from your existing licenses (Microsoft 365 E5, Unified)  
+
+### Enterprise Security Assessment (ESA)  
+**Use case:** Deep dive into your current security posture, uncover gaps, and get a customized roadmap for modernization  
 
 ---
 
@@ -121,8 +124,6 @@ Before diving into SAF modules, Microsoft offers two starter sessions:
 - You can start with your top priority and scale as you grow  
 - Checklists keep you honest—never miss the basics or lose sight of your goals  
 
-With SAF in your toolkit, rolling out Zero Trust isn’t a giant leap—it’s a well-mapped adventure. Next up: real-world scenarios where these modules and tools shine!  
-
 ---
 
 ## 4. Use Cases & Customer Stories
@@ -154,8 +155,6 @@ Here’s where theory meets reality—real-world scenarios showing how Microsoft
    - **Solution:** SAF CISO Workshop to map risks, define priorities, and build an action plan  
    - **Outcome:** Leadership aligned, budgets unlocked, and a clear sprint-backlog for security wins
 
-These stories prove it: when you blend SAF’s roadmap, Zero Trust principles and Microsoft’s tools, you get secure, agile environments that thrive—even under fire.  
-
 ---
 
 ## 5. Last Word
@@ -169,8 +168,3 @@ Ready for more? Check out these free guides and tools, then pick your next move:
 * 🔗 [CISO Workshop guide](https://aka.ms/CISOWorkshop), frame your risk conversation with leadership  
 
 Let’s keep the momentum going, lock it down, and build a community of security champions! 🚀  
-
-
-
-
-
