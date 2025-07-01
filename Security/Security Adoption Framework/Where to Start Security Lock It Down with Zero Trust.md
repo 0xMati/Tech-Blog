@@ -28,6 +28,8 @@ Before we dive into Zero Trust and the Security Adoption Framework, let’s cove
    - Today’s advanced exploit can become tomorrow’s kit on the dark web in hours—or days.  
    - That means we must stay agile, refresh our controls, and lean on Zero Trust to protect data wherever it goes.
 
+![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-25-36.png)
+
 4. **Security is everyone’s job.** 🤝  
    - From clicking links to approving maintenance, any decision affects risk.  
    - The security team can’t handle it all alone, developers, ops, HR, finance, and yes, the bosses, must share responsibility and speak the same security language.
