@@ -141,27 +141,27 @@ Here’s where theory meets reality—real-world samples scenarios showing how M
 
 1. Remote Work Revolution 🌍  
    - **Challenge:** Hybrid teams everywhere, VPN overload and risky home networks  
-   - **Solution:** Azure AD Conditional Access + MFA + Intune compliance policies  
+   - **Solution:** Azure AD Conditional Access + MFA + Intune compliance policies + GSA ... 
    - **Outcome:** Secure, password-light access from anywhere with near-zero friction
 
 2. Data Protection Power-Up 🔒  
    - **Challenge:** Sensitive documents floating in SharePoint, Teams and emails  
-   - **Solution:** Purview auto-classification + sensitivity labels + DLP policies  
+   - **Solution:** Purview auto-classification + sensitivity labels + DLP policies ...  
    - **Outcome:** Data is tagged, tracked and blocked if it tries to escape to the wrong inbox
 
 3. OT/IoT Defense 🏭  
    - **Challenge:** Legacy industrial systems and smart devices with little built-in security  
-   - **Solution:** Defender for IoT + network micro-segmentation + threat analytics in Sentinel  
+   - **Solution:** Defender for IoT + network micro-segmentation + threat analytics in Sentinel ... 
    - **Outcome:** Continuous monitoring, rapid alerts, and containment before physical processes are impacted
 
 4. AI-Driven Threat Hunting 🤖  
    - **Challenge:** Attackers using AI to craft phishing, evade detection and morph malware  
-   - **Solution:** Security Copilot for threat research + Sentinel’s ML-powered analytics + Defender’s AI engines  
+   - **Solution:** Security Copilot for threat research + Sentinel’s ML-powered analytics + Defender’s AI engines ... 
    - **Outcome:** Faster threat identification, enriched alerts, and guided playbooks that keep your team two steps ahead
 
 5. CISO Workshop Success 🚀  
    - **Challenge:** Executive buy-in and coherent strategy across teams  
-   - **Solution:** SAF CISO Workshop to map risks, define priorities, and build an action plan  
+   - **Solution:** SAF CISO Workshop to map risks, define priorities, and build an action plan  ...
    - **Outcome:** Leadership aligned, budgets unlocked, and a clear sprint-backlog for security wins
 
 ---
