@@ -57,11 +57,11 @@ Why it rocks
 
 ---
 
-## 2. What are Microsoft SAF Offers ?
+## 2. What are Microsoft SAF Offers?
 
 Think of SAF as your security GPS, guiding you through each step with hands-on workshops and clear checklists—plus the Microsoft tools you’ll actually use.
 
-Before diving into SAF modules, Microsoft offers two starter sessions, and one security check session:
+Before diving into SAF modules, Microsoft offers two starter sessions to help you kick things off, and one security check session to see exactly where you stand:
 
 ### Overview & Scoping
 **Use case:** Getting started, pick the right path based on current needs and priorities  
@@ -128,7 +128,7 @@ Before diving into SAF modules, Microsoft offers two starter sessions, and one s
 
 ## 4. Use Cases & Customer Stories
 
-Here’s where theory meets reality—real-world scenarios showing how Microsoft’s security stack and SAF play out on the ground:
+Here’s where theory meets reality—real-world samples scenarios showing how Microsoft’s security stack and SAF play out on the ground:
 
 1. Remote Work Revolution 🌍  
    - **Challenge:** Hybrid teams everywhere, VPN overload and risky home networks  
@@ -157,7 +157,7 @@ Here’s where theory meets reality—real-world scenarios showing how Microsoft
 
 ---
 
-## 5. Last Word
+## 5. Signing Off
 
 Embedding security into your culture, processes and daily routines is key to making it stick. Define clear roles and a lean security committee with simple scorecards, bake in automated tests and threat modeling, continuously refine your defenses, and run regular drills and micro-trainings to keep everyone sharp.
 
