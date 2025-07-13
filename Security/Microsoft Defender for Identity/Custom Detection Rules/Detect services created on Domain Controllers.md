@@ -8,14 +8,14 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 This custom detection rule identifies **remote service creation events** targeting Domain Controllers.  
 Creating a service remotely is often a sign of persistence or lateral movement during post-exploitation.
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 IdentityDirectoryEvents
@@ -29,7 +29,7 @@ IdentityDirectoryEvents
 | where ServiceName !contains @"MpKsl"
 ```
 
-### 🔖 Remarks on Filtering
+### Remarks on Filtering
 - You can filter out known legitimate agents or system services to reduce noise.
 - Add additional `ServiceName` exclusions as needed.
 - Cross-check with your known deployment tools (e.g., ConfigMgr, monitoring agents, etc.).
@@ -47,7 +47,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Review the Created Service**
    - What is the name and command of the service?
@@ -63,7 +63,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 💎 References
+## References
 
 - [Microsoft Defender for Identity – Service creation events](https://learn.microsoft.com/en-us/defender-for-identity/)
 - [MITRE ATT&CK T1543.003 – Create or Modify System Process: Windows Service](https://attack.mitre.org/techniques/T1543/003/)

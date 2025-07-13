@@ -8,7 +8,7 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 This custom detection rule monitors **group membership changes** for a predefined list of sensitive groups.  
 It identifies whether the action was an **addition** or **removal**, and logs the associated actor and target user.
@@ -17,7 +17,7 @@ You can add or remove groups in the list below, including any custom security gr
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 let SensitiveGroupName = pack_array( // Declare Sensitive Group names. Add any groups that you manually tagged as sensitive or nested groups in one of the default groups.
@@ -66,7 +66,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Validate the Action**
    - Confirm whether the change is part of an approved process.
@@ -81,7 +81,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 💎 References
+## References
 
 - [Microsoft Security – Active Directory Monitoring](https://learn.microsoft.com/en-us/defender-for-identity/)
 - [MITRE ATT&CK T1098 – Account Manipulation](https://attack.mitre.org/techniques/T1098/)

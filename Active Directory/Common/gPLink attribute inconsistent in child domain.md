@@ -2,7 +2,7 @@
 🗓️ Published: 2025-05-05
 
 
-# 🧭 Identifying and Remediating Inconsistent `gPLink` Attributes in Active Directory
+# Identifying and Remediating Inconsistent `gPLink` Attributes in Active Directory
 
 In Active Directory environments, Group Policy Objects (GPOs) play a critical role in enforcing configuration and security policies across domain-joined machines. Each Organizational Unit (OU) or container that applies one or more GPOs stores a list of linked GPOs in the `gPLink` attribute.
 
@@ -47,7 +47,7 @@ Maintaining consistency in `gPLink` values is therefore essential to ensure prop
 
 Inconsistent `gPLink` values usually appear when a GPO is deleted or moved without fully cleaning up the links that reference it. This is especially common in multi-domain Active Directory environments.
 
-### 📌 Typical scenarios include:
+### Typical scenarios include:
 
 - **Cross-domain GPO linking**:  
   A GPO created in the forest root domain is linked to an OU in a child domain. When the GPO is deleted in the root domain, the link is removed there, but **remains in the child domain**’s OU `gPLink` attribute.  
@@ -72,7 +72,7 @@ These inconsistencies don’t always trigger errors during Group Policy processi
 
 Detecting inconsistent `gPLink` references requires parsing the list of GPO links on each OU and checking whether the linked GPOs still exist in the domain.
 
-### 🧪 PowerShell Example: Detecting Broken GPO Links
+### PowerShell Example: Detecting Broken GPO Links
 
 The script below enumerates all Organizational Units in the domain, extracts their `gPLink` attribute, and verifies that each referenced GPO still exists. If a GPO is missing, it reports the OU and the missing GPO GUID.
 If you're running this script in an audit or reporting context, you may want to keep a record of orphaned GPOs for later remediation or documentation.
@@ -227,7 +227,7 @@ if ($orphanedGpos.Count -eq 0) {
 # $orphanedGpos | Export-Csv -Path "C:\Temp\Orphaned-GPOs.csv" -NoTypeInformation -Encoding UTF8
 ```
 
-🧭 Notes:
+Notes:
 This script does not analyze GPOs linked to domains or sites — it focuses on OUs.
 You can adapt it to scan gPLink on other container types by querying Get-ADObject directly.
 It requires the Group Policy Management Console (GPMC) and Active Directory PowerShell module.
@@ -239,12 +239,12 @@ Example :
 ![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-00-14-56.png)
 
 
-## 🛠️ 4. Remediating Inconsistent `gPLink` References
+## 4. Remediating Inconsistent `gPLink` References
 
 Once orphaned GPO links have been identified, the next step is to clean them up safely. This involves editing the `gPLink` attribute of affected OUs to remove the references to non-existent GPOs.
 Here is another version of the script that will delete automatically orphaned GPO and create a backup file.
 
-### ⚙️ Remediation Strategy
+### Remediation Strategy
 
 1. **Review the list of orphaned links**  
    Before making changes, review the exported list or PowerShell output to confirm the links are truly invalid — especially in multi-domain environments, where GPOs might exist in another domain or be replicated slowly.
@@ -460,7 +460,7 @@ You can see that the script will prompt you to confirm deletion :
 --> You will be able to restore OUs modified with the backup file
 
 
-## 🛠️ 5. Restore GPLinks from Backup
+## 5. Restore GPLinks from Backup
 
 If you need to restore the previous configuration, you can use this script, just edit the backup file path :
 
@@ -483,7 +483,7 @@ if (-not (Test-Path $backupPath)) {
 Write-Host "`n📂 Backup file detected: $backupPath" -ForegroundColor Cyan
 Write-Host "🔄 Starting gPLink restoration..." -ForegroundColor Yellow
 
-# 📥 Load the backup file
+# Load the backup file
 $backupData = Import-Csv -Path $backupPath
 
 foreach ($entry in $backupData) {

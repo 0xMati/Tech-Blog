@@ -8,14 +8,14 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 This custom detection rule focuses on **task scheduling events** initiated on a DC.  
 Malicious actors may use scheduled tasks for persistence, execution of payloads, or lateral movement.
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 IdentityDirectoryEvents
@@ -26,7 +26,7 @@ IdentityDirectoryEvents
          TaskCommand=tostring(ParsedFields.TaskCommand)
 ```
 
-### 🔖 Remarks on Filtering
+### Remarks on Filtering
 - Add exclusions for known systems or automation tools if needed.
 - Task names or commands associated with your organization's standard operations can be whitelisted.
 
@@ -43,7 +43,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Inspect the TaskCommand**
    - Does it launch PowerShell, cmd, or suspicious binaries?
@@ -59,7 +59,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 💎 References
+## References
 
 - [Microsoft Defender for Identity – Task scheduling events](https://learn.microsoft.com/en-us/defender-for-identity/)
 - [MITRE ATT&CK T1053 – Scheduled Task/Job](https://attack.mitre.org/techniques/T1053/)

@@ -3,7 +3,7 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 It is generally **not recommended** to use **Domain Controllers as file servers**. Therefore, **file copies over SMB** from workstations or member servers to DCs should be rare and suspicious.
 
@@ -23,7 +23,7 @@ This type of behavior may signal **credential theft**, **lateral movement**, or 
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```sql
 IdentityDirectoryEvents
@@ -46,7 +46,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🚫 With Whitelist (Optional)
+## With Whitelist (Optional)
 
 To suppress known safe accounts from alerting:
 
@@ -72,7 +72,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 - Investigate any SMB file copy activity to DCs
 - Confirm if the action was legitimate or part of an attack sequence
@@ -81,7 +81,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 💎 References
+## References
 
 - MITRE ATT&CK reference: [T1021.002 – SMB/Windows Admin Shares](https://attack.mitre.org/techniques/T1021/002/)  
 - [Microsoft security guidance on DC hardening](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/ad-security-best-practices)

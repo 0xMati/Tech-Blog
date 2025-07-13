@@ -1,4 +1,4 @@
-# 🔐 OAuth 2.0 & OpenID Connect — Overview and Introduction
+# OAuth 2.0 & OpenID Connect — Overview and Introduction
 
 🗓️ Published: 2025-05-28
 
@@ -24,7 +24,7 @@ In this article, we’ll explore the key concepts behind OAuth 2.0 and the main 
 
 ---
 
-## 🧩 Key Concepts of OAuth 2.0
+## Key Concepts of OAuth 2.0
 
 Before we dive into how OAuth 2.0 works, let’s meet the main characters in the story:
 
@@ -33,27 +33,27 @@ Before we dive into how OAuth 2.0 works, let’s meet the main characters in the
 - 📱 **Client**: This is the app or website that wants to use your data. Maybe it’s a game like Candy Crush that wants to see your Facebook friends so you can play together.  
 - 🔐 **Authorization Server**: The gatekeeper who checks if the app has permission to get your data and then gives it a special key (token) to use.  
 
-### 🗝️ Tokens
+### Tokens
 
 OAuth 2.0 uses magic keys called **tokens** to open the doors to your data:
 
 - 🔑 **Access Token**: The key that lets the app access your data for a little while (like one hour). For example, Candy Crush might get an access token to look at your friends so it can invite them.  
 - 🔄 **Refresh Token**: A special key that lets the app get a new access token when the old one expires — so you don’t have to log in again and again. Google apps often use this to keep you logged in.  
 
-### 🎯 Scope
+### Scope
 
 Not every app needs all your data. The **scope** is like a permission slip that tells what the app can do. For example, a calendar app might only ask to see your events but not change them. When you log in with Google and see a screen asking “This app wants to see your email and contacts,” that’s the scope at work.
 
 Example : scope=read:contacts%20write:calendar
 
 
-### 🔒 HTTPS is a Must
+### HTTPS is a Must
 
 Because these tokens are special and secret, OAuth 2.0 makes sure everything travels safely over **HTTPS** — like a secret tunnel — so nobody can peek or steal your keys. When you log in with Facebook or Google, you’re using HTTPS to keep your data safe.  
 
 ---
 
-## 🚦 OAuth 2.0 Flows — How Apps Get Permission
+## OAuth 2.0 Flows — How Apps Get Permission
 
 Now that we know the players and the magic keys (tokens), let’s see how apps actually get those keys.  
 
@@ -80,13 +80,13 @@ Each flow has its own special use case and level of security.
 
 ---
 
-## 🔐 Authorization Code Grant — The Most Common and Secure Flow
+## Authorization Code Grant — The Most Common and Secure Flow
 
 Imagine you’re using a website or a mobile app that wants to access your data on another service, like your Google profile or Facebook friends. This app needs your permission, but you don’t want to give it your password.  
 
 The **Authorization Code Grant** flow helps with this by using a secret code as a middle step — kind of like a ticket — before giving the app the actual key (access token).
 
-### 📝 How It Works (Step-by-Step)
+### How It Works (Step-by-Step)
 
 1. The app sends you to the service’s login page (for example, Google).  
 2. You log in and give permission to the app to access your data.  
@@ -97,17 +97,17 @@ The **Authorization Code Grant** flow helps with this by using a secret code as 
 
 ![](assets/Overview%20of%20OAuth/2025-05-28-17-52-12.png)
 
-### 🛡️ Why This Is Safe
+### Why This Is Safe
 
 - The access token is never exposed directly to your browser or device.  
 - The app has to prove it owns the secret before getting the token.  
 - If someone steals the authorization code, they can’t get a token without the secret.  
 
-### 🎯 Real-Life Example
+### Real-Life Example
 
 When you sign into a new app with **“Sign in with Google”**, you’re often using this flow. You’re sent to Google’s login page, then after you approve, the app gets an authorization code. The app then exchanges that code for tokens to access your data securely.
 
-## 🔐 Authorization Code Grant with PKCE — Proof Key for Code Exchange
+## Authorization Code Grant with PKCE — Proof Key for Code Exchange
 
 Sometimes apps can’t keep a secret safe — like mobile apps or single-page apps running in your browser. This makes it easier for attackers to steal the authorization code and get access tokens.  
 
@@ -131,7 +131,7 @@ Google and Microsoft require PKCE for mobile and JavaScript apps. It’s now the
 
 ---
 
-## ⚡ Implicit Grant — Quick but Less Secure
+## Implicit Grant — Quick but Less Secure
 
 Sometimes, apps run entirely inside your browser — like single-page apps built with JavaScript. These apps can’t keep secrets very well because everything happens on your device.
 
@@ -158,7 +158,7 @@ Old JavaScript apps and some early single-page apps used this flow. Facebook use
 
 ---
 
-## 🤖 Client Credentials Grant — When No User Is Involved
+## Client Credentials Grant — When No User Is Involved
 
 Sometimes, an app or service needs to talk to another service all by itself — without anyone logging in. For example, a backend server talking to a cloud storage API.
 
@@ -183,7 +183,7 @@ A service that syncs data between two cloud apps without asking a user every tim
 
 ---
 
-## 📺 Device Code Grant — For Devices Without a Browser
+## Device Code Grant — For Devices Without a Browser
 
 Some devices, like smart TVs or game consoles, don’t have a good way to show a web browser for you to log in. But they still need your permission to access your data.
 
@@ -205,7 +205,7 @@ When you sign in to Netflix or YouTube on your smart TV, you often see a code an
 
 ---
 
-## 🔐 Resource Owner Password Credentials (ROPC) — Old and Risky
+## Resource Owner Password Credentials (ROPC) — Old and Risky
 
 This flow is a bit old-fashioned and should be avoided if possible.
 
@@ -232,28 +232,28 @@ Some older enterprise systems still use this flow during migrations, but most mo
 
 ---
 
-## 🎉 OpenID Connect — Your Digital Passport
+## OpenID Connect — Your Digital Passport
 
 Now that we know OAuth 2.0 is a friendly guard who gives you a magic key (an access token) to enter a room (your data), how do you prove you’re really you? Enter **OpenID Connect (OIDC)**—it hands you a **digital passport** so the guard knows exactly who’s knocking!
 
-### 🆔 ID Token = Your Passport  
+### ID Token = Your Passport  
 - It’s a **JWT** (a long, secure code) that holds your info:  
   - **`sub`**: your unique ID (like your passport number)  
   - **`name`**, **`email`**, maybe **`picture`**  
 - It’s **signed** by the authentication server, so nobody can forge it!
 
-### 🚀 Same Flows, Plus a Passport Stamp  
+### Same Flows, Plus a Passport Stamp  
 - You still use the Authorization Code flow (with PKCE) or the Implicit flow, but now you add `scope=openid` to say “I want a passport, please!”  
 - If you want extra info—like your full name or avatar—you add `scope=profile email picture`.
 
-### 🛡️ How the Guard Checks Your Passport  
+### How the Guard Checks Your Passport  
 1. **Signature**: “Did the right server stamp this?”  
 2. **Issuer (`iss`)**: “Is this passport from my trusted authority?”  
 3. **Audience (`aud`)**: “Is this passport meant for **my** app?”  
 4. **Expiry (`exp`)**: “Is this passport still valid, or has it expired?”
 
 
-🧩 **In Real Life:**  
+**In Real Life:**  
 > When you click **“Sign in with Google”**, you not only get a key to enter (the access token), you also get your passport (`id_token`). Your app can then proudly display your name and picture without asking for more info.
 
 With OpenID Connect, you get both **“Who are you?”** and **“What can you do?”** in one smooth, secure step! 🚀  

@@ -7,7 +7,7 @@ date: 2021-05-24
 
 ---
 
-## 🎯 Objectives
+## Objectives
 
 - Understand **Managed Identities** in Azure
 - Clarify what **Service Principals** are and how they’re used
@@ -17,9 +17,9 @@ date: 2021-05-24
 
 ---
 
-## 🧠 What Are Managed Identities in Azure AD?
+## What Are Managed Identities in Azure AD?
 
-### ❓ Why Use Managed Identities?
+### Why Use Managed Identities?
 
 When an Azure resource (like a VM or Function App) needs to access another Azure resource (like a Key Vault or Storage Account), storing credentials in code is insecure.
 
@@ -27,7 +27,7 @@ When an Azure resource (like a VM or Function App) needs to access another Azure
 
 **Managed Identity (MI)** solves this by assigning an identity to the resource so it can authenticate directly with Azure AD.
 
-### 🔑 Example Flow
+### Example Flow
 
 1. A VM requests a token from Azure AD for access to a Storage Account.
 2. Azure AD validates the identity and issues the token.
@@ -39,7 +39,7 @@ When an Azure resource (like a VM or Function App) needs to access another Azure
 
 ---
 
-## 🔄 Types of Managed Identities
+## Types of Managed Identities
 
 | Type              | Description                         |
 |-------------------|-------------------------------------|
@@ -61,7 +61,7 @@ Benefits:
 
 ---
 
-## 🔐 Service Principals in Azure
+## Service Principals in Azure
 
 When an application is registered in Azure AD, it creates:
 
@@ -74,7 +74,7 @@ When an application is registered in Azure AD, it creates:
 
 Service Principals are how **apps authenticate and get permissions** in your tenant.
 
-### 🔁 Typical Flow
+### Typical Flow
 
 1. Register App in Azure AD
 2. Define app permissions & secrets
@@ -90,7 +90,7 @@ Service Principals are how **apps authenticate and get permissions** in your ten
 
 ---
 
-## ✅ Advantages of Service Principals
+## Advantages of Service Principals
 
 - Enable **script-based authentication** via secrets or certificates
 - Support **MFA bypass** for automation (while maintaining control)
@@ -99,7 +99,7 @@ Service Principals are how **apps authenticate and get permissions** in your ten
 
 ---
 
-## 🔐 Consent & Multi-Tenant Access
+## Consent & Multi-Tenant Access
 
 - Apps can be marked **multi-tenant** and shared across organizations
 - **Consent** is needed for each tenant
@@ -107,7 +107,7 @@ Service Principals are how **apps authenticate and get permissions** in your ten
 
 ---
 
-## 📦 Use Case Matrix
+## Use Case Matrix
 
 | Feature                                | Managed Identity        | Service Principal         |
 |----------------------------------------|--------------------------|----------------------------|
@@ -120,7 +120,7 @@ Service Principals are how **apps authenticate and get permissions** in your ten
 
 ---
 
-## 📌 Final Thoughts
+## Final Thoughts
 
 Azure Managed Identities and Service Principals are powerful tools to enable secure, scalable identity for your apps and services in the cloud. Properly choosing between them (or using both together) is key to simplifying identity management and reducing risk.
 

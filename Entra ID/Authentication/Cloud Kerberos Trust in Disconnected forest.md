@@ -3,7 +3,7 @@ title: "Lab: Playing with Cloud Kerberos Trust in a Disconnected Forest"
 date: 2025-05-20
 ---
 
-# 🔐 Objective
+# Objective
 
 Demonstrate how it is possible to manipulate attributes sync to configure **Cloud Kerberos Trust** in a disconnected (not directly synced by Entra ID Connect) Active Directory forest for hybrid identity scenarios.
 This document does not provide a detailed step-by-step guide but rather a high-level overview to achieve a working configuration.
@@ -27,20 +27,20 @@ This lab assumes:
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-11-48.png)
 ---
 
-# 📋 Prerequisites
+# Prerequisites
 
-## 🖥️ On-Premises
+## On-Premises
 - Windows Server 2016 or later on Domain Controllers.
 - Domain/Forest Functional Level: Windows Server 2016 minimum.
 - Writable Domain Controllers accessible for client
 
-## ☁️ Azure AD
+## Azure AD
 - Entra ID P1 or P2 license (for WHfB).
 - Public Domain name (0x1mati.online) verified and configured for Managed/PHS authentication
 
 ---
 
-# ⚙️ Steps Overview
+# Steps Overview
 
 1. [ ] Sync Users from contoso.local to fabrikam with MIM
 2. [ ] Entra ID Connect - Sync Users from fabrikam.com to Entra ID
@@ -51,7 +51,7 @@ This lab assumes:
 
 ---
 
-# 📋 Sync Users from contoso.local to fabrikam with MIM
+# Sync Users from contoso.local to fabrikam with MIM
 
 This section does not focus on how to provision objects with MIM. The main objective is to understand the required attribute flows from the contoso.local forest to the fabrikam.com forest.
 
@@ -89,7 +89,7 @@ Ex of a User account in Fabrikam with custom values populated:
 
 ---
 
-# 📋 Entra ID Connect - Sync Users from fabrikam.com to Entra ID
+# Entra ID Connect - Sync Users from fabrikam.com to Entra ID
 
 The goal here is to take values in Fabrikam that originated from Contoso and push them into the Entra ID metaverse, making them available in the cloud.
 
@@ -122,7 +122,7 @@ For example, assign a precedence value lower than `100` to ensure it takes prior
 ![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-09-50-49.png)
 
 
-# 📋 Entra ID Connect – Implement Hybrid Join Configuration
+# Entra ID Connect – Implement Hybrid Join Configuration
 
 ## Deploy Hybrid Join Configuration for Devices in contoso.local
 
@@ -162,7 +162,7 @@ TenantName (REG_SZ): Entra tenant name (e.g., *.onmicrosoft.com)
 
 ---
 
-# 📋 Create the AzureADKerberos object in the disconnected forest
+# Create the AzureADKerberos object in the disconnected forest
 
 ```powershell
 # Register the AzureADKerberos object in the disconnected domain
@@ -183,7 +183,7 @@ Set-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName 
 
 ---
 
-# 📋 Deploy Windows Hello for Business (WHfB) Configuration
+# Deploy Windows Hello for Business (WHfB) Configuration
 
 ## On the Entra ID Side
 
@@ -207,7 +207,7 @@ This can be achieved using a GPO or Intune policy:
 
 ---
 
-# ⚙️ Verify the Configuration
+# Verify the Configuration
 
 ## Entra ID Joined Device
 

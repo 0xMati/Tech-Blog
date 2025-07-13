@@ -3,14 +3,14 @@
 
 ---
 
-## 🧠 MITRE ATT&CK Techniques
+## MITRE ATT&CK Techniques
 
 - [T1558.003 – Steal or Forge Kerberos Tickets: Kerberoasting](https://attack.mitre.org/techniques/T1558/003/)
 - [T1562.010 – Impair Defenses: Downgrade Attack](https://attack.mitre.org/techniques/T1562/010/)
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 Some adversaries may attempt to **downgrade Kerberos encryption algorithms** to exploit **weaker, legacy ciphers**.  
 These algorithms are **vulnerable to brute-force attacks**, enabling the attacker to crack credentials and prepare for a **kerberoasting attack**.
@@ -39,7 +39,7 @@ This rule surfaces encryption standard changes on **domain-joined devices**. If 
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 IdentityDirectoryEvents
@@ -55,7 +55,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Review Encryption Policies**
    - Ensure allowed encryption types do not include legacy or deprecated algorithms.
@@ -66,7 +66,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 💎 References
+## References
 
 - [Microsoft Docs – Configure Encryption Types](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-security-configure-encryption-types-allowed-for-kerberos)
 - [Original Detection Rule on GitHub](https://github.com/Bert-JanP/Hunting-Queries-Detection-Rules/blob/main/Defender%20For%20Identity/PotentialKerberosEncryptionDowngrade.md)

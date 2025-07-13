@@ -1,11 +1,11 @@
-# 🎯 Implementing ADFS Claim Rules for Cross-Forest Group Membership  
+# Implementing ADFS Claim Rules for Cross-Forest Group Membership  
 🗓️ Published: 2025-05-06
 
 In complex Active Directory environments, it's often necessary to retrieve group membership information for users in **trusted external forests**. This article outlines how to configure **Active Directory Federation Services (ADFS)** claim rules to pull group memberships (including nested groups) from a **trusted forest**, filter them, and issue them as role claims.
 
 ---
 
-## 🛠 Prerequisites
+## Prerequisites
 
 Before setting up the claim rules, ensure the following:
 
@@ -19,7 +19,7 @@ Before setting up the claim rules, ensure the following:
 
 ---
 
-## 🧩 Step-by-Step: ADFS Claim Rules for TESTDOMAIN
+## Step-by-Step: ADFS Claim Rules for TESTDOMAIN
 
 The following claim rules form a pipeline that:
 - Pulls the user’s object SID,
@@ -66,7 +66,7 @@ c:[Type == "http://TESTDOMAIN/phase4", Value =~ "(?i)^Group-XX"]
 
 ---
 
-## 🧪 Test Case: Querying Groups from Trusted Forest RED
+## Test Case: Querying Groups from Trusted Forest RED
 
 To retrieve groups from a second trusted forest (e.g. `RED`) and issue them similarly, use the same logic with updated identifiers:
 

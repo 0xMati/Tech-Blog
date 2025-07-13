@@ -3,34 +3,34 @@
 
 ## Introduction
 
-Hello, security champions! 🛡️  
+Hello, security champions!  
 Regarding CyberSecurity, there are no easy answers, but we are investing to make it easier for you.
 
 Microsoft invest 1Billion/year in Security, and we are 8500+ security guys to help you at the office from Seattle to Paris.
 
 Before we dive into Zero Trust and the Security Adoption Framework, let’s cover four simple truths:
 
-1. **Security success = attacker failure + increased attacker cost/friction.** 🚨
+1. **Security success = attacker failure + increased attacker cost/friction.** 
    - First, block cheap and easy attacks so hackers can’t get in easily.  
    - Next, when something slips through, detect it fast and kick it out, every minute counts.
 
 ![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-13-31.png)
 
-2. **Attackers have a shopping list.** 💸  
+2. **Attackers have a shopping list.**   
    - You can rent ransomware kits for about **\$66**, phishing as a service for **\$100–\$1,000**, or a DDoS attack for under **\$800 per month**.  
    - Stolen passwords sell for **\$0.97 per 1,000**, so attackers often buy rather than build.  
    - This makes attacks cheap and frequent, our defenses need to keep up.
 
 ![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-19-23.png)
 
-3. **Threats continuously evolve.** 🔄  
+3. **Threats continuously evolve.**   
    - Cutting-edge attackers invent new methods, while commoditization spreads those tools to everyone.  
    - Today’s advanced exploit can become tomorrow’s kit on the dark web in hours—or days.  
    - That means we must stay agile, refresh our controls, and lean on Zero Trust to protect data wherever it goes.
 
 ![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-25-36.png)
 
-4. **Security is everyone’s job.** 🤝  
+4. **Security is everyone’s job.**   
    - From clicking links to approving maintenance, any decision affects risk.  
    - The security team can’t handle it all alone, developers, ops, HR, finance, and yes, the bosses, must share responsibility and speak the same security language.
 
@@ -42,16 +42,16 @@ Before we dive into Zero Trust and the Security Adoption Framework, let’s cove
 
 Zero Trust is a cybersecurity approach based on “never trust, always verify.” It continuously authenticates and authorizes every access request regardless of where it originates, using identity, device posture, location, and behavior signals.
 
-1. Verify explicitly 🕵️‍♂️  
+1. Verify explicitly   
    Check every access request, by confirming who you are, what device you use, and where you are.
 
-2. Least privilege 🎁  
+2. Least privilege   
    Give only the access you need, ask for more only when you really need it.
 
-3. Assume breach 🚨  
+3. Assume breach   
    Act as if attackers are already inside, encrypt your data, log all actions, and isolate threats fast.
 
-4. Micro segmentation 🗂  
+4. Micro segmentation   
    Divide your network and systems into small zones, so a problem in one zone can be contained.
 
 Why it rocks  
@@ -85,42 +85,42 @@ Before diving into SAF modules, Microsoft offers two starter sessions to help yo
 
 ![](assets/Where%20to%20Start%20Security%20Lock%20It%20Down%20with%20Zero%20Trust/2025-07-01-19-23-40.png)
 
-### 1. Strategy & Governance 🗺️  
+### 1. Strategy & Governance   
 **Objectives:**  
 - Align leadership on vision, policies & metrics  
 - Define roles, ownership & success criteria  
 **Participants:** CISO, CIO, Security/IT Directors, Architects  
 **Tools:** Microsoft Secure Score, Azure Policy, Security Copilot, Attack Simulator, Insider Risk Management, Communication Compliance
 
-### 2. Identity & Access 🔒  
+### 2. Identity & Access   
 **Objectives:**  
 - Modernize MFA, conditional access & just-in-time privileges  
 - Plan device compliance & entitlement reviews  
 **Participants:** Identity architects, Cloud teams, IT & security leads  
 **Tools:** Microsoft Entra (Azure AD), Conditional Access, Intune, Defender for Identity, Privileged Identity Management, Secure Privileged Access & Privileged Access Workstations
 
-### 3. SecOps & Detection 🔎  
+### 3. SecOps & Detection   
 **Objectives:**  
 - Modernize SIEM/XDR, tune alerts & automate response  
 - Practice incident response & threat hunting  
 **Participants:** SecOps directors, analysts, security architects  
 **Tools:** Azure Sentinel, Defender XDR, Defender for Cloud Apps, Defender for Cloud (CSPM), Security Copilot
 
-### 4. Infrastructure & App Security 🛠️  
+### 4. Infrastructure & App Security   
 **Objectives:**  
 - Secure servers, containers & DevSecOps pipelines  
 - Review reference architectures & best practices  
 **Participants:** Operations managers, DevOps leads, security architects  
 **Tools:** Defender for Servers & Containers, GitHub Advanced Security, DevOps scanners, Azure Firewall, WAF, DDoS Protection, Bastion, Private Link, Azure Key Vault, Azure Arc/Stack
 
-### 5. Data & Compliance 🗃️  
+### 5. Data & Compliance   
 **Objectives:**  
 - Classify & label sensitive data, enforce DLP & encryption  
 - Map compliance requirements & audit trails  
 **Participants:** Data security managers, compliance leads, security architects  
 **Tools:** Microsoft Purview, Information Protection, Data Loss Prevention, Compliance Manager
 
-### 6. OT/IoT & AI 🤖  
+### 6. OT/IoT & AI   
 **Objectives:**  
 - Secure industrial and smart devices, segment networks  
 - Apply AI-driven threat intel & anomaly detection  
@@ -139,27 +139,27 @@ Before diving into SAF modules, Microsoft offers two starter sessions to help yo
 
 Here’s where theory meets reality—real-world samples scenarios showing how Microsoft’s security stack and SAF play out on the ground:
 
-1. Remote Work Revolution 🌍  
+1. Remote Work Revolution   
    - **Challenge:** Hybrid teams everywhere, VPN overload and risky home networks  
    - **Solution:** Azure AD Conditional Access + MFA + Intune compliance policies + GSA ... 
    - **Outcome:** Secure, password-light access from anywhere with near-zero friction
 
-2. Data Protection Power-Up 🔒  
+2. Data Protection Power-Up   
    - **Challenge:** Sensitive documents floating in SharePoint, Teams and emails  
    - **Solution:** Purview auto-classification + sensitivity labels + DLP policies ...  
    - **Outcome:** Data is tagged, tracked and blocked if it tries to escape to the wrong inbox
 
-3. OT/IoT Defense 🏭  
+3. OT/IoT Defense   
    - **Challenge:** Legacy industrial systems and smart devices with little built-in security  
    - **Solution:** Defender for IoT + network micro-segmentation + threat analytics in Sentinel ... 
    - **Outcome:** Continuous monitoring, rapid alerts, and containment before physical processes are impacted
 
-4. AI-Driven Threat Hunting 🤖  
+4. AI-Driven Threat Hunting   
    - **Challenge:** Attackers using AI to craft phishing, evade detection and morph malware  
    - **Solution:** Security Copilot for threat research + Sentinel’s ML-powered analytics + Defender’s AI engines ... 
    - **Outcome:** Faster threat identification, enriched alerts, and guided playbooks that keep your team two steps ahead
 
-5. CISO Workshop Success 🚀  
+5. CISO Workshop Success   
    - **Challenge:** Executive buy-in and coherent strategy across teams  
    - **Solution:** SAF CISO Workshop to map risks, define priorities, and build an action plan  ...
    - **Outcome:** Leadership aligned, budgets unlocked, and a clear sprint-backlog for security wins

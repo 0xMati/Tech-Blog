@@ -3,7 +3,7 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 **Microsoft Defender for Identity** identifies **new lateral movement paths** to sensitive accounts — similar to BloodHound analysis.  
 These paths highlight potential escalation opportunities that attackers could exploit to gain access to high-value accounts.
@@ -23,7 +23,7 @@ These paths highlight potential escalation opportunities that attackers could ex
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 IdentityDirectoryEvents
@@ -43,7 +43,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Map and Review the Path**
    - Use the visualized path in Defender for Identity or tools like BloodHound.
@@ -56,7 +56,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 💎 References
+## References
 
 - [Microsoft Docs – Lateral Movement Paths](https://learn.microsoft.com/en-us/defender-for-identity/understand-lateral-movement-paths)
 - [Original Detection Rule on GitHub](https://github.com/Bert-JanP/Hunting-Queries-Detection-Rules/blob/main/Defender%20For%20Identity/NewLateralMovementPathToSensitiveAccountIdentified.md)

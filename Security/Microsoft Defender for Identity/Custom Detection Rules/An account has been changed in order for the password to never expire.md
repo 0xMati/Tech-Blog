@@ -3,7 +3,7 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 In Windows, an account password can be set to **never expire**, which is generally **not recommended**.  
 Best practices require periodic password changes to reduce the risk of credential compromise.
@@ -23,7 +23,7 @@ This rule detects when a user account is modified so that **"Account Password Ne
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```sql
 IdentityDirectoryEvents
@@ -44,26 +44,26 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
-### 🔎 1. Audit all accounts with non-expiring passwords  
+### 1. Audit all accounts with non-expiring passwords  
 Run the following PowerShell command to list accounts where the **"Password Never Expires"** setting is enabled:  
 
 ```powershell
 Get-ADUser -Filter * | Where-Object { $_.PasswordNeverExpires }
 ```
 
-### 🚫 2. Enforce password expiration policies  
+### 2. Enforce password expiration policies  
 - **Active Directory (on-premises)**: Configure Group Policy (GPO) to set a **maximum password age**.  
 - **Azure AD**: Use **Conditional Access** policies to enforce periodic password changes.
 
-### 🔒 3. Use Multi-Factor Authentication (MFA) and strong password policies  
+### 3. Use Multi-Factor Authentication (MFA) and strong password policies  
 - Require **MFA** for high-privilege accounts.  
 - Enforce **password length and complexity rules** to reduce brute force risks.  
 
 ---
 
-## 💎 References
+## References
 
 - [Original detection rule](https://github.com/Bert-JanP/Hunting-Queries-Detection-Rules/blob/main/Defender%20For%20Identity/AccountWithPasswordNeverExpiresEnabled.md)  
 - [Microsoft Security Best Practices](https://learn.microsoft.com/en-us/security/)  

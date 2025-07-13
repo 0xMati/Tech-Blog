@@ -1,11 +1,11 @@
-# 🔐 Understanding and Configuring Name Identifiers in SAML 2.0 with AD FS  
+# Understanding and Configuring Name Identifiers in SAML 2.0 with AD FS  
 🗓️ Published: 2025-05-06
 
 In SAML-based federation, the *Name Identifier* (NameID) is a critical element used by service providers (SPs) and identity providers (IdPs) to uniquely identify users across trust boundaries. This article explains the purpose of different NameID formats, how to configure AD FS 2.0 to request a specific NameID format during SAML 2.0 SSO, and how to issue persistent or transient NameIDs through claim rules.
 
 ---
 
-## 📌 What is a Name Identifier?
+## What is a Name Identifier?
 
 A Name Identifier (NameID) is a string that represents a user in a federated environment. It's used by the SP and IdP to refer to the same subject across SSO sessions, logout requests, or attribute exchanges.
 
@@ -22,11 +22,11 @@ Common formats include:
 
 ---
 
-## ⚙️ Requesting a Specific NameID Format in AD FS 2.0
+## Requesting a Specific NameID Format in AD FS 2.0
 
 AD FS 2.0 allows you to define a preferred NameID format to request from a claims provider (CP) via the `NameIDPolicy` element in the SAML `AuthnRequest`.
 
-### 🔧 Configuration Steps
+### Configuration Steps
 
 1. Identify the required `NameIDPolicy` Format URI.
 2. Open a PowerShell session as Administrator on the AD FS server.
@@ -46,11 +46,11 @@ This configuration causes AD FS to generate the following SAML snippet during au
 
 ---
 
-## 🧱 Issuing Persistent and Transient Name Identifiers in AD FS
+## Issuing Persistent and Transient Name Identifiers in AD FS
 
 In AD FS 2.0, the NameID is simply another claim. You can use custom issuance rules to generate and transform persistent or transient NameIDs.
 
-### 🧩 Persistent Name Identifier
+### Persistent Name Identifier
 
 Used to issue a consistent, pseudonymous identifier across sessions and relying parties.
 
@@ -72,7 +72,7 @@ Use the built-in transformation rule to map `persistentId` to a `NameID` claim w
 
 ---
 
-### 💾 Transient Name Identifier
+### Transient Name Identifier
 
 Used for per-session identifiers that change on each login.
 

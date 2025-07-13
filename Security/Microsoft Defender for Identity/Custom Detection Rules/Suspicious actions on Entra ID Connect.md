@@ -4,13 +4,13 @@ date: 2025-04-24
 categories: ["Suspicious activity"]
 ---
 
-## 🚨 Suspicious Actions on Entra ID Connect
+## Suspicious Actions on Entra ID Connect
 
 This custom query helps identify potentially suspicious behavior originating from Entra ID Connect servers. These servers are often privileged and represent a critical point of trust in hybrid identity environments, making them a high-value target for attackers.
 
 ---
 
-### 🔍 Detection Logic (KQL Query)
+### Detection Logic (KQL Query)
 
 ```kql
 IdentityDirectoryEvents 
@@ -36,7 +36,7 @@ IdentityDirectoryEvents
 
 ---
 
-### 🛡️ Recommended Actions
+### Recommended Actions
 
 1. **Investigate all triggering events** on Entra ID Connect Servers to verify if the activities are legitimate or suspicious.
 2. **Correlate with other logs**, such as DeviceProcessEvents or network logs, to look for indicators of compromise.

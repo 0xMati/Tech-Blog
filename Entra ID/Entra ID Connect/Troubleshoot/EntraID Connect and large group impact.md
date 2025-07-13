@@ -1,7 +1,7 @@
 # ⚠️ Performance Pitfalls in Entra ID Connect (or MIM): Large Group Membership Impact on Import Cycles
 🗓️ Published: 2025-05-06
 
-## 🔍 Overview
+## Overview
 
 In hybrid identity environments using **Microsoft Entra ID Connect** (formerly Azure AD Connect) or **Microsoft Identity Manager (MIM)**, performance issues can occur when synchronizing groups that have a **very large number of members**. 
 
@@ -9,7 +9,7 @@ This article highlights a little-known behavior: even a **single change** to a l
 
 ---
 
-## 🧠 The Problem
+## The Problem
 
 ### Scenario
 
@@ -28,7 +28,7 @@ When a single user is added to or removed from one of these large groups, the **
 
 ---
 
-## ⚙️ Why This Happens
+## Why This Happens
 
 Group membership is stored as a **multi-valued attribute** in Active Directory and Entra ID. When a membership change occurs, the synchronization engine interprets it as a change to the entire set — not to an individual member.
 
@@ -38,17 +38,17 @@ As a result, during the import cycle, the connector retrieves and re-evaluates t
 
 ---
 
-## 🧪 How to Identify the Problem
+## How to Identify the Problem
 
 You can detect and analyze this issue in two ways:
 
-### 🔎 Option 1: Use Import Logs
+### Option 1: Use Import Logs
 
 - Enable verbose logging in Synchronization Service Manager.
 - Monitor import cycles for unusually long object processing times.
 - Look for `import-object` steps where group objects take much longer to process than user objects.
 
-### 🗃 Option 2: Query Large Groups via SQL
+### Option 2: Query Large Groups via SQL
 
 If you have access to the synchronization database, you can query for large groups directly in the Connector Space.
 
@@ -82,15 +82,15 @@ ORDER BY
     MemberCount DESC
 ```
 
-> 💡 Replace `'ACTIVE DIRECTORY CONNECTOR NAME'` with the actual name of your AD connector.
+> Replace `'ACTIVE DIRECTORY CONNECTOR NAME'` with the actual name of your AD connector.
 
-> 🗄 This query works for both `FIMSynchronizationService` (MIM) and `ADSync` (Entra ID Connect) databases.
+> This query works for both `FIMSynchronizationService` (MIM) and `ADSync` (Entra ID Connect) databases.
 
 > ⚠️ **Caution**: Accessing the sync database directly is unsupported by Microsoft. Run such queries on a test or replica environment where possible.
 
 ---
 
-## 🛠️ Mitigation Strategies
+## Mitigation Strategies
 
 ### 1. **Avoid Synchronizing Large Groups (If Possible)**  
 Exclude very large groups that are not critical to cloud workloads from synchronization scope.
@@ -109,7 +109,7 @@ If full exclusion is not possible, use sync rules to scope down group objects by
 
 ---
 
-## 📌 Important Notes
+## Important Notes
 
 - The **10,000-member threshold** is not a hard limit — it's a just an example based on observed performance degradation. Impact varies by environment.
 - This behavior affects the **import phase**, not delta sync or export.

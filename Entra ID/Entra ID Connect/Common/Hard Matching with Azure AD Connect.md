@@ -3,7 +3,7 @@
 
 ---
 
-## 📘 Table of Contents
+## Table of Contents
 
 1. Introduction  
 2. Prerequisites  
@@ -16,7 +16,7 @@
 
 ---
 
-## 🧩 Introduction
+## Introduction
 
 This post outlines how to perform a **Hard Match** between **Azure AD Cloud-Only accounts** and **on-prem Active Directory accounts**, using Azure AD Connect.
 
@@ -32,7 +32,7 @@ The goal is to manually align the identifiers (anchors) of both objects to allow
 
 ---
 
-## ⚙️ Azure AD Connect – Matching Principle
+## Azure AD Connect – Matching Principle
 
 Azure AD Connect uses the attribute `ms-DS-ConsistencyGuid` as the **default anchor** on-premises.
 
@@ -41,7 +41,7 @@ To match an on-prem and a cloud-only object, you simply need to ensure **the sam
 - On-prem AD → `ms-DS-ConsistencyGuid`  
 - Azure AD → `ImmutableID`
 
-### 🧪 Example PowerShell Script
+### Example PowerShell Script
 
 ```powershell
 Connect-AzureAD
@@ -74,7 +74,7 @@ Once the attributes are aligned, simply allow Azure AD Connect to pick up the ob
 
 ---
 
-## 📌 Notes
+## Notes
 
 - Make sure **AAD Connect is configured to use `ms-DS-ConsistencyGuid`** as the anchor (default since version 1.1.614.0).  
 - Ensure the cloud object is not already synced or linked to another source.  
@@ -82,7 +82,7 @@ Once the attributes are aligned, simply allow Azure AD Connect to pick up the ob
 
 ---
 
-## 🛠️ Tools Used
+## Tools Used
 
 - PowerShell with AzureAD and ActiveDirectory modules  
 - Azure AD Connect console  

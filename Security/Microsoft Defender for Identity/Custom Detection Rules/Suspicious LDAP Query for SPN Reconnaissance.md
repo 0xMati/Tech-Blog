@@ -3,7 +3,7 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 LDAP queries using `servicePrincipalName=*` are highly indicative of **SPN enumeration**,  
 a precursor step in **Kerberoasting** attacks.  
@@ -20,7 +20,7 @@ This detection helps identify systems performing such suspicious LDAP queries.
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 IdentityQueryEvents
@@ -33,7 +33,7 @@ IdentityQueryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Investigate Source Host**
    - Confirm if this LDAP query was expected or part of a legitimate scan.
@@ -44,7 +44,7 @@ IdentityQueryEvents
 
 ---
 
-## 💎 Notes
+## Notes
 
 > This detection logic is **commonly triggered during Kerberoasting attack preparations**.
 

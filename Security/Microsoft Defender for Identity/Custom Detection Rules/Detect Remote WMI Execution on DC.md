@@ -8,14 +8,14 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 This custom detection rule focuses on **WMI-based remote execution** events specifically targeting Domain Controllers.  
 Remote WMI execution on DCs can be an indicator of lateral movement or unauthorized admin activities.
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 IdentityDirectoryEvents
@@ -24,14 +24,14 @@ IdentityDirectoryEvents
 | project Timestamp, ReportId, DeviceName, IPAddress, DestinationDeviceName, AccountName, AccountDomain, Command
 ```
 
-### 🔖 Remarks on Filtering
+### Remarks on Filtering
 - Similar to PowerShell remote executions, you can **add filters** to remove legitimate machine-to-machine or DC-to-DC scenarios.
 - Validate if the source and destination machines are part of normal admin workflows.
 - If unexpected, investigate the command invoked and verify the user's intent.
 
 ---
 
-## 🛠️ Recommended Steps
+## Recommended Steps
 
 1. **Correlate the IP or DeviceName**  
    Confirm if the request originated from a known admin workstation or a suspicious host.
@@ -44,7 +44,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🧩 Context & Mitigation
+## Context & Mitigation
 
 - WMI is powerful for remote system administration but often abused for stealthy lateral movement.
 - Ensure least privilege and monitor all remote admin protocols. 

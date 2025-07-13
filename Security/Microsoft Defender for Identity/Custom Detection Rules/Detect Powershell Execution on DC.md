@@ -3,13 +3,13 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 This custom detection rule identifies **PowerShell execution events** in your environment. It focuses on **suspicious or unauthorized usage** of PowerShell, which is often a vector for lateral movement, credential dumping, or malicious scripts.
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 IdentityDirectoryEvents
@@ -18,7 +18,7 @@ IdentityDirectoryEvents
 | project Timestamp, ReportId, DeviceName, IPAddress, DestinationDeviceName, AccountName, AccountDomain, Command
 ```
 
-### 🔖 Remarks on Filtering
+### Remarks on Filtering
 - You can **add filters** to exclude legitimate traffic (e.g., known admin scripts, DC-to-DC traffic).
 - Correlate the **source machine/IP** with your asset inventory to confirm if it’s managed and legitimate.
 - Review the actual **PowerShell command** in `Command`; look for signs of credential dumping, suspicious script blocks, etc.
@@ -41,7 +41,7 @@ Add any other filters in the query to reduce false positives based on your envir
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Review the Command**
    Check if the command lines are legitimate admin scripts or suspicious.
@@ -59,7 +59,7 @@ Add any other filters in the query to reduce false positives based on your envir
 
 ---
 
-## 💎 References
+## References
 
 - [Microsoft Documentation – Defender for Identity](https://learn.microsoft.com/en-us/defender-for-identity/)
 - [PowerShell Security Best Practices](https://learn.microsoft.com/en-us/powershell/scripting/security/)

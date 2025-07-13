@@ -3,7 +3,7 @@
 
 ---
 
-## 💍 Description
+## Description
 
 This script is used to **synchronize the Azure AD `ImmutableID`** value into the **on-prem Active Directory `ms-DS-ConsistencyGuid`** attribute. It is typically executed **when changing the anchor** used by Azure AD Connect from `ObjectGUID` to `ms-DS-ConsistencyGuid`.
 
@@ -17,7 +17,7 @@ The script covers:
 
 ---
 
-## ⚙️ Features
+## Features
 
 - Reads on-prem accounts from various OUs
 - Converts ObjectGUID to base64 (ImmutableID format)
@@ -42,7 +42,7 @@ The script covers:
 
 ---
 
-## 📎 Script Entry Points
+## Script Entry Points
 
 - Loop through predefined OUs: `EN`, `FR`, `US`, `NC`
 - For each user:
@@ -54,7 +54,7 @@ The script covers:
 
 ---
 
-## 📬 Email Alert Behavior
+## Email Alert Behavior
 
 If any errors are detected during processing:
 - The email subject includes **KO** status
@@ -64,7 +64,7 @@ Logs are attached to help admins review the processing status.
 
 ---
 
-## 🛠️ Recommendations
+## Recommendations
 
 - Test on a sample OU before applying to all environments
 - Ensure `ms-DS-ConsistencyGuid` is not in use before script runs
@@ -81,7 +81,7 @@ Logs are attached to help admins review the processing status.
 
 ---
 
-## 📜 Full PowerShell Script
+## Full PowerShell Script
 
 ```powershell
 # Description : Copie ImmutableID Utilisateurs contoso.com 

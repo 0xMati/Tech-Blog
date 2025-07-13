@@ -3,14 +3,14 @@
 
 ---
 
-## 🧠 MITRE ATT&CK Techniques
+## MITRE ATT&CK Techniques
 
 - [T1098 – Account Manipulation](https://attack.mitre.org/techniques/T1098/)
 - [T1110 – Brute Force](https://attack.mitre.org/techniques/T1110/)
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 Adversaries may attempt brute-force attacks to gain access to accounts when passwords are unknown or password hashes are obtained.  
 Once successful, the attacker may immediately **change the password** to maintain persistence and block legitimate user access.
@@ -35,7 +35,7 @@ Variables used in this rule:
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 let FailedLogonsThreshold = 20;
@@ -70,7 +70,7 @@ IdentityLogonEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Review Account Activity**
    - Correlate with VPN or RDP access.
@@ -84,7 +84,7 @@ IdentityLogonEvents
 
 ---
 
-## 💎 References
+## References
 
 - [MITRE ATT&CK T1098 – Account Manipulation](https://attack.mitre.org/techniques/T1098/)
 - [MITRE ATT&CK T1110 – Brute Force](https://attack.mitre.org/techniques/T1110/)

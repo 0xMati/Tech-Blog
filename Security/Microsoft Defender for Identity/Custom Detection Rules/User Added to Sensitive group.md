@@ -3,7 +3,7 @@
 
 ---
 
-## 📄 Description
+## Description
 
 This detection identifies when a user is added to **highly privileged Active Directory groups**, such as Domain Admins, Enterprise Admins, or Exchange Admins.  
 This kind of activity is often associated with privilege escalation attempts.
@@ -27,7 +27,7 @@ Inspired by MITRE ATT&CK Technique [T1078.002 – Valid Accounts: Domain Account
 
 ---
 
-## 🔍 Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kql
 let SensitiveGroups = dynamic(['Domain Admins', 'Enterprise Admins', 'Exchange Admins']); // Add your sensitive groups to this list
@@ -42,7 +42,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 - **Validate if the change was expected** via admin logs or ticketing system.
 - **Review the initiator account activity** around the time of the group change.

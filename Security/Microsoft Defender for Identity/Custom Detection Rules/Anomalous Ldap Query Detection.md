@@ -3,7 +3,7 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 Adversaries can use LDAP to collect environment information. This detection aims to highlight **anomalous volumes of LDAP queries** originating from a single device.
 
@@ -30,7 +30,7 @@ Key parameters:
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kql
 // Variables to define the anomalous behaviour
@@ -68,12 +68,12 @@ TimeSeriesAlerts
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
-### 🔍 1. Investigate high-volume LDAP sources  
+### 1. Investigate high-volume LDAP sources  
 Look for workstations or devices issuing large volumes of LDAP queries.
 
-### 🧪 2. Run targeted queries on suspicious devices  
+### 2. Run targeted queries on suspicious devices  
 Use follow-up queries such as:
 ```kusto
 // Replace with actual device name
@@ -82,14 +82,14 @@ IdentityQueryEvents
 | where ActionType == "LDAP query"
 ```
 
-### 🔐 3. Harden and monitor LDAP access  
+### 3. Harden and monitor LDAP access  
 - Restrict LDAP access where possible
 - Monitor for enumeration patterns
 - Combine with behavioral analytics for broader visibility
 
 ---
 
-## 💎 References
+## References
 
 - [Original detection rule](https://github.com/Bert-JanP/Hunting-Queries-Detection-Rules/blob/main/Defender%20For%20Identity/AnomalousLDAPTraffic.md)  
 - [MITRE ATT&CK T1087.002 – Account Discovery](https://attack.mitre.org/techniques/T1087/002/)  

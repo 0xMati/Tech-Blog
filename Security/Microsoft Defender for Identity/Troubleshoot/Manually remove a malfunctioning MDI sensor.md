@@ -3,7 +3,7 @@
 
 ---
 
-## 🧾 Context  
+## Context  
 Microsoft Defender for Identity (MDI) normally handles updates automatically.  
 However, issues can occasionally prevent removal through the standard **Add/Remove Programs** interface — particularly due to infrastructure problems in MDI clusters.  
 
@@ -13,7 +13,7 @@ Thanks to *Martin Schwartzman* and [Morten Knudsen](https://mortenknudsen.net/?p
 
 ---
 
-## 🧨 Uninstall Attempt (Standard Method)
+## Uninstall Attempt (Standard Method)
 
 Try uninstalling from the `ProgramData\PackageCache` folder:  
 Example:
@@ -26,7 +26,7 @@ Replace `{GUID}` with the relevant folder ID on your machine.
 
 ---
 
-## 🔧 Clean Up Services Manually
+## Clean Up Services Manually
 
 From an **elevated prompt**, delete lingering services:
 ```cmd
@@ -36,7 +36,7 @@ sc.exe delete aatpsensorupdater
 
 ---
 
-## 🧹 Manual Cleanup Steps
+## Manual Cleanup Steps
 
 - Verify that these folders no longer exist:
   - `C:\Program Files\Azure Advanced Threat Protection Sensor`

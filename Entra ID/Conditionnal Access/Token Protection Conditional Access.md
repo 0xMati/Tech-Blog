@@ -3,13 +3,13 @@ title: "Token Protection in Conditional Access"
 date: 2025-04-22
 ---
 
-## 🔐 Token Protection in Microsoft Entra ID
+## Token Protection in Microsoft Entra ID
 
 Token Protection is a **Conditional Access** feature in **Microsoft Entra ID** that enhances token security and reduces risks related to **token theft**. It ensures that **authentication tokens** issued to users cannot be reused from a different device or location, thus helping prevent attacks like **token replay**.
 
 ---
 
-### 🧩 What Problem Does It Solve?
+### What Problem Does It Solve?
 
 Tokens issued by identity platforms can be **copied** and **reused** by attackers on unauthorized systems. Traditional Conditional Access policies validate the environment only **at the time of sign-in**. Once a token is issued, it could potentially be reused elsewhere.
 
@@ -17,7 +17,7 @@ Token Protection changes this behavior by **binding the token to the client** an
 
 ---
 
-### 🛠️ How It Works
+### How It Works
 
 When Token Protection is enabled, the token includes information about the **client device** and **user session**. If the token is presented from a different context, Microsoft Entra ID will **deny access**.
 
@@ -42,7 +42,7 @@ When Token Protection is enabled, the token includes information about the **cli
 
 ---
 
-### ⚙️ Enabling Token Protection
+### Enabling Token Protection
 
 Token Protection is configured through **Conditional Access policies** in Entra ID.
 
@@ -57,13 +57,13 @@ Steps:
 
 ---
 
-### 🧪 Monitoring and Troubleshooting
+### Monitoring and Troubleshooting
 
 You can monitor token protection events through **Sign-in logs** in the Entra portal. Look for events where the policy was **applied or failed**, which can help detect suspicious token replays.
 
 ---
 
-### 💡 Best Practices
+### Best Practices
 
 - Start in **Report-Only** mode to evaluate compatibility
 - Deploy to **pilot users** before enforcing

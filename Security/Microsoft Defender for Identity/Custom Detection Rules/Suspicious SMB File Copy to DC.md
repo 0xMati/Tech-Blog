@@ -3,7 +3,7 @@
 
 ---
 
-## 📄 Description
+## Description
 
 This custom detection rule helps identify **SMB file copies** performed by accounts that are **not whitelisted**.  
 Adversaries may abuse SMB to transfer tools, payloads, or staging files to remote machines as part of lateral movement or post-exploitation steps.
@@ -27,7 +27,7 @@ This detection is inspired by real-world attack techniques such as **T1021.002 �
 
 ---
 
-## 🔍 Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kql
 let WhitelistedAccounts = dynamic(['account1', 'account2']);
@@ -51,7 +51,7 @@ IdentityDirectoryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 - **Audit the source device and user** to determine if the file transfer was legitimate.
 - **Correlate with login activity** to check for unexpected locations or times.

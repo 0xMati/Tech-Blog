@@ -8,7 +8,7 @@
 
 ---
 
-## 💍 Rule Description
+## Rule Description
 
 Adversaries may gather information on Group Policy settings to:
 - Identify paths for privilege escalation
@@ -29,7 +29,7 @@ This query detects when a device performs **Group Policy Discovery** for the fir
 
 ---
 
-## ⚙️ Detection Logic (KQL Query)
+## Detection Logic (KQL Query)
 
 ```kusto
 let PreviousActivity = materialize (
@@ -46,7 +46,7 @@ IdentityQueryEvents
 
 ---
 
-## 🛠️ Recommended Actions
+## Recommended Actions
 
 1. **Verify the Device & User**
    - Has this system recently been deployed or rebuilt?
@@ -63,7 +63,7 @@ IdentityQueryEvents
 
 ---
 
-## 💎 References
+## References
 
 - [MITRE T1615 – Group Policy Discovery](https://attack.mitre.org/techniques/T1615)
 - [Original Detection Rule](https://github.com/Bert-JanP/Hunting-Queries-Detection-Rules/blob/main/Defender%20For%20Identity/AnomalousGroupPolicyDiscovery.md)
