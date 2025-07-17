@@ -43,6 +43,27 @@ You may want to grant visibility to non-technical stakeholders (e.g., executives
 
 ---
 
+## Delegate Access to Identity Secure Score
+
+The Identity Secure Score is shown as a percentage that functions as an indicator for how aligned you are with Microsoft's recommendations for security.
+Give stakeholders read‑only visibility into your Identity Secure Score and its recommendations, no extra permissions required.
+
+### Steps to Configure Access to Identity Secure Score
+
+1. **Open the Azure portal**  
+   Go to https://portal.azure.com and sign in with an account that has admin privileges.
+
+2. **Navigate to Roles**  
+
+> To view the improvement action but not update, you need at least the Service Support Administrator role.
+
+![](assets/Delegate%20Access%20to%20MDI/2025-07-17-21-07-07.png)
+
+### Results
+
+![](assets/Delegate%20Access%20to%20MDI/2025-07-17-21-07-46.png)
+---
+
 ## Delegate Access to Alerts  
 
 Alerts in Microsoft Defender for Identity surface critical suspicious activities and potential threats in real time. Delegating access to Alerts lets designated analysts or stakeholders view and triage incidents promptly—without granting them full administrative privileges.
