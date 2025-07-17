@@ -62,6 +62,7 @@ Give stakeholders read‑only visibility into your Identity Secure Score and its
 ### Results
 
 ![](assets/Delegate%20Access%20to%20MDI/2025-07-17-21-07-46.png)
+
 ---
 
 ## Delegate Access to Alerts  
