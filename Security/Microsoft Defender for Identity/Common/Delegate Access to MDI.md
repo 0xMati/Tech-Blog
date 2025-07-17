@@ -65,8 +65,8 @@ Alerts in Microsoft Defender for Identity surface critical suspicious activities
 
 ![](assets/Delegate%20Access%20to%20MDI/2025-07-17-17-08-07.png)
 
-    - Optionaly you can scope Alerts and datas to a specific workload like MDI
-  ⚠️ -> MDI rely on MCAS, you need to add MCAS as a source to view MDI Alerts  
+    - Optionaly you can scope Alerts and datas to a specific workload like MDI in Assignment
+  ⚠️ -> MDI rely on MDCA, you need to add MDCA as a source to view MDI Alerts  
 
 ![](assets/Delegate%20Access%20to%20MDI/2025-07-17-17-19-25.png)
 
