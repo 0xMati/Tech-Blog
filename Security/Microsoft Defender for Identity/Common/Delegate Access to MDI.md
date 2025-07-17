@@ -73,19 +73,57 @@ Alerts in Microsoft Defender for Identity surface critical suspicious activities
 
 ### Results
 
-> People will have access to Alerts and basics security information, scoped.
+> People will have read access to Alerts and basics security information, scoped.
+
+![](assets/Delegate%20Access%20to%20MDI/2025-07-17-17-20-29.png)
 
 
 
+## Delegate Access to Audit logs that include XDR change configuration  
+
+The unified audit logs in Microsoft Purview record configuration changes across your tenant, including who did what in the Defender XDR portal.
+Delegate access to these logs to enable auditors or analysts to track XDR config changes without granting broader admin rights.
+
+2 Permissions:
+
+- **View‑Only Audit Logs**  
+  - Read‑only access to all audit events (who, what, when).  
+  - Ideal for stakeholders who only need to review activity.
+
+- **Audit Logs**  
+  - Read and export audit events.  
+  - Recommended for people that need to archive or analyze logs offline.
+
+> Both roles cover the entire tenant’s audit data, so delegates will see all audit events by default — including but not limited to XDR configuration changes.
+
+### Steps to Configure Audit Roles Delegation in Purview
+
+- Create a custom role in Purview
+
+![](assets/Delegate%20Access%20to%20MDI/2025-07-17-17-59-30.png)
+
+### Results
+
+> People will have read access to Audit logs, and are able to scope information on XDR infos.
+
+![](assets/Delegate%20Access%20to%20MDI/2025-07-17-18-00-34.png)
 
 
-## Delegate Access to Audit change configuration  
+⚠️ Restricting Access to XDR‑Only Logs
 
----
+You can grant read‑only access to XDR configuration events json config file :
 
-## 4. Delegating Sensor & Sensor Health Monitoring
-- **Objective**: Allow infra operations to validate sensor deployment and health.  
-- **Target Role**: Defender for Identity Sensor Viewer.  
-- **Access to “Sensors” page and health dashboards**.  
-- **Automated Escalation** for offline sensors.
-
+{
+  "Name": "XDR Configuration Audit Reader",
+  "IsCustom": true,
+  "Description": "Lecture seule des logs d’activité et de config pour Microsoft Defender XDR",
+  "Actions": [
+    "Microsoft.Insights/eventtypes/management/Read",
+    "Microsoft.SecurityInsights/workspaces/read",
+    "Microsoft.SecurityInsights/*/read"
+  ],
+  "NotActions": [],
+  "AssignableScopes": [
+    "/subscriptions/{SubID}/resourceGroups/{RG}/providers/Microsoft.SecurityInsights/{workspaceName}"
+  ]
+}
