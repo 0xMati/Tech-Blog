@@ -159,14 +159,86 @@ Once connected, you can verify the integration by querying the Sentinel logs:
 
 ```kql
 SecurityAlert
-| where ProviderName == "Microsoft Defender for Identity"
+| where ProviderName == "Azure Advanced Threat Protection"
 | sort by TimeGenerated desc
-| take 10
+| take 5
+```
 
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-08-22.png)
 
+### Step 1: Create a Detection Rule in Microsoft Sentinel
 
+To automate actions based on Microsoft Defender for Identity alerts, the first step is to create a detection rule in Sentinel that identifies the specific alerts you want to respond to.
+For this example, we will focus on the alert **"Honeytoken authentication activity"**, which indicates suspicious authentication attempts on honeytoken accounts — a strong sign of potential compromise ;)
+Use the following Kusto Query Language (KQL) query to detect this alert:
 
+```kql
+SecurityAlert
+| where ProviderName == "Azure Advanced Threat Protection"
+| where AlertName == "Honeytoken authentication activity"
+```
 
+To create this detection rule:
 
+- Open Microsoft Sentinel in the Azure portal and navigate to the Analytics section.
+- Click on Create > Scheduled query rule to start building a new rule.
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-15-01.png)
+
+- Give your rule a meaningful name, such as “Detect Honeytoken authentication activity will disable AD Account”.
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-15-44.png)
+
+- Paste the above KQL query into the query editor.
+- Set the rule’s scheduling frequency according to your needs and the lookup period.
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-17-28.png)
+
+- Configure the alert details such as severity and tactics if desired.
+- Review and create the rule (no playbook yet)
+
+Once active, this rule will trigger alerts in Sentinel whenever honeytoken authentication activity is detected.
+
+### Step 2: Create a Playbook to Automatically Disable the AD Account
+
+Now that you have a detection rule triggering on the "Honeytoken authentication activity" alert, the next step is to automate the response by disabling the compromised user account in Active Directory.
+
+We’ll do this by creating a **playbook** in Microsoft Sentinel, which is essentially an Azure Logic Apps workflow that reacts to alerts.
+
+#### Key points for the playbook:
+
+- It will be triggered automatically when your detection rule fires.  
+- It will extract the username or user identifier from the alert payload.  
+- It will call a PowerShell runbook running on an Azure Automation Hybrid Worker (deployed on-premises) to disable the AD user account.  
+
+#### How to create the playbook:
+
+1. In the Azure portal, navigate to your Microsoft Sentinel workspace.  
+2. Go to the **Automation** tab and click **Create a playbook**.  
+3. In the Logic Apps Designer, start with the trigger **When a response to an Azure Sentinel alert is triggered**.
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-21-19.png)
+
+4. Give it a meaningful name like "Playbook_Disable_AD_Account" and create the playbook.
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-23-00.png)
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-23-24.png)
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-23-36.png)
+
+5. Add an action to parse the alert payload and extract the username.  
+6. Add an action to call an **Azure Automation runbook** (PowerShell) passing the username as a parameter.  
+7. Save and publish the playbook.
+
+#### Sample PowerShell runbook snippet to disable AD account:
+
+```powershell
+param(
+    [string]$UserName
+)
+
+Import-Module ActiveDirectory
+Disable-ADAccount -Identity $UserName
 
 
