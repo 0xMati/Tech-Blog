@@ -186,6 +186,15 @@ To create this detection rule:
 ![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-17-28.png)
 
 - Configure the alert details such as severity and tactics if desired.
+
+- Create incident when from Alerts and adapt settings.
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-11-58-49.png)
+
+- Do not configure Automated response yet, we'll do it later
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-11-59-32.png)
+
 - Review and create the rule (no playbook yet)
 
 Once active, this rule will trigger alerts in Sentinel whenever honeytoken authentication activity is detected.
@@ -205,10 +214,9 @@ We’ll do this by creating a **playbook** in Microsoft Sentinel, which is essen
 #### How to create the playbook:
 
 1. In the Azure portal, navigate to your Microsoft Sentinel workspace.  
-2. Go to the **Automation** tab and click **Create a playbook**.  
-3. In the Logic Apps Designer, start with the trigger **When a response to an Azure Sentinel alert is triggered**.
+2. Go to the **Automation** tab and click **Create a playbook** with Incident Trigger.
 
-![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-21-19.png)
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-12-02-21.png)
 
 4. Give it a meaningful name like "Playbook_Disable_AD_Account" and create the playbook.
 
@@ -217,6 +225,9 @@ We’ll do this by creating a **playbook** in Microsoft Sentinel, which is essen
 ![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-23-24.png)
 
 ![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-23-36.png)
+
+5. Logic App Design will now open
+
 
 5. Add an action to parse the alert payload and extract the username.  
 6. Add an action to call an **Azure Automation runbook** (PowerShell) passing the username as a parameter.  
