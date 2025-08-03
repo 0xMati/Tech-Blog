@@ -1,4 +1,4 @@
-# Automated actions with Microsoft Defender for Identity  
+# Automated actions with Microsoft Defender for Identity  ***IN PROGRESS***
 🗓️ Published: 2025-08-01  
 
 ---
@@ -227,6 +227,16 @@ We’ll do this by creating a **playbook** in Microsoft Sentinel, which is essen
 ![](assets/Automated%20Actions%20with%20MDI/2025-08-02-00-23-36.png)
 
 5. Logic App Design will now open
+
+- You'll find an empty Playbook with "Microsoft Sentinel Incident" as a start
+- Add a "Alert - Get Incident" as a next step in this scenario, and fill all required information here
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-12-55-23.png)
+
+![](assets/Automated%20Actions%20with%20MDI/2025-08-02-12-56-35.png)
+
+- Let start the test with an email sent
+
 
 
 5. Add an action to parse the alert payload and extract the username.  
