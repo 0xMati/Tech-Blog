@@ -1,4 +1,5 @@
 # Understanding App Registration, Enterprise Application, and Service Principal in Azure AD
+🗓️ Published: 2025-08-04  
 
 When working with Azure Active Directory (Azure AD), you’ll often encounter the terms **App Registration**, **Enterprise Application**, and **Service Principal**. These foundational concepts for managing applications and their access can be confusing. This article clarifies what each term means and how they relate to each other, following official Microsoft definitions.
 
