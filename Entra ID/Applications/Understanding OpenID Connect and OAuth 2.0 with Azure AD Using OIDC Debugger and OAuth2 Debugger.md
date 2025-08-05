@@ -1,6 +1,34 @@
 # Understanding OpenID Connect and OAuth 2.0 with Entra ID Using OIDC Debugger and OAuth2 Debugger  
 🗓️ Published: 2025-08-05
 
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Configuring OAuth 2.0 Debugger with Entra ID](#configuring-oauth-20-debugger-with-entra-id)
+  - [Step 1: Register an Application in Entra ID](#step-1-register-an-application-in-entra-id)
+  - [Step 2: Set Up Client Secrets](#step-2-set-up-client-secrets)
+  - [Step 3: Input Your App Details in OAuth 2.0 Debugger](#step-3-input-your-app-details-in-oauth-20-debugger)
+  - [Step 4 Exchanging the Authorization Code for an Access Token Using PowerShell](#step-4-exchanging-the-authorization-code-for-an-access-token-using-powershell)
+- [Configuring OpenID Connect 2.0 Debugger with Entra ID](#configuring-openid-connect-20-debugger-with-entra-id)
+  - [Step 1: Register an Application in Entra ID](#step-1-register-an-application-in-entra-id-1)
+  - [Step 2: Set Up Client Secrets](#step-2-set-up-client-secrets-1)
+  - [Step 3: Input Your App Details in OIDC Debugger](#step-3-input-your-app-details-in-oidc-debugger)
+  - [Step 4 Exchanging the Authorization Code for Access Token & id Token Using PowerShell](#step-4-exchanging-the-authorization-code-for-access-token--id-token-using-powershell)
+- [Demo: Creating and Testing a Web API with Entra ID and OIDC Debugger](#demo-creating-and-testing-a-web-api-with-entra-id-and-oidc-debugger)
+  - [Step 1: Register the Web API Application in Entra ID](#step-1-register-the-web-api-application-in-entra-id)
+  - [Step 2: Authorized Client Applications for OIDC Debugger](#step-2-authorized-client-applications-for-oidc-debugger)
+  - [Step 3: Use OIDC Debugger to Request Authorization Code](#step-3-use-oidc-debugger-to-request-authorization-code)
+  - [Step 4: Exchange the Authorization Code for Access Token](#step-4-exchange-the-authorization-code-for-access-token)
+  - [Understanding the Access Token Response](#understanding-the-access-token-response)
+  - [How to Use the Access Token](#how-to-use-the-access-token)
+- [Demo: Accessing Microsoft Graph API Using OIDC Debugger](#demo-accessing-microsoft-graph-api-using-oidc-debugger)
+  - [Step 1: Use the Previously Registered OIDC Debugger Application and Add Microsoft Graph Permissions](#step-1-use-the-previously-registered-oidc-debugger-application-and-add-microsoft-graph-permissions)
+  - [Step 2: Configure OIDC Debugger with Your Existing App Details](#step-2-configure-oidc-debugger-with-your-existing-app-details)
+  - [Step 3: Authenticate and Obtain Tokens](#step-3-authenticate-and-obtain-tokens)
+  - [Step 4: Exchange the Authorization Code for Tokens](#step-4-exchange-the-authorization-code-for-tokens)
+  - [Step 5: Call Microsoft Graph API Using the Access Token](#step-5-call-microsoft-graph-api-using-the-access-token)
+
+
 ## Introduction
 
 If you’ve ever been curious about how modern apps handle user authentication and permissions, you’ve probably bumped into terms like **OAuth 2.0** and **OpenID Connect (OIDC)**. These protocols power the sign-in and access control for millions of apps — including those backed by Entra ID.
