@@ -202,7 +202,7 @@ Let’s walk through a practical example where we create a Web API protected by 
 
 ![](assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-44-24.png)
 
-### Step 3: Authorized Client Applications for OIDC Debugger
+### Step 2: Authorized Client Applications for OIDC Debugger
 
 - In Entra ID, authorize the **OIDC Debugger** application to access your Web API.
 - Under your Web API app registration, navigate to **Expose an API** > **Authorized client applications**.
@@ -212,7 +212,7 @@ Let’s walk through a practical example where we create a Web API protected by 
 ![](assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-49-10.png)
 
 
-### Step 4: Use OIDC Debugger to Request Authorization Code
+### Step 3: Use OIDC Debugger to Request Authorization Code
 
 - Open [OIDC Debugger](https://oidcdebugger.com).
 - Enter your tenant-specific authorization endpoint (e.g., `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize`).
@@ -226,7 +226,7 @@ Let’s walk through a practical example where we create a Web API protected by 
 
 ![](assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-51-27.png)
 
-### Step 5: Exchange the Authorization Code for Access Token
+### Step 4: Exchange the Authorization Code for Access Token
 
 - Use PowerShell (or any HTTP client) to send a POST request to the token endpoint (`https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token`) with:
   - client_id
@@ -283,8 +283,6 @@ When you exchange your authorization code for an access token, the response you 
 
 - **access_token**  
   This is the actual JWT (JSON Web Token) string that represents your authenticated session and permissions. You send this token with your API requests to prove your identity and access rights.
-
----
 
 ### How to Use the Access Token
 
@@ -371,7 +369,7 @@ $response | Format-List
 ```
 ![](assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-06-00-13-53.png)
 
-### Step 4: Call Microsoft Graph API Using the Access Token
+### Step 5: Call Microsoft Graph API Using the Access Token
 
 - Use the Access token to call Graph API endpoints, for example:  
   `https://graph.microsoft.com/v1.0/me`
