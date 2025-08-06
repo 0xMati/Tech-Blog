@@ -1,4 +1,5 @@
 # 🔄 Staged Rollout for Password Hash Synchronization (PHS)
+date: 2025-05-10
 
 **Staged Rollout** allows you to gradually migrate users from federated authentication (e.g., AD FS) to cloud authentication using **Password Hash Synchronization (PHS)** or **Pass-through Authentication (PTA)**. This approach enables safe testing with a subset of users before full rollout.
 
