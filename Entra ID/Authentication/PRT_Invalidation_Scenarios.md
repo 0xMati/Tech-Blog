@@ -35,36 +35,36 @@
 flowchart TD
     Start([Start: User signs in]) --> Choice{PRT Type}
     
-    Choice --> PW[🔑 Password PRT]
-    Choice --> WH[🔐 WHfB PRT]
-    Choice --> CERT[📜 Certificate PRT]
+    Choice --> PW[Password PRT]
+    Choice --> WH[WHfB PRT]
+    Choice --> CERT[Certificate PRT]
 
     %% Password PRT Invalidations
-    PW --> PW1[🔁 Password Changed]
-    PW --> PW2[📴 Session Revoked]
-    PW --> PW3[📵 Device Non-Compliant]
-    PW --> PW4[🔐 CA Policy Requires MFA]
+    PW --> PW1[Password Changed]
+    PW --> PW2[Session Revoked]
+    PW --> PW3[Device Non-Compliant]
+    PW --> PW4[CA Policy Requires MFA]
 
     %% WHfB PRT Invalidations
-    WH --> WH1[🧼 TPM Reset / Key Deleted]
-    WH --> WH2[🔁 WHfB PIN Reset]
-    WH --> WH3[📴 Session Revoked]
-    WH --> WH4[📵 Device Non-Compliant]
+    WH --> WH1[TPM Reset / Key Deleted]
+    WH --> WH2[WHfB PIN Reset]
+    WH --> WH3[Session Revoked]
+    WH --> WH4[Device Non-Compliant]
 
     %% Cert PRT Invalidations
-    CERT --> CERT1[📆 Certificate Expired]
-    CERT --> CERT2[🚫 Certificate Revoked]
-    CERT --> CERT3[🗑️ Certificate Removed]
-    CERT --> CERT4[🔗 Trust Chain Broken]
-    CERT --> CERT5[📴 Session Revoked]
+    CERT --> CERT1[Certificate Expired]
+    CERT --> CERT2[Certificate Revoked]
+    CERT --> CERT3[Certificate Removed]
+    CERT --> CERT4[Trust Chain Broken]
+    CERT --> CERT5[Session Revoked]
 
     %% Common to all
     subgraph Common Invalidations
-        COM1[🔒 Account Disabled or Deleted]
-        COM2[🧹 Device Unenrolled / Deleted]
-        COM3[📵 Device Non-Compliant (Intune)]
-        COM4[⏱ Clock Skew]
-        COM5[⚠️ Conditional Access Policy Changed]
+        COM1[Account Disabled or Deleted]
+        COM2[Device Unenrolled / Deleted]
+        COM3[Device Non-Compliant (Intune)]
+        COM4[Clock Skew]
+        COM5[Conditional Access Policy Changed]
     end
 
     PW --> Common Invalidations
