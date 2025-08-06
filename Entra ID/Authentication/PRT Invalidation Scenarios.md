@@ -30,6 +30,7 @@
 
 ---
 
+```mermaid
 flowchart TD
     Start([Start: User signs in]) --> Choice{PRT Type}
     
@@ -68,3 +69,4 @@ flowchart TD
     PW --> Common Invalidations
     WH --> Common Invalidations
     CERT --> Common Invalidations
+```
