@@ -1,4 +1,4 @@
-# 🛠️ Where to Start Security: Lock It Down with Zero Trust and SAF
+# Where to Start Security: Lock It Down with Zero Trust and SAF
 🗓️ Published: 2025-07-01
 
 ## Introduction

@@ -1,5 +1,5 @@
 # Admin-Only Second Tenant (“Red Tenant”): Smart Move or Trap?
-Published: 2025-08-29
+🗓️ Published: 2025-08-29
 
 ## TL;DR & Position
 A dedicated admin-only second tenant sounds clean on a whiteboard, but in real life it’s a bad idea. Microsoft guidance is to **avoid a second tenant for administration** and instead **harden a single production tenant** using the Enterprise Access Model (EAM) and Zero Trust controls.
