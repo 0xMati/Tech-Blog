@@ -1,0 +1,178 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "triggers": {
+            "Microsoft_Sentinel_incident": {
+                "type": "ApiConnectionWebhook",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                    },
+                    "body": {
+                        "callback_url": "@{listCallbackUrl()}"
+                    },
+                    "path": "/incident-creation"
+                }
+            }
+        },
+        "actions": {
+            "Initialize_variable_concatHosts": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "concatHosts",
+                            "type": "String",
+                            "value": ""
+                        }
+                    ]
+                },
+                "runAfter": {}
+            },
+            "Initialize_variables_concatAccounts": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "concatAccounts",
+                            "type": "String",
+                            "value": ""
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable_concatHosts": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Entities_-_Get_Hosts": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "@triggerBody()?['object']?['properties']?['relatedEntities']",
+                    "path": "/entities/host"
+                },
+                "runAfter": {
+                    "Initialize_variables_concatAccounts": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Entities_-_Get_Accounts": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "@triggerBody()?['object']?['properties']?['relatedEntities']",
+                    "path": "/entities/account"
+                },
+                "runAfter": {
+                    "Entities_-_Get_Hosts": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "For_each_hosts": {
+                "type": "Foreach",
+                "foreach": "@body('Entities_-_Get_Hosts')?['Hosts']",
+                "actions": {
+                    "Append_to_concatHosts": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "concatHosts",
+                            "value": "@{items('For_each_hosts')?['HostName']} (OS: @{item()?['OSFamily']} , Domain: @{items('For_each_hosts')?['DnsDomain']})<br>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "Entities_-_Get_Accounts": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "For_each_accounts": {
+                "type": "Foreach",
+                "foreach": "@body('Entities_-_Get_Accounts')?['Accounts']",
+                "actions": {
+                    "Append_to_concatAccounts": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "concatAccounts",
+                            "value": "@{items('For_each_accounts')?['AccountName']} (Domain: @{items('For_each_accounts')?['NtDomain']})<br>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "For_each_hosts": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Send_an_email_(V2)": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['office365']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": {
+                        "To": "<MY EMAIL>",
+                        "Subject": "🚨 Honeytoken Alert - @{triggerBody()?['object']?['properties']?['title']}",
+                        "Body": "<p>🚨 <b>Honeytoken Triggered</b></p><p><b>Title:</b> @{triggerBody()?['object']?['properties']?['title']}<br><b>Severity:</b> @{triggerBody()?['object']?['properties']?['severity']}<br><b>Status:</b> @{triggerBody()?['object']?['properties']?['status']}</p><hr><p><b>Hosts:</b><br>@{variables('concatHosts')}</p><p><b>Accounts:</b><br>@{variables('concatAccounts')}</p><hr><p><b>Incident ID:</b> @{triggerBody()?['object']?['name']}<br><a href='@{triggerBody()?['object']?['properties']?['incidentUrl']}'>View in Sentinel</a></p>",
+                        "Importance": "Normal"
+                    },
+                    "path": "/v2/Mail"
+                },
+                "runAfter": {
+                    "For_each_accounts": [
+                        "Succeeded"
+                    ]
+                }
+            }
+        },
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "type": "Object",
+                "defaultValue": {}
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "type": "Object",
+            "value": {
+                "azuresentinel": {
+                    "id": "/subscriptions/<MY SUBSCRIPTION ID>/providers/Microsoft.Web/locations/northeurope/managedApis/azuresentinel",
+                    "connectionId": "/subscriptions/<MY SUBSCRIPTION ID>/resourceGroups/<MY RESOURCE GROUPE NAME>/providers/Microsoft.Web/connections/azuresentinel-PB_Honeytoken_AlertResponse",
+                    "connectionName": "azuresentinel-PB_Honeytoken_AlertResponse",
+                    "connectionProperties": {
+                        "authentication": {
+                            "type": "ManagedServiceIdentity"
+                        }
+                    }
+                },
+                "office365": {
+                    "id": "/subscriptions/<MY SUBSCRIPTION ID>/providers/Microsoft.Web/locations/northeurope/managedApis/office365",
+                    "connectionId": "/subscriptions/<MY SUBSCRIPTION ID>/resourceGroups/<MY RESOURCE GROUPE NAME>/providers/Microsoft.Web/connections/office365",
+                    "connectionName": "office365"
+                }
+            }
+        }
+    }
+}
