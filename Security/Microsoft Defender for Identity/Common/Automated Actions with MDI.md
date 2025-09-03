@@ -204,6 +204,7 @@ This sets the foundation for automating your detection and response workflows.
 ![](assets/Automated%20Actions%20with%20MDI/2025-09-03-20-45-15.png)
 
 -> You can find the example json to import here (just fill/replace Email, SubscriptionID and ResourceGroup Name): 
+https://github.com/0xMati/Tech-Blog/blob/main/Security/Microsoft%20Defender%20for%20Identity/Common/assets/Automated%20Actions%20with%20MDI/PB_Honeytoken_AlertResponse_SendEmail.json
 
 7. Save and publish the playbook.
 
