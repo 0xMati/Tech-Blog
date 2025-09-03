@@ -229,5 +229,5 @@ An automation rule links the previously created Playbook to an incident generate
 
 With this first automation rule in place, any Honeytoken incident will automatically trigger the linked playbook (send an email), enabling real-time, hands-off response to threats.
 
->> Now let’s enrich this scenario by disabling the corresponding Active Directory account :)
+**Now let’s enrich this scenario by disabling the corresponding Active Directory account :)**
 
