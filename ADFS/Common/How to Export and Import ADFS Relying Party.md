@@ -50,8 +50,8 @@ cd C:\Path\To\Scripts
 .\Export-RP.ps1
 ```
 
-# You should now have XML files under:
-# C:\ADFS\ADFS-RP-Output```
+You should now have XML files under:
+C:\ADFS\ADFS-RP-Output```
 
 ### 2 On the **destination** ADFS server
 
