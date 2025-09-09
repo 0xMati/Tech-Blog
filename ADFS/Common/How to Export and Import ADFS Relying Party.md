@@ -42,10 +42,10 @@ Copy this folder (and the scripts) from the **source** to the **destination** se
 Set-ExecutionPolicy Unrestricted -Force    # or use the Process-scoped tip above
 ```
 
-# Go to the folder where the scripts are
+#### Go to the folder where the scripts are
 cd C:\Path\To\Scripts
 
-# Export all RP trusts
+#### Export all RP trusts
 ```powershell
 .\Export-RP.ps1
 ```
@@ -67,7 +67,7 @@ Set-ExecutionPolicy Unrestricted -Force    # or use the Process-scoped tip above
 
 cd C:\Path\To\Scripts
 
-# Import all RPs
+#### Import all RPs
 
 ```powershell
 .\Import-RP.ps1
