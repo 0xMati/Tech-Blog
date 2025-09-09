@@ -1,4 +1,4 @@
-title: "ADFS Migrate from WID to SQL: Simple Ordered Runbook (Rolling, Low Downtime)"
+# ADFS Migrate from WID to SQL
 🗓️ Published: 2025-09-09
 
 > **Goal**: Move an AD FS farm from **WID** to **SQL Server** with minimal downtime, one node at a time.
