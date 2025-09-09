@@ -6,6 +6,8 @@ Two PowerShell scripts to **export** and **import** ADFS Relying Party Trusts (R
 - `Export-RP.ps1` – exports RPT configuration to XML files.
 - `Import-RP.ps1` – imports the exported XML files on a target ADFS server.
 
+> Scripts can be found here : https://github.com/0xMati/Tech-Blog/tree/main/ADFS/Tools
+
 > ⚠️ Run these scripts **on the ADFS server** with an elevated PowerShell session.
 
 ---
@@ -17,39 +19,41 @@ Two PowerShell scripts to **export** and **import** ADFS Relying Party Trusts (R
 - Source and destination servers should have the same ADFS farm configuration (service account, certificates, etc.).
 
 > Tip: Instead of setting a permanent execution policy, you can scope it to the current process:
->
-> ```powershell
-> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-> ```
+
+ ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+```
 
 ---
 
 ## Folder layout
 
 The export writes XML files under: `C:\ADFS\ADFS-RP-Output\`
-
 Copy this folder (and the scripts) from the **source** to the **destination** server, preserving the same path.
 
 ---
 
 ## Quickstart
 
-### 1) On the **source** ADFS server
+### 1 On the **source** ADFS server
 
 ```powershell
 # Run PowerShell as Administrator
 Set-ExecutionPolicy Unrestricted -Force    # or use the Process-scoped tip above
+```
 
 # Go to the folder where the scripts are
 cd C:\Path\To\Scripts
 
 # Export all RP trusts
+```powershell
 .\Export-RP.ps1
+```
 
 # You should now have XML files under:
 # C:\ADFS\ADFS-RP-Output```
 
-### 2) On the **destination** ADFS server
+### 2 On the **destination** ADFS server
 
 ```powershell
 # Copy the scripts and the exported folder from the source server:
@@ -59,9 +63,13 @@ cd C:\Path\To\Scripts
 # from C:\ADFS\ADFS-RP-Output
 # Run PowerShell as Administrator
 Set-ExecutionPolicy Unrestricted -Force    # or use the Process-scoped tip above
+```
+
 cd C:\Path\To\Scripts
 
 # Import all RPs
+
+```powershell
 .\Import-RP.ps1
 ```
 
