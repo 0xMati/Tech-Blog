@@ -35,7 +35,7 @@ Copy this folder (and the scripts) from the **source** to the **destination** se
 
 ## Quickstart
 
-### 1 On the **source** ADFS server
+### 1. On the **source** ADFS server
 
 ```powershell
 # Run PowerShell as Administrator
@@ -53,7 +53,7 @@ cd C:\Path\To\Scripts
 You should now have XML files under:
 C:\ADFS\ADFS-RP-Output```
 
-### 2 On the **destination** ADFS server
+### 2. On the **destination** ADFS server
 
 ```powershell
 # Copy the scripts and the exported folder from the source server:
