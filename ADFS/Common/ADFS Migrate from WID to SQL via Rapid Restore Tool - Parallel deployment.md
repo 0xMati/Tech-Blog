@@ -4,7 +4,7 @@
 > **When to use this method?**  
 > You want a *clean rebuild* of the farm on SQL Server (not an in-place DB attach) with a short, controlled cutover window.
 
-## 0. Introduction
+## Introduction
 - **Version parity**: restore must target the **same Windows/ADFS version** as the backup.
 - **Primary WID node**: On WID farms, run the backup on the **primary** ADFS server:
   ```powershell
@@ -141,7 +141,7 @@ Add-AdfsFarmNode -GroupServiceAccountIdentifier "CONTOSO\adfsgmsa$" -SQLConnecti
 
 ## ⚠️ Attention for side-by-side with the **same Federation Service Name (FSN)**
 
-### 1. SPN of the Federation Service (Kerberos)
+### SPN of the Federation Service (Kerberos)
 - Keep a **single SPN** `host/<fsn>` on **one** account (ideally the **same gMSA** for both farms).
 - If you must switch accounts, **move** the SPN **at cutover** (no duplicates before then):
   ```cmd
@@ -149,10 +149,10 @@ Add-AdfsFarmNode -GroupServiceAccountIdentifier "CONTOSO\adfsgmsa$" -SQLConnecti
   setspn -S host/fs.contoso.com CONTOSO\NewAcct
   ```
 
-### 2. DKM keys (AD)
+### DKM keys (AD)
 - Rapid Restore restores/uses the **DKM container** in AD; both farms can **read the same keys** safely.
 - Do not modify or delete DKM until after the cutover and decommission of the old farm.
 
-### 3. Device Registration Service (DRS) / SCP
+### Device Registration Service (DRS) / SCP
 - If you use **Workplace Join**, only **one farm** should have **DRS active** at a time.
 - Keep DRS **disabled** on the new farm until cutover; after cutover, **enable** it and ensure the **SCP** points to the live farm.
