@@ -57,3 +57,68 @@ $cn.Close()
 Write-Host "ADSync DB permissions granted for $loginName in $dbName"
 ```
 
+
+## 18/09/2025 - Updated Script
+
+What’s new vs. the original script
+- LocalDB awareness. Detects (LocalDB) and builds the correct data source ((localdb)\.\ADSync) instead of assuming a remote/named instance.
+- Instance detection. Handles named, default (MSSQLSERVER), and empty SQLInstance values cleanly (falls back to Server=$sqlServer when appropriate).
+- Right principal, right place. Lets you choose the correct security principal via a single $Principal:
+    - Local DB scenario → typically NT AUTHORITY\SYSTEM (or NT SERVICE\ADSync).
+    - Remote SQL/Express → the computer account DOMAIN\<ServerName>$.
+- Idempotent & minimal grants (kept, but generalized). Still creates login/user only if missing and grants only what’s needed:
+    - CONNECT, SELECT, and EXECUTE on dbo.mms_get_globalsettings & dbo.mms_get_connectors.
+    - Safer connection string logic. Always uses trusted (integrated) auth; no hard-coded server strings.
+- Drop-in on any Connect host. Reads ADSync location from the registry, but now works regardless of whether ADSync is local or on a separate SQL instance.
+
+Operational tip: after running the new script, restart AATPSensorUpdater and check the updater log to confirm the “EXECUTE permission was denied” errors are gone.
+
+```powershell
+# === Paramètres à ajuster si besoin ===
+# Principal cible des droits SQL :
+# - LocalDB/SQL local : 'NT AUTHORITY\SYSTEM'  (ou 'NT SERVICE\ADSync' si c’est lui qui accède)
+# - SQL/Express externe : "$env:USERDOMAIN\$($env:COMPUTERNAME)$"
+$Principal = 'NT AUTHORITY\SYSTEM'
+
+# === Lecture config ADSync dans le registre ===
+$regPath   = 'HKLM:\SYSTEM\CurrentControlSet\Services\ADSync\Parameters'
+$dbName    = (Get-ItemProperty $regPath -Name DBName     -ErrorAction Stop).DBName
+$sqlServer = (Get-ItemProperty $regPath -Name Server     -ErrorAction Stop).Server
+$sqlInst   = (Get-ItemProperty $regPath -Name SQLInstance -ErrorAction SilentlyContinue).SQLInstance
+
+# Construction connection string
+if ($sqlServer -match '^\(localdb\)$') {
+  # LocalDB : attention au \.\Instance
+  $dataSource = "(localdb)\.\$sqlInst"
+} elseif ([string]::IsNullOrEmpty($sqlInst) -or $sqlInst -eq 'MSSQLSERVER') {
+  $dataSource = $sqlServer                  # instance par défaut
+} else {
+  $dataSource = "$sqlServer\$sqlInst"       # instance nommée
+}
+$connectionString = "Server=$dataSource;Database=master;Trusted_Connection=True;"
+
+# SQL : créer login + user + droits minimaux
+$tsql = @"
+USE [master];
+IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = N'$Principal')
+  CREATE LOGIN [$Principal] FROM WINDOWS WITH DEFAULT_DATABASE=[master];
+
+USE [$dbName];
+IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = N'$Principal')
+  CREATE USER [$Principal] FOR LOGIN [$Principal];
+
+GRANT CONNECT TO [$Principal];
+GRANT SELECT  TO [$Principal];
+GRANT EXECUTE ON OBJECT::dbo.mms_get_globalsettings TO [$Principal];
+GRANT EXECUTE ON OBJECT::dbo.mms_get_connectors     TO [$Principal];
+"@
+
+# Exécution
+$cn = New-Object System.Data.SqlClient.SqlConnection($connectionString)
+$cn.Open()
+$cmd = $cn.CreateCommand()
+$cmd.CommandText = $tsql
+$null = $cmd.ExecuteNonQuery()
+$cn.Close()
+Write-Host "ADSync DB permissions granted for [$Principal] on [$dbName] via [$dataSource]"
+```
