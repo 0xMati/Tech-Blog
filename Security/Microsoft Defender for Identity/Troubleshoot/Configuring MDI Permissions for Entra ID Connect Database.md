@@ -124,5 +124,4 @@ $null = $cmd.ExecuteNonQuery()
 $cn.Close()
 
 Write-Host "ADSync DB permissions granted for [$Principal] on [$dbName] via [$dataSource]"
-
 ```
