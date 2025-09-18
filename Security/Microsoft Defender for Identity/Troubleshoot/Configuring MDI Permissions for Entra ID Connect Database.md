@@ -74,30 +74,32 @@ What’s new vs. the original script
 Operational tip: after running the new script, restart AATPSensorUpdater and check the updater log to confirm the “EXECUTE permission was denied” errors are gone.
 
 ```powershell
-# === Paramètres à ajuster si besoin ===
-# Principal cible des droits SQL :
-# - LocalDB/SQL local : 'NT AUTHORITY\SYSTEM'  (ou 'NT SERVICE\ADSync' si c’est lui qui accède)
-# - SQL/Express externe : "$env:USERDOMAIN\$($env:COMPUTERNAME)$"
+# === Parameters you may want to adjust ===
+# SQL principal that should receive permissions:
+# - LocalDB / local SQL: 'NT AUTHORITY\SYSTEM'  (or 'NT SERVICE\ADSync' if that account accesses the DB)
+# - Remote SQL/Express: "$env:USERDOMAIN\$($env:COMPUTERNAME)$"  (the computer account)
 $Principal = 'NT AUTHORITY\SYSTEM'
 
-# === Lecture config ADSync dans le registre ===
+# === Read ADSync configuration from the registry ===
 $regPath   = 'HKLM:\SYSTEM\CurrentControlSet\Services\ADSync\Parameters'
 $dbName    = (Get-ItemProperty $regPath -Name DBName     -ErrorAction Stop).DBName
 $sqlServer = (Get-ItemProperty $regPath -Name Server     -ErrorAction Stop).Server
 $sqlInst   = (Get-ItemProperty $regPath -Name SQLInstance -ErrorAction SilentlyContinue).SQLInstance
 
-# Construction connection string
+# === Build the SQL connection string ===
 if ($sqlServer -match '^\(localdb\)$') {
-  # LocalDB : attention au \.\Instance
+  # LocalDB: must use the ".\Instance" format
   $dataSource = "(localdb)\.\$sqlInst"
 } elseif ([string]::IsNullOrEmpty($sqlInst) -or $sqlInst -eq 'MSSQLSERVER') {
-  $dataSource = $sqlServer                  # instance par défaut
+  # Default instance (no named instance)
+  $dataSource = $sqlServer
 } else {
-  $dataSource = "$sqlServer\$sqlInst"       # instance nommée
+  # Named instance
+  $dataSource = "$sqlServer\$sqlInst"
 }
 $connectionString = "Server=$dataSource;Database=master;Trusted_Connection=True;"
 
-# SQL : créer login + user + droits minimaux
+# === T-SQL: create login + user + minimal permissions ===
 $tsql = @"
 USE [master];
 IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = N'$Principal')
@@ -113,12 +115,14 @@ GRANT EXECUTE ON OBJECT::dbo.mms_get_globalsettings TO [$Principal];
 GRANT EXECUTE ON OBJECT::dbo.mms_get_connectors     TO [$Principal];
 "@
 
-# Exécution
+# === Execute the T-SQL ===
 $cn = New-Object System.Data.SqlClient.SqlConnection($connectionString)
 $cn.Open()
 $cmd = $cn.CreateCommand()
 $cmd.CommandText = $tsql
 $null = $cmd.ExecuteNonQuery()
 $cn.Close()
+
 Write-Host "ADSync DB permissions granted for [$Principal] on [$dbName] via [$dataSource]"
+
 ```
