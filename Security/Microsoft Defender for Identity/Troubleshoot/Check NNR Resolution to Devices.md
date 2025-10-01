@@ -64,7 +64,7 @@ function Test-Udp137 {
 
 # Pretty mapping
 $ok  = { param($b) if ($b) {'OK '} else {'KO '} }
-$ico = { param($b) if ($b) {"✔"} else {"✖"} }
+$ico = { param($b) if ($b) {"OK"} else {"KO"} }
 
 # ---- Run tests ----
 $results = foreach($ip in $IPs){
