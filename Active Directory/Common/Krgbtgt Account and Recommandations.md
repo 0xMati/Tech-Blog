@@ -1,4 +1,4 @@
-**Subject:** MDI Recommendation – krbtgt Account Password Rotation
+# MDI Recommendation – krbtgt Account Password Rotation
 🗓️ Published: 2025-07-03
 
 Hey everyone!
