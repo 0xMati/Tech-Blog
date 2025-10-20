@@ -416,3 +416,28 @@ If you see "Bearer", you successfully exchanged a Google OIDC token for an Entra
 The identity matches the sub value from your Google JWT
 
 ![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-50-32.png)
+
+
+## Conclusion
+
+This lab demonstrated how to authenticate to **Microsoft Entra ID** from **Google Cloud** without using secrets, certificates, or passwords — only a **signed OIDC ID token** issued by Google.
+
+Through this setup:
+
+- Google acted as the **identity provider**, issuing short-lived, verifiable tokens via the *IAM Service Account Credentials API*.  
+- Microsoft Entra ID acted as the **token broker**, validating the token’s issuer, subject, and audience through a **Federated Credential**.  
+- The Entra App Registration then issued an **access token for Microsoft Graph**, completing the trust chain.
+
+This approach eliminates credential rotation, reduces attack surface, and enables secure **workload-to-workload federation** between clouds — ideal for CI/CD, automation agents, and multi-cloud services.
+
+---
+
+### ✅ Key Takeaways
+
+| Concept | Description |
+|----------|-------------|
+| **Federated Credentials** | Entra ID feature that trusts external OIDC issuers to authenticate workloads. |
+| **Zero Secrets** | No password, key, or certificate needed — authentication relies on signed ID tokens. |
+| **Short-Lived Tokens** | Tokens expire quickly, minimizing exposure in case of compromise. |
+| **Cross-Cloud Trust** | Enables Google Cloud workloads to access Microsoft APIs securely. |
+| **Auditing** | Every token exchange is logged in Entra sign-in logs for visibility. |
