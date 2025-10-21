@@ -5,9 +5,9 @@
 Ever felt like sharing secrets is so… 2010? 😎 In the world of modern identity and cloud security, we’re all about **zero trust** and **no secrets**. That’s where the **JWT Authorization Grant** comes in — a slick way to authenticate without passing around those pesky `client_secret` strings like hot potatoes.
 
 Think of it as the **VIP pass** for your app:  
-- Signed by your private key (because you’re fancy like that).  
+- Signed by your private key.  
 - Verified by Entra ID (because trust is earned, not given).  
-- No more “oops, leaked secret in GitHub” nightmares.  
+- No more “oops, leaked secret in GitHub”.  
 
 In this post, we’ll break down:  
 ✅ What JWT Grant is and why it matters  
@@ -274,6 +274,8 @@ try {
 - Check that you have an Access Token from Entra ID :
 
 ![](assets/JWT%20Authorization%20Grant%20for%20Authentication/2025-10-21-13-32-46.png)
+
+---
 
 ## Wrap-Up
 
