@@ -13,6 +13,12 @@ But, NNR data is crucial for detecting the some threats like :
 - Suspected identity theft (pass-the-ticket)
 - Suspected DCSync attack (replication of directory services)
 - Network-mapping reconnaissance (DNS)
+- Suspected DCShadow attack
+- Suspected Kerberos SPN exposure (external ID 2410)
+- Suspected Golden Ticket usage
+- Suspected skeleton key attack
+- Suspected NTLM relay attack
+- Suspected AS-REP Roasting attack
 ...
 
 ---
