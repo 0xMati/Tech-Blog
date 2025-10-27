@@ -56,12 +56,47 @@ So two sensors in the same tenant can have totally different health results — 
 
 ---
 
+## Opening ports from Domain Controllers or MDI Sensors is *not* a security issue
+
+This one comes up all the time:  
+> “We can’t open TCP/135 or UDP/137 from our Domain Controllers — that’s a security risk!”
+
+Let’s clear that up once and for all
+
+### 1. Direction matters
+
+The MDI sensor — whether installed directly on a Domain Controller or running standalone —  
+**initiates outbound connections** to other devices on ports **135 (RPC)**, **137 (NetBIOS)**, or **3389 (RDP)**.  
+
+That means:
+- The DC **is not exposing** new listening services to the network.  
+- It’s just sending *queries* to endpoints it already authenticates and manages.
+
+> These are **outbound, short-lived client connections**, not inbound exposure points.
+
+### 2. It’s all internal, authenticated traffic
+
+MDI doesn’t talk to random internet hosts.  
+All these requests target **internal machines**.
+If your internal network is so compromised that a simple outbound RPC from a DC is dangerous… you already have bigger problems.
+
+### 3. Port filtering ≠ segmentation
+
+Blocking 135/137/3389 from the DC doesn’t improve your security posture.  
+It only:
+- breaks name resolution telemetry,
+- reduces detection visibility,
+- and triggers unnecessary “Low success rate of active name resolution” alerts.
+
+Proper segmentation is about **who can authenticate to the DC**, not **which internal port numbers the DC can query**.
+
 ## TL;DR
 
 - **Reverse DNS** is a working fallback ✅  
 - But it doesn’t “heal” the **Active Name Resolution** score ❌  
 - If RPC / NetBIOS / RDP fail >90%, the alert stays red 🔴  
 - It’s expected — not a bug
+- Open required ports from DC to Devices
 
 ---
 
