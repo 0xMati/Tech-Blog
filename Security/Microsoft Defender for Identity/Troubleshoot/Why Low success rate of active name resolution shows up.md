@@ -70,7 +70,7 @@ The MDI sensor — whether installed directly on a Domain Controller or running 
 
 That means:
 - The DC **is not exposing** new listening services to the network.  
-- It’s just sending *queries* to endpoints it already authenticates and manages.
+- It’s just sending *queries* to endpoints.
 
 > These are **outbound, short-lived client connections**, not inbound exposure points.
 
