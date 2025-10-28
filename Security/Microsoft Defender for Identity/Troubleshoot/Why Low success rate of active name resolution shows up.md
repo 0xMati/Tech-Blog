@@ -74,10 +74,10 @@ That means:
 
 > These are **outbound, short-lived client connections**, not inbound exposure points.
 
-### 2. It’s all internal, authenticated traffic
+### 2. It’s all internal
 
 MDI doesn’t talk to random internet hosts.  
-All these requests target **internal machines**.
+All these requests target **internal devices**.
 If your internal network is so compromised that a simple outbound RPC from a DC is dangerous… you already have bigger problems.
 
 ### 3. Port filtering ≠ segmentation
