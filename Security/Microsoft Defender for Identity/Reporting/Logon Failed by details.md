@@ -13,7 +13,7 @@ It can help track problems of authentication mechanisms used in the environment 
 
 ```kusto
 IdentityLogonEvents
-| where Timestamp > ago(30d)  // Activités des 90 derniers jours
+| where Timestamp > ago(30d)  // last 30 days activities
 | where ActionType == "LogonFailed"
 | where Application == "Active Directory"
 | project Timestamp, DeviceName, AccountName, Protocol, FailureReason, IPAddress, LogonType
