@@ -34,7 +34,7 @@ By the end of this article, you will understand:
 
 ---
 
-# ## 2. Fundamental Concepts  
+# 2. Fundamental Concepts  
 ### *Before diving into tokens and permissions, let’s get the mental model straight.*
 
 Entra ID + OAuth can feel like a mashup of similar screens and terminology that changes depending on where you click.  
@@ -42,7 +42,7 @@ So before we touch scopes, roles, or tokens, let’s establish the foundations �
 
 ---
 
-## ### 2.1. App Registration vs Enterprise Application  
+## 2.1. App Registration vs Enterprise Application  
 This is **the most underrated concept** in Entra ID.
 
 When you create an application, Entra ID automatically creates **two different objects**:
@@ -67,7 +67,7 @@ You **assign** and **enforce** them on the Enterprise Application.
 
 ---
 
-## ### 2.2. The different token types  
+## 2.2. The different token types  
 OAuth loves tokens. But they don’t all serve the same purpose.
 
 ### **ID Token**  
@@ -86,7 +86,7 @@ OAuth loves tokens. But they don’t all serve the same purpose.
 
 ---
 
-## ### 2.3. Claims you must understand (`aud`, `scp`, `roles`, `sub`, `azp`, `appid`)
+## 2.3. Claims you must understand (`aud`, `scp`, `roles`, `sub`, `azp`, `appid`)
 When you decode a token on https://jwt.ms, a few key fields tell the whole story:
 
 ### **`aud` – Audience**  
@@ -114,7 +114,7 @@ When you decode a token on https://jwt.ms, a few key fields tell the whole story
 
 ---
 
-## ### 2.4. The golden rule of Entra ID OAuth  
+## 2.4. The golden rule of Entra ID OAuth  
 This single rule explains **80% of confusing behavior** you’ll see in tokens:
 
 > ## 👉 If there is a **user**, Entra emits **`scp`**.  
