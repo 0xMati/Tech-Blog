@@ -117,11 +117,10 @@ When you decode a token on https://jwt.ms, a few key fields tell the whole story
 ## 2.4. The golden rule of Entra ID OAuth  
 This single rule explains **80% of confusing behavior** you’ll see in tokens:
 
-> ## 👉 If there is a **user**, Entra emits **`scp`**.  
-> ## 👉 If there is **no user**, Entra emits **`roles`**.  
-> ## 👉 You don’t get both (except in special hybrid/OBO cases).
-
-Print it. Frame it. Tattoo it. Put it on a mug ☕.
+> 👉 If there is a **user**, Entra emits **`scp`** (delegated permissions model).  
+> 👉 If there is **no user**, Entra emits **`roles`** (application permissions).
+> 👉 A user can also receive roles if the API defines App Roles targeting users (You use roles instead of scopes for users when your API needs persistent, identity-level RBAC (e.g., Reader/Manager/Admin) rather than action-based permissions.)
+> 👉 You don’t get both (except in special hybrid/OBO cases).
 
 This rule explains why:
 - a daemon never gets `scp`,  
@@ -147,11 +146,25 @@ Everything else in the UI is just wording pointing to these two mechanisms.
 
 Delegated permissions are used when an **application acts on behalf of a user**.
 
-They are defined under:
+In Entra ID, there are **two types of scopes**:
+
+### **1️⃣ Standard scopes** (exposed by Microsoft APIs like Microsoft Graph)  
+You add them in:
+
+```
+API Permissions → Add a permission → Delegated permissions
+```
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-14-12-56-31.png)
+
+### **2️⃣ Custom scopes** (exposed by *your* API)  
+You define them here:
 
 ```
 Expose an API → Add a scope
 ```
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-14-12-58-01.png)
+
+Both types are **delegated permissions** and behave the same way in tokens.
 
 A delegated permission expresses:
 
@@ -168,18 +181,19 @@ A delegated permission expresses:
   - Device Code flow
   - On‑Behalf‑Of (OBO)
 
-### Example scope definition
+### Example scope definition exposed by *your* API
 ```json
 {
   "oauth2PermissionScopes": [
     {
       "value": "Orders.Read",
-      "description": "Read customer orders",
+      "description": "Orders.Read",
       "id": "11111111-2222-3333-4444-555555555555"
     }
   ]
 }
 ```
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-14-13-04-06.png)
 
 ### Example delegated token
 ```json
@@ -189,113 +203,148 @@ A delegated permission expresses:
   "roles": null
 }
 ```
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-14-13-22-08.png)
 
 If you see `scp`, a **user** is involved.  
 If you see `scp` inside a **client_credentials** token → something is wrong.
 
 ---
 
-## 3.2 Application Permissions (App Roles)
+## 3.2 App Roles (User and Application Permissions)
 
-Application Permissions are used when an **application acts as itself**, with **no user involved**.
+App Roles are a **single, unified authorization mechanism** in Entra ID.
 
-These permissions map directly to **App Roles** with:
-
-```json
-"allowedMemberTypes": ["Application"]
-```
-
-They are defined under:
+You define App Roles under:
 
 ```
 Expose an API → App roles
 ```
 
-In the Entra portal, they appear under **API Permissions → Application permissions**, but they are technically just App Roles.
+When you create an App Role, you decide **who can receive it**, using:
 
-### Key characteristics
-- Work **without a user**
-- Appear in the token as the **`roles`** claim
-- Require **admin consent**
-- Must be **assigned** to the calling application (Enterprise Application → Assign role)
-- Only produced in **client_credentials** flows
-
-### Example App Role (Application)
 ```json
-{
-  "appRoles": [
-    {
-      "value": "Orders.Read.All",
-      "description": "Daemon can read all orders",
-      "allowedMemberTypes": ["Application"],
-      "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    }
-  ]
-}
+"allowedMemberTypes": ["User"]
+"allowedMemberTypes": ["Application"]
+"allowedMemberTypes": ["User", "Application"]
 ```
 
-### Example application token
-```json
-{
-  "roles": ["Orders.Read.All"],
-  "scp": null,
-  "sub": "client-app-id"
-}
-```
-
-If you see `roles`, the caller is an **application**, not a user.
+This determines **where Entra ID will put the role in issued tokens**.
 
 ---
 
-## 3.3 App Roles can target **users** or **applications**
-
-App Roles are a general‑purpose mechanism.
-
-They can be assigned to:
-
-- **Users** (`allowedMemberTypes: ["User"]`)
-- **Applications** (`allowedMemberTypes: ["Application"]`)
-- **Both**
-
-### Example App Role (User)
-```json
-{
-  "value": "Dashboard.Read",
-  "allowedMemberTypes": ["User"]
-}
-```
-
-→ Appears in a user token:
-```json
-{
-  "roles": ["Dashboard.Read"]
-}
-```
-
-### Example App Role (Application)
-```json
-{
-  "value": "Orders.Read.All",
-  "allowedMemberTypes": ["Application"]
-}
-```
-
-→ Appears in a daemon token.
+### How App Roles behave
 
 ---
 
-## 3.4 Side‑by‑side comparison
+### **1️⃣ If the App Role targets Users**
+```json
+"allowedMemberTypes": ["User"]
+```
 
-| Feature | Delegated Permissions (Scopes) | Application Permissions (App Roles) |
+Then **users/groups** can be assigned to the role in:
+
+```
+Enterprise Application → Users and Groups → Assign Role
+```
+
+In this case, the user's **access token** will contain:
+
+```json
+"roles": ["Dashboard.Read"]
+```
+
+This is typically used for **RBAC scenarios**:
+- Reader / Writer / Admin roles  
+- Internal enterprise apps  
+- Identity-level authorization  
+
+---
+
+### **2️⃣ If the App Role targets Applications**
+```json
+"allowedMemberTypes": ["Application"]
+```
+
+Then **applications** (service principals) can be assigned to it in:
+
+```
+Enterprise Application → Assign role
+```
+
+In this case, **client_credentials tokens** contain:
+
+```json
+"roles": ["Orders.Read.All"]
+```
+
+This is what Entra shows in the portal as:
+
+> **API Permissions → Application Permissions**
+
+These are **Application Permissions**, but technically they are **App Roles (Application)**.
+
+---
+
+### **3️⃣ If the App Role targets Both**
+```json
+"allowedMemberTypes": ["User", "Application"]
+```
+
+Then:
+- A **user token** will get the role when a user is assigned  
+- A **daemon token** will get the role when an app is assigned  
+
+Both appear under the same claim:
+
+```json
+"roles": ["MyRole"]
+```
+
+---
+
+## Summary table
+
+| Role type | allowedMemberTypes | Assignment target | Token claim |
+|----------|--------------------|------------------|-------------|
+| User role | ["User"] | Users / Groups | `roles` |
+| Application role | ["Application"] | Applications | `roles` |
+| Hybrid role | ["User", "Application"] | Both | `roles` |
+
+---
+
+## Key takeaways
+
+- **App Roles are the underlying mechanism**  
+  “Application Permissions” is just UI wording.
+
+- **Users and apps can both receive `roles`**, depending on role configuration.
+
+- **Scopes = delegated permissions (user only)**  
+  **App Roles = identity-level roles (user or app)**
+
+- **Only App Roles appear as `roles` in tokens**  
+  (never scopes)
+
+This unified mental model eliminates the confusion between  
+App Roles, Application Permissions, and user-assigned roles.
+
+
+
+---
+
+## 3.3 Side-by-side comparison
+
+| Feature | Delegated Permissions (Scopes) | App Roles (Application Permissions) |
 |--------|--------------------------------|-------------------------------------|
 | Used when | A **user** is signing in | An **application** acts alone |
 | Flow | Auth Code, Device Code, OBO | Client Credentials |
 | Token claim | `scp` | `roles` |
 | Defined in | `oauth2PermissionScopes` | `appRoles` |
-| Assigned to | Users (via consent) | Apps (via role assignment) |
+| Assigned to | Users via consent | **Applications** via role assignment |
 | Portal name | Delegated permissions | Application permissions |
 | Works without user? | ❌ No | ✅ Yes |
-| Appears in client_credentials token? | ❌ Never | ✅ Always (if assigned) |
+| Appears in client_credentials token? | ❌ Never | ✅ Yes (if App Role targets Applications) |
+
 
 ---
 
