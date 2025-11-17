@@ -416,11 +416,6 @@ In my lab, I created a daemon app with:
 
 > Token issued but no scope : 
 
-token_type     : Bearer
-expires_in     : 3599
-ext_expires_in : 3599
-access_token   : eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6I......
-
 ```json
 {
   "aud": "api://166f9909-e82d-492e-9b64-3402e4f90",
