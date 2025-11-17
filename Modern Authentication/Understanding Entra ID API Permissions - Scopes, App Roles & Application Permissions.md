@@ -397,6 +397,46 @@ Because:
 
 Result: empty token → 401/403.
 
+Example : 
+
+In my lab, I created a daemon app with:
+
+- a **delegated scope** on the API (`api://…/Orders.Read`)
+- **no App Role (Application)**
+
+- When I requested a token with a Custom Scope : 
+
+***"error":"invalid_scope","error_description":"AADSTS1002012: The provided value for scope api://166f9909-e82d-492e-9b64-3402e4db3f90/Orders.Read is not valid. Client credential flows must have a scope value with /.default suffixed to the resource identifier***
+
+- When I requested a token with a default Scope : 
+
+> Token issued but no scope : 
+
+token_type     : Bearer
+expires_in     : 3599
+ext_expires_in : 3599
+access_token   : eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6I......
+
+{
+  "aud": "api://166f9909-e82d-492e-9b64-3402e4f90",
+  "iss": "https://sts.windows.net/f0b71b9e-03a7-48f8-967d-fe33e3ccad1c/",
+  "iat": 1763386141,
+  "nbf": 1763386141,
+  "exp": 1763390041,
+  "aio": "k2JgYHi17sa358XMz1z9O4qbgA=",
+  "appid": "935d9cd2-da80-4d36-b102-cb98ca6b0046",
+  "appidacr": "1",
+  "idp": "https://sts.windows.net/f0b71b9e-03a7-48f8-967d-fe33e3ccad1c/",
+  "oid": "a6da3923-4c00-4f6e-89eb-d5fd328d6",
+  "rh": "1.AQsAnhu38KcD-EiWff4z48ytHAmZbJm2Q0AuTbP5ASAQALAA.",
+  "sub": "a6da3923-4c00-4f6e-89eb-d5fd1328d6",
+  "tid": "f0b71b9e-03a7-48f8-967d-fe33ecad1c",
+  "uti": "V5BNkb3--UGI5TWAA",
+  "ver": "1.0",
+  "xms_ftd": "aL9o7kNAj9kPtOJ3LmV3J_n5gNnKNBmj117iBc3dlZGVuYy1kc21z"
+}
+
+
 # 4. How Entra ID Decides What Goes Into a Token
 
 When a client requests an **access token**, Entra ID must decide:
