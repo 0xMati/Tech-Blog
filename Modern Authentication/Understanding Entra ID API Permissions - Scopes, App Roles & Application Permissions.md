@@ -681,6 +681,58 @@ To get **roles** in an access token, you need:
 
 Without role assignment, your token will be empty.
 
+**Example**:
+
+- My API:
+
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-17-15-11-03.png)
+
+- My Deamon:
+
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-17-15-11-26.png)
+
+- The Entreprise App has no Assignment for my Deamon:
+
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-17-15-12-32.png)
+
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-17-15-12-43.png)
+
+> Result :
+error":"invalid_grant","error_description":"AADSTS501051: Application '935d9cd2-da80-4d36-b102-cb98ca6b0046'(MyDeamon) is not assigned to a role for the application 
+'api://166f9909-e82d-492e-9b64-3402e4db3f90'(MyCustomAPI)
+
+- Entreprise App with Assignment:
+
+![](assets/Understanding%20Entra%20ID%20API%20Permissions%20-%20Scopes,%20App%20Roles%20&%20Application%20Permissions/2025-11-17-15-14-46.png)
+
+> Roles are presents:
+
+ ```json
+{
+  "aud": "api://166f9909-e82d-492e-9b64-3402b3f90",
+  "iss": "https://sts.windows.net/f0b71b9e-03a7-48f8-967d-fe3ccad1c/",
+  "iat": 1763388591,
+  "nbf": 1763388591,
+  "exp": 1763392491,
+  "aio": "k2JgYAhWKcuJPfKZuSaVIeUfAA==",
+  "appid": "935d9cd2-da80-4d36-b102-cb98ca646",
+  "appidacr": "1",
+  "idp": "https://sts.windows.net/f0b71b9e-03a7-48f8-967d-fe33ead1c/",
+  "oid": "a6da3923-4c00-4f6e-89eb-d5f1328d6",
+  "rh": "1.AQsAnhu38KcD-EiWff4z48ytHAmZbxYt6C5Jm2Q0AuTbP5LAA.",
+  "roles": [
+    "Orders.Write.All",
+    "Orders.Read.All"
+  ],
+  "sub": "a6da3923-4c00-4f6e-89eb-d5fd82d6",
+  "tid": "f0b71b9e-03a7-48f8-967d-fe33e3d1c",
+  "uti": "IvZgeBKCwUSfgwOAA",
+  "ver": "1.0",
+  "xms_ftd": "D6_N52iA44dYr9NpMXjrFib-NK48vAGaF9_O4fEBZXVyb3BdC1kc21z"
+}
+ ```
+
+
 ---
 
 ## 5.5 API Permissions = Catalog, Not Token Preview
