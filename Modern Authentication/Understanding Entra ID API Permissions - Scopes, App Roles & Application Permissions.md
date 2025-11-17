@@ -397,7 +397,9 @@ Because:
 
 Result: empty token → 401/403.
 
-Example : 
+---
+
+**Example**:
 
 In my lab, I created a daemon app with:
 
@@ -405,6 +407,8 @@ In my lab, I created a daemon app with:
 - **no App Role (Application)**
 
 - When I requested a token with a Custom Scope : 
+
+> Token not issued : 
 
 ***"error":"invalid_scope","error_description":"AADSTS1002012: The provided value for scope api://166f9909-e82d-492e-9b64-3402e4db3f90/Orders.Read is not valid. Client credential flows must have a scope value with /.default suffixed to the resource identifier***
 
@@ -417,6 +421,7 @@ expires_in     : 3599
 ext_expires_in : 3599
 access_token   : eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6I......
 
+```json
 {
   "aud": "api://166f9909-e82d-492e-9b64-3402e4f90",
   "iss": "https://sts.windows.net/f0b71b9e-03a7-48f8-967d-fe33e3ccad1c/",
@@ -435,7 +440,9 @@ access_token   : eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6I......
   "ver": "1.0",
   "xms_ftd": "aL9o7kNAj9kPtOJ3LmV3J_n5gNnKNBmj117iBc3dlZGVuYy1kc21z"
 }
+```
 
+---
 
 # 4. How Entra ID Decides What Goes Into a Token
 
