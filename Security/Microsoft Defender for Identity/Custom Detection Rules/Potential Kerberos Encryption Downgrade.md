@@ -49,8 +49,9 @@ IdentityDirectoryEvents
     FromAccountSupportedEncryptionTypes = tostring(parse_json(AdditionalFields).['FROM AccountSupportedEncryptionTypes']),
     TargetDevice = tostring(parse_json(AdditionalFields).['TARGET_OBJECT.DEVICE']),
     ActorDevice = tostring(parse_json(AdditionalFields).['ACTOR.DEVICE'])
+// Exclude the devices that did already have a supported encryption enabled. This is mostly due to the deployment of a device.
 | where FromAccountSupportedEncryptionTypes != "N/A"
-| project Timestamp, DeviceName, FromAccountSupportedEncryptionTypes, ToAccountSupportedEncryptionTypes, ActorDevice, TargetDevice
+| project Timestamp, DeviceName, FromAccountSupportedEncryptionTypes, ToAccountSupportedEncryptionTypes, ActorDevice, TargetDevice, ReportId
 ```
 
 ---

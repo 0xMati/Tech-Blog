@@ -64,6 +64,9 @@ TimeSeriesAlerts
 // Baseline is the most important result, that is the avarage amount of LDAP queries executed by a device, the PerHourCount shows the deviation from this amount.
 | project DeviceName, Timestamp, PerHourCount, baseline, anomalies, score
 | where PerHourCount > TotalEventsThreshold
+// Ajout minimal pour Custom Detection Rule
+| extend ReportId = strcat(DeviceName, "_", tostring(Timestamp))
+| project Timestamp, ReportId, DeviceName, PerHourCount, baseline, anomalies, score
 ```
 
 ---
