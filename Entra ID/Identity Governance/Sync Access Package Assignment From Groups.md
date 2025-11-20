@@ -132,16 +132,46 @@ function ERR($message) {
 }
 
 #################################################################################
+# Check required modules presence
+#################################################################################
+
+# Modules required for the script to run properly
+$requiredModules = @(
+    'Microsoft.Graph',                    # meta-module (optional but recommended)
+    'Microsoft.Graph.Authentication',     # for Connect-MgGraph / Get-MgContext
+    'Microsoft.Graph.Users',              # Get-MgUser
+    'Microsoft.Graph.Groups',             # Get-MgGroup, Get-MgGroupMember
+    'Microsoft.Graph.Identity.Governance' # Access Packages / Entitlement Management
+)
+
+INFO "Checking required Microsoft Graph modules..."
+
+foreach ($mod in $requiredModules) {
+    if (-not (Get-Module -ListAvailable -Name $mod)) {
+        WARN ("Required module '{0}' is not available. Install it with: Install-Module {0} -Scope AllUsers" -f $mod)
+    }
+    else {
+        OK ("Module '{0}' detected on this system." -f $mod)
+    }
+}
+
+#################################################################################
 # Required modules (install once if needed)
 #################################################################################
 <# 
 Install-Module Microsoft.Graph -Scope AllUsers -Force
+Install-Module Microsoft.Graph.Authentication -Scope AllUsers -Force
+Install-Module Microsoft.Graph.Users -Scope AllUsers -Force
+Install-Module Microsoft.Graph.Groups -Scope AllUsers -Force
 Install-Module Microsoft.Graph.Identity.Governance -Scope AllUsers -Force
 #>
 
-# Import the main modules (commented if auto-loading works fine)
+# Import the main modules (commented auto-loading should works fine)
 <# 
 Import-Module Microsoft.Graph
+Import-Module Microsoft.Graph.Authentication
+Import-Module Microsoft.Graph.Users
+Import-Module Microsoft.Graph.Groups
 Import-Module Microsoft.Graph.Identity.Governance
 #>
 
@@ -386,5 +416,6 @@ foreach ($rawGroupName in $groupNames) {
 
 Write-Host ""
 OK "Script completed. All groups from the file have been processed."
+
 
 ```
