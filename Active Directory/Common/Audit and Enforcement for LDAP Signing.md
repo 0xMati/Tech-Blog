@@ -579,6 +579,236 @@ Write-Host ""
 Write-Host "Legend: 2886=DC not requiring signing; 2887=unsigned/simple count; 2888=unsigned details; 2889=simple details" -ForegroundColor Gray
 ```
 
+**Updated Script:**
+
+```powershell
+<#
+LDAP Signing — Events Monitor (Directory Service 2886–2889)
+- PowerShell 5.1
+- Embedded DC list + configurable lookback
+- Colors + per-DC and per-Event summaries
+- NEW: clean tables by Account and by ClientIP for 2888/2889 (detail events)
+- CSV export blocks are commented (optional)
+
+Log/Provider:
+  Log:      "Applications and Services Logs\Directory Service"
+  Provider: Microsoft-Windows-ActiveDirectory_DomainService
+
+Event IDs:
+  2886 = DC not requiring signing (advisory)
+  2887 = unsigned/simple count (summary)
+  2888 = unsigned bind details (who/where)
+  2889 = simple bind details (who/where)
+
+Tip: Increase verbosity on each DC if needed:
+  HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Diagnostics
+  "16 LDAP Interface Events" (REG_DWORD) = 2..5
+#>
+
+cls
+
+# --- Configuration ---
+$LookbackHours   = 168     # last 7 days
+$OutDir          = Join-Path $PWD ("LDAPSigning_Monitor_{0:yyyyMMdd_HHmmss}" -f (Get-Date))
+
+# --- Domain Controllers ---
+$dcs = @(
+  'MM-DC1.mathiasmotron.com',
+  'MM-DC2.mathiasmotron.com',
+  'MM-DC3.mathiasmotron.com'
+)
+
+# --- Event IDs ---
+$EventIds = 2886,2887,2888,2889
+
+# --- Remote query payload ---
+$remoteScript = {
+  param([int]$Hours,[int[]]$Ids)
+
+  $start = (Get-Date).AddHours(-1 * $Hours)
+  $fh = @{
+    ProviderName = 'Microsoft-Windows-ActiveDirectory_DomainService'
+    Id           = $Ids
+    StartTime    = $start
+    LogName      = 'Directory Service'
+  }
+
+  function Parse-Event {
+    param([System.Diagnostics.Eventing.Reader.EventRecord]$ev)
+
+    $msg = $null
+    try { $msg = $ev.FormatDescription() } catch { $msg = $null }
+
+    # Best-effort extraction
+    $clientIp = $null
+    $account  = $null
+    if ($msg) {
+      $ipMatch = [regex]::Match($msg, '(?<ip>\b\d{1,3}(?:\.\d{1,3}){3}\b)')
+      if ($ipMatch.Success) { $clientIp = $ipMatch.Groups['ip'].Value }
+
+      $upnMatch = [regex]::Match($msg, '(?<upn>[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})')
+      if ($upnMatch.Success) { $account = $upnMatch.Groups['upn'].Value }
+      if (-not $account) {
+        $samMatch = [regex]::Match($msg, '(?<sam>\b[A-Za-z0-9_.-]+\\[A-Za-z0-9_.$-]+\b)')
+        if ($samMatch.Success) { $account = $samMatch.Groups['sam'].Value }
+      }
+    }
+
+    [pscustomobject]@{
+      DC          = $env:COMPUTERNAME
+      TimeCreated = $ev.TimeCreated
+      EventId     = $ev.Id
+      Level       = $ev.LevelDisplayName
+      ClientIP    = $(if($clientIp){$clientIp}else{'(n/a)'})
+      Account     = $(if($account){$account}else{'(n/a)'})
+      Message     = $(if($msg){$msg}else{'(message unavailable)'})
+    }
+  }
+
+  $out = New-Object System.Collections.Generic.List[object]
+  $events = Get-WinEvent -FilterHashtable $fh -ErrorAction SilentlyContinue
+  if ($events) { foreach ($e in $events) { $out.Add( (Parse-Event -ev $e) ) | Out-Null } }
+  $out
+}
+
+# --- Collect from all DCs ---
+$all = @()
+foreach ($dc in $dcs) {
+  try {
+    $all += Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ArgumentList $LookbackHours, $EventIds -ErrorAction Stop
+  } catch {
+    $all += [pscustomobject]@{
+      DC          = $dc
+      TimeCreated = Get-Date
+      EventId     = '(n/a)'
+      Level       = 'Error'
+      ClientIP    = '(n/a)'
+      Account     = '(n/a)'
+      Message     = "Unreachable/AccessDenied: $($_.Exception.Message)"
+    }
+  }
+}
+
+# --- Utility: color by EventId ---
+function Get-Color {
+  param([string]$id)
+  switch ($id) {
+    '2886' { 'Yellow' }  # advisory
+    '2887' { 'Yellow' }  # count
+    '2888' { 'Red' }     # unsigned details
+    '2889' { 'Red' }     # simple details
+    default { 'Magenta' }
+  }
+}
+
+# --- Colored stream (optional to keep for timeline) ---
+Write-Host ""
+Write-Host ("=== LDAP Signing Events (last {0} hours) ===" -f $LookbackHours) -ForegroundColor Cyan
+$header = "{0,-16} {1,-19} {2,-6} {3,-10} {4,-15} {5,-28} {6}" -f 'DC','TimeCreated','ID','Level','ClientIP','Account','Message (truncated)'
+Write-Host $header -ForegroundColor Gray
+Write-Host ('-' * ($header.Length + 30)) -ForegroundColor DarkGray
+
+$anyRows = $false
+foreach ($row in ($all | Sort-Object TimeCreated)) {
+  $anyRows = $true
+  $color   = Get-Color -id ($row.EventId.ToString())
+  $msg     = $row.Message
+  if ($msg -and $msg.Length -gt 120) { $msg = $msg.Substring(0,120) + '...' }
+  $line = "{0,-16} {1,-19:yyyy-MM-dd HH:mm:ss} {2,-6} {3,-10} {4,-15} {5,-28} {6}" -f `
+          $row.DC, $row.TimeCreated, $row.EventId, $row.Level, $row.ClientIP, $row.Account, $msg
+  Write-Host $line -ForegroundColor $color
+}
+if (-not $anyRows) { Write-Host "(no LDAP-signing events found in the selected window)" -ForegroundColor DarkGray }
+
+# --- Clean aggregated tables (detail events only) ---
+$detail = $all | Where-Object { $_.EventId -in 2888,2889 }
+
+Write-Host ""
+Write-Host "=== Unsigned/Simple binds by Account (events 2888/2889) ===" -ForegroundColor Cyan
+$byAcct = $detail |
+  Group-Object Account |
+  ForEach-Object {
+    # split counts for clarity
+    $cnt2888 = (@($_.Group | Where-Object { $_.EventId -eq 2888 })).Count
+    $cnt2889 = (@($_.Group | Where-Object { $_.EventId -eq 2889 })).Count
+    [pscustomobject]@{
+      Account = $_.Name
+      E2888_Unsigned = $cnt2888
+      E2889_Simple   = $cnt2889
+      Total          = $cnt2888 + $cnt2889
+    }
+  } |
+  Sort-Object @{Expression='Total';Descending=$true}, @{Expression='Account'}
+if ($byAcct) {
+  $byAcct | Format-Table -AutoSize
+} else {
+  Write-Host "(no detail events 2888/2889 to report)" -ForegroundColor DarkGray
+}
+
+Write-Host ""
+Write-Host "=== Unsigned/Simple binds by ClientIP (events 2888/2889) ===" -ForegroundColor Cyan
+$byIp = $detail |
+  Group-Object ClientIP |
+  ForEach-Object {
+    $cnt2888 = (@($_.Group | Where-Object { $_.EventId -eq 2888 })).Count
+    $cnt2889 = (@($_.Group | Where-Object { $_.EventId -eq 2889 })).Count
+    [pscustomobject]@{
+      ClientIP       = $_.Name
+      E2888_Unsigned = $cnt2888
+      E2889_Simple   = $cnt2889
+      Total          = $cnt2888 + $cnt2889
+    }
+  } |
+  Sort-Object @{Expression='Total';Descending=$true}, @{Expression='ClientIP'}
+if ($byIp) {
+  $byIp | Format-Table -AutoSize
+} else {
+  Write-Host "(no detail events 2888/2889 to report)" -ForegroundColor DarkGray
+}
+
+# --- Existing summaries (keep) ---
+Write-Host ""
+Write-Host "=== Summary by DC ===" -ForegroundColor Cyan
+$byDc = $all | Where-Object { $_.EventId -in $EventIds } | Group-Object DC | ForEach-Object {
+  $name = $_.Name
+  $s2886 = (@($_.Group | Where-Object {$_.EventId -eq 2886})).Count
+  $s2887 = (@($_.Group | Where-Object {$_.EventId -eq 2887})).Count
+  $s2888 = (@($_.Group | Where-Object {$_.EventId -eq 2888})).Count
+  $s2889 = (@($_.Group | Where-Object {$_.EventId -eq 2889})).Count
+  [pscustomobject]@{
+    DC     = $name
+    E2886  = $s2886
+    E2887  = $s2887
+    E2888  = $s2888
+    E2889  = $s2889
+    Total  = $s2886 + $s2887 + $s2888 + $s2889
+  }
+}
+if ($byDc) { $byDc | Sort-Object DC | Format-Table -AutoSize } else { Write-Host "(no data)" -ForegroundColor DarkGray }
+
+Write-Host ""
+Write-Host "=== Summary by EventId ===" -ForegroundColor Cyan
+$byId = $all | Where-Object { $_.EventId -in $EventIds } | Group-Object EventId | ForEach-Object {
+  [pscustomobject]@{ EventId = $_.Name; Count = $_.Count }
+}
+if ($byId) { $byId | Sort-Object EventId | Format-Table -AutoSize } else { Write-Host "(no data)" -ForegroundColor DarkGray }
+
+# --- Optional CSV exports (COMMENTED) ---
+<#
+if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
+$all    | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'LDAPSigning_Events_Detail.csv')
+$byDc   | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'LDAPSigning_Events_SummaryByDC.csv')
+$byId   | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'LDAPSigning_Events_SummaryByEventId.csv')
+$byAcct | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'LDAPSigning_ByAccount_2888_2889.csv')
+$byIp   | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'LDAPSigning_ByClientIP_2888_2889.csv')
+Write-Host ("CSV exports -> {0}" -f $OutDir) -ForegroundColor Cyan
+#>
+
+Write-Host ""
+Write-Host "Legend: 2886=DC not requiring signing; 2887=unsigned/simple count; 2888=unsigned details; 2889=simple details" -ForegroundColor Gray
+
+```
+
 ## Phase 3 — Enforcement (Require)
 
 Once unsigned/simple bind sources are remediated or acceptably exceptioned, enforce **LDAP Signing** on DCs.
