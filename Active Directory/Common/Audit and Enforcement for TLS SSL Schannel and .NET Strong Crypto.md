@@ -274,3 +274,88 @@ $summary | Format-Table -AutoSize
 
 ## Remediation with GPO
 
+> Scope this GPO to the **Domain Controllers OU**. Use **Preferences ▸ Windows Settings ▸ Registry**. Action = **Update** (or **Create** if missing). A **server reboot** is recommended after applying Schannel changes.
+
+---
+
+### 1 Disable TLS 1.0 and TLS 1.1 (Server & Client)
+
+**Hive:** `HKEY_LOCAL_MACHINE`  
+**Key base:** `SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\Protocols`
+
+Create/update the following DWORD values:
+
+#### TLS 1.0
+- `...\TLS 1.0\Server`
+  - `Enabled` = `0` (REG_DWORD)
+  - `DisabledByDefault` = `1` (REG_DWORD)
+- `...\TLS 1.0\Client`
+  - `Enabled` = `0` (REG_DWORD)
+  - `DisabledByDefault` = `1` (REG_DWORD)
+
+#### TLS 1.1
+- `...\TLS 1.1\Server`
+  - `Enabled` = `0` (REG_DWORD)
+  - `DisabledByDefault` = `1` (REG_DWORD)
+- `...\TLS 1.1\Client`
+  - `Enabled` = `0` (REG_DWORD)
+  - `DisabledByDefault` = `1` (REG_DWORD)
+
+> **Goal:** Effective state = **Disabled** for TLS 1.0/1.1 on both roles.
+
+---
+
+### 2 Enable TLS 1.2 (Server & Client)
+
+**Hive:** `HKEY_LOCAL_MACHINE`  
+**Key base:** `SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\Protocols`
+
+Create/update the following DWORD values:
+
+- `...\TLS 1.2\Server`
+  - `Enabled` = `1` (REG_DWORD)
+  - *(leave `DisabledByDefault` absent or `0`)*
+- `...\TLS 1.2\Client`
+  - `Enabled` = `1` (REG_DWORD)
+  - *(leave `DisabledByDefault` absent or `0`)*
+
+> **Goal:** Effective state = **Enabled** for TLS 1.2 on both roles.
+
+---
+
+### 3 .NET Strong Crypto (recommended)
+
+Apply to **both** native (x64) and **WOW6432Node** paths.
+
+**Hive:** `HKEY_LOCAL_MACHINE`
+
+#### x64 CLR
+- `SOFTWARE\Microsoft\.NETFramework\v2.0.50727`
+  - `SystemDefaultTlsVersions` = `1` (REG_DWORD)
+  - `SchUseStrongCrypto` = `1` (REG_DWORD)
+- `SOFTWARE\Microsoft\.NETFramework\v4.0.30319`
+  - `SystemDefaultTlsVersions` = `1` (REG_DWORD)
+  - `SchUseStrongCrypto` = `1` (REG_DWORD)
+
+#### WOW64 CLR (32-bit processes)
+- `SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v2.0.50727`
+  - `SystemDefaultTlsVersions` = `1` (REG_DWORD)
+  - `SchUseStrongCrypto` = `1` (REG_DWORD)
+- `SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319`
+  - `SystemDefaultTlsVersions` = `1` (REG_DWORD)
+  - `SchUseStrongCrypto` = `1` (REG_DWORD)
+
+> **Purpose:** Make .NET prefer system TLS defaults (≥ TLS 1.2) and strong cipher suites for both 64-bit and 32-bit processes.
+
+---
+
+## Validation checklist
+
+- Reboot a DC, then verify:
+  - Registry reflects the values above on **Server** and **Client** nodes.
+  - **Event Viewer ▸ System ▸ Schannel** shows no negotiation failures.
+  - LDAPS (636) negotiates **TLS 1.2** only (e.g., `nmap --script ssl-enum-ciphers -p 636 <dc>`).
+  - Your audit script shows:
+    - TLS 1.0/1.1: **Disabled** (Compliant)
+    - TLS 1.2: **Enabled** (Compliant)
+    - .NET keys: **1** (Compliant)
