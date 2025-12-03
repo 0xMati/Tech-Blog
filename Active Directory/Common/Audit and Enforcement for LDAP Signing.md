@@ -1,183 +1,139 @@
-# Audit and Enforcement for Channel Binding Token
+# Audit and Enforcement for LDAP Signing
 🗓️ Published: 2025-12-03
 
 ## Introduction
 
-This note documents a safe rollout to enforce **Channel Binding Tokens (CBT)** for LDAPS on Windows Server DCs. CBT cryptographically ties the LDAP authentication to the underlying TLS channel, preventing channel-reuse/MITM tricks.
+This note covers a safe, two-step rollout to **LDAP Signing** in Active Directory. When LDAP messages aren’t signed, a man-in-the-middle can alter or forge traffic; requiring signing blocks those tampering paths. We’ll first audit and fix clients, then enforce.
 
- **Prereqs:** valid DC LDAPS certificates, TLS 1.2 enabled on DCs, and basic LDAPS validation in your environment.
+## Phase 1 — Server-side posture check (DC settings for LDAP Signing)
 
-## Rollout strategy (two steps)
+The snippet below audits **LDAP Signing** on your Domain Controllers by reading the server policy backing value:
+`HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity`
+- `2 = Require` (**target**)
+- `1 = None/Negotiate` (not enforced)
+- `0 = None` (legacy / not recommended)
 
-1. **Phase 1 — When supported (`LdapEnforceChannelBinding = 1`)**
-   - Purpose: detect and fix legacy clients/libraries that don’t present CBT.
-   - Actions: monitor **Directory Service ▸ LDAP Interface Events** for bind failures, validate LDAPS with `Ldp.exe`, and inventory any failing apps/middlewares.
+It shows a colored table and a per-DC summary. CSV export is present but commented out.
 
-**Purpose:** detect and fix legacy clients/libraries that don’t present CBT.  
-**Actions:** monitor Directory Service events, validate LDAPS with `Ldp.exe`, inventory failing apps/middlewares.
-
-2. **Phase 2 — Required (`LdapEnforceChannelBinding = 2`)**
-   - Purpose: enforce CBT for all LDAPS binds.
-   - Actions: after remediation, flip to **Required**, keep monitoring for residual failures.
-
-**Purpose:** enforce CBT for all LDAPS binds.  
-**Actions:** after remediation, flip to **Required** and keep monitoring for residual failures.
-
-
-## Phase 0 - Server-side posture check (DC settings for CBT)
+> PowerShell 5.1 • No parameters • DC list embedded
 
 ```powershell
 <#
-CBT (Channel Binding Tokens) Audit for Domain Controllers
+Audit LDAP Signing (server-side) on Domain Controllers
 - PowerShell 5.1
 - Embedded DC list (no parameters)
-- Read-only: checks CBT registry on each DC via WinRM (Invoke-Command)
-- Single colored audit section + robust per-DC summary
+- Read-only via WinRM
+- Colors + per-DC summary
+- CSV export block commented (optional)
 
-CBT key (on DC):
-  HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding (DWORD)
-    0 = Disabled
-    1 = WhenSupported
-    2 = Required
-    (absent) = NotConfigured (treated as Disabled for risk posture)
-
-Compliance policy:
-  - Required        => Compliant
-  - WhenSupported   => Warning
-  - Disabled/absent => Failed
+DC security option (GPO UI):
+  Domain controller: LDAP server signing requirements
+Registry mapping:
+  HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity (DWORD)
+    0=None, 1=Negotiate (None/Not defined in GPO UI), 2=Require
 #>
 
 cls
 
-# --- Embedded DC list ---
+# --- Embedded DC list (edit if needed) ---
 $dcs = @(
   'MM-DC1.mathiasmotron.com',
   'MM-DC2.mathiasmotron.com',
   'MM-DC3.mathiasmotron.com'
 )
 
-# --- Remote audit payload (runs locally on each DC) ---
+# --- Remote probe: read LDAPServerIntegrity ---
 $remoteScript = {
-  function Get-RegDword {
-    param([string]$Path,[string]$Name)
-    if (Test-Path -Path $Path) {
-      try { (Get-ItemProperty -Path $Path -ErrorAction Stop).$Name } catch { $null }
-    } else { $null }
+  $path = 'HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters'
+  $name = 'LDAPServerIntegrity'
+  $raw  = $null
+  if (Test-Path $path) {
+    try { $raw = (Get-ItemProperty -Path $path -ErrorAction Stop).$name } catch { $raw = $null }
   }
 
-  $base = 'HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters'
-  $cbt  = Get-RegDword -Path $base -Name 'LdapEnforceChannelBinding'
+  # Derive Effective string
+  $effective = switch ($raw) {
+    2 { 'Require' }
+    1 { 'Negotiate' }
+    0 { 'None' }
+    $null { 'NotConfigured' }
+    default { "Unknown($raw)" }
+  }
 
-  # Derive human-readable state for CBT
-  $cbtState = 'NotConfigured'
-  if     ($cbt -eq 0) { $cbtState = 'Disabled' }
-  elseif ($cbt -eq 1) { $cbtState = 'WhenSupported' }
-  elseif ($cbt -eq 2) { $cbtState = 'Required' }
+  # Compliance scoring
+  $status = switch ($effective) {
+    'Require'        { 'Compliant' }
+    'Negotiate'      { 'Warning'   }
+    'None'           { 'Failed'    }
+    'NotConfigured'  { 'Failed'    }
+    default          { 'Warning'   }
+  }
 
   [pscustomobject]@{
     Computer   = $env:COMPUTERNAME
-    Effective  = $cbtState
-    Raw        = $(if($cbt -ne $null){$cbt}else{'(absent)'})
-    RegPath    = $base
-    RegValue   = 'LdapEnforceChannelBinding'
+    Effective  = $effective
+    Raw        = $(if($raw -ne $null){[string]$raw}else{'(absent)'})
+    Status     = $status
+    RegPath    = $path
+    RegValue   = $name
   }
 }
 
-# --- Collect results from each DC ---
-$raw = @()
+# --- Collect ---
+$rows = @()
 foreach ($dc in $dcs) {
   try {
-    $res = Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ErrorAction Stop
-    $raw += $res
+    $rows += Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ErrorAction Stop
   } catch {
-    $raw += [pscustomobject]@{
-      Computer   = $dc
-      Effective  = 'Unreachable/AccessDenied'
-      Raw        = '(n/a)'
-      RegPath    = '(n/a)'
-      RegValue   = 'LdapEnforceChannelBinding'
+    $rows += [pscustomobject]@{
+      Computer  = $dc
+      Effective = 'Unreachable/AccessDenied'
+      Raw       = '(n/a)'
+      Status    = 'Failed'
+      RegPath   = 'HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters'
+      RegValue  = 'LDAPServerIntegrity'
     }
   }
 }
 
-# --- Compliance scoring ---
-$withStatus = foreach ($r in $raw) {
-  $status = 'Warning'
-  if     ($r.Effective -eq 'Required')                    { $status = 'Compliant' }
-  elseif ($r.Effective -eq 'WhenSupported')               { $status = 'Warning'   }
-  elseif ($r.Effective -in @('Disabled','NotConfigured')) { $status = 'Failed'    }
-  elseif ($r.Effective -eq 'Unreachable/AccessDenied')    { $status = 'Failed'    }
-
-  [pscustomobject]@{
-    Computer   = $r.Computer
-    Effective  = $r.Effective
-    Raw        = $r.Raw
-    Status     = $status
-    RegPath    = $r.RegPath
-    RegValue   = $r.RegValue
-  }
-}
-
-# --- Single colored CBT audit section ---
+# --- Pretty colored table ---
 Write-Host ""
-Write-Host "=== CBT audit (LdapEnforceChannelBinding) ===" -ForegroundColor Cyan
-
-# Header
-$header = "{0,-18} {1,-14} {2,-8} {3,-10} {4}" -f 'Computer','Effective','Raw','Status','RegistryPath\Value'
+Write-Host "=== LDAP Signing (server) audit ===" -ForegroundColor Cyan
+$header = "{0,-18} {1,-13} {2,-8} {3,-10} {4}" -f 'Computer','Effective','Raw','Status','RegistryPath\Value'
 Write-Host $header -ForegroundColor Gray
 Write-Host ('-' * ($header.Length + 20)) -ForegroundColor DarkGray
 
-# Rows
-foreach ($o in ($withStatus | Sort-Object Computer)) {
-  $color = 'Yellow'
-  if     ($o.Status -eq 'Compliant') { $color = 'Green' }
-  elseif ($o.Status -eq 'Failed')    { $color = 'Red'   }
-
-  $right = "{0}\{1}" -f $o.RegPath, $o.RegValue
-  $line  = "{0,-18} {1,-14} {2,-8} {3,-10} {4}" -f $o.Computer, $o.Effective, $o.Raw, $o.Status, $right
+foreach ($r in ($rows | Sort-Object Computer)) {
+  $color = if ($r.Status -eq 'Compliant') { 'Green' } elseif ($r.Status -eq 'Failed') { 'Red' } else { 'Yellow' }
+  $line  = "{0,-18} {1,-13} {2,-8} {3,-10} {4}\{5}" -f $r.Computer,$r.Effective,$r.Raw,$r.Status,$r.RegPath,$r.RegValue
   Write-Host $line -ForegroundColor $color
 }
 
-# --- Summary per DC (robust counting) ---
+# --- Summary per DC ---
 Write-Host ""
 Write-Host "=== Summary per DC ===" -ForegroundColor Cyan
-
-$summary = $withStatus |
-  Group-Object Computer |
-  ForEach-Object {
-    $c   = $_.Name
-    $sts = @($_.Group | ForEach-Object { $_.Status })   # force array
-    $ok  = (@($sts | Where-Object { $_ -eq 'Compliant' })).Count
-    $wrn = (@($sts | Where-Object { $_ -eq 'Warning'   })).Count
-    $ko  = (@($sts | Where-Object { $_ -eq 'Failed'    })).Count
-    [pscustomobject]@{
-      Computer  = $c
-      Compliant = [int]$ok
-      Warning   = [int]$wrn
-      Failed    = [int]$ko
-    }
+$summary = $rows | Group-Object Computer | ForEach-Object {
+  $c   = $_.Name
+  $sts = @($_.Group | ForEach-Object { $_.Status })
+  [pscustomobject]@{
+    Computer  = $c
+    Compliant = (@($sts | Where-Object { $_ -eq 'Compliant' })).Count
+    Warning   = (@($sts | Where-Object { $_ -eq 'Warning'   })).Count
+    Failed    = (@($sts | Where-Object { $_ -eq 'Failed'    })).Count
   }
-
+}
 $summary | Sort-Object Computer | Format-Table -AutoSize
 
-# --- (Optional) CSV export ---
-# $csv = Join-Path (Get-Location) ("CBT_Audit_{0:yyyyMMdd_HHmmss}.csv" -f (Get-Date))
-# $withStatus | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $csv
-# Write-Host ("Export CSV -> {0}" -f $csv) -ForegroundColor Cyan
+# --- Optional CSV export (commented) ---
+<#
+$ts = (Get-Date -Format 'yyyyMMdd_HHmmss')
+$out = Join-Path $PWD ("LDAPSigning_Server_Audit_{0}.csv" -f $ts)
+$rows | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $out
+Write-Host ("CSV export -> {0}" -f $out) -ForegroundColor Cyan
+#>
 ```
 
-## Rollout to Phase 1 — When supported
-
-### Apply to the **Domain Controllers**:
-
-- `HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding` (DWORD)
-  - `1` = **When supported** (Phase 1)
-
-- Or with GPO:
-
-![](assets/Audit%20and%20Enforcement%20for%20Channel%20Binding%20Token/2025-12-03-12-24-05.png)
-
-### Increase Logs verbosity to track CBT Events
+### Increase Logs verbosity to track LDAP Signing Events
 
 - Increase Logs verbosity
   - Enable LDAP interface diagnostics to see these consistently:
@@ -390,37 +346,48 @@ $ko = (@($results | Where-Object { $_.Status -ne 'Success' })).Count
 [pscustomobject]@{ Success=$ok; Failed=$ko } | Format-Table -AutoSize
 ```
 
-### Monitor Events for client not CBT Capable
+---
 
-- Here’s what to watch when you’re in “When supported” mode:
+## Phase 2 — LDAP-Signing Events Monitor
 
-Event Viewer → Applications and Services Logs ▸ Directory Service
-Source: Microsoft-Windows-ActiveDirectory_DomainService.
+This monitor maps who still performs **unsigned LDAP binds** and who still uses **simple bind** (with or without TLS) before you enforce *Require*.
 
-- Key event IDs (Directory Service log on DCs):
-  - 3039 — A client performed an LDAP bind over SSL/TLS and failed CBT validation (malformed/invalid CBT).
-  - 3074 — The client sent a CBT but it was invalid and would have failed if enforcement were enabled.
-  - 3075 — The client did not send a CBT and would have failed if enforcement were enabled.
+### What it collects (Directory Service on DCs)
+- **2886** — DC is **not** requiring signing (advisory).
+- **2887** — Count of **unsigned / simple** binds (summary).
+- **2888** — **Details** for **unsigned** binds (who/where).
+- **2889** — **Details** for **simple** binds (who/where).
 
-- Reading tips:
-* 3075 (no CBT) → clients/libs that don’t support CBT → upgrade/replace.
-* 3074 (invalid CBT) → clients send bad CBT → fix TLS terminators/libraries/config.
-* 3039 → actual failures even in “When supported”.
+> Why include simple bind?  
+> When you switch DCs to **Require**, **unsigned SASL** and **simple bind in clear (389, no TLS)** are **blocked**.  
+> **Simple bind over LDAPS (636)** continues to work, but you should prefer **SASL-signed** where possible.
 
-**PS Script to Track CBT Events on DC:**
+### How to check results
+2. Inspect 2887 (volume), 2888/2889 (sources: hosts/accounts).
+3. Fix apps: move to **SASL-signed** or **LDAPS (636)** with valid DC certs (ideally with **CBT**).
+4. Re-run until unsigned/simple noise disappears → then enforce **Require**.
+
+### PS Script to Track LDAP Signing Events on DC
+
 ```powershell
 <#
-CBT Monitoring on Domain Controllers (Directory Service events)
+LDAP Signing — Events Monitor (Directory Service 2886–2889)
 - PowerShell 5.1
-- No parameters: embedded DC list, adjustable lookback window
-- Collects event IDs: 3039 (failed CBT), 3074 (invalid CBT would-fail), 3075 (no CBT would-fail)
-- Pretty colored output + per-DC and per-Event summaries
-- CSV export block is commented out (optional)
+- No parameters: embedded DC list + configurable lookback
+- Colors + per-DC and per-Event summaries
+- CSV export block commented (optional)
 
-Notes:
-- Log: "Applications and Services Logs\Directory Service"
-- Provider: Microsoft-Windows-ActiveDirectory_DomainService
-- Increase verbosity if needed:
+Log/Provider:
+  Log:      "Applications and Services Logs\Directory Service"
+  Provider: Microsoft-Windows-ActiveDirectory_DomainService
+
+Event IDs (cheat sheet):
+  2886 = DC does NOT require signing (advisory/reminder)
+  2887 = Count of unsigned/simple binds (summary)
+  2888 = Details about unsigned binds (who/where)
+  2889 = Details about simple binds (who/where)
+
+Tip: Increase verbosity if needed on each DC
   HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Diagnostics
   "16 LDAP Interface Events" (REG_DWORD) = 2..5
 #>
@@ -428,27 +395,25 @@ Notes:
 cls
 
 # --- Configuration (edit here) ---
-$LookbackHours   = 168      # 7 days
-$ExportCsvMain   = $false   # CSV export is disabled; block is commented below
-$ShowTopSections = $false   # set $true to print "Top Clients / Top Accounts"
+$LookbackHours   = 168     # last 7 days
+$ShowTopSections = $false  # set $true to print "Top Clients / Top Accounts"
 $TopN            = 10
-$OutDir          = Join-Path $PWD ("CBT_Monitor_{0:yyyyMMdd_HHmmss}" -f (Get-Date))
+$OutDir          = Join-Path $PWD ("LDAPSigning_Monitor_{0:yyyyMMdd_HHmmss}" -f (Get-Date))
 
-# Embedded DC list
+# --- Embedded DC list ---
 $dcs = @(
   'MM-DC1.mathiasmotron.com',
   'MM-DC2.mathiasmotron.com',
   'MM-DC3.mathiasmotron.com'
 )
 
-# Event IDs of interest
-$EventIds = 3039,3074,3075
+# --- Event IDs of interest ---
+$EventIds = 2886,2887,2888,2889
 
 # --- Remote query payload (runs on each DC) ---
 $remoteScript = {
   param([int]$Hours,[int[]]$Ids)
 
-  # Helper: Safe Get-WinEvent query for Directory Service (provider + Id + time)
   $start = (Get-Date).AddHours(-1 * $Hours)
   $fh = @{
     ProviderName = 'Microsoft-Windows-ActiveDirectory_DomainService'
@@ -457,23 +422,19 @@ $remoteScript = {
     LogName      = 'Directory Service'
   }
 
-  # Extract useful fields from the event (Message is free text; we regex a few hints)
   function Parse-Event {
     param([System.Diagnostics.Eventing.Reader.EventRecord]$ev)
 
     $msg = $null
     try { $msg = $ev.FormatDescription() } catch { $msg = $null }
 
-    # Attempt to extract client IP and account-like tokens from the message
+    # Try to extract hints (best-effort: event templates differ by build)
     $clientIp = $null
     $account  = $null
-
     if ($msg) {
-      # IPv4 candidate
       $ipMatch = [regex]::Match($msg, '(?<ip>\b\d{1,3}(?:\.\d{1,3}){3}\b)')
       if ($ipMatch.Success) { $clientIp = $ipMatch.Groups['ip'].Value }
 
-      # Account-like tokens (UPN or DOMAIN\user)
       $upnMatch = [regex]::Match($msg, '(?<upn>[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})')
       if ($upnMatch.Success) { $account = $upnMatch.Groups['upn'].Value }
       if (-not $account) {
@@ -483,19 +444,19 @@ $remoteScript = {
     }
 
     [pscustomobject]@{
-      DC           = $env:COMPUTERNAME
-      TimeCreated  = $ev.TimeCreated
-      EventId      = $ev.Id
-      Level        = $ev.LevelDisplayName
-      ClientIP     = $(if($clientIp){$clientIp}else{'(n/a)'})
-      Account      = $(if($account){$account}else{'(n/a)'})
-      Message      = $(if($msg){$msg}else{'(message unavailable)'})
+      DC          = $env:COMPUTERNAME
+      TimeCreated = $ev.TimeCreated
+      EventId     = $ev.Id
+      Level       = $ev.LevelDisplayName
+      ClientIP    = $(if($clientIp){$clientIp}else{'(n/a)'})
+      Account     = $(if($account){$account}else{'(n/a)'})
+      Message     = $(if($msg){$msg}else{'(message unavailable)'})
     }
   }
 
   $out = New-Object System.Collections.Generic.List[object]
 
-  # Get events quietly; treat "no results" as not an error
+  # Quiet read; zero events is NOT an error
   $events = Get-WinEvent -FilterHashtable $fh -ErrorAction SilentlyContinue
   if ($events) {
     foreach ($e in $events) { $out.Add( (Parse-Event -ev $e) ) | Out-Null }
@@ -508,18 +469,16 @@ $remoteScript = {
 $all = @()
 foreach ($dc in $dcs) {
   try {
-    $res = Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ArgumentList $LookbackHours, $EventIds -ErrorAction Stop
-    $all += $res
+    $all += Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ArgumentList $LookbackHours, $EventIds -ErrorAction Stop
   } catch {
-    # Only add a row if the DC is unreachable; do not confuse with "no events"
     $all += [pscustomobject]@{
-      DC           = $dc
-      TimeCreated  = Get-Date
-      EventId      = '(n/a)'
-      Level        = 'Error'
-      ClientIP     = '(n/a)'
-      Account      = '(n/a)'
-      Message      = "Unreachable/AccessDenied: $($_.Exception.Message)"
+      DC          = $dc
+      TimeCreated = Get-Date
+      EventId     = '(n/a)'
+      Level       = 'Error'
+      ClientIP    = '(n/a)'
+      Account     = '(n/a)'
+      Message     = "Unreachable/AccessDenied: $($_.Exception.Message)"
     }
   }
 }
@@ -527,15 +486,18 @@ foreach ($dc in $dcs) {
 # --- Color map by EventId ---
 function Get-Color {
   param([string]$id)
-  # 3039 = real CBT failure (red), 3074/3075 = would-fail (yellow), others/errors = magenta
-  if ($id -eq '3039') { return 'Red' }
-  if ($id -eq '3074' -or $id -eq '3075') { return 'Yellow' }
-  return 'Magenta'
+  switch ($id) {
+    '2886' { return 'Yellow' }  # advisory
+    '2887' { return 'Yellow' }  # unsigned/simple count
+    '2888' { return 'Red' }     # unsigned details
+    '2889' { return 'Red' }     # simple details
+    default { return 'Magenta' }
+  }
 }
 
 # --- Main table (colored rows) ---
 Write-Host ""
-Write-Host ("=== CBT Events (last {0} hours) ===" -f $LookbackHours) -ForegroundColor Cyan
+Write-Host ("=== LDAP Signing Events (last {0} hours) ===" -f $LookbackHours) -ForegroundColor Cyan
 $header = "{0,-16} {1,-19} {2,-6} {3,-10} {4,-15} {5,-28} {6}" -f 'DC','TimeCreated','ID','Level','ClientIP','Account','Message (truncated)'
 Write-Host $header -ForegroundColor Gray
 Write-Host ('-' * ($header.Length + 30)) -ForegroundColor DarkGray
@@ -543,15 +505,15 @@ Write-Host ('-' * ($header.Length + 30)) -ForegroundColor DarkGray
 $anyRows = $false
 foreach ($row in ($all | Sort-Object TimeCreated)) {
   $anyRows = $true
-  $color = Get-Color -id ($row.EventId.ToString())
-  $msgShort = $row.Message
-  if ($msgShort -and $msgShort.Length -gt 120) { $msgShort = $msgShort.Substring(0,120) + '...' }
+  $color   = Get-Color -id ($row.EventId.ToString())
+  $msg     = $row.Message
+  if ($msg -and $msg.Length -gt 120) { $msg = $msg.Substring(0,120) + '...' }
   $line = "{0,-16} {1,-19:yyyy-MM-dd HH:mm:ss} {2,-6} {3,-10} {4,-15} {5,-28} {6}" -f `
-          $row.DC, $row.TimeCreated, $row.EventId, $row.Level, $row.ClientIP, $row.Account, $msgShort
+          $row.DC, $row.TimeCreated, $row.EventId, $row.Level, $row.ClientIP, $row.Account, $msg
   Write-Host $line -ForegroundColor $color
 }
 if (-not $anyRows) {
-  Write-Host "(no CBT-related events found in the selected window)" -ForegroundColor DarkGray
+  Write-Host "(no LDAP-signing events found in the selected window)" -ForegroundColor DarkGray
 }
 
 # --- Optional Top sections ---
@@ -582,15 +544,17 @@ Write-Host ""
 Write-Host "=== Summary by DC ===" -ForegroundColor Cyan
 $byDc = $all | Where-Object { $_.EventId -in $EventIds } | Group-Object DC | ForEach-Object {
   $name = $_.Name
-  $n3039 = (@($_.Group | Where-Object {$_.EventId -eq 3039})).Count
-  $n3074 = (@($_.Group | Where-Object {$_.EventId -eq 3074})).Count
-  $n3075 = (@($_.Group | Where-Object {$_.EventId -eq 3075})).Count
+  $s2886 = (@($_.Group | Where-Object {$_.EventId -eq 2886})).Count
+  $s2887 = (@($_.Group | Where-Object {$_.EventId -eq 2887})).Count
+  $s2888 = (@($_.Group | Where-Object {$_.EventId -eq 2888})).Count
+  $s2889 = (@($_.Group | Where-Object {$_.EventId -eq 2889})).Count
   [pscustomobject]@{
     DC     = $name
-    E3039  = $n3039
-    E3074  = $n3074
-    E3075  = $n3075
-    Total  = $n3039 + $n3074 + $n3075
+    E2886  = $s2886
+    E2887  = $s2887
+    E2888  = $s2888
+    E2889  = $s2889
+    Total  = $s2886 + $s2887 + $s2888 + $s2889
   }
 }
 if ($byDc) { $byDc | Sort-Object DC | Format-Table -AutoSize } else { Write-Host "(no data)" -ForegroundColor DarkGray }
@@ -603,28 +567,60 @@ $byId = $all | Where-Object { $_.EventId -in $EventIds } | Group-Object EventId 
 if ($byId) { $byId | Sort-Object EventId | Format-Table -AutoSize } else { Write-Host "(no data)" -ForegroundColor DarkGray }
 
 # --- Optional CSV exports (COMMENTED) ---
-<# 
-if ($ExportCsvMain) {
-  if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
-  $all  | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'CBT_Events_Detail.csv')
-  if ($byDc) { $byDc | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'CBT_Events_SummaryByDC.csv') }
-  if ($byId) { $byId | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'CBT_Events_SummaryByEventId.csv') }
-  Write-Host ("CSV exports -> {0}" -f $OutDir) -ForegroundColor Cyan
-}
+<#
+if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
+$all  | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'LDAPSigning_Events_Detail.csv')
+if ($byDc) { $byDc | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'LDAPSigning_Events_SummaryByDC.csv') }
+if ($byId) { $byId | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'LDAPSigning_Events_SummaryByEventId.csv') }
+Write-Host ("CSV exports -> {0}" -f $OutDir) -ForegroundColor Cyan
 #>
 
 Write-Host ""
-Write-Host "Legend: 3039=failed CBT (RED), 3074=invalid CBT would-fail (YELLOW), 3075=no CBT would-fail (YELLOW)" -ForegroundColor Gray
+Write-Host "Legend: 2886=DC not requiring signing; 2887=unsigned/simple count; 2888=unsigned details; 2889=simple details" -ForegroundColor Gray
 ```
 
-## Rollout to Phase 2 — Required
+## Phase 3 — Enforcement (Require)
 
-Apply to the **Domain Controllers OU**:
+Once unsigned/simple bind sources are remediated or acceptably exceptioned, enforce **LDAP Signing** on DCs.
 
-- `HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding` (DWORD)
-  - `2` = **Required** (Phase 2, target state)
+### Target settings (GPO)
+- **Domain Controllers (server side)**
+  - Path: `Computer Configuration → Windows Settings → Security Settings → Local Policies → Security Options`
+  - Setting: **Domain controller: LDAP server signing requirements** → **Require**
+- **Domain Members / App hosts (client side, recommended)**
+  - Path: `Computer Configuration → Windows Settings → Security Settings → Local Policies → Security Options`
+  - Setting: **Domain member: LDAP client signing requirements** → **Require**
 
-- Or with GPO:
+> Registry mapping (reference):
+> - Server: `HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity`  
+>   `2 = Require`, `1 = None/Negotiate`, `0 = None`
+> - Client: `HKLM\SYSTEM\CurrentControlSet\Services\LDAP\LDAPClientIntegrity`  
+>   `2 = Require`, `1 = Negotiate`, `0 = None`
 
-![](assets/Audit%20and%20Enforcement%20for%20Channel%20Binding%20Token/2025-12-03-12-25-04.png)
+### Rollout plan
+
+1. **Scope**: link the server-side GPO to the **Domain Controllers OU** only.  
+2. **Change window**: plan a maintenance window; applying *Require* can block legacy clients.
+3. **Order**
+   - Keep your **audit monitor** running (Events 2886–2889).
+   - Enforce **client-side “Require”** on key member servers first (where feasible).
+   - Enforce **server-side “Require”** on a **pilot DC** (site with limited blast radius).
+   - Validate, then roll to all DCs (site by site).
+4. **Communication**: notify app owners that **unsigned SASL** and **simple bind in clear (389)** will be rejected.
+
+### What breaks / what keeps working
+- **Blocked**: SASL **unsigned** binds (389), **simple bind** in clear (389 without TLS).
+- **Still works**: **SASL-signed** binds (Negotiate/Kerberos) and **simple bind over LDAPS (636)**.  
+
+### Validation
+- **Directory Service** log on DCs:
+  - Expect **2886** to disappear after GPO refresh (DC now requires signing).
+  - Residual **2888/2889** should drop to zero; any new entries indicate clients to fix.
+
+### Backout (if needed)
+- Revert DC policy to **None/Not defined** (or set `LDAPServerIntegrity = 1`) on the DC OU, force GPUpdate.  
+  Keep the monitor running to re-assess unsigned/simple volumes before a new attempt.
+
+
+
 
