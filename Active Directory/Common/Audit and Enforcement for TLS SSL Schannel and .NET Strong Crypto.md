@@ -24,7 +24,7 @@ This PowerShell 5.1 script audits Schannel TLS/SSL settings (TLS 1.0/1.1/1.2 for
 - Edit the embedded $dcs list, then run the script from an admin PowerShell session.
 - Remediation is not performed here—apply via GPO (Registry GPP) once the audit is green.
 
-## PS Script
+## PS Script Configuration Verification
 
 ```powershell
 <#

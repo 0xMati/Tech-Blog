@@ -361,7 +361,7 @@ Kerberos Ticket Encryption Audit (4768/4769)
 cls
 
 # --- Config ---
-$LookbackHours = 24   # last 7 days
+$LookbackHours = 24   # last 1 days
 $OutDir = Join-Path $PWD ("Krb_Audit_{0:yyyyMMdd_HHmmss}" -f (Get-Date))
 
 # Domain Controllers (edit)
@@ -480,4 +480,3 @@ $break  | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 
 $rc4    | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'RC4_Events.csv')
 #>
 ```
-
