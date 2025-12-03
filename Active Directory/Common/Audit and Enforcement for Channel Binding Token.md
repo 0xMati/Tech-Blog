@@ -168,10 +168,14 @@ $summary | Sort-Object Computer | Format-Table -AutoSize
 
 ## Rollout to Phase 1 — When supported
 
-### Apply to the **Domain Controllers OU**:
+### Apply to the **Domain Controllers**:
 
 - `HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding` (DWORD)
   - `1` = **When supported** (Phase 1)
+
+- Or with GPO:
+
+![](assets/Audit%20and%20Enforcement%20for%20Channel%20Binding%20Token/2025-12-03-12-24-05.png)
 
 ### Increase Logs verbosity to track CBT Events
 
@@ -620,4 +624,7 @@ Apply to the **Domain Controllers OU**:
 - `HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding` (DWORD)
   - `2` = **Required** (Phase 2, target state)
 
+- Or with GPO:
+
+![](assets/Audit%20and%20Enforcement%20for%20Channel%20Binding%20Token/2025-12-03-12-25-04.png)
 
