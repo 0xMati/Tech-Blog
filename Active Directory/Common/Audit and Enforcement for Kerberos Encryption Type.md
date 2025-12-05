@@ -480,3 +480,185 @@ $break  | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 
 $rc4    | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'RC4_Events.csv')
 #>
 ```
+
+
+**Updated Script**
+
+> Powershell 7 required !
+
+```powershell
+<#
+Kerberos Ticket Encryption Audit (4768/4769) — PS7
+- DCs list embedded (no input file)
+- Parallel collection (ForEach-Object -Parallel) without passing a scriptblock variable
+- Console breakdown + Top RC4 by Account/IP/DC
+- Optional CSV export via -ExportCsv
+#>
+
+param(
+  [int]$Hours = 24,
+  [switch]$ExportCsv,
+  [int]$ThrottleLimit = 8,
+  [string]$OutDir = $(Join-Path $PWD ("Krb_Audit_{0:yyyyMMdd_HHmmss}" -f (Get-Date)))
+)
+
+cls
+
+# --- Domain Controllers (edit here) ---
+$DCs = @(
+  'MM-DC1.mathiasmotron.com',
+  'MM-DC2.mathiasmotron.com',
+  'MM-DC3.mathiasmotron.com'
+)
+
+# --- Event IDs ---
+$EventIds = 4768,4769
+
+# --- Map enc types to labels ---
+function Get-EncLabel {
+  param([string]$v)
+  if (-not $v) { return 'UNKNOWN' }
+
+  # Accept hex ("0x12") or decimal ("18")
+  $hex =
+    if ($v -match '^0x[0-9A-Fa-f]+$') { $v.ToLower() }
+    elseif ($v -match '^\d+$')        { ('0x{0:X}' -f [int]$v).ToLower() }
+    else                               { $null }
+
+  if (-not $hex) { return 'UNKNOWN' }
+
+  switch ($hex) {
+    '0x12' { 'AES256-CTS-HMAC-SHA1-96' } # 18
+    '0x11' { 'AES128-CTS-HMAC-SHA1-96' } # 17
+    '0x17' { 'RC4-HMAC' }                # 23
+    default { 'UNKNOWN' }
+  }
+}
+
+Write-Host "Collecting events from DCs (last $Hours hours)..." -ForegroundColor Cyan
+
+# --- Collect in parallel (inline remote logic) ---
+$all = $DCs | ForEach-Object -Parallel {
+  $dc = $_
+  try {
+    Invoke-Command -ComputerName $dc -ScriptBlock {
+      param([int]$Hours,[int[]]$Ids)
+      $since = (Get-Date).AddHours(-1 * $Hours)
+      $fh = @{
+        LogName      = 'Security'
+        Id           = $Ids
+        StartTime    = $since
+        ProviderName = 'Microsoft-Windows-Security-Auditing'
+      }
+
+      function Parse-One {
+        param([System.Diagnostics.Eventing.Reader.EventRecord]$ev)
+        $xml = [xml]$ev.ToXml()
+
+        $get = {
+          param($name)
+          ($xml.Event.EventData.Data | Where-Object { $_.Name -eq $name }).'#text'
+        }
+
+        $encRaw = & $get 'TicketEncryptionType'
+        $acct   = (& $get 'TargetUserName'); if (-not $acct) { $acct = (& $get 'Account Name') }
+        $ip     = (& $get 'ClientAddress');  if (-not $ip)  { $ip   = (& $get 'IpAddress') }
+        if ($ip) { $ip = $ip.Replace('::ffff:','') }
+
+        [pscustomobject]@{
+          DC        = $env:COMPUTERNAME
+          Time      = $ev.TimeCreated
+          EventId   = $ev.Id
+          Account   = $(if($acct){$acct}else{'(n/a)'})
+          ClientIP  = $(if($ip){$ip}else{'(n/a)'})
+          EncHex    = $(if($encRaw){$encRaw}else{'(unknown)'})
+          EncType   = $null
+        }
+      }
+
+      $out = New-Object System.Collections.Generic.List[object]
+      $evts = Get-WinEvent -FilterHashtable $fh -ErrorAction SilentlyContinue
+      if ($evts) {
+        foreach($e in $evts){ $out.Add( (Parse-One $e) ) | Out-Null }
+      }
+      $out
+    } -ArgumentList $using:Hours, $using:EventIds -ErrorAction Stop
+  } catch {
+    [pscustomobject]@{
+      DC        = $dc
+      Time      = Get-Date
+      EventId   = '(n/a)'
+      Account   = '(n/a)'
+      ClientIP  = '(n/a)'
+      EncHex    = '(unreachable)'
+      EncType   = $null
+    }
+  }
+} -ThrottleLimit $ThrottleLimit
+
+# Flatten potential nested enumerables
+$flat = foreach($chunk in $all){ if ($chunk -is [System.Collections.IEnumerable]) { $chunk } else { ,$chunk } }
+
+# Fill EncType labels
+$flat | ForEach-Object { $_.EncType = Get-EncLabel $_.EncHex }
+
+# --- Console: Global breakdown ---
+Write-Host "`n=== Kerberos Ticket Encryption Breakdown (4768/4769) ===" -ForegroundColor Cyan
+$break = $flat | Group-Object EncType | ForEach-Object {
+  [pscustomobject]@{ Type=$_.Name; Events=$_.Count }
+} | Sort-Object Events -Descending
+$tot = ($break | Measure-Object Events -Sum).Sum
+if ($tot -gt 0) {
+  $break | Select-Object Type,Events,
+    @{n='%';e={[math]::Round(100*($_.Events/$tot),2)}} | Format-Table -AutoSize
+} else {
+  Write-Host "(no events found)" -ForegroundColor DarkGray
+}
+
+# --- Console: Top RC4 ---
+$rc4 = $flat | Where-Object { $_.EncType -eq 'RC4-HMAC' }
+
+Write-Host "`n=== Top RC4 Accounts ===" -ForegroundColor Cyan
+if ($rc4) {
+  $rc4 | Group-Object Account |
+    Sort-Object Count -Descending |
+    Select-Object @{n='Account';e={$_.Name}}, @{n='Events';e={$_.Count}} -First 20 |
+    Format-Table -AutoSize
+} else { Write-Host "(none)" -ForegroundColor DarkGray }
+
+Write-Host "`n=== Top RC4 Client IPs ===" -ForegroundColor Cyan
+if ($rc4) {
+  $rc4 | Group-Object ClientIP |
+    Sort-Object Count -Descending |
+    Select-Object @{n='ClientIP';e={$_.Name}}, @{n='Events';e={$_.Count}} -First 20 |
+    Format-Table -AutoSize
+} else { Write-Host "(none)" -ForegroundColor DarkGray }
+
+Write-Host "`n=== Domain Controllers contacted (RC4-HMAC) ===" -ForegroundColor Cyan
+if ($rc4) {
+  $rc4 | Group-Object DC |
+    Sort-Object Count -Descending |
+    Select-Object @{n='DC';e={$_.Name}}, @{n='Events';e={$_.Count}} |
+    Format-Table -AutoSize
+} else { Write-Host "(none)" -ForegroundColor DarkGray }
+
+# --- Optional CSV exports ---
+if ($ExportCsv) {
+  if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
+
+  $flat  | Select-Object DC,Time,EventId,Account,ClientIP,EncHex,EncType |
+           Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'All_Tickets.csv')
+
+  $break | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'Breakdown.csv')
+
+  if ($rc4) {
+    $rc4 | Select-Object DC,Time,EventId,Account,ClientIP,EncHex,EncType |
+           Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'RC4_Events.csv')
+  }
+
+  Write-Host ("`nCSV exports -> {0}" -f $OutDir) -ForegroundColor Cyan
+}
+```
+
+- Usage for CSV Export : .\DC_KRB_ETYPE.ps1 -Hours 24 -ExportCsv
+- Example for Folder targeting, changing default hours and manage parallelism : .\DC_KRB_ETYPE.ps1 -Hours 48 -ExportCsv -OutDir "C:\Temp\Krb_Audit" -ThrottleLimit 12
