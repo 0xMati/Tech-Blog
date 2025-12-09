@@ -14,6 +14,10 @@ Before the introduction of modern Authentication Methods, Entra ID relied on the
 
 In this legacy model, the option *“verification code from mobile app or hardware token”* implicitly covered **all** TOTP-based authenticators — including Microsoft Authenticator, Google Authenticator, Authy, and any other app capable of generating OATH codes. As a result, it was not possible to restrict MFA to Microsoft Authenticator only.
 
+![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-21-35.png)
+
+![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-41-45.png)
+
 Modern deployments should no longer rely on per-user MFA because:
 
 - It does **not** support method-level restrictions  
@@ -40,11 +44,13 @@ This policy becomes authoritative only after a tenant completes the **Authentica
 - **Migration in progress** – Both policies may apply depending on the user and scenario; UI inconsistencies may occur.  
 - **Complete** – Modern Authentication Methods fully replace legacy MFA settings.
 
+![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-22-22.png)
+
 For administrators attempting to restrict TOTP usage or enforce Microsoft Authenticator-only MFA, the migration status is critical. Tenants that have not reached the **Complete** state may still expose registration flows from the legacy system, including the option to use third-party authenticator apps—even when OATH TOTP appears disabled in the modern policy.
 
 Once migration is complete, organizations gain deterministic control: Microsoft Authenticator can be enabled as the sole allowed method, and third-party OATH TOTP can be fully blocked at both registration and authentication time.
 
-
+![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-22-46.png)
 
 ---
 
@@ -70,7 +76,6 @@ Internal testing at Microsoft confirms this behavior:
 
 The key takeaway is that disabling OATH TOTP alone does not guarantee a Microsoft Authenticator-only registration experience unless the tenant’s Authentication Methods migration status is **Complete**. Full enforcement requires both the modern policy and authentication strengths to be in place.
 
-
 ---
 
 ## 3. Enforcing Microsoft Authenticator During Registration
@@ -84,11 +89,15 @@ Before enforcing Microsoft Authenticator-only registration, the following condit
 - **Authentication Methods migration status must be set to “Complete.”**  
   Without this, legacy MFA components may still influence the registration UI and expose options for third-party apps.
 
+  ![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-25-41.png)
+
 - **Disable “Verification code from mobile app or hardware token” in legacy MFA settings.**  
   This legacy setting implicitly allowed *all* TOTP-based apps and must be turned off to avoid conflicts.
 
 - **Disable “Third-party software tokens (OATH)” in the Authentication Methods policy.**  
   This removes the ability for users to authenticate using any non-Microsoft TOTP app.
+
+  ![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-25-23.png)
 
 - **Enable the Microsoft Authenticator method.**  
   This ensures it becomes the primary (and only) app-based MFA option for users.
@@ -96,14 +105,22 @@ Before enforcing Microsoft Authenticator-only registration, the following condit
 - **Set “Allow use of Microsoft Authenticator OTP” to Yes.**  
   This enables the OTP fallback experience inside Microsoft Authenticator without relying on third-party TOTP methods.
 
+  ![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-28-19.png)
+
 When all conditions are satisfied, the modern method policy becomes deterministic and prevents the use of external apps during registration.
 
 ### 3.2 Expected Result
 
 Once the prerequisites are in place, the user experience changes significantly:
 
-- The option *“I want to use a different authenticator app”* no longer appears during registration.  
+- The option *“I want to use a different authenticator app”* no longer appears during registration.
+
+![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-29-59.png)
+
 - Users are guided exclusively toward installing and registering **Microsoft Authenticator**.  
+
+![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-30-17.png)
+
 - Any previously registered third-party authenticator apps remain visible but **cannot be used** for MFA authentication.
 
 This produces a clean and consistent onboarding flow where Microsoft Authenticator becomes the only application users can register and use for app-based MFA.
@@ -123,7 +140,9 @@ Authentication Strengths allow administrators to require specific MFA methods fo
 To enforce Microsoft Authenticator-only MFA, create a strength that includes:
 
 - **Microsoft Authenticator – Push notifications**
-- **Microsoft Authenticator – OTP (Time-based one-time passcode)**
+- Or/And **Microsoft Authenticator – (Phone sign-in)**
+
+![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-33-50.png)
 
 All third-party authenticator apps rely on the **OATH TOTP** method, which can simply be excluded from the strength. Since an authentication strength explicitly defines the allowed methods, any method not included is automatically blocked—even if it is still registered on the user’s account.
 
@@ -133,10 +152,10 @@ This is the only enforcement mechanism that applies consistently during the auth
 
 Once the custom authentication strength is created, it must be applied through a Conditional Access (CA) policy. Common deployment patterns include:
 
-- Enforcing Microsoft Authenticator-only for **all users**  
-- Targeting **privileged roles** (Global Admins, Device Admins, etc.)  
-- Applying stricter MFA requirements to **high-risk sign-ins**  
-- Protecting **sensitive applications** with stronger MFA
+- Enforcing Microsoft Authenticator-only for **Specific Users**  
+- Targeting **Apps**
+
+![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-35-52.png)
 
 When a CA policy requiring the custom strength is triggered:
 
@@ -145,8 +164,6 @@ When a CA policy requiring the custom strength is triggered:
 - Users with outdated or unsupported MFA methods will be prompted to register Microsoft Authenticator
 
 This ensures full enforcement, even in scenarios where registration flows or legacy artifacts still exist.
-
-
 
 ---
 
@@ -217,57 +234,6 @@ Legacy or non-interactive protocols (POP, IMAP, SMTP AUTH, older Office clients,
 
 ### 6.5 Third-party TOTP registrations may remain visible
 Disabling OATH TOTP prevents **using** third-party authenticator apps, but it does not retroactively remove them from a user’s Security Info page. They remain visible until the user removes them manually or resets their MFA registration.
-
----
-
-## 7. Recommended Configuration Checklist
-
-To reliably enforce Microsoft Authenticator as the only MFA method in Entra ID, organizations should follow this configuration sequence. Each step ensures that both registration and authentication behaviors align with the intended policy.
-
-### 7.1 Disable legacy MFA settings
-Make sure the tenant no longer relies on the per-user MFA configuration. Specifically, disable:
-
-- **“Verification code from mobile app or hardware token”**  
-This setting implicitly allowed all TOTP-based methods and must be turned off to avoid conflicts.
-
-### 7.2 Complete the Authentication Methods migration
-Verify that the tenant’s migration state is **Complete**.  
-This ensures the modern Authentication Methods policy becomes authoritative and removes legacy registration screens that may still present third-party app options.
-
-### 7.3 Configure the modern Authentication Methods policy
-- **Enable Microsoft Authenticator**  
-- Set **Allow use of Microsoft Authenticator OTP = Yes**  
-- **Disable “Third-party software tokens (OATH)”**  
-- Optionally disable SMS and voice if pursuing stronger MFA
-
-This defines the set of allowed registration and authentication methods.
-
-### 7.4 Create a custom Authentication Strength
-Build a strength that includes only:
-
-- **Microsoft Authenticator – Push notifications**  
-- **Microsoft Authenticator – OTP**
-
-Exclude all other methods, especially OATH TOTP, to ensure enforcement at authentication time.
-
-### 7.5 Apply the strength using Conditional Access
-Create a Conditional Access policy that:
-
-- Requires the custom authentication strength  
-- Applies to all users or targeted groups (e.g., privileged roles)  
-- Protects all applications or only sensitive ones as needed  
-
-This is the enforcement mechanism that blocks the use of third-party TOTP methods during authentication.
-
-### 7.6 Validate the user experience
-- Test with a **brand-new user** in the tenant  
-- Confirm that Microsoft Authenticator is the only available registration option  
-- Confirm that authentication via third-party apps is blocked  
-- Ensure that legacy clients and protocols are blocked if required
-
-### 7.7 Drive adoption with Registration Campaigns
-Use **Entra ID Registration Campaigns** (formerly Nudge) to prompt users who have not yet registered Microsoft Authenticator.  
-This reduces support friction and accelerates tenant-wide adoption.
 
 ---
 
