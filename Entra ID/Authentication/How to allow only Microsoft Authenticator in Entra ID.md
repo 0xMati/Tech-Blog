@@ -16,8 +16,6 @@ In this legacy model, the option *“verification code from mobile app or hardwa
 
 ![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-21-35.png)
 
-![](assets/How%20to%20allow%20only%20Microsoft%20Authenticator%20in%20Entra%20ID/2025-12-09-16-41-45.png)
-
 Modern deployments should no longer rely on per-user MFA because:
 
 - It does **not** support method-level restrictions  
