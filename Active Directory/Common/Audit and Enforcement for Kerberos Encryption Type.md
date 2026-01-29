@@ -928,4 +928,6 @@ if ($ExportCsv) {
 - Usage for CSV Export : .\DC_KRB_ETYPE.ps1 -Hours 24 -ExportCsv
 - Example for Folder targeting, changing default hours and manage parallelism : .\DC_KRB_ETYPE.ps1 -Hours 48 -ExportCsv -OutDir "C:\Temp\Krb_Audit" -ThrottleLimit 12
 
-![](assets/Audit%20and%20Enforcement%20for%20Kerberos%20Encryption%20Type/2025-12-05-10-25-22.png)
+![](assets/Audit%20and%20Enforcement%20for%20Kerberos%20Encryption%20Type/2026-01-29-14-00-36.png)
+
+![](assets/Audit%20and%20Enforcement%20for%20Kerberos%20Encryption%20Type/2026-01-29-14-01-05.png)
