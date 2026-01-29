@@ -928,6 +928,16 @@ if ($ExportCsv) {
 - Usage for CSV Export : .\DC_KRB_ETYPE.ps1 -Hours 24 -ExportCsv
 - Example for Folder targeting, changing default hours and manage parallelism : .\DC_KRB_ETYPE.ps1 -Hours 48 -ExportCsv -OutDir "C:\Temp\Krb_Audit" -ThrottleLimit 12
 
+| File name                       | Scope                  | What it contains                                                                                                                                                                               | Primary usage                                                                        |
+| ------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **All_Tickets.csv**             | All Kerberos tickets   | One row per Kerberos ticket (4768 = TGT, 4769 = TGS). Includes requester account, target service, encryption type, client IP, DC, and AES capability indicators (client, service, DC).         | Detailed forensic analysis, advanced filtering, pivot tables, Power BI ingestion     |
+| **Breakdown_By_TicketType.csv** | Aggregated statistics  | Aggregated counts of Kerberos tickets grouped by **Ticket Type (TGT/TGS)** and **Encryption Type**.                                                                                            | High-level analysis of encryption usage split between TGT and TGS                    |
+| **Breakdown_Global.csv**        | Aggregated statistics  | Global Kerberos encryption usage across all tickets, regardless of ticket type.                                                                                                                | Executive summary, reporting, and security posture overview                          |
+| **RC4_Events.csv**              | RC4-only tickets       | Only Kerberos tickets encrypted with **RC4-HMAC**, enriched with AES capability indicators and client/service/DC context.                                                                      | Operational remediation list, identification of avoidable RC4 usage                  |
+| **RC4_Accounts_AD.csv**         | RC4 requestor accounts | Active Directory details for accounts **requesting RC4 tickets** (users, computers, service accounts), including password age, last logon, encryption settings, and pre-authentication status. | Identify legacy or misconfigured client accounts requesting weak Kerberos encryption |
+| **RC4_Services_AD.csv**         | RC4 service accounts   | Active Directory details for **services issuing RC4 TGS tickets**, including `msDS-SupportedEncryptionTypes`, password age, SPNs, and account type.                                            | Primary remediation dataset to migrate service accounts from RC4 to AES              |
+
+
 ![](assets/Audit%20and%20Enforcement%20for%20Kerberos%20Encryption%20Type/2026-01-29-14-00-36.png)
 
 ![](assets/Audit%20and%20Enforcement%20for%20Kerberos%20Encryption%20Type/2026-01-29-14-01-05.png)
