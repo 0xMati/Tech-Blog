@@ -356,10 +356,28 @@ Use this script to scan each DC’s Security log for 4768/4769 and produce a bre
 
 ```powershell
 <#
-Kerberos Ticket Encryption Audit (4768/4769) — PS7
+Kerberos Ticket Encryption Audit (4768/4769) — PowerShell 7
+
 - DCs list embedded (no input file)
-- Parallel collection (ForEach-Object -Parallel) without passing a scriptblock variable
-- Console breakdown + Top RC4 by Account/IP/DC
+- Parallel collection (ForEach-Object -Parallel)
+- Distinguish TGT (4768) vs TGS (4769)
+- Track Requestor Account AND Target Service (ServiceName + ServiceSid) for TGS
+- Console breakdown:
+  - Breakdown by TicketType + EncType
+  - Global breakdown all tickets
+  - UNKNOWN enc types breakdown (0xffffffff => UNKNOWN (no ticket/failed ticket))
+  - RC4 by TicketType
+  - Top RC4 Requestor Accounts
+  - Top RC4 Target Services (TGS)
+  - Top RC4 Client IPs
+  - DCs contacted for RC4
+  - ALERT: TGT using RC4-HMAC
+- AD enrichment (if ActiveDirectory module available):
+  - For RC4 Requestor Accounts → pwdLastSet, lastLogonDate, msDS-SupportedEncryptionTypes, PreAuthNotRequired
+  - For RC4 Target Services (TGS) → résolution par SID (objectSid) en priorité, fallback SPN, fallback samAccountName = ServiceName
+- New:
+  - ClientSupportsAES / DCSupportsAES / ServiceHasAESKeys
+  - RC4ChosenWhileAESAvailable = True si RC4 TGS alors que client, DC et service supportent AES
 - Optional CSV export via -ExportCsv
 #>
 
@@ -396,10 +414,11 @@ function Get-EncLabel {
   if (-not $hex) { return 'UNKNOWN' }
 
   switch ($hex) {
-    '0x12' { 'AES256-CTS-HMAC-SHA1-96' } # 18
-    '0x11' { 'AES128-CTS-HMAC-SHA1-96' } # 17
-    '0x17' { 'RC4-HMAC' }                # 23
-    default { 'UNKNOWN' }
+    '0x12'       { 'AES256-CTS-HMAC-SHA1-96' }           # 18
+    '0x11'       { 'AES128-CTS-HMAC-SHA1-96' }           # 17
+    '0x17'       { 'RC4-HMAC' }                          # 23
+    '0xffffffff' { 'UNKNOWN (no ticket/failed ticket)' } # failures / no cipher
+    default      { 'UNKNOWN' }
   }
 }
 
@@ -428,19 +447,47 @@ $all = $DCs | ForEach-Object -Parallel {
           ($xml.Event.EventData.Data | Where-Object { $_.Name -eq $name }).'#text'
         }
 
-        $encRaw = & $get 'TicketEncryptionType'
-        $acct   = (& $get 'TargetUserName'); if (-not $acct) { $acct = (& $get 'Account Name') }
-        $ip     = (& $get 'ClientAddress');  if (-not $ip)  { $ip   = (& $get 'IpAddress') }
+        $encRaw    = & $get 'TicketEncryptionType'
+        $acct      = (& $get 'TargetUserName'); if (-not $acct) { $acct = (& $get 'Account Name') }
+        $ip        = (& $get 'ClientAddress');  if (-not $ip)  { $ip   = (& $get 'IpAddress') }
         if ($ip) { $ip = $ip.Replace('::ffff:','') }
 
+        # Ticket type: TGT vs TGS
+        $ticketType = switch ($ev.Id) {
+          4768 { 'TGT' }
+          4769 { 'TGS' }
+          default { 'UNKNOWN' }
+        }
+
+        # Target service/SPN (only meaningful for TGS)
+        $svcName   = (& $get 'ServiceName')
+        $svcSid    = (& $get 'ServiceSid')
+
+        # Enriched Kerberos info (patch RC4)
+        $svcKeys    = (& $get 'ServiceAvailableKeys')
+        $clientKeys = (& $get 'ClientAdvertizedEncryptionTypes')
+        $dcEncTypes = (& $get 'DCSupportedEncryptionTypes')
+
         [pscustomobject]@{
-          DC        = $env:COMPUTERNAME
-          Time      = $ev.TimeCreated
-          EventId   = $ev.Id
-          Account   = $(if($acct){$acct}else{'(n/a)'})
-          ClientIP  = $(if($ip){$ip}else{'(n/a)'})
-          EncHex    = $(if($encRaw){$encRaw}else{'(unknown)'})
-          EncType   = $null
+          DC         = $env:COMPUTERNAME
+          Time       = $ev.TimeCreated
+          EventId    = $ev.Id
+          TicketType = $ticketType
+          Account    = $(if($acct){$acct}else{'(n/a)'})  # Requestor (user/computer)
+          Service    = $(if($ticketType -eq 'TGS' -and $svcName){$svcName}else{'(n/a)'}) # Target service display (ServiceName)
+          ServiceSid = $(if($ticketType -eq 'TGS' -and $svcSid){$svcSid}else{$null})     # Target account SID
+          ClientIP   = $(if($ip){$ip}else{'(n/a)'})
+          EncHex     = $(if($encRaw){$encRaw}else{'(unknown)'})
+          EncType    = $null
+
+          ServiceAvailableKeys        = $svcKeys
+          ClientAdvertizedEncryption  = $clientKeys
+          DCSupportedEncryptionTypes  = $dcEncTypes
+
+          ClientSupportsAES           = $false
+          ServiceHasAESKeys           = $false
+          DCSupportsAES               = $false
+          RC4ChosenWhileAESAvailable  = $false
         }
       }
 
@@ -453,25 +500,78 @@ $all = $DCs | ForEach-Object -Parallel {
     } -ArgumentList $using:Hours, $using:EventIds -ErrorAction Stop
   } catch {
     [pscustomobject]@{
-      DC        = $dc
-      Time      = Get-Date
-      EventId   = '(n/a)'
-      Account   = '(n/a)'
-      ClientIP  = '(n/a)'
-      EncHex    = '(unreachable)'
-      EncType   = $null
+      DC         = $dc
+      Time       = Get-Date
+      EventId    = '(n/a)'
+      TicketType = 'UNKNOWN'
+      Account    = '(n/a)'
+      Service    = '(n/a)'
+      ServiceSid = $null
+      ClientIP   = '(n/a)'
+      EncHex     = '(unreachable)'
+      EncType    = $null
+
+      ServiceAvailableKeys        = $null
+      ClientAdvertizedEncryption  = $null
+      DCSupportedEncryptionTypes  = $null
+
+      ClientSupportsAES           = $false
+      ServiceHasAESKeys           = $false
+      DCSupportsAES               = $false
+      RC4ChosenWhileAESAvailable  = $false
     }
   }
 } -ThrottleLimit $ThrottleLimit
 
 # Flatten potential nested enumerables
-$flat = foreach($chunk in $all){ if ($chunk -is [System.Collections.IEnumerable]) { $chunk } else { ,$chunk } }
+$flat = foreach($chunk in $all){
+  if ($chunk -is [System.Collections.IEnumerable]) { $chunk } else { ,$chunk }
+}
 
 # Fill EncType labels
 $flat | ForEach-Object { $_.EncType = Get-EncLabel $_.EncHex }
 
-# --- Console: Global breakdown ---
-Write-Host "`n=== Kerberos Ticket Encryption Breakdown (4768/4769) ===" -ForegroundColor Cyan
+# Compute AES support flags + RC4ChosenWhileAESAvailable
+$flat | ForEach-Object {
+  # bool "support AES" based on strings
+  if ($_.ClientAdvertizedEncryption -match 'AES') {
+    $_.ClientSupportsAES = $true
+  }
+  if ($_.ServiceAvailableKeys -match 'AES') {
+    $_.ServiceHasAESKeys = $true
+  }
+  if ($_.DCSupportedEncryptionTypes -match 'AES') {
+    $_.DCSupportsAES = $true
+  }
+
+  # RC4 choisi alors que AES dispo partout (TGS uniquement)
+  if ($_.EncType -eq 'RC4-HMAC' -and $_.TicketType -eq 'TGS') {
+    if ($_.ClientSupportsAES -and $_.ServiceHasAESKeys -and $_.DCSupportsAES) {
+      $_.RC4ChosenWhileAESAvailable = $true
+    }
+  }
+}
+
+# --- Global breakdown by TicketType + EncType ---
+Write-Host "`n=== Kerberos Ticket Encryption Breakdown by Ticket Type ===" -ForegroundColor Cyan
+$breakByType = $flat |
+  Group-Object TicketType, EncType |
+  ForEach-Object {
+    [pscustomobject]@{
+      TicketType = $_.Group[0].TicketType
+      EncType    = $_.Group[0].EncType
+      Events     = $_.Count
+    }
+  } | Sort-Object TicketType, EncType
+
+if ($breakByType) {
+  $breakByType | Format-Table -AutoSize
+} else {
+  Write-Host "(no events found)" -ForegroundColor DarkGray
+}
+
+# --- Global breakdown (all tickets combined) ---
+Write-Host "`n=== Global Kerberos Ticket Encryption Breakdown (4768/4769 combined) ===" -ForegroundColor Cyan
 $break = $flat | Group-Object EncType | ForEach-Object {
   [pscustomobject]@{ Type=$_.Name; Events=$_.Count }
 } | Sort-Object Events -Descending
@@ -483,10 +583,47 @@ if ($tot -gt 0) {
   Write-Host "(no events found)" -ForegroundColor DarkGray
 }
 
-# --- Console: Top RC4 ---
+# --- UNKNOWN EncTypes details (voir les valeurs brutes) ---
+Write-Host "`n=== UNKNOWN EncTypes details ===" -ForegroundColor Cyan
+$unknown = $flat | Where-Object { $_.EncType -like 'UNKNOWN*' }
+if ($unknown) {
+  $unknown | Group-Object EncHex |
+    Sort-Object Count -Descending |
+    Select-Object @{n='EncHex';e={$_.Name}}, @{n='Events';e={$_.Count}} |
+    Format-Table -AutoSize
+} else {
+  Write-Host "(none)" -ForegroundColor DarkGray
+}
+
+# --- RC4 views ---
+
 $rc4 = $flat | Where-Object { $_.EncType -eq 'RC4-HMAC' }
 
-Write-Host "`n=== Top RC4 Accounts ===" -ForegroundColor Cyan
+Write-Host "`n=== RC4 Events by Ticket Type (TGT vs TGS) ===" -ForegroundColor Cyan
+if ($rc4) {
+  $rc4 | Group-Object TicketType |
+    Sort-Object Count -Descending |
+    Select-Object @{n='TicketType';e={$_.Name}}, @{n='Events';e={$_.Count}} |
+    Format-Table -AutoSize
+} else {
+  Write-Host "(none)" -ForegroundColor DarkGray
+}
+
+# --- ALERT: TGT using RC4 (devrait être extrêmement rare) ---
+Write-Host "`n=== ALERTS: TGT using RC4-HMAC ===" -ForegroundColor Red
+$tgtRc4 = $flat | Where-Object { $_.TicketType -eq 'TGT' -and $_.EncType -eq 'RC4-HMAC' }
+if ($tgtRc4) {
+  $tgtRc4 |
+    Group-Object Account |
+    Sort-Object Count -Descending |
+    Select-Object @{n='Account';e={$_.Name}}, @{n='Events';e={$_.Count}} |
+    Format-Table -AutoSize
+} else {
+  Write-Host "No TGT using RC4 detected (expected in modern, hardened environments)." -ForegroundColor DarkGreen
+}
+
+# --- Top RC4 Requestor Accounts (who is asking for RC4 tickets) ---
+Write-Host "`n=== Top RC4 Requestor Accounts ===" -ForegroundColor Cyan
 if ($rc4) {
   $rc4 | Group-Object Account |
     Sort-Object Count -Descending |
@@ -494,6 +631,17 @@ if ($rc4) {
     Format-Table -AutoSize
 } else { Write-Host "(none)" -ForegroundColor DarkGray }
 
+# --- Top RC4 Target Services (TGS only) ---
+Write-Host "`n=== Top RC4 Target Services (TGS only) ===" -ForegroundColor Cyan
+$rc4Tgs = $rc4 | Where-Object { $_.TicketType -eq 'TGS' }
+if ($rc4Tgs) {
+  $rc4Tgs | Group-Object Service |
+    Sort-Object Count -Descending |
+    Select-Object @{n='Service(SPN)';e={$_.Name}}, @{n='Events';e={$_.Count}} -First 20 |
+    Format-Table -AutoSize
+} else { Write-Host "(none)" -ForegroundColor DarkGray }
+
+# --- Top RC4 Client IPs ---
 Write-Host "`n=== Top RC4 Client IPs ===" -ForegroundColor Cyan
 if ($rc4) {
   $rc4 | Group-Object ClientIP |
@@ -502,6 +650,7 @@ if ($rc4) {
     Format-Table -AutoSize
 } else { Write-Host "(none)" -ForegroundColor DarkGray }
 
+# --- DCs contacted (RC4-HMAC) ---
 Write-Host "`n=== Domain Controllers contacted (RC4-HMAC) ===" -ForegroundColor Cyan
 if ($rc4) {
   $rc4 | Group-Object DC |
@@ -510,22 +659,270 @@ if ($rc4) {
     Format-Table -AutoSize
 } else { Write-Host "(none)" -ForegroundColor DarkGray }
 
+# --- RC4 TGS: AES capabilities (visuel) ---
+Write-Host "`n=== RC4 TGS – AES capabilities (Client / Service / DC) ===" -ForegroundColor Cyan
+if ($rc4Tgs) {
+  $rc4Tgs |
+    Select-Object Time,Account,Service,
+                  ClientSupportsAES,
+                  ServiceHasAESKeys,
+                  DCSupportsAES,
+                  RC4ChosenWhileAESAvailable |
+    Format-Table -AutoSize
+} else {
+  Write-Host "(no RC4 TGS events)" -ForegroundColor DarkGray
+}
+
+# --- AD enrichment for RC4 accounts & services ---
+$adModuleLoaded = $false
+try {
+  Import-Module ActiveDirectory -ErrorAction Stop
+  $adModuleLoaded = $true
+} catch {
+  Write-Host "`n[WARN] ActiveDirectory module not available. Skipping AD enrichment." -ForegroundColor Yellow
+}
+
+$rc4AccountDetails = @()
+$rc4ServiceDetails = @()
+
+if ($adModuleLoaded -and $rc4) {
+
+  function Get-AdPrincipalSummary {
+    param(
+      [string]$Identity
+    )
+
+    if (-not $Identity -or $Identity -eq '(n/a)' -or $Identity -eq '(unreachable)') {
+      return $null
+    }
+
+    $obj = $null
+    $objType = $null
+
+    # 1) Si c'est un UPN, on essaie d'abord userPrincipalName
+    if ($Identity -like '*@*') {
+      try {
+        $obj = Get-ADUser -Filter "userPrincipalName -eq '$Identity'" -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+        $objType = 'user'
+      } catch {
+        $obj = $null
+      }
+    }
+
+    # 2) Si rien trouvé ou ce n'était pas un UPN, on essaie la résolution classique
+    if (-not $obj) {
+      try {
+        $obj = Get-ADUser -Identity $Identity -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+        $objType = 'user'
+      } catch {
+        try {
+          $obj = Get-ADComputer -Identity $Identity -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+          $objType = 'computer'
+        } catch {
+          try {
+            $obj = Get-ADServiceAccount -Identity $Identity -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+            $objType = 'serviceAccount'
+          } catch {
+            $obj = $null
+          }
+        }
+      }
+    }
+
+    if (-not $obj) { return $null }
+
+    # Convert pwdLastSet to DateTime if present
+    $pwdLastSetDate = $null
+    if ($obj.pwdLastSet -and $obj.pwdLastSet -is [long] -and $obj.pwdLastSet -ne 0) {
+      $pwdLastSetDate = [DateTime]::FromFileTime($obj.pwdLastSet)
+    }
+
+    # Pre-auth not required flag (0x400000)
+    $preAuthNotRequired = $false
+    if ($obj.userAccountControl) {
+      $preAuthNotRequired = (($obj.userAccountControl -band 0x400000) -ne 0)
+    }
+
+    [pscustomobject]@{
+      Identity                    = $Identity
+      ObjectClass                 = $objType
+      Name                        = $obj.Name
+      SamAccountName              = $obj.SamAccountName
+      DistinguishedName           = $obj.DistinguishedName
+      msDS_SupportedEncryptionTypes = $obj.'msDS-SupportedEncryptionTypes'
+      pwdLastSet                  = $pwdLastSetDate
+      lastLogonDate               = $obj.lastLogonDate
+      PreAuthNotRequired          = $preAuthNotRequired
+      SPNs                        = $(if ($obj.servicePrincipalName) { $obj.servicePrincipalName -join '; ' } else { $null })
+    }
+  }
+
+  function Get-AdServiceFromTarget {
+    param(
+      [string]$ServiceSid,
+      [string]$ServiceSpn
+    )
+
+    $obj = $null
+
+    # 1) Priorité : résolution par SID (objectSid)
+    if ($ServiceSid) {
+      try {
+        $obj = Get-ADUser -Filter "objectSid -eq '$ServiceSid'" -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+      } catch {
+        $obj = $null
+      }
+
+      if (-not $obj) {
+        try {
+          $obj = Get-ADComputer -Filter "objectSid -eq '$ServiceSid'" -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+        } catch {
+          $obj = $null
+        }
+      }
+
+      if (-not $obj) {
+        try {
+          $obj = Get-ADServiceAccount -Filter "objectSid -eq '$ServiceSid'" -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+        } catch {
+          $obj = $null
+        }
+      }
+    }
+
+    # 2) Fallback : résolution par SPN exact (servicePrincipalName)
+    if (-not $obj -and $ServiceSpn) {
+      try {
+        $obj = Get-ADObject -LDAPFilter ("(servicePrincipalName={0})" -f $ServiceSpn) -Properties objectClass,SamAccountName,DistinguishedName,pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+      } catch {
+        $obj = $null
+      }
+    }
+
+    # 3) Fallback : résolution par samAccountName = ServiceSpn (ton cas : svc.fake)
+    if (-not $obj -and $ServiceSpn) {
+      try {
+        $obj = Get-ADUser -Filter "samAccountName -eq '$ServiceSpn'" -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+      } catch {
+        $obj = $null
+      }
+
+      if (-not $obj) {
+        try {
+          $obj = Get-ADComputer -Filter "samAccountName -eq '$ServiceSpn'" -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+        } catch {
+          $obj = $null
+        }
+      }
+
+      if (-not $obj) {
+        try {
+          $obj = Get-ADServiceAccount -Filter "samAccountName -eq '$ServiceSpn'" -Properties pwdLastSet,msDS-SupportedEncryptionTypes,lastLogonDate,userAccountControl,servicePrincipalName
+        } catch {
+          $obj = $null
+        }
+      }
+    }
+
+    if (-not $obj) { return $null }
+
+    $pwdLastSetDate = $null
+    if ($obj.pwdLastSet -and $obj.pwdLastSet -is [long] -and $obj.pwdLastSet -ne 0) {
+      $pwdLastSetDate = [DateTime]::FromFileTime($obj.pwdLastSet)
+    }
+
+    $preAuthNotRequired = $false
+    if ($obj.userAccountControl) {
+      $preAuthNotRequired = (($obj.userAccountControl -band 0x400000) -ne 0)
+    }
+
+    [pscustomobject]@{
+      ServiceSid                  = $ServiceSid
+      ServiceSpn                  = $ServiceSpn
+      ObjectClass                 = $obj.objectClass
+      Name                        = $obj.Name
+      SamAccountName              = $obj.SamAccountName
+      DistinguishedName           = $obj.DistinguishedName
+      msDS_SupportedEncryptionTypes = $obj.'msDS-SupportedEncryptionTypes'
+      pwdLastSet                  = $pwdLastSetDate
+      lastLogonDate               = $obj.lastLogonDate
+      PreAuthNotRequired          = $preAuthNotRequired
+      SPNs                        = $(if ($obj.servicePrincipalName) { $obj.servicePrincipalName -join '; ' } else { $null })
+    }
+  }
+
+  Write-Host "`n=== Requestor Accounts for RC4 TGS ===" -ForegroundColor Cyan
+  $rc4AccountNames = $rc4 |
+    Select-Object -ExpandProperty Account -Unique |
+    Where-Object { $_ -and $_ -ne '(n/a)' -and $_ -ne '(unreachable)' }
+
+  foreach ($name in $rc4AccountNames) {
+    $detail = Get-AdPrincipalSummary -Identity $name
+    if ($detail) { $rc4AccountDetails += $detail }
+  }
+
+  if ($rc4AccountDetails) {
+    $rc4AccountDetails |
+      Sort-Object ObjectClass, SamAccountName |
+      Select-Object ObjectClass,SamAccountName,msDS_SupportedEncryptionTypes,pwdLastSet,lastLogonDate,PreAuthNotRequired |
+      Format-Table -AutoSize
+  } else {
+    Write-Host "(no AD details resolved for RC4 accounts)" -ForegroundColor DarkGray
+  }
+
+  Write-Host "`n=== Target Services that offered RC4 TGS (from ServiceSid/SPN) ===" -ForegroundColor Cyan
+  $rc4ServiceTargets = $rc4Tgs |
+    Select-Object ServiceSid, Service -Unique
+
+  foreach ($t in $rc4ServiceTargets) {
+    $detail = Get-AdServiceFromTarget -ServiceSid $t.ServiceSid -ServiceSpn $t.Service
+    if ($detail) { $rc4ServiceDetails += $detail }
+  }
+
+  if ($rc4ServiceDetails) {
+    $rc4ServiceDetails |
+      Sort-Object SamAccountName |
+      Select-Object ServiceSid,ServiceSpn,SamAccountName,msDS_SupportedEncryptionTypes,pwdLastSet,lastLogonDate,PreAuthNotRequired |
+      Format-Table -AutoSize
+  } else {
+    Write-Host "(no AD details resolved for RC4 target services)" -ForegroundColor DarkGray
+  }
+}
+
 # --- Optional CSV exports ---
 if ($ExportCsv) {
-  if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
+  if (-not (Test-Path $OutDir)) {
+    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+  }
 
-  $flat  | Select-Object DC,Time,EventId,Account,ClientIP,EncHex,EncType |
+  $flat  | Select-Object DC,Time,EventId,TicketType,Account,Service,ServiceSid,ClientIP,EncHex,EncType,
+                          ServiceAvailableKeys,ClientAdvertizedEncryption,DCSupportedEncryptionTypes,
+                          ClientSupportsAES,ServiceHasAESKeys,DCSupportsAES,RC4ChosenWhileAESAvailable |
            Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'All_Tickets.csv')
 
-  $break | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'Breakdown.csv')
+  $breakByType | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'Breakdown_By_TicketType.csv')
+  $break       | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'Breakdown_Global.csv')
 
   if ($rc4) {
-    $rc4 | Select-Object DC,Time,EventId,Account,ClientIP,EncHex,EncType |
+    $rc4 | Select-Object DC,Time,EventId,TicketType,Account,Service,ServiceSid,ClientIP,EncHex,EncType,
+                         ServiceAvailableKeys,ClientAdvertizedEncryption,DCSupportedEncryptionTypes,
+                         ClientSupportsAES,ServiceHasAESKeys,DCSupportsAES,RC4ChosenWhileAESAvailable |
            Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'RC4_Events.csv')
+  }
+
+  if ($adModuleLoaded -and $rc4AccountDetails) {
+    $rc4AccountDetails |
+      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'RC4_Accounts_AD.csv')
+  }
+
+  if ($adModuleLoaded -and $rc4ServiceDetails) {
+    $rc4ServiceDetails |
+      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir 'RC4_Services_AD.csv')
   }
 
   Write-Host ("`nCSV exports -> {0}" -f $OutDir) -ForegroundColor Cyan
 }
+
 ```
 
 - Usage for CSV Export : .\DC_KRB_ETYPE.ps1 -Hours 24 -ExportCsv
