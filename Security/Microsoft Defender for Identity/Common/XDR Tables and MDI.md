@@ -156,13 +156,17 @@ Identity hygiene & posture findings, including:
 
 ## Defender XDR / Advanced Hunting
 
-| Setting | Retention |
-|---------|-----------|
-| Default retention | **30 days** |
-| Extended retention | **180–365 days** (license dependent) |
+| Scope                                                 | Retention Period      | Configurable | Where Data Is Accessible                   | Explanation                                                                                                                            | Practical Example                                                                                                         |
+| ----------------------------------------------------- | --------------------- | ------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **MDI / Microsoft Defender XDR Console**              | **30 days (fixed)**   | ❌ No         | MDI portal, Defender XDR, Advanced Hunting | MDI signals are retained for 30 days only inside the Defender platform. This retention is hard-coded and cannot be extended.           | An attacker performed lateral movement 45 days ago → the activity is **no longer visible** in the MDI or Defender portal. |
+| **Microsoft Sentinel (Analytics / Hot tier)**         | **90 days (default)** | ✅ Yes        | Sentinel (Log Analytics, KQL)              | When MDI is connected to Sentinel, its signals are ingested into Log Analytics. By default, Sentinel keeps analytics data for 90 days. | An NTLM relay detected by MDI 60 days ago → no longer visible in MDI, but **still queryable in Sentinel**.                |
+| **Microsoft Sentinel (Extended Analytics Retention)** | **Up to 730 days**    | ✅ Yes (paid) | Sentinel (Log Analytics)                   | Analytics retention can be extended beyond 90 days to support long-term investigations, at additional cost.                            | A security team investigates a compromise from 6 months ago → data is **still available in Sentinel KQL**.                |
+| **Microsoft Sentinel Archive / Data Lake**            | **Years**             | ✅ Yes        | Archive tier / Data Lake                   | Data can be archived for multi-year retention at lower cost. Queries require restore or archive search, and are not real-time.         | A compliance audit requires identity activity from 2 years ago → data is **retrieved from archive storage**.              |
 
 All Identity\* tables follow this retention window.  
 **MDI does not control retention — XDR does.**
+
+
 
 ---
 
