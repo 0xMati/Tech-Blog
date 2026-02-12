@@ -1,0 +1,17 @@
+# Generated output
+output/
+
+# Local config
+config/config.psd1
+
+# Logs
+*.log
+*.tmp
+*.bak
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
