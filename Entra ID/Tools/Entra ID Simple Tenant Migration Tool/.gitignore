@@ -12,6 +12,9 @@ config/config.psd1
 # VS Code
 .vscode/
 
+# Old version (deprecated)
+OldVersion/
+
 # OS
 .DS_Store
 Thumbs.db

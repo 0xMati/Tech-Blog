@@ -22,9 +22,9 @@ if ($null -eq $existing) {
 # ------------------------------------------------------------
 
 function Get-EIDMGraphScopes {
-    # Keep it simple for now. Tighten later per workload.
     return @(
         'User.Read.All',
+        'User.ReadWrite.All',
         'Group.Read.All',
         'Directory.Read.All'
     )

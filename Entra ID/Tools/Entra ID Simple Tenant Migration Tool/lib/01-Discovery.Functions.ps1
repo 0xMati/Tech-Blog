@@ -48,6 +48,12 @@ function Get-EIDMDiscoverySteps {
         Phase    = "01-Discovery"
         Handler  = "Invoke-DiscoveryEXOExportRecipientsSource"
         Requires = @("ExchangeSource")
+        },
+        @{
+        Id       = "Discovery-EXO-ExportMailContacts-Source"
+        Phase    = "01-Discovery"
+        Handler  = "Invoke-DiscoveryEXOExportMailContactsSource"
+        Requires = @("ExchangeSource")
         }
         @{
         Id       = "Discovery-SPO-ExportOneDriveSites-Source"
@@ -194,7 +200,12 @@ function Invoke-DiscoveryExportGroupsSource {
         'createdDateTime',
         'description',
         'visibility',
-        'isAssignableToRole'
+        'isAssignableToRole',
+        'onPremisesSyncEnabled',
+        'onPremisesSamAccountName',
+        'onPremisesNetBiosName',
+        'onPremisesDomainName',
+        'onPremisesSecurityIdentifier'
     )
 
     $groups = Get-MgGroup -All -Property $properties
@@ -211,7 +222,12 @@ function Invoke-DiscoveryExportGroupsSource {
         @{n='CreatedDateTime';e={$_.CreatedDateTime}}, `
         @{n='Description';e={$_.Description}}, `
         @{n='Visibility';e={$_.Visibility}}, `
-        @{n='IsAssignableToRole';e={$_.IsAssignableToRole}}
+        @{n='IsAssignableToRole';e={$_.IsAssignableToRole}}, `
+        @{n='OnPremisesSyncEnabled';e={$_.OnPremisesSyncEnabled}}, `
+        @{n='OnPremisesSamAccountName';e={$_.OnPremisesSamAccountName}}, `
+        @{n='OnPremisesNetBiosName';e={$_.OnPremisesNetBiosName}}, `
+        @{n='OnPremisesDomainName';e={$_.OnPremisesDomainName}}, `
+        @{n='OnPremisesSecurityIdentifier';e={$_.OnPremisesSecurityIdentifier}}
 
     $export | Export-Csv -LiteralPath $outFile -NoTypeInformation -Encoding UTF8
 
@@ -503,6 +519,57 @@ function Invoke-DiscoveryEXOExportRecipientsSource {
     return @{
         Status  = "Completed"
         Message = ("Exported EXO recipients to {0} (rows: {1})." -f (Split-Path $outFile -Leaf), $rows.Count)
+    }
+}
+function Invoke-DiscoveryEXOExportMailContactsSource {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$Ctx
+    )
+
+    $phaseFolder = Join-Path $Ctx.RunRoot "01-Discovery"
+    $outFile     = Join-Path $phaseFolder "EXO-MailContacts_SOURCE.csv"
+
+    Write-EIDMLog -LogPath $Ctx.LogPath -Level INFO -Message "EXO Discovery (SOURCE) - Exporting Mail Contacts to CSV."
+
+    Assert-EIDMDirectory -Path $phaseFolder
+
+    # Export all mail contacts from the source tenant
+    $contacts = @(Get-MailContact -ResultSize Unlimited)
+
+    Write-EIDMLog -LogPath $Ctx.LogPath -Level INFO -Message ("EXO Discovery (SOURCE) - Mail Contacts found: {0}" -f $contacts.Count)
+
+    $rows = New-Object System.Collections.Generic.List[object]
+
+    foreach ($c in $contacts) {
+
+        $emailAddresses = ""
+        try {
+            if ($null -ne $c.EmailAddresses) { $emailAddresses = ($c.EmailAddresses -join ';') }
+        }
+        catch { $emailAddresses = "" }
+
+        $rows.Add([pscustomobject]@{
+            ExternalDirectoryObjectId     = [string]$c.ExternalDirectoryObjectId
+            DisplayName                   = [string]$c.DisplayName
+            Name                          = [string]$c.Name
+            Alias                         = [string]$c.Alias
+            ExternalEmailAddress          = [string]$c.ExternalEmailAddress
+            PrimarySmtpAddress            = [string]$c.PrimarySmtpAddress
+            EmailAddresses                = $emailAddresses
+            HiddenFromAddressListsEnabled = [bool]$c.HiddenFromAddressListsEnabled
+            WhenCreated                   = [string]$c.WhenCreated
+            WhenChanged                   = [string]$c.WhenChanged
+        }) | Out-Null
+    }
+
+    $rows | Export-Csv -LiteralPath $outFile -NoTypeInformation -Encoding UTF8
+
+    Write-EIDMLog -LogPath $Ctx.LogPath -Level INFO -Message ("EXO Discovery (SOURCE) - Export completed: {0} (rows: {1})" -f $outFile, $rows.Count)
+
+    return @{
+        Status  = "Completed"
+        Message = ("Exported EXO Mail Contacts to {0} (rows: {1})." -f (Split-Path $outFile -Leaf), $rows.Count)
     }
 }
 function Invoke-DiscoverySPOExportOneDriveSitesSource {

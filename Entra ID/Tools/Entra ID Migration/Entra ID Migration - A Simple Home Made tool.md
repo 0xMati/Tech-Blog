@@ -1,5 +1,5 @@
 # Entra ID Migration - A Simple Home Made tool
-🗓️ Published: 2026-02-07 - VVersion 1
+🗓️ Published: 2026-02-07 - Version 1
 
 ## Introduction
 

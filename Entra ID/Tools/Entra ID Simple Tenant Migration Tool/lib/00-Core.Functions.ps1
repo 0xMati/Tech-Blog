@@ -63,6 +63,41 @@ function Read-EIDMYesNo {
     return ($v -in @('y','yes'))
 }
 
+function Read-EIDMSimpleYesNo {
+    <#
+    .SYNOPSIS  Lightweight Y/N prompt (no tag/detail overhead).
+    .DESCRIPTION  Returns $true for Y, $false for N. Loops until valid input.
+    #>
+    param([Parameter(Mandatory)][string]$Question)
+    do {
+        $r = Read-Host ("{0} (Y/N)" -f $Question)
+        if (-not $r) { continue }
+        $r = $r.Trim()
+    } while ($r -notmatch '^[YyNn]$')
+    return ($r -match '^[Yy]$')
+}
+
+function Read-EIDMNonEmpty {
+    <#
+    .SYNOPSIS  Prompt that refuses blank input.
+    #>
+    param([Parameter(Mandatory)][string]$Question)
+    while ($true) {
+        $value = Read-Host $Question
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value.Trim() }
+        Write-Host "Value cannot be empty." -ForegroundColor Yellow
+    }
+}
+
+function Test-EIDMGuidFormat {
+    <#
+    .SYNOPSIS  Returns $true if the string is a valid GUID.
+    #>
+    param([Parameter(Mandatory)][string]$Candidate)
+    $out = [guid]::Empty
+    return [guid]::TryParse($Candidate, [ref]$out)
+}
+
 function Read-EIDMWorkloadChoices {
     param(
         [hashtable]$Defaults = @{
@@ -80,11 +115,11 @@ function Read-EIDMWorkloadChoices {
         IdentityPreparation = @{ Question = 'Run Identity Preparation [WRITE]?';    Tag = 'WRITE';     TagColor = 'Yellow'
                                   Details  = @('Prepares identity objects and mappings','May create or update objects',"Output folder: output\runs\<RunId>\02-IdentityPreparation\") }
         ExchangeMigration   = @{ Question = 'Run Exchange Migration [WRITE]?';      Tag = 'WRITE';     TagColor = 'Yellow'
-                                  Details  = @('Prepares and/or executes Exchange mailbox migration steps','May create batches or modify migration settings',"Output folder: output\runs\<RunId>\03-ExchangeMigration\") }
+                                  Details  = @('Prepares and/or executes Exchange mailbox migration steps','May create batches or modify migration settings',"Output folder: output\runs\<RunId>\03-ExchangeMigrationPlan\ and 04-ExchangeMigrationExecution\") }
         OneDriveMigration   = @{ Question = 'Run OneDrive Migration [WRITE]?';      Tag = 'WRITE';     TagColor = 'Yellow'
-                                  Details  = @('Prepares and/or executes OneDrive migration steps','May create migration tasks/endpoints depending on implementation',"Output folder: output\runs\<RunId>\04-OneDriveMigration\") }
+                                  Details  = @('Prepares and/or executes OneDrive migration steps','May create migration tasks/endpoints depending on implementation',"Output folder: output\runs\<RunId>\05-OneDriveMigrationPlan\ and 06-OneDriveMigrationExecution\") }
         SharePointMigration = @{ Question = 'Run SharePoint Migration [WRITE]?';    Tag = 'WRITE';     TagColor = 'Yellow'
-                                  Details  = @('Prepares and/or executes SharePoint migration steps','May create migration tasks/endpoints depending on implementation',"Output folder: output\runs\<RunId>\05-SharePointMigration\") }
+                                  Details  = @('Prepares and/or executes SharePoint migration steps','May create migration tasks/endpoints depending on implementation',"Output folder: output\runs\<RunId>\07-SharePointMigrationPlan\ and 08-SharePointMigrationExecution\") }
     }
 
     $results = @{}
@@ -273,7 +308,7 @@ function Initialize-EIDMRun {
     Assert-EIDMDirectory -Path (Join-Path $runRoot "logs")
 
     # Workload folders (match phases naming)
-    @('01-Discovery','02-IdentityPreparation','03-ExchangeMigration','04-OneDriveMigration','05-SharePointMigration') | ForEach-Object {
+    @('01-Discovery','02-IdentityPreparation','03-ExchangeMigrationPlan','04-ExchangeMigrationExecution','05-OneDriveMigrationPlan','06-OneDriveMigrationExecution','07-SharePointMigrationPlan','08-SharePointMigrationExecution') | ForEach-Object {
         Assert-EIDMDirectory -Path (Join-Path $runRoot $_)
     }
 
@@ -347,16 +382,39 @@ function Edit-EIDMConfigWizard {
 function Select-EIDMConfigAction {
     param([Parameter(Mandatory)][string]$ConfigPath)
 
-    Write-EIDMSection "Configuration File Detected"
-    Write-EIDMTag -Tag "CONFIG" -Text ("Existing config found: {0}" -f $ConfigPath) -Color Cyan
+    Write-Host ""
+    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+    Write-Host "  |  Configuration                                           |" -ForegroundColor White
+    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  A configuration file was found:" -ForegroundColor Gray
+    Write-Host "  $ConfigPath" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  The config defines which tenants (SOURCE/TARGET) and which" -ForegroundColor DarkGray
+    Write-Host "  workloads (Exchange, OneDrive, SharePoint...) are enabled." -ForegroundColor DarkGray
     Write-Host ""
 
-    Write-Host "Choose an action:" -ForegroundColor White
-    Write-Host "  1) Use existing config (continue)" -ForegroundColor Green
-    Write-Host "  2) View config (read-only)" -ForegroundColor Cyan
-    Write-Host "  3) Edit existing config (tenants + workloads)" -ForegroundColor Yellow
-    Write-Host "  4) Re-run wizard and overwrite config" -ForegroundColor Red
-    Write-Host "  5) Cancel and exit" -ForegroundColor DarkGray
+    Write-Host "  " -NoNewline; Write-Host " 1 " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host " Use existing config" -ForegroundColor Green
+    Write-Host "      Keep the current settings and proceed to the run menu." -ForegroundColor DarkGray
+    Write-Host "      Choose this if nothing has changed since last time." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 2 " -NoNewline -ForegroundColor White -BackgroundColor DarkCyan; Write-Host " View config (read-only)" -ForegroundColor Cyan
+    Write-Host "      Display the current tenants and workload settings." -ForegroundColor DarkGray
+    Write-Host "      No changes will be made. You will return to this menu." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 3 " -NoNewline -ForegroundColor Black -BackgroundColor DarkYellow; Write-Host " Edit config" -ForegroundColor Yellow
+    Write-Host "      Modify tenant domains, enable/disable workloads, etc." -ForegroundColor DarkGray
+    Write-Host "      The updated config will be saved to disk." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 4 " -NoNewline -ForegroundColor White -BackgroundColor DarkRed; Write-Host " Re-run wizard (overwrite)" -ForegroundColor Red
+    Write-Host "      Start the configuration wizard from scratch." -ForegroundColor DarkGray
+    Write-Host "      The existing config file will be overwritten." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 5 " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " Cancel and exit" -ForegroundColor DarkGray
     Write-Host ""
 
     while ($true) {
@@ -533,24 +591,78 @@ function Select-EIDMExistingRun {
 
 function Select-EIDMPhaseFromUser {
 
-    Write-EIDMSection "Select a Phase (Stub)"
-    Write-Host "  1) 01-Discovery" -ForegroundColor Green
-    Write-Host "  2) 02-IdentityPreparation" -ForegroundColor Yellow
-    Write-Host "  3) 03-ExchangeMigration" -ForegroundColor Magenta
-    Write-Host "  4) 04-OneDriveMigration" -ForegroundColor Cyan
-    Write-Host "  5) 05-SharePointMigration" -ForegroundColor DarkCyan
-    Write-Host "  X) Cancel" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+    Write-Host "  |  Select a Phase to Execute                               |" -ForegroundColor White
+    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Phases should be executed in order. Each contains multiple steps." -ForegroundColor DarkGray
     Write-Host ""
 
-    $ans = Read-Host "Select phase [1-5 or X]"
+    # --- Section: Inventory ---
+    Write-Host "  " -NoNewline; Write-Host " INVENTORY & PREPARATION " -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 1 " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host " 01-Discovery" -ForegroundColor Green
+    Write-Host "      Inventory SOURCE tenant: users, groups, licenses, mailboxes, OneDrive." -ForegroundColor DarkGray
+    Write-Host "      Read-only -- exports CSV reports, no changes are made." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 2 " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host " 02-IdentityPreparation" -ForegroundColor Green
+    Write-Host "      Create user accounts on TARGET (AD synced + cloud-only)." -ForegroundColor DarkGray
+    Write-Host "      Builds provisioning plans, creates accounts, sets passwords." -ForegroundColor DarkGray
+    Write-Host ""
+
+    # --- Section: Exchange ---
+    Write-Host "  " -NoNewline; Write-Host " EXCHANGE ONLINE MIGRATION " -ForegroundColor Black -BackgroundColor DarkYellow
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 3 " -NoNewline -ForegroundColor Black -BackgroundColor DarkYellow; Write-Host " 03-ExchangeMigrationPlan" -ForegroundColor Yellow
+    Write-Host "      Prepare cross-tenant mailbox migration: prerequisites check," -ForegroundColor DarkGray
+    Write-Host "      org relationship, migration endpoint, scope group, MailUser stamps." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 4 " -NoNewline -ForegroundColor Black -BackgroundColor DarkYellow; Write-Host " 04-ExchangeMigrationExecution" -ForegroundColor Yellow
+    Write-Host "      Execute mailbox migration: create batches, monitor progress," -ForegroundColor DarkGray
+    Write-Host "      complete/stop batches, assign licenses to migrated users." -ForegroundColor DarkGray
+    Write-Host ""
+
+    # --- Section: OneDrive ---
+    Write-Host "  " -NoNewline; Write-Host " ONEDRIVE MIGRATION " -ForegroundColor White -BackgroundColor DarkCyan
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 5 " -NoNewline -ForegroundColor White -BackgroundColor DarkCyan; Write-Host " 05-OneDriveMigrationPlan" -ForegroundColor Cyan
+    Write-Host "      Prepare OneDrive migration: user mapping, cross-tenant trust," -ForegroundColor DarkGray
+    Write-Host "      CTIM identity map, license assignment, OneDrive pre-provisioning." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 6 " -NoNewline -ForegroundColor White -BackgroundColor DarkCyan; Write-Host " 06-OneDriveMigrationExecution" -ForegroundColor Cyan
+    Write-Host "      Upload identity map, start moves, monitor status, reset trust." -ForegroundColor DarkGray
+    Write-Host ""
+
+    # --- Section: SharePoint ---
+    Write-Host "  " -NoNewline; Write-Host " SHAREPOINT MIGRATION " -ForegroundColor Gray -BackgroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 7 " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " 07-SharePointMigrationPlan" -NoNewline -ForegroundColor DarkGray; Write-Host "  (not yet implemented)" -ForegroundColor DarkGray
+    Write-Host "  " -NoNewline; Write-Host " 8 " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " 08-SharePointMigrationExecution" -NoNewline -ForegroundColor DarkGray; Write-Host "  (not yet implemented)" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " X " -NoNewline -ForegroundColor White -BackgroundColor DarkRed; Write-Host " Cancel - return to main menu" -ForegroundColor Red
+    Write-Host ""
+
+    $ans = Read-Host "Select phase [1-8 or X]"
     if ($ans.Trim().ToUpper() -eq 'X') { return $null }
 
     switch ($ans) {
         '1' { return "01-Discovery" }
         '2' { return "02-IdentityPreparation" }
-        '3' { return "03-ExchangeMigration" }
-        '4' { return "04-OneDriveMigration" }
-        '5' { return "05-SharePointMigration" }
+        '3' { return "03-ExchangeMigrationPlan" }
+        '4' { return "04-ExchangeMigrationExecution" }
+        '5' { return "05-OneDriveMigrationPlan" }
+        '6' { return "06-OneDriveMigrationExecution" }
+        '7' { return "07-SharePointMigrationPlan" }
+        '8' { return "08-SharePointMigrationExecution" }
         default {
             Write-EIDMTag -Tag "ERROR" -Text "Invalid selection." -Color Red
             return $null
@@ -658,7 +770,12 @@ function Invoke-EIDMStep {
 
     $lastStatus = Get-EIDMStepLastStatus -Ctx $Ctx -StepId $stepId
 
-    if ($lastStatus -eq $script:EIDMStatus_Completed) {
+    $allowRerun = $false
+    if ($Step.ContainsKey('AllowRerun') -and $Step.AllowRerun -eq $true) {
+        $allowRerun = $true
+    }
+
+    if ($lastStatus -eq $script:EIDMStatus_Completed -and -not $allowRerun) {
         Write-EIDMTag -Tag 'INFO' -Text 'Step already completed. Skipping.' -Color DarkGray
         return
     }

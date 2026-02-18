@@ -2,6 +2,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Clear-Host
+
 $RepoRoot   = $PSScriptRoot
 $ConfigPath = Join-Path $RepoRoot "config\config.psd1"
 
@@ -10,9 +12,28 @@ $ConfigPath = Join-Path $RepoRoot "config\config.psd1"
 . (Join-Path $RepoRoot "lib\00-Auth.Functions.ps1")
 . (Join-Path $RepoRoot "lib\01-Discovery.Functions.ps1")
 . (Join-Path $RepoRoot "lib\02-IdentityPreparation.Functions.ps1")
+. (Join-Path $RepoRoot "lib\03-ExchangeMigrationPlan.Functions.ps1")
+. (Join-Path $RepoRoot "lib\04-ExchangeMigrationExecution.Functions.ps1")
+. (Join-Path $RepoRoot "lib\05-OneDriveMigrationPlan.Functions.ps1")
+. (Join-Path $RepoRoot "lib\06-OneDriveMigrationExecution.Functions.ps1")
 
-
-# Load config FIRST (so we know which workloads are enabled)
+# Welcome banner
+Write-Host ""
+Write-Host "  +------------------------------------------------------------+" -ForegroundColor DarkCyan
+Write-Host "  |                                                            |" -ForegroundColor DarkCyan
+Write-Host "  |" -NoNewline -ForegroundColor DarkCyan; Write-Host "    Entra ID Simple Tenant Migration Tool              " -NoNewline -ForegroundColor Cyan; Write-Host "|" -ForegroundColor DarkCyan
+Write-Host "  |" -NoNewline -ForegroundColor DarkCyan; Write-Host "    Cross-Tenant Migration Orchestrator                " -NoNewline -ForegroundColor DarkGray; Write-Host "|" -ForegroundColor DarkCyan
+Write-Host "  |                                                            |" -ForegroundColor DarkCyan
+Write-Host "  +------------------------------------------------------------+" -ForegroundColor DarkCyan
+Write-Host ""
+Write-Host "  Supported workloads:" -ForegroundColor White
+Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "*" -NoNewline -ForegroundColor Green; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " User identity provisioning (AD synced + cloud-only)" -ForegroundColor Gray
+Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "*" -NoNewline -ForegroundColor Green; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " Exchange Online mailbox migration" -ForegroundColor Gray
+Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "*" -NoNewline -ForegroundColor Green; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " OneDrive for Business content migration" -ForegroundColor Gray
+Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "~" -NoNewline -ForegroundColor Yellow; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " SharePoint Online site migration (coming soon)" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  Initializing..." -ForegroundColor Gray
+Write-Host ""
 $config = Import-PowerShellDataFile -Path $ConfigPath
 
 # Check Graph/EXO/SPO modules (your existing function)
@@ -126,22 +147,45 @@ $currentRun = $null
 while ($true) {
 
     Clear-Host
-    Write-EIDMHeader "Run Orchestrator"
+
+    Write-Host ""
+    Write-Host "  +------------------------------------------------------------+" -ForegroundColor DarkCyan
+    Write-Host "  |" -NoNewline -ForegroundColor DarkCyan; Write-Host "    Entra ID Simple Tenant Migration Tool              " -NoNewline -ForegroundColor Cyan; Write-Host "|" -ForegroundColor DarkCyan
+    Write-Host "  +------------------------------------------------------------+" -ForegroundColor DarkCyan
+    Write-Host ""
 
     if ($null -ne $currentRun) {
-        Write-EIDMTag -Tag "ACTIVE RUN" -Text $currentRun.RunId -Color Green
+        Write-Host "  " -NoNewline; Write-Host " ACTIVE RUN " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host (" {0}" -f $currentRun.RunId) -ForegroundColor Green
+        Write-Host ("               {0}" -f $currentRun.RunRoot) -ForegroundColor DarkGray
     }
     else {
-        Write-EIDMTag -Tag "ACTIVE RUN" -Text "None selected" -Color Yellow
+        Write-Host "  " -NoNewline; Write-Host " NO ACTIVE RUN " -NoNewline -ForegroundColor Black -BackgroundColor DarkYellow; Write-Host " Start or resume a run first (option 1 or 2)" -ForegroundColor Yellow
     }
 
     Write-Host ""
-    Write-Host "Select an action:" -ForegroundColor White
-    Write-Host "  1) Start a new run" -ForegroundColor Green
-    Write-Host "  2) Resume an existing run" -ForegroundColor Yellow
-    Write-Host "  3) View run status" -ForegroundColor Cyan
-    Write-Host "  4) Execute a phase (stub)" -ForegroundColor Magenta
-    Write-Host "  5) Exit" -ForegroundColor DarkGray
+    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+    Write-Host "  |  Main Menu                                               |" -ForegroundColor White
+    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 1 " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host " Start a new run" -ForegroundColor Green
+    Write-Host "      Create a fresh run folder with a unique timestamp." -ForegroundColor DarkGray
+    Write-Host "      All phase outputs (CSVs, logs) will be stored there." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 2 " -NoNewline -ForegroundColor Black -BackgroundColor DarkYellow; Write-Host " Resume an existing run" -ForegroundColor Yellow
+    Write-Host "      Pick a previous run folder to continue where you left off." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 3 " -NoNewline -ForegroundColor White -BackgroundColor DarkCyan; Write-Host " View run status" -ForegroundColor Cyan
+    Write-Host "      Show which steps have been completed, failed, or are pending." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 4 " -NoNewline -ForegroundColor White -BackgroundColor DarkMagenta; Write-Host " Execute a phase" -ForegroundColor Magenta
+    Write-Host "      Run a migration phase (Discovery, Identity, Exchange, OneDrive...)." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 5 " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " Exit" -ForegroundColor DarkGray
     Write-Host ""
 
     $choice = Read-Host "Enter choice [1-5]"
@@ -256,6 +300,158 @@ while ($true) {
                     break
                 }
 
+                '03-ExchangeMigrationPlan' {
+
+                    if (-not (Get-Command -Name Invoke-EIDMPhase -ErrorAction SilentlyContinue)) {
+                        throw "Invoke-EIDMPhase not found in 00-Core.Functions.ps1. Step engine is missing."
+                    }
+
+                    $steps = Get-EIDMExchangeMigrationPlanSteps -Ctx $currentRun
+                    Invoke-EIDMPhase -Ctx $currentRun -PhaseName '03-ExchangeMigrationPlan' -Steps $steps
+
+                    Write-EIDMTag -Tag "OK" -Text "Phase completed: 03-ExchangeMigrationPlan" -Color Green
+                    Read-Host "Press Enter to continue" | Out-Null
+                    break
+                }
+
+                '04-ExchangeMigrationExecution' {
+
+                    if (-not (Get-Command -Name Invoke-EIDMStep -ErrorAction SilentlyContinue)) {
+                        throw "Invoke-EIDMStep not found in 00-Core.Functions.ps1. Step engine is missing."
+                    }
+
+                    $allSteps = Get-EIDMExchangeMigrationExecutionSteps -Ctx $currentRun
+
+                    Write-Host ""
+                    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+                    Write-Host "  |  04 - Exchange Migration Execution                       |" -ForegroundColor Magenta
+                    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+                    Write-Host ""
+                    Write-Host "  Tip: Typical order: Start -> Check -> Complete -> Assign licenses" -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 1 " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host " Start Migration Batch" -ForegroundColor Green
+                    Write-Host "      Adds source mailboxes to the scope security group (SOURCE EXO)," -ForegroundColor DarkGray
+                    Write-Host "      then creates a New-MigrationBatch on the TARGET tenant." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 2 " -NoNewline -ForegroundColor White -BackgroundColor DarkCyan; Write-Host " Check Migration Batches" -ForegroundColor Cyan
+                    Write-Host "      Lists all migration batches on TARGET with per-user status." -ForegroundColor DarkGray
+                    Write-Host "      Exports status CSVs. Run this repeatedly to track progress." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 3 " -NoNewline -ForegroundColor Black -BackgroundColor DarkYellow; Write-Host " Stop / Remove Batches" -ForegroundColor Yellow
+                    Write-Host "      Complete (finalize), Stop, or Remove migration batches." -ForegroundColor DarkGray
+                    Write-Host "      Use 'Complete' once all users are synced and ready to cut over." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 4 " -NoNewline -ForegroundColor White -BackgroundColor DarkMagenta; Write-Host " Assign Licenses" -ForegroundColor Magenta
+                    Write-Host "      Assign Exchange Online licenses to migrated users on TARGET." -ForegroundColor DarkGray
+                    Write-Host "      Required after migration completes so users can access mail." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " X " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " Cancel" -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    $stepChoice = Read-Host "Select step [1-4 or X]"
+
+                    if ($stepChoice.Trim().ToUpper() -eq 'X') {
+                        break
+                    }
+
+                    $stepIndex = -1
+                    switch ($stepChoice.Trim()) {
+                        '1' { $stepIndex = 0 }
+                        '2' { $stepIndex = 1 }
+                        '3' { $stepIndex = 2 }
+                        '4' { $stepIndex = 3 }
+                        default {
+                            Write-EIDMTag -Tag "ERROR" -Text "Invalid selection." -Color Red
+                        }
+                    }
+
+                    if ($stepIndex -ge 0 -and $stepIndex -lt $allSteps.Count) {
+                        $selectedStep = $allSteps[$stepIndex]
+                        Invoke-EIDMStep -Ctx $currentRun -Step $selectedStep
+                    }
+
+                    Read-Host "Press Enter to continue" | Out-Null
+                    break
+                }
+
+
+                '05-OneDriveMigrationPlan' {
+
+                    if (-not (Get-Command -Name Invoke-EIDMPhase -ErrorAction SilentlyContinue)) {
+                        throw "Invoke-EIDMPhase not found in 00-Core.Functions.ps1. Step engine is missing."
+                    }
+
+                    $steps = Get-EIDMOneDriveMigrationPlanSteps -Ctx $currentRun
+                    Invoke-EIDMPhase -Ctx $currentRun -PhaseName '05-OneDriveMigrationPlan' -Steps $steps
+
+                    Write-EIDMTag -Tag "OK" -Text "Phase completed: 05-OneDriveMigrationPlan" -Color Green
+                    Read-Host "Press Enter to continue" | Out-Null
+                    break
+                }
+
+                '06-OneDriveMigrationExecution' {
+
+                    if (-not (Get-Command -Name Invoke-EIDMStep -ErrorAction SilentlyContinue)) {
+                        throw "Invoke-EIDMStep not found in 00-Core.Functions.ps1. Step engine is missing."
+                    }
+
+                    $allSteps = Get-EIDMOneDriveMigrationExecutionSteps -Ctx $currentRun
+
+                    Write-Host ""
+                    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+                    Write-Host "  |  06 - OneDrive Migration Execution                       |" -ForegroundColor Cyan
+                    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+                    Write-Host ""
+                    Write-Host "  Tip: Typical order: Start migrations -> Check status -> Reset trust" -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 1 " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host " Start OneDrive Migrations" -ForegroundColor Green
+                    Write-Host "      Uploads the CTIM identity map to TARGET SPO, then starts" -ForegroundColor DarkGray
+                    Write-Host "      cross-tenant user content moves on SOURCE for each user." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 2 " -NoNewline -ForegroundColor White -BackgroundColor DarkCyan; Write-Host " Check Migration Status" -ForegroundColor Cyan
+                    Write-Host "      Queries Get-SPOCrossTenantUserContentMoveState on both tenants." -ForegroundColor DarkGray
+                    Write-Host "      Exports status CSVs. Run repeatedly until all moves complete." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 3 " -NoNewline -ForegroundColor Black -BackgroundColor DarkYellow; Write-Host " Reset Cross-Tenant Trust" -ForegroundColor Yellow
+                    Write-Host "      Removes the MnA cross-tenant relationship on both sides." -ForegroundColor DarkGray
+                    Write-Host "      Only run this AFTER all OneDrive migrations are finished." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " X " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " Cancel" -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    $stepChoice = Read-Host "Select step [1-3 or X]"
+
+                    if ($stepChoice.Trim().ToUpper() -eq 'X') {
+                        break
+                    }
+
+                    $stepIndex = -1
+                    switch ($stepChoice.Trim()) {
+                        '1' { $stepIndex = 0 }
+                        '2' { $stepIndex = 1 }
+                        '3' { $stepIndex = 2 }
+                        default {
+                            Write-EIDMTag -Tag "ERROR" -Text "Invalid selection." -Color Red
+                        }
+                    }
+
+                    if ($stepIndex -ge 0 -and $stepIndex -lt $allSteps.Count) {
+                        $selectedStep = $allSteps[$stepIndex]
+                        Invoke-EIDMStep -Ctx $currentRun -Step $selectedStep
+                    }
+
+                    Read-Host "Press Enter to continue" | Out-Null
+                    break
+                }
 
                 default {
                     Write-EIDMTag -Tag "WARN" -Text ("Phase '{0}' not implemented yet." -f $phase) -Color Yellow
