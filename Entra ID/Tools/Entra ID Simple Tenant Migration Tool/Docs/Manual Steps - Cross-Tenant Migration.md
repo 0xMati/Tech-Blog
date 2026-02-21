@@ -17,6 +17,73 @@
 
 ---
 
+## Steps Summary
+
+| # | Step | Description | Tenant | Tools / Cmdlets |
+|---|------|-------------|--------|-----------------|
+| | **Prerequisites** | | | |
+| 0.1 | Install PowerShell modules | Install Microsoft.Graph, ExchangeOnlineManagement, SharePoint PnP | — | `Install-Module` |
+| 0.2 | Install RSAT AD tools | Required only if migrating AD-synced users | Target AD | `Add-WindowsCapability` |
+| 0.3 | Verify admin permissions | Global Reader (source), Global Admin (target), Exchange Admin (both), SPO Admin (both) | Both | — |
+| 0.4 | Verify licensing | Cross-Tenant User Data Migration license on both tenants | Both | M365 Admin Center |
+| | **Phase 1 — Inventory** | | | |
+| 1.1 | Export Entra ID users | All users with UPN, type, licenses, proxy addresses | Source | `Get-MgUser -All` |
+| 1.2 | Export domains | Verified and unverified domains | Source | `Get-MgDomain -All` |
+| 1.3 | Export groups | All group types (Security, M365, Distribution, Dynamic) | Source | `Get-MgGroup -All` |
+| 1.4 | Export group memberships | Members of each non-dynamic group | Source | `Get-MgGroupMember` |
+| 1.5 | Export Exchange mailboxes | All mailboxes with size, ExchangeGuid, type | Source | `Get-EXOMailbox`, `Get-EXOMailboxStatistics` |
+| 1.6 | Export Exchange recipients | All mail-enabled objects | Source | `Get-EXORecipient` |
+| 1.7 | Export mail contacts | External contacts in the GAL | Source | `Get-MailContact` |
+| 1.8 | Export OneDrive sites | All personal sites with storage usage | Source | `Get-SPOSite -IncludePersonalSite` |
+| 1.9 | Export SharePoint sites | All sites excluding OneDrive | Source | `Get-SPOSite -Limit All` |
+| | **Phase 2 — Identity Provisioning** | | | |
+| 2.1 | Plan UPN suffix mapping | Decide target UPNs for each user | — | — |
+| 2.2 | Create AD-synced users | Create users + mail attributes in target AD | Target AD | `New-ADUser`, `Set-ADUser`, `Set-ADForest` |
+| 2.3 | Create cloud-only users | Create users directly in target Entra ID | Target | `New-MgUser` |
+| 2.4 | Invite guest users | Re-invite B2B guests | Target | `New-MgInvitation` |
+| 2.5 | Create groups | Recreate security, distribution, M365 groups | Target AD / Entra ID | `New-ADGroup`, `New-MgGroup` |
+| 2.6 | Populate group memberships | Add members to recreated groups | Target AD / Entra ID | `Add-ADGroupMember`, `New-MgGroupMember` |
+| 2.7 | Configure Entra Connect scope | Include new OUs, trigger sync, verify | Target AD + Entra ID | `Start-ADSyncSyncCycle` |
+| 2.8 | Recreate mail contacts | Create external contacts in target EXO | Target | `New-MailContact` |
+| | **Phase 3 — Exchange Migration Setup** | | | |
+| 3.1 | Verify prerequisites | Licenses, permissions, tenant IDs | Both | `Get-MgContext` |
+| 3.2 | Create migration app | App registration + Mailbox.Migration role | Target | `New-MgApplication`, `New-MgServicePrincipal` |
+| 3.3 | Create migration endpoint | ExchangeRemoteMove endpoint | Target | `New-MigrationEndpoint` |
+| 3.4 | Create org relationship (inbound) | Allow source to push data | Target | `New-OrganizationRelationship` |
+| 3.5 | Admin consent on source | SOURCE admin consents to TARGET app | Source | Browser (admin consent URL) |
+| 3.6 | Create scoping security group | Controls which mailboxes can migrate | Source | `New-DistributionGroup -Type Security` |
+| 3.7 | Create org relationship (outbound) | Authorize migration with scope | Source | `New-OrganizationRelationship` |
+| 3.8 | Stamp target MailUsers | Set ExchangeGuid, ExternalEmailAddress, X500 | Target | `Set-MailUser`, `Get-Mailbox` (source) |
+| 3.9 | Clear soft-deleted mailboxes | Remove ghost mailboxes blocking migration | Target | `Set-User -PermanentlyClearPreviousMailboxInfo` |
+| | **Phase 4 — Exchange Migration Execution** | | | |
+| 4.1 | Add users to scoping group | Authorize each user for migration | Source | `Add-DistributionGroupMember` |
+| 4.2 | Create and start migration batch | Start mailbox move | Target | `New-MigrationBatch` |
+| 4.3 | Monitor migration progress | Check batch and per-user status | Target | `Get-MigrationBatch`, `Get-MigrationUser` |
+| 4.4 | Complete migration batch | Finalize cutover | Target | `Complete-MigrationBatch` |
+| 4.5 | Clean up migration batch | Remove completed batch | Target | `Remove-MigrationBatch` |
+| 4.6 | Assign Exchange licenses | Users need licenses to access mailbox | Target | `Set-MgUserLicense` |
+| | **Phase 5 — OneDrive Migration Setup** | | | |
+| 5.1 | Verify OneDrive prerequisites | Licenses, SPO Admin, OneDrive provisioned | Both | — |
+| 5.2 | Build user mapping | SourceUPN → TargetUPN mapping | — | — |
+| 5.3 | Establish cross-tenant trust (MnA) | Set up SPO relationship on both sides | Both | `Set-SPOCrossTenantRelationship`, `Verify-SPOCrossTenantRelationship` |
+| 5.4 | Pre-provision OneDrive sites | Create target OneDrive sites before migration | Target | `Request-SPOPersonalSite` |
+| 5.5 | Build CTIM identity map | Headerless CSV mapping file for SharePoint | — | Manual CSV creation |
+| | **Phase 6 — OneDrive Migration Execution** | | | |
+| 6.1 | Upload identity map to target | Upload CTIM file | Target | `Add-SPOTenantIdentityMap` |
+| 6.2 | Start OneDrive migrations | Initiate per-user content moves | Source | `Start-SPOCrossTenantUserContentMove` |
+| 6.3 | Monitor OneDrive migration status | Check move state on both tenants | Both | `Get-SPOCrossTenantUserContentMoveState` |
+| 6.4 | Remove cross-tenant trust | Clean up MnA relationship | Both | `Remove-SPOCrossTenantRelationship` |
+| | **Phase 7 — Post-Migration Cleanup** | | | |
+| 7.1 | Verify all migrations | Check mailboxes, OneDrive, groups, contacts | Target | — |
+| 7.2 | Clean up scoping group | Remove migration security group | Source | `Remove-DistributionGroup` |
+| 7.3 | Clean up migration app | Remove Entra ID app registration | Target | `Remove-MgApplication` |
+| 7.4 | Clean up org relationships | Remove both inbound and outbound | Both | `Remove-OrganizationRelationship` |
+| 7.5 | Remove migration endpoint | Clean up Exchange endpoint | Target | `Remove-MigrationEndpoint` |
+| 7.6 | DNS cutover | Move custom domain to target, update DNS records | Both | `Update-MgUser`, DNS management |
+| 7.7 | Communicate to end users | Send migration instructions and new credentials | — | Email |
+
+---
+
 ## Before You Start — Prerequisites
 
 ### Install Required PowerShell Modules

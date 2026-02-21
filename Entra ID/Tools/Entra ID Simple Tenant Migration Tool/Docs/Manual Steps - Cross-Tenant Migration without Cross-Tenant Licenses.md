@@ -20,6 +20,75 @@
 
 ---
 
+## Steps Summary
+
+| # | Step | Description | Tenant | Tools / Method |
+|---|------|-------------|--------|----------------|
+| | **Prerequisites** | | | |
+| 0.1 | Install PowerShell modules | Microsoft.Graph, ExchangeOnlineManagement | — | `Install-Module` |
+| 0.2 | Install tools | SPMT, AzCopy, Azure Storage Explorer (optional) | — | Download from Microsoft |
+| 0.3 | Verify admin permissions | Global Reader (source), Global Admin (target), Compliance Admin (source), SPO Admin (both) | Both | — |
+| 0.4 | Prepare storage | Azure blob storage for PST, local disk for OneDrive data | — | ~1.5x total data size |
+| | **Phase 1 — Inventory** | | | |
+| 1.1 | Export Entra ID users | All users with UPN, type, licenses, proxy addresses | Source | `Get-MgUser -All` |
+| 1.2 | Export domains | Verified and unverified domains | Source | `Get-MgDomain -All` |
+| 1.3 | Export groups | All group types | Source | `Get-MgGroup -All` |
+| 1.4 | Export group memberships | Members of each non-dynamic group | Source | `Get-MgGroupMember` |
+| 1.5 | Export Exchange mailboxes | All mailboxes with size, ExchangeGuid, type | Source | `Get-EXOMailbox`, `Get-EXOMailboxStatistics` |
+| 1.6 | Export Exchange recipients | All mail-enabled objects | Source | `Get-EXORecipient` |
+| 1.7 | Export mail contacts | External contacts in the GAL | Source | `Get-MailContact` |
+| 1.8 | Export OneDrive sites | All personal sites with storage usage | Source | `Get-SPOSite -IncludePersonalSite` |
+| 1.9 | Export SharePoint sites | All sites excluding OneDrive | Source | `Get-SPOSite -Limit All` |
+| | **Phase 2 — Identity Provisioning** | | | |
+| 2.1 | Plan UPN suffix mapping | Decide target UPNs — no `targetAddress` needed | — | — |
+| 2.2 | Create AD-synced users | Create in target AD (skip mail attributes) | Target AD | `New-ADUser` |
+| 2.3 | Create cloud-only users | Create directly in target Entra ID | Target | `New-MgUser` |
+| 2.4 | Invite guest users | Re-invite B2B guests | Target | `New-MgInvitation` |
+| 2.5 | Create groups | Recreate all group types | Target AD / Entra ID | `New-ADGroup`, `New-MgGroup` |
+| 2.6 | Populate group memberships | Add members to recreated groups | Target AD / Entra ID | `Add-ADGroupMember`, `New-MgGroupMember` |
+| 2.7 | Configure Entra Connect | Include new OUs, trigger sync | Target AD | `Start-ADSyncSyncCycle` |
+| 2.8 | Recreate mail contacts | Create external contacts in target EXO | Target | `New-MailContact` |
+| 2.9 | Assign full M365 licenses | Licenses upfront (real mailboxes, not MailUsers) | Target | `Set-MgUserLicense` |
+| | **Phase 3 — Exchange Mailbox Migration (PST)** | | | |
+| | *Method A — Compliance Content Search (20+ users)* | | | |
+| A.1 | Assign Import Export role | Required for PST export — not included in any default role | Source | `New-ManagementRoleAssignment` |
+| A.2 | Create Content Search | Search per user (or batch) | Source | Purview Compliance Portal / `New-ComplianceSearch` |
+| A.3 | Export search results as PST | Download PST via eDiscovery Export Tool | Source | Compliance Portal > Export |
+| A.4 | Upload PST to Azure blob | Upload via AzCopy to target import location | Target | `azcopy copy` |
+| A.5 | Create PST mapping CSV | Map each PST to a target mailbox | Target | Manual CSV |
+| A.6 | Import PST into target | Network upload import job | Target | Purview > Import |
+| | *Method B — Outlook Export (< 20 users)* | | | |
+| B.1 | Export PST from Outlook | File > Import/Export > Export to PST | Source | Outlook desktop |
+| B.2 | Import PST into Outlook | File > Import/Export > Import from PST | Target | Outlook desktop |
+| | *Method C — Third-party tool* | | | |
+| C.1 | Use MigrationWiz / Quest / etc. | Direct tenant-to-tenant via EWS or Graph | Both | BitTitan, Quest, AvePoint |
+| | **Phase 4 — OneDrive Migration** | | | |
+| | *Method A — SharePoint Migration Tool (recommended)* | | | |
+| A.1 | Install SPMT | Download and install on a Windows machine | — | [SPMT download](https://learn.microsoft.com/en-us/sharepointmigration/introducing-the-sharepoint-migration-tool) |
+| A.2 | Grant access to source OneDrive | Make admin a site collection admin on each OneDrive | Source | `Set-SPOUser -IsSiteCollectionAdmin` |
+| A.3 | Run SPMT migration | Bulk CSV or per-user, source → target OneDrive | Both | SPMT GUI / bulk CSV |
+| A.4 | Verify migration | Check reports, file counts, user verification | Target | SPMT reports |
+| | *Method B — OneDrive Sync Client (small scale)* | | | |
+| B.1 | Sync source OneDrive locally | OneDrive sync client downloads all files | Source | OneDrive sync |
+| B.2 | Copy files to target OneDrive | Copy from source sync folder to target sync folder | Target | `Copy-Item` / File Explorer |
+| | *Method C — Browser download/upload (very small scale)* | | | |
+| C.1 | Download as ZIP from browser | Select all > Download | Source | Browser |
+| C.2 | Upload to target OneDrive | Upload folder in browser | Target | Browser |
+| | **Phase 5 — SharePoint Sites** | | | |
+| 5.1 | Create target sites | Recreate site structure on target | Target | `New-SPOSite` |
+| 5.2 | Migrate content via SPMT | Copy document libraries and lists | Both | SPMT |
+| 5.3 | Recreate permissions & pages | Manual — SPMT doesn't migrate these | Target | SharePoint Admin |
+| | **Phase 6 — Post-Migration Cleanup** | | | |
+| 6.1 | Verify all data | Mailboxes, OneDrive, groups, contacts | Target | User verification |
+| 6.2 | Set up mail forwarding | Forward source mail to target during transition | Source | `Set-Mailbox -ForwardingSmtpAddress` |
+| 6.3 | Recreate distribution groups | Recreate DLs with correct members in target EXO | Target | `New-DistributionGroup` |
+| 6.4 | DNS cutover | Move custom domain from source to target, update MX/SPF/DKIM/DMARC | Both | DNS + `Update-MgUser` |
+| 6.5 | Remove source forwarding | Stop forwarding once DNS propagates | Source | `Set-Mailbox -ForwardingSmtpAddress $null` |
+| 6.6 | Clean up eDiscovery searches | Remove Content Searches and exports | Source | `Remove-ComplianceSearch` |
+| 6.7 | Communicate to end users | New credentials, Outlook profile, broken sharing links | — | Email |
+
+---
+
 ## Overview — What's Different?
 
 With the **Cross-Tenant User Data Migration** license, Microsoft provides built-in cmdlets that move mailboxes and OneDrive content directly between tenants through their backend infrastructure. **Without** that license, none of those cmdlets are available, so you must:
