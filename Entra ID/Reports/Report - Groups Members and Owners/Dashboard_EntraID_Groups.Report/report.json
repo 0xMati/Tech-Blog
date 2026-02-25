@@ -1,0 +1,341 @@
+{
+  "config": "{\"version\":\"5.53\",\"themeCollection\":{\"baseTheme\":{\"name\":\"CY24SU06\",\"version\":\"5.53\",\"type\":2}},\"activeSectionIndex\":0,\"defaultDrillFilterOtherVisuals\":true,\"linguisticSchemaSyncVersion\":2,\"settings\":{\"useNewFilterPaneExperience\":true,\"allowChangeFilterTypes\":true,\"useStylableVisualContainerHeader\":true,\"exportDataMode\":1}}",
+  "filters": "[]",
+  "resourcePackages": [
+    {
+      "resourcePackage": {
+        "name": "SharedResources",
+        "type": 2,
+        "items": [],
+        "disabled": false
+      }
+    }
+  ],
+  "sections": [
+    {
+      "name": "page_overview",
+      "displayName": "Overview",
+      "displayOption": 1,
+      "width": 1280,
+      "height": 720,
+      "filters": "[]",
+      "ordinal": 0,
+      "config": "{}",
+      "visualContainers": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "width": 1280,
+          "height": 56,
+          "config": "{\"name\":\"hdr1\",\"layouts\":[{\"id\":0,\"position\":{\"x\":0,\"y\":0,\"z\":0,\"width\":1280,\"height\":56}}],\"singleVisual\":{\"visualType\":\"textbox\",\"objects\":{\"general\":[{\"properties\":{\"paragraphs\":[{\"textRuns\":[{\"value\":\"ENTRA ID GROUPS \",\"textStyle\":{\"fontWeight\":\"bold\",\"fontSize\":\"22px\",\"color\":\"#1A1A2E\",\"fontFamily\":\"Segoe UI\"}},{\"value\":\"Overview\",\"textStyle\":{\"fontSize\":\"22px\",\"color\":\"#50E6FF\",\"fontFamily\":\"Segoe UI Light\"}}]}]}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 66,
+          "z": 1,
+          "width": 296,
+          "height": 100,
+          "config": "{\"name\":\"kpi1\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":66,\"z\":1,\"width\":296,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Total Groups\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Total Groups\"},\"Name\":\"_Measures.Total Groups\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#50E6FF\"}},\"fontSize\":28}}],\"categoryLabels\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"color\":{\"solid\":{\"color\":\"#666666\"}}}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Total Groups'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#0078D4\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 332,
+          "y": 66,
+          "z": 2,
+          "width": 296,
+          "height": 100,
+          "config": "{\"name\":\"kpi2\",\"layouts\":[{\"id\":0,\"position\":{\"x\":332,\"y\":66,\"z\":2,\"width\":296,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Groups With Owner\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Groups With Owner\"},\"Name\":\"_Measures.Groups With Owner\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#00B294\"}},\"fontSize\":28}}],\"categoryLabels\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"color\":{\"solid\":{\"color\":\"#666666\"}}}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'With Owner'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#00B294\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 640,
+          "y": 66,
+          "z": 3,
+          "width": 296,
+          "height": 100,
+          "config": "{\"name\":\"kpi3\",\"layouts\":[{\"id\":0,\"position\":{\"x\":640,\"y\":66,\"z\":3,\"width\":296,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Groups Without Owner\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Groups Without Owner\"},\"Name\":\"_Measures.Groups Without Owner\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#D83B01\"}},\"fontSize\":28}}],\"categoryLabels\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"color\":{\"solid\":{\"color\":\"#666666\"}}}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Without Owner'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#D83B01\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 948,
+          "y": 66,
+          "z": 4,
+          "width": 296,
+          "height": 100,
+          "config": "{\"name\":\"kpi4\",\"layouts\":[{\"id\":0,\"position\":{\"x\":948,\"y\":66,\"z\":4,\"width\":296,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Empty Groups\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Empty Groups\"},\"Name\":\"_Measures.Empty Groups\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFB900\"}},\"fontSize\":28}}],\"categoryLabels\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"color\":{\"solid\":{\"color\":\"#666666\"}}}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Empty Groups'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFB900\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 178,
+          "z": 5,
+          "width": 604,
+          "height": 260,
+          "config": "{\"name\":\"donut1\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":178,\"z\":5,\"width\":604,\"height\":260}}],\"singleVisual\":{\"visualType\":\"donutChart\",\"projections\":{\"Category\":[{\"queryRef\":\"Groups.GroupType\"}],\"Y\":[{\"queryRef\":\"CountNonNull(Groups.GroupId)\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"Groups\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupType\"},\"Name\":\"Groups.GroupType\"},{\"Aggregation\":{\"Expression\":{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupId\"}},\"Function\":5},\"Name\":\"CountNonNull(Groups.GroupId)\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Group Type Distribution'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 640,
+          "y": 178,
+          "z": 6,
+          "width": 604,
+          "height": 260,
+          "config": "{\"name\":\"donut2\",\"layouts\":[{\"id\":0,\"position\":{\"x\":640,\"y\":178,\"z\":6,\"width\":604,\"height\":260}}],\"singleVisual\":{\"visualType\":\"donutChart\",\"projections\":{\"Category\":[{\"queryRef\":\"GroupMemberCounts.OwnerStatus\"}],\"Y\":[{\"queryRef\":\"CountNonNull(GroupMemberCounts.GroupId)\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"GroupMemberCounts\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"OwnerStatus\"},\"Name\":\"GroupMemberCounts.OwnerStatus\"},{\"Aggregation\":{\"Expression\":{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupId\"}},\"Function\":5},\"Name\":\"CountNonNull(GroupMemberCounts.GroupId)\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Owner Status'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 450,
+          "z": 7,
+          "width": 1220,
+          "height": 260,
+          "config": "{\"name\":\"bar1\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":450,\"z\":7,\"width\":1220,\"height\":260}}],\"singleVisual\":{\"visualType\":\"clusteredColumnChart\",\"projections\":{\"Category\":[{\"queryRef\":\"GroupMemberCounts.MemberSizeCategory\"}],\"Y\":[{\"queryRef\":\"CountNonNull(GroupMemberCounts.GroupId)\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"GroupMemberCounts\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberSizeCategory\"},\"Name\":\"GroupMemberCounts.MemberSizeCategory\"},{\"Aggregation\":{\"Expression\":{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupId\"}},\"Function\":5},\"Name\":\"CountNonNull(GroupMemberCounts.GroupId)\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Group Size Distribution'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        }
+      ]
+    },
+    {
+      "name": "page_owners",
+      "displayName": "Owners Analysis",
+      "displayOption": 1,
+      "width": 1280,
+      "height": 720,
+      "filters": "[]",
+      "ordinal": 1,
+      "config": "{}",
+      "visualContainers": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "width": 1280,
+          "height": 56,
+          "config": "{\"name\":\"hdr2\",\"layouts\":[{\"id\":0,\"position\":{\"x\":0,\"y\":0,\"z\":0,\"width\":1280,\"height\":56}}],\"singleVisual\":{\"visualType\":\"textbox\",\"objects\":{\"general\":[{\"properties\":{\"paragraphs\":[{\"textRuns\":[{\"value\":\"ENTRA ID GROUPS \",\"textStyle\":{\"fontWeight\":\"bold\",\"fontSize\":\"22px\",\"color\":\"#1A1A2E\",\"fontFamily\":\"Segoe UI\"}},{\"value\":\"Owners Analysis\",\"textStyle\":{\"fontSize\":\"22px\",\"color\":\"#50E6FF\",\"fontFamily\":\"Segoe UI Light\"}}]}]}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 66,
+          "z": 1,
+          "width": 390,
+          "height": 100,
+          "config": "{\"name\":\"kpi5\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":66,\"z\":1,\"width\":390,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Unique Owners\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Unique Owners\"},\"Name\":\"_Measures.Unique Owners\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#50E6FF\"}},\"fontSize\":28}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Unique Owners'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#0078D4\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 434,
+          "y": 66,
+          "z": 2,
+          "width": 390,
+          "height": 100,
+          "config": "{\"name\":\"kpi6\",\"layouts\":[{\"id\":0,\"position\":{\"x\":434,\"y\":66,\"z\":2,\"width\":390,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.% Without Owner\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"% Without Owner\"},\"Name\":\"_Measures.% Without Owner\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#D83B01\"}},\"fontSize\":28}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'% Without Owner'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#D83B01\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 844,
+          "y": 66,
+          "z": 3,
+          "width": 390,
+          "height": 100,
+          "config": "{\"name\":\"kpi7\",\"layouts\":[{\"id\":0,\"position\":{\"x\":844,\"y\":66,\"z\":3,\"width\":390,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Avg Owners per Group\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Avg Owners per Group\"},\"Name\":\"_Measures.Avg Owners per Group\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#00B294\"}},\"fontSize\":28}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Avg Owners / Group'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#00B294\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 178,
+          "z": 4,
+          "width": 1220,
+          "height": 260,
+          "config": "{\"name\":\"bar2\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":178,\"z\":4,\"width\":1220,\"height\":260}}],\"singleVisual\":{\"visualType\":\"barChart\",\"projections\":{\"Category\":[{\"queryRef\":\"GroupOwners.OwnerDisplayName\"}],\"Y\":[{\"queryRef\":\"CountNonNull(GroupOwners.GroupId)\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"o\",\"Entity\":\"GroupOwners\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"o\"}},\"Property\":\"OwnerDisplayName\"},\"Name\":\"GroupOwners.OwnerDisplayName\"},{\"Aggregation\":{\"Expression\":{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"o\"}},\"Property\":\"GroupId\"}},\"Function\":5},\"Name\":\"CountNonNull(GroupOwners.GroupId)\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Top Owners by Managed Groups'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 450,
+          "z": 5,
+          "width": 1220,
+          "height": 260,
+          "config": "{\"name\":\"tbl1\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":450,\"z\":5,\"width\":1220,\"height\":260}}],\"singleVisual\":{\"visualType\":\"tableEx\",\"projections\":{\"Values\":[{\"queryRef\":\"GroupMemberCounts.GroupName\"},{\"queryRef\":\"GroupMemberCounts.MemberCount\"},{\"queryRef\":\"GroupMemberCounts.OwnerCount\"},{\"queryRef\":\"GroupMemberCounts.OwnerStatus\"},{\"queryRef\":\"GroupMemberCounts.MemberSizeCategory\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"GroupMemberCounts\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupName\"},\"Name\":\"GroupMemberCounts.GroupName\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberCount\"},\"Name\":\"GroupMemberCounts.MemberCount\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"OwnerCount\"},\"Name\":\"GroupMemberCounts.OwnerCount\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"OwnerStatus\"},\"Name\":\"GroupMemberCounts.OwnerStatus\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberSizeCategory\"},\"Name\":\"GroupMemberCounts.MemberSizeCategory\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Groups Without Owner'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        }
+      ]
+    },
+    {
+      "name": "page_members",
+      "displayName": "Members Analysis",
+      "displayOption": 1,
+      "width": 1280,
+      "height": 720,
+      "filters": "[]",
+      "ordinal": 2,
+      "config": "{}",
+      "visualContainers": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "width": 1280,
+          "height": 56,
+          "config": "{\"name\":\"hdr3\",\"layouts\":[{\"id\":0,\"position\":{\"x\":0,\"y\":0,\"z\":0,\"width\":1280,\"height\":56}}],\"singleVisual\":{\"visualType\":\"textbox\",\"objects\":{\"general\":[{\"properties\":{\"paragraphs\":[{\"textRuns\":[{\"value\":\"ENTRA ID GROUPS \",\"textStyle\":{\"fontWeight\":\"bold\",\"fontSize\":\"22px\",\"color\":\"#1A1A2E\",\"fontFamily\":\"Segoe UI\"}},{\"value\":\"Members Analysis\",\"textStyle\":{\"fontSize\":\"22px\",\"color\":\"#50E6FF\",\"fontFamily\":\"Segoe UI Light\"}}]}]}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 66,
+          "z": 1,
+          "width": 390,
+          "height": 100,
+          "config": "{\"name\":\"kpi8\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":66,\"z\":1,\"width\":390,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Total Members\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Total Members\"},\"Name\":\"_Measures.Total Members\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#50E6FF\"}},\"fontSize\":28}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Total Members'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#0078D4\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 434,
+          "y": 66,
+          "z": 2,
+          "width": 390,
+          "height": 100,
+          "config": "{\"name\":\"kpi9\",\"layouts\":[{\"id\":0,\"position\":{\"x\":434,\"y\":66,\"z\":2,\"width\":390,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Avg Members per Group\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Avg Members per Group\"},\"Name\":\"_Measures.Avg Members per Group\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#00B294\"}},\"fontSize\":28}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Avg Members / Group'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#00B294\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 844,
+          "y": 66,
+          "z": 3,
+          "width": 390,
+          "height": 100,
+          "config": "{\"name\":\"kpi10\",\"layouts\":[{\"id\":0,\"position\":{\"x\":844,\"y\":66,\"z\":3,\"width\":390,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Max Members\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Max Members\"},\"Name\":\"_Measures.Max Members\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFB900\"}},\"fontSize\":28}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Largest Group'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFB900\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 178,
+          "z": 4,
+          "width": 1220,
+          "height": 260,
+          "config": "{\"name\":\"bar3\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":178,\"z\":4,\"width\":1220,\"height\":260}}],\"singleVisual\":{\"visualType\":\"barChart\",\"projections\":{\"Category\":[{\"queryRef\":\"GroupMemberCounts.GroupName\"}],\"Y\":[{\"queryRef\":\"Sum(GroupMemberCounts.MemberCount)\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"GroupMemberCounts\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupName\"},\"Name\":\"GroupMemberCounts.GroupName\"},{\"Aggregation\":{\"Expression\":{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberCount\"}},\"Function\":0},\"Name\":\"Sum(GroupMemberCounts.MemberCount)\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Top Groups by Member Count'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 450,
+          "z": 5,
+          "width": 1220,
+          "height": 260,
+          "config": "{\"name\":\"tbl2\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":450,\"z\":5,\"width\":1220,\"height\":260}}],\"singleVisual\":{\"visualType\":\"tableEx\",\"projections\":{\"Values\":[{\"queryRef\":\"GroupMemberCounts.GroupName\"},{\"queryRef\":\"GroupMemberCounts.MemberCount\"},{\"queryRef\":\"GroupMemberCounts.OwnerCount\"},{\"queryRef\":\"GroupMemberCounts.HasOwner\"},{\"queryRef\":\"GroupMemberCounts.MemberSizeCategory\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"GroupMemberCounts\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupName\"},\"Name\":\"GroupMemberCounts.GroupName\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberCount\"},\"Name\":\"GroupMemberCounts.MemberCount\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"OwnerCount\"},\"Name\":\"GroupMemberCounts.OwnerCount\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"HasOwner\"},\"Name\":\"GroupMemberCounts.HasOwner\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberSizeCategory\"},\"Name\":\"GroupMemberCounts.MemberSizeCategory\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Group Details'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        }
+      ]
+    },
+    {
+      "name": "page_details",
+      "displayName": "Details & Filters",
+      "displayOption": 1,
+      "width": 1280,
+      "height": 720,
+      "filters": "[]",
+      "ordinal": 3,
+      "config": "{}",
+      "visualContainers": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "width": 1280,
+          "height": 56,
+          "config": "{\"name\":\"hdr4\",\"layouts\":[{\"id\":0,\"position\":{\"x\":0,\"y\":0,\"z\":0,\"width\":1280,\"height\":56}}],\"singleVisual\":{\"visualType\":\"textbox\",\"objects\":{\"general\":[{\"properties\":{\"paragraphs\":[{\"textRuns\":[{\"value\":\"ENTRA ID GROUPS \",\"textStyle\":{\"fontWeight\":\"bold\",\"fontSize\":\"22px\",\"color\":\"#1A1A2E\",\"fontFamily\":\"Segoe UI\"}},{\"value\":\"Details & Filters\",\"textStyle\":{\"fontSize\":\"22px\",\"color\":\"#50E6FF\",\"fontFamily\":\"Segoe UI Light\"}}]}]}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 66,
+          "z": 1,
+          "width": 200,
+          "height": 100,
+          "config": "{\"name\":\"sl1\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":66,\"z\":1,\"width\":200,\"height\":100}}],\"singleVisual\":{\"visualType\":\"slicer\",\"projections\":{\"Values\":[{\"queryRef\":\"Groups.GroupType\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"Groups\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupType\"},\"Name\":\"Groups.GroupType\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Type'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 234,
+          "y": 66,
+          "z": 2,
+          "width": 200,
+          "height": 100,
+          "config": "{\"name\":\"sl2\",\"layouts\":[{\"id\":0,\"position\":{\"x\":234,\"y\":66,\"z\":2,\"width\":200,\"height\":100}}],\"singleVisual\":{\"visualType\":\"slicer\",\"projections\":{\"Values\":[{\"queryRef\":\"GroupMemberCounts.HasOwner\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"GroupMemberCounts\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"HasOwner\"},\"Name\":\"GroupMemberCounts.HasOwner\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Has Owner'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 444,
+          "y": 66,
+          "z": 3,
+          "width": 200,
+          "height": 100,
+          "config": "{\"name\":\"sl3\",\"layouts\":[{\"id\":0,\"position\":{\"x\":444,\"y\":66,\"z\":3,\"width\":200,\"height\":100}}],\"singleVisual\":{\"visualType\":\"slicer\",\"projections\":{\"Values\":[{\"queryRef\":\"Groups.IsDynamic\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"Groups\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"IsDynamic\"},\"Name\":\"Groups.IsDynamic\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Dynamic'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 654,
+          "y": 66,
+          "z": 4,
+          "width": 200,
+          "height": 100,
+          "config": "{\"name\":\"sl4\",\"layouts\":[{\"id\":0,\"position\":{\"x\":654,\"y\":66,\"z\":4,\"width\":200,\"height\":100}}],\"singleVisual\":{\"visualType\":\"slicer\",\"projections\":{\"Values\":[{\"queryRef\":\"Groups.Visibility\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"Groups\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"Visibility\"},\"Name\":\"Groups.Visibility\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Visibility'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 864,
+          "y": 66,
+          "z": 5,
+          "width": 200,
+          "height": 100,
+          "config": "{\"name\":\"sl5\",\"layouts\":[{\"id\":0,\"position\":{\"x\":864,\"y\":66,\"z\":5,\"width\":200,\"height\":100}}],\"singleVisual\":{\"visualType\":\"slicer\",\"projections\":{\"Values\":[{\"queryRef\":\"GroupMemberCounts.MemberSizeCategory\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"GroupMemberCounts\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberSizeCategory\"},\"Name\":\"GroupMemberCounts.MemberSizeCategory\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Size'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 1080,
+          "y": 66,
+          "z": 6,
+          "width": 164,
+          "height": 100,
+          "config": "{\"name\":\"kpi11\",\"layouts\":[{\"id\":0,\"position\":{\"x\":1080,\"y\":66,\"z\":6,\"width\":164,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Total Groups\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Total Groups\"},\"Name\":\"_Measures.Total Groups\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#50E6FF\"}},\"fontSize\":24}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Filtered'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#50E6FF\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 178,
+          "z": 7,
+          "width": 1220,
+          "height": 532,
+          "config": "{\"name\":\"tbl3\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":178,\"z\":7,\"width\":1220,\"height\":532}}],\"singleVisual\":{\"visualType\":\"tableEx\",\"projections\":{\"Values\":[{\"queryRef\":\"GroupMemberCounts.GroupName\"},{\"queryRef\":\"GroupMemberCounts.MemberCount\"},{\"queryRef\":\"GroupMemberCounts.OwnerCount\"},{\"queryRef\":\"GroupMemberCounts.HasOwner\"},{\"queryRef\":\"GroupMemberCounts.OwnerStatus\"},{\"queryRef\":\"GroupMemberCounts.MemberSizeCategory\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"GroupMemberCounts\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupName\"},\"Name\":\"GroupMemberCounts.GroupName\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberCount\"},\"Name\":\"GroupMemberCounts.MemberCount\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"OwnerCount\"},\"Name\":\"GroupMemberCounts.OwnerCount\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"HasOwner\"},\"Name\":\"GroupMemberCounts.HasOwner\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"OwnerStatus\"},\"Name\":\"GroupMemberCounts.OwnerStatus\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"MemberSizeCategory\"},\"Name\":\"GroupMemberCounts.MemberSizeCategory\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'All Groups (filterable)'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        }
+      ]
+    },
+    {
+      "name": "page_members_list",
+      "displayName": "Members List",
+      "displayOption": 1,
+      "width": 1280,
+      "height": 720,
+      "filters": "[]",
+      "ordinal": 4,
+      "config": "{}",
+      "visualContainers": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "width": 1280,
+          "height": 56,
+          "config": "{\"name\":\"hdr5\",\"layouts\":[{\"id\":0,\"position\":{\"x\":0,\"y\":0,\"z\":0,\"width\":1280,\"height\":56}}],\"singleVisual\":{\"visualType\":\"textbox\",\"objects\":{\"general\":[{\"properties\":{\"paragraphs\":[{\"textRuns\":[{\"value\":\"ENTRA ID GROUPS \",\"textStyle\":{\"fontWeight\":\"bold\",\"fontSize\":\"22px\",\"color\":\"#1A1A2E\",\"fontFamily\":\"Segoe UI\"}},{\"value\":\"Members List\",\"textStyle\":{\"fontSize\":\"22px\",\"color\":\"#50E6FF\",\"fontFamily\":\"Segoe UI Light\"}}]}]}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 66,
+          "z": 1,
+          "width": 300,
+          "height": 100,
+          "config": "{\"name\":\"sl6\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":66,\"z\":1,\"width\":300,\"height\":100}}],\"singleVisual\":{\"visualType\":\"slicer\",\"projections\":{\"Values\":[{\"queryRef\":\"Groups.GroupName\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"g\",\"Entity\":\"Groups\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupName\"},\"Name\":\"Groups.GroupName\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Filter by Group'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 340,
+          "y": 66,
+          "z": 2,
+          "width": 300,
+          "height": 100,
+          "config": "{\"name\":\"sl7\",\"layouts\":[{\"id\":0,\"position\":{\"x\":340,\"y\":66,\"z\":2,\"width\":300,\"height\":100}}],\"singleVisual\":{\"visualType\":\"slicer\",\"projections\":{\"Values\":[{\"queryRef\":\"GroupMembers.MemberCategory\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"GroupMembers\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"MemberCategory\"},\"Name\":\"GroupMembers.MemberCategory\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Member Type'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        },
+        {
+          "x": 656,
+          "y": 66,
+          "z": 3,
+          "width": 164,
+          "height": 100,
+          "config": "{\"name\":\"kpi12\",\"layouts\":[{\"id\":0,\"position\":{\"x\":656,\"y\":66,\"z\":3,\"width\":164,\"height\":100}}],\"singleVisual\":{\"visualType\":\"card\",\"projections\":{\"Values\":[{\"queryRef\":\"_Measures.Total Members\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"_Measures\",\"Type\":0}],\"Select\":[{\"Measure\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"Total Members\"},\"Name\":\"_Measures.Total Members\"}]},\"objects\":{\"labels\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#0078D4\"}},\"fontSize\":24}}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'Total'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}],\"border\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#0078D4\"}},\"width\":2,\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}}}}]}}}"
+        },
+        {
+          "x": 24,
+          "y": 178,
+          "z": 4,
+          "width": 1220,
+          "height": 532,
+          "config": "{\"name\":\"tbl4\",\"layouts\":[{\"id\":0,\"position\":{\"x\":24,\"y\":178,\"z\":4,\"width\":1220,\"height\":532}}],\"singleVisual\":{\"visualType\":\"tableEx\",\"projections\":{\"Values\":[{\"queryRef\":\"Groups.GroupName\"},{\"queryRef\":\"GroupMembers.MemberDisplayName\"},{\"queryRef\":\"GroupMembers.MemberEmail\"},{\"queryRef\":\"GroupMembers.MemberType\"},{\"queryRef\":\"GroupMembers.MemberCategory\"}]},\"prototypeQuery\":{\"Version\":2,\"From\":[{\"Name\":\"m\",\"Entity\":\"GroupMembers\",\"Type\":0},{\"Name\":\"g\",\"Entity\":\"Groups\",\"Type\":0}],\"Select\":[{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"g\"}},\"Property\":\"GroupName\"},\"Name\":\"Groups.GroupName\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"MemberDisplayName\"},\"Name\":\"GroupMembers.MemberDisplayName\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"MemberEmail\"},\"Name\":\"GroupMembers.MemberEmail\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"MemberType\"},\"Name\":\"GroupMembers.MemberType\"},{\"Column\":{\"Expression\":{\"SourceRef\":{\"Source\":\"m\"}},\"Property\":\"MemberCategory\"},\"Name\":\"GroupMembers.MemberCategory\"}]},\"vcObjects\":{\"title\":[{\"properties\":{\"show\":{\"expr\":{\"Literal\":{\"Value\":\"true\"}}},\"text\":{\"expr\":{\"Literal\":{\"Value\":\"'All Members by Group'\"}}}}}],\"background\":[{\"properties\":{\"color\":{\"solid\":{\"color\":\"#FFFFFF\"}},\"transparency\":0}}]}}}"
+        }
+      ]
+    }
+  ],
+  "publicCustomVisuals": []
+}

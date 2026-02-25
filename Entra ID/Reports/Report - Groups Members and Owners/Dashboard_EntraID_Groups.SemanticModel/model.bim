@@ -1,0 +1,319 @@
+{
+  "compatibilityLevel": 1567,
+  "model": {
+    "culture": "en-US",
+    "dataAccessOptions": {
+      "legacyRedirects": true,
+      "returnErrorValuesAsNull": true
+    },
+    "defaultPowerBIDataSourceVersion": "powerBI_V3",
+    "expressions": [
+      {
+        "name": "TenantId",
+        "kind": "m",
+        "expression": [
+          "\"your-tenant-id\" meta [IsParameterQuery=true, Type=\"Text\", IsParameterQueryRequired=true]"
+        ],
+        "description": "Azure AD Tenant ID"
+      },
+      {
+        "name": "ClientId",
+        "kind": "m",
+        "expression": [
+          "\"your-client-id\" meta [IsParameterQuery=true, Type=\"Text\", IsParameterQueryRequired=true]"
+        ],
+        "description": "Application (Client) ID"
+      },
+      {
+        "name": "ClientSecret",
+        "kind": "m",
+        "expression": [
+          "\"your-client-secret\" meta [IsParameterQuery=true, Type=\"Text\", IsParameterQueryRequired=true]"
+        ],
+        "description": "Client Secret Value"
+      },
+      {
+        "name": "fnGetAccessToken",
+        "kind": "m",
+        "expression": [
+          "let",
+          "    fnGetAccessToken = () =>",
+          "    let",
+          "        TenantIdParam = TenantId,",
+          "        ClientIdParam = ClientId,",
+          "        ClientSecretParam = ClientSecret,",
+          "        TokenUrl = \"https://login.microsoftonline.com/\" & TenantIdParam & \"/oauth2/v2.0/token\",",
+          "        Body = \"grant_type=client_credentials\"",
+          "            & \"&client_id=\" & ClientIdParam",
+          "            & \"&client_secret=\" & Uri.EscapeDataString(ClientSecretParam)",
+          "            & \"&scope=https://graph.microsoft.com/.default\",",
+          "        Response = Json.Document(",
+          "            Web.Contents(TokenUrl, [",
+          "                Content = Text.ToBinary(Body),",
+          "                Headers = [#\"Content-Type\" = \"application/x-www-form-urlencoded\"]",
+          "            ])",
+          "        ),",
+          "        AccessToken = Response[access_token]",
+          "    in",
+          "        AccessToken",
+          "in",
+          "    fnGetAccessToken"
+        ],
+        "description": "Gets an OAuth2 token for Microsoft Graph"
+      },
+      {
+        "name": "fnGraphPagination",
+        "kind": "m",
+        "expression": [
+          "let",
+          "    fnGraphPagination = (url as text, token as text) =>",
+          "    let",
+          "        fnGetAllPages = (currentUrl as text, accumulatedData as list) =>",
+          "        let",
+          "            Response = Json.Document(",
+          "                Web.Contents(currentUrl, [",
+          "                    Headers = [",
+          "                        #\"Authorization\" = \"Bearer \" & token,",
+          "                        #\"Content-Type\" = \"application/json\",",
+          "                        #\"ConsistencyLevel\" = \"eventual\"",
+          "                    ]",
+          "                ])",
+          "            ),",
+          "            CurrentData = Response[value],",
+          "            CombinedData = accumulatedData & CurrentData,",
+          "            NextLink = try Response[#\"@odata.nextLink\"] otherwise null,",
+          "            Result = if NextLink <> null then @fnGetAllPages(NextLink, CombinedData) else CombinedData",
+          "        in",
+          "            Result,",
+          "        AllData = fnGetAllPages(url, {})",
+          "    in",
+          "        AllData",
+          "in",
+          "    fnGraphPagination"
+        ],
+        "description": "Handles Microsoft Graph API pagination"
+      }
+    ],
+    "tables": [
+      {
+        "name": "Groups",
+        "columns": [
+          { "name": "GroupId", "dataType": "string", "sourceColumn": "GroupId", "summarizeBy": "none" },
+          { "name": "GroupName", "dataType": "string", "sourceColumn": "GroupName", "summarizeBy": "none" },
+          { "name": "Description", "dataType": "string", "sourceColumn": "Description", "summarizeBy": "none" },
+          { "name": "MailEnabled", "dataType": "boolean", "sourceColumn": "MailEnabled", "summarizeBy": "none" },
+          { "name": "SecurityEnabled", "dataType": "boolean", "sourceColumn": "SecurityEnabled", "summarizeBy": "none" },
+          { "name": "CreatedDate", "dataType": "dateTime", "sourceColumn": "CreatedDate", "formatString": "yyyy-MM-dd", "summarizeBy": "none" },
+          { "name": "RenewedDate", "dataType": "dateTime", "sourceColumn": "RenewedDate", "formatString": "yyyy-MM-dd", "summarizeBy": "none" },
+          { "name": "Email", "dataType": "string", "sourceColumn": "Email", "summarizeBy": "none" },
+          { "name": "Visibility", "dataType": "string", "sourceColumn": "Visibility", "summarizeBy": "none" },
+          { "name": "MembershipRule", "dataType": "string", "sourceColumn": "MembershipRule", "summarizeBy": "none" },
+          { "name": "DynamicRuleState", "dataType": "string", "sourceColumn": "DynamicRuleState", "summarizeBy": "none" },
+          { "name": "GroupType", "dataType": "string", "sourceColumn": "GroupType", "summarizeBy": "none" },
+          { "name": "IsDynamic", "dataType": "boolean", "sourceColumn": "IsDynamic", "summarizeBy": "none" }
+        ],
+        "partitions": [
+          {
+            "name": "Groups",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    Token = fnGetAccessToken(),",
+                "    Url = \"https://graph.microsoft.com/v1.0/groups?$select=id,displayName,description,groupTypes,mailEnabled,securityEnabled,createdDateTime,renewedDateTime,mail,visibility,membershipRule,membershipRuleProcessingState&$top=999\",",
+                "    AllGroups = fnGraphPagination(Url, Token),",
+                "    GroupsTable = Table.FromList(AllGroups, Splitter.SplitByNothing(), null, null, ExtraValues.Error),",
+                "    ExpandedGroups = Table.ExpandRecordColumn(GroupsTable, \"Column1\", {\"id\", \"displayName\", \"description\", \"groupTypes\", \"mailEnabled\", \"securityEnabled\", \"createdDateTime\", \"renewedDateTime\", \"mail\", \"visibility\", \"membershipRule\", \"membershipRuleProcessingState\"}),",
+                "    AddGroupType = Table.AddColumn(ExpandedGroups, \"GroupType\", each if List.Contains([groupTypes], \"Unified\") then \"Microsoft 365\" else if [securityEnabled] = true and [mailEnabled] = false then \"Security\" else if [securityEnabled] = true and [mailEnabled] = true then \"Mail-enabled Security\" else if [securityEnabled] = false and [mailEnabled] = true then \"Distribution\" else \"Other\", type text),",
+                "    AddIsDynamic = Table.AddColumn(AddGroupType, \"IsDynamic\", each if List.Contains([groupTypes], \"DynamicMembership\") then true else false, type logical),",
+                "    RenamedColumns = Table.RenameColumns(AddIsDynamic, {{\"id\", \"GroupId\"}, {\"displayName\", \"GroupName\"}, {\"description\", \"Description\"}, {\"mailEnabled\", \"MailEnabled\"}, {\"securityEnabled\", \"SecurityEnabled\"}, {\"createdDateTime\", \"CreatedDate\"}, {\"renewedDateTime\", \"RenewedDate\"}, {\"mail\", \"Email\"}, {\"visibility\", \"Visibility\"}, {\"membershipRule\", \"MembershipRule\"}, {\"membershipRuleProcessingState\", \"DynamicRuleState\"}}),",
+                "    TypedColumns = Table.TransformColumnTypes(RenamedColumns, {{\"CreatedDate\", type datetime}, {\"RenewedDate\", type datetime}}),",
+                "    CleanedTable = Table.RemoveColumns(TypedColumns, {\"groupTypes\"})",
+                "in",
+                "    CleanedTable"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "GroupOwners",
+        "columns": [
+          { "name": "GroupId", "dataType": "string", "sourceColumn": "GroupId", "summarizeBy": "none" },
+          { "name": "OwnerId", "dataType": "string", "sourceColumn": "OwnerId", "summarizeBy": "none" },
+          { "name": "OwnerDisplayName", "dataType": "string", "sourceColumn": "OwnerDisplayName", "summarizeBy": "none" },
+          { "name": "OwnerUPN", "dataType": "string", "sourceColumn": "OwnerUPN", "summarizeBy": "none" },
+          { "name": "OwnerMail", "dataType": "string", "sourceColumn": "OwnerMail", "summarizeBy": "none" }
+        ],
+        "partitions": [
+          {
+            "name": "GroupOwners",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    Token = fnGetAccessToken(),",
+                "    GroupsSource = Groups,",
+                "    GroupIds = Table.SelectColumns(GroupsSource, {\"GroupId\"}),",
+                "    AddOwners = Table.AddColumn(GroupIds, \"OwnersData\", each let gid = [GroupId], Url = \"https://graph.microsoft.com/v1.0/groups/\" & gid & \"/owners?$select=id,displayName,userPrincipalName,mail\", OwnersResponse = try fnGraphPagination(Url, Token) otherwise {} in OwnersResponse),",
+                "    ExpandedOwnersList = Table.ExpandListColumn(AddOwners, \"OwnersData\"),",
+                "    HasOwnerData = Table.AddColumn(ExpandedOwnersList, \"HasOwner\", each [OwnersData] <> null, type logical),",
+                "    FilteredRows = Table.SelectRows(HasOwnerData, each [HasOwner] = true),",
+                "    ExpandedOwners = Table.ExpandRecordColumn(FilteredRows, \"OwnersData\", {\"id\", \"displayName\", \"userPrincipalName\", \"mail\"}, {\"OwnerId\", \"OwnerDisplayName\", \"OwnerUPN\", \"OwnerMail\"}),",
+                "    CleanedTable = Table.RemoveColumns(ExpandedOwners, {\"HasOwner\"})",
+                "in",
+                "    CleanedTable"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "GroupMembers",
+        "columns": [
+          { "name": "GroupId", "dataType": "string", "sourceColumn": "GroupId", "summarizeBy": "none" },
+          { "name": "MemberCount", "dataType": "int64", "sourceColumn": "MemberCount", "formatString": "#,0", "summarizeBy": "sum" },
+          { "name": "MemberId", "dataType": "string", "sourceColumn": "MemberId", "summarizeBy": "none" },
+          { "name": "MemberDisplayName", "dataType": "string", "sourceColumn": "MemberDisplayName", "summarizeBy": "none" },
+          { "name": "MemberUPN", "dataType": "string", "sourceColumn": "MemberUPN", "summarizeBy": "none" },
+          { "name": "MemberMail", "dataType": "string", "sourceColumn": "MemberMail", "summarizeBy": "none" },
+          { "name": "UserType", "dataType": "string", "sourceColumn": "UserType", "summarizeBy": "none" },
+          { "name": "AccountEnabled", "dataType": "boolean", "sourceColumn": "AccountEnabled", "summarizeBy": "none" },
+          { "name": "MemberType", "dataType": "string", "sourceColumn": "MemberType", "summarizeBy": "none" },
+          { "name": "MemberCategory", "dataType": "string", "sourceColumn": "MemberCategory", "summarizeBy": "none" }
+        ],
+        "partitions": [
+          {
+            "name": "GroupMembers",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    Token = fnGetAccessToken(),",
+                "    GroupsSource = Groups,",
+                "    GroupIds = Table.SelectColumns(GroupsSource, {\"GroupId\"}),",
+                "    AddMembers = Table.AddColumn(GroupIds, \"MembersData\", each let gid = [GroupId], Url = \"https://graph.microsoft.com/v1.0/groups/\" & gid & \"/members?$select=id,displayName,userPrincipalName,mail,userType,accountEnabled&$top=999\", MembersResponse = try fnGraphPagination(Url, Token) otherwise {} in MembersResponse),",
+                "    AddMemberCount = Table.AddColumn(AddMembers, \"MemberCount\", each List.Count([MembersData]), Int64.Type),",
+                "    ExpandedMembersList = Table.ExpandListColumn(AddMemberCount, \"MembersData\"),",
+                "    HasMemberData = Table.SelectRows(ExpandedMembersList, each [MembersData] <> null),",
+                "    ExpandedMembers = Table.ExpandRecordColumn(HasMemberData, \"MembersData\", {\"id\", \"displayName\", \"userPrincipalName\", \"mail\", \"userType\", \"accountEnabled\", \"@odata.type\"}, {\"MemberId\", \"MemberDisplayName\", \"MemberUPN\", \"MemberMail\", \"UserType\", \"AccountEnabled\", \"RawMemberType\"}),",
+                "    CleanMemberType = Table.AddColumn(ExpandedMembers, \"MemberType\", each if Text.Contains([RawMemberType], \"user\") then \"User\" else if Text.Contains([RawMemberType], \"group\") then \"Group\" else if Text.Contains([RawMemberType], \"servicePrincipal\") then \"Service Principal\" else if Text.Contains([RawMemberType], \"device\") then \"Device\" else \"Other\", type text),",
+                "    AddMemberCategory = Table.AddColumn(CleanMemberType, \"MemberCategory\", each [MemberType], type text),",
+                "    RemovedRaw = Table.RemoveColumns(AddMemberCategory, {\"RawMemberType\"})",
+                "in",
+                "    RemovedRaw"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "GroupMemberCounts",
+        "columns": [
+          { "name": "GroupId", "dataType": "string", "sourceColumn": "GroupId", "summarizeBy": "none" },
+          { "name": "GroupName", "dataType": "string", "sourceColumn": "GroupName", "summarizeBy": "none" },
+          { "name": "MemberCount", "dataType": "int64", "sourceColumn": "MemberCount", "formatString": "#,0", "summarizeBy": "sum" },
+          { "name": "OwnerCount", "dataType": "int64", "sourceColumn": "OwnerCount", "formatString": "#,0", "summarizeBy": "sum" },
+          { "name": "HasOwner", "dataType": "boolean", "sourceColumn": "HasOwner", "summarizeBy": "none" },
+          { "name": "OwnerStatus", "dataType": "string", "sourceColumn": "OwnerStatus", "summarizeBy": "none" },
+          { "name": "MemberSizeCategory", "dataType": "string", "sourceColumn": "MemberSizeCategory", "summarizeBy": "none" }
+        ],
+        "partitions": [
+          {
+            "name": "GroupMemberCounts",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    Token = fnGetAccessToken(),",
+                "    GroupsSource = Groups,",
+                "    GroupIds = Table.SelectColumns(GroupsSource, {\"GroupId\", \"GroupName\"}),",
+                "    AddMemberCount = Table.AddColumn(GroupIds, \"MemberCount\", each let gid = [GroupId], Url = \"https://graph.microsoft.com/v1.0/groups/\" & gid & \"/members/$count\", CountResponse = try Json.Document(Web.Contents(Url, [Headers = [#\"Authorization\" = \"Bearer \" & Token, #\"ConsistencyLevel\" = \"eventual\"]])) otherwise 0 in CountResponse, Int64.Type),",
+                "    AddOwnerCount = Table.AddColumn(AddMemberCount, \"OwnerCount\", each let gid = [GroupId], Url = \"https://graph.microsoft.com/v1.0/groups/\" & gid & \"/owners/$count\", CountResponse = try Json.Document(Web.Contents(Url, [Headers = [#\"Authorization\" = \"Bearer \" & Token, #\"ConsistencyLevel\" = \"eventual\"]])) otherwise 0 in CountResponse, Int64.Type),",
+                "    AddHasOwner = Table.AddColumn(AddOwnerCount, \"HasOwner\", each [OwnerCount] > 0, type logical),",
+                "    AddOwnerStatus = Table.AddColumn(AddHasOwner, \"OwnerStatus\", each if [OwnerCount] = 0 then \"No Owner\" else if [OwnerCount] = 1 then \"1 Owner\" else \"Multiple Owners\", type text),",
+                "    AddMemberCategory = Table.AddColumn(AddOwnerStatus, \"MemberSizeCategory\", each if [MemberCount] = 0 then \"Empty (0)\" else if [MemberCount] <= 5 then \"Small (1-5)\" else if [MemberCount] <= 20 then \"Medium (6-20)\" else if [MemberCount] <= 100 then \"Large (21-100)\" else \"Very Large (100+)\", type text)",
+                "in",
+                "    AddMemberCategory"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "_Measures",
+        "columns": [
+          { "name": "MeasureHelper", "dataType": "int64", "isHidden": true, "sourceColumn": "MeasureHelper", "summarizeBy": "none" }
+        ],
+        "measures": [
+          { "name": "Total Groups", "expression": "COUNTROWS(Groups)", "formatString": "#,0" },
+          { "name": "Groups With Owner", "expression": "COUNTROWS(FILTER(GroupMemberCounts, GroupMemberCounts[HasOwner] = TRUE))", "formatString": "#,0" },
+          { "name": "Groups Without Owner", "expression": "COUNTROWS(FILTER(GroupMemberCounts, GroupMemberCounts[HasOwner] = FALSE))", "formatString": "#,0" },
+          { "name": "% Without Owner", "expression": "DIVIDE([Groups Without Owner], [Total Groups], 0) * 100", "formatString": "0.0\"%\"" },
+          { "name": "% With Owner", "expression": "DIVIDE([Groups With Owner], [Total Groups], 0) * 100", "formatString": "0.0\"%\"" },
+          { "name": "Total Members", "expression": "SUM(GroupMemberCounts[MemberCount])", "formatString": "#,0" },
+          { "name": "Avg Members per Group", "expression": "AVERAGE(GroupMemberCounts[MemberCount])", "formatString": "#,0.0" },
+          { "name": "Max Members", "expression": "MAX(GroupMemberCounts[MemberCount])", "formatString": "#,0" },
+          { "name": "Empty Groups", "expression": "COUNTROWS(FILTER(GroupMemberCounts, GroupMemberCounts[MemberCount] = 0))", "formatString": "#,0" },
+          { "name": "% Empty Groups", "expression": "DIVIDE([Empty Groups], [Total Groups], 0) * 100", "formatString": "0.0\"%\"" },
+          { "name": "Unique Owners", "expression": "DISTINCTCOUNT(GroupOwners[OwnerId])", "formatString": "#,0" },
+          { "name": "Avg Owners per Group", "expression": "AVERAGE(GroupMemberCounts[OwnerCount])", "formatString": "#,0.0" },
+          { "name": "M365 Groups", "expression": "COUNTROWS(FILTER(Groups, Groups[GroupType] = \"Microsoft 365\"))", "formatString": "#,0" },
+          { "name": "Security Groups", "expression": "COUNTROWS(FILTER(Groups, Groups[GroupType] = \"Security\"))", "formatString": "#,0" },
+          { "name": "Distribution Groups", "expression": "COUNTROWS(FILTER(Groups, Groups[GroupType] = \"Distribution\"))", "formatString": "#,0" },
+          { "name": "Dynamic Groups", "expression": "COUNTROWS(FILTER(Groups, Groups[IsDynamic] = TRUE))", "formatString": "#,0" },
+          { "name": "Static Groups", "expression": "COUNTROWS(FILTER(Groups, Groups[IsDynamic] = FALSE))", "formatString": "#,0" },
+          { "name": "Public Groups", "expression": "COUNTROWS(FILTER(Groups, Groups[Visibility] = \"Public\"))", "formatString": "#,0" },
+          { "name": "Private Groups", "expression": "COUNTROWS(FILTER(Groups, Groups[Visibility] = \"Private\"))", "formatString": "#,0" },
+          { "name": "Created Last 30 Days", "expression": "COUNTROWS(FILTER(Groups, Groups[CreatedDate] >= TODAY() - 30))", "formatString": "#,0" },
+          { "name": "Inactive 6 Months", "expression": "COUNTROWS(FILTER(Groups, Groups[RenewedDate] < TODAY() - 180))", "formatString": "#,0" }
+        ],
+        "partitions": [
+          {
+            "name": "_Measures",
+            "mode": "import",
+            "source": {
+              "type": "calculated",
+              "expression": "ROW(\"MeasureHelper\", 0)"
+            }
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "name": "rel_GroupOwners_Groups",
+        "fromTable": "GroupOwners",
+        "fromColumn": "GroupId",
+        "toTable": "Groups",
+        "toColumn": "GroupId",
+        "crossFilteringBehavior": "bothDirections"
+      },
+      {
+        "name": "rel_GroupMembers_Groups",
+        "fromTable": "GroupMembers",
+        "fromColumn": "GroupId",
+        "toTable": "Groups",
+        "toColumn": "GroupId",
+        "crossFilteringBehavior": "bothDirections"
+      },
+      {
+        "name": "rel_GroupMemberCounts_Groups",
+        "fromTable": "GroupMemberCounts",
+        "fromColumn": "GroupId",
+        "toTable": "Groups",
+        "toColumn": "GroupId",
+        "crossFilteringBehavior": "bothDirections"
+      }
+    ],
+    "annotations": [
+      { "name": "PBI_QueryOrder", "value": "[\"TenantId\",\"ClientId\",\"ClientSecret\",\"fnGetAccessToken\",\"fnGraphPagination\",\"Groups\",\"GroupOwners\",\"GroupMembers\",\"GroupMemberCounts\"]" },
+      { "name": "PBIDesktopVersion", "value": "2.138.0.0" },
+      { "name": "__PBI_TimeIntelligenceEnabled", "value": "0" }
+    ]
+  }
+}
