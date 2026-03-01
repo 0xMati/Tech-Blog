@@ -1,0 +1,5 @@
+﻿"DomainDNS","Name","IPv4Address","Site","OperatingSystem","OperatingSystemVersion","IsGlobalCatalog","ComputerObjectDN"
+"child.mathiasmotron.com","MM-DC4.child.mathiasmotron.com","10.0.2.4","Azure","Windows Server 2022 Datacenter","10.0 (20348)","True","CN=MM-DC4,OU=Domain Controllers,DC=child,DC=mathiasmotron,DC=com"
+"mathiasmotron.com","MM-DC3.mathiasmotron.com","10.0.2.10","Azure","Windows Server 2019 Datacenter","10.0 (17763)","True","CN=MM-DC3,OU=Domain Controllers,DC=mathiasmotron,DC=com"
+"mathiasmotron.com","MM-DC2.mathiasmotron.com","10.0.2.5","Azure","Windows Server 2019 Datacenter","10.0 (17763)","True","CN=MM-DC2,OU=Domain Controllers,DC=mathiasmotron,DC=com"
+"mathiasmotron.com","MM-DC1.mathiasmotron.com","192.168.99.1","Onprem","Windows Server 2025 Datacenter","10.0 (26100)","True","CN=MM-DC1,OU=Domain Controllers,DC=mathiasmotron,DC=com"

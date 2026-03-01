@@ -1,0 +1,4 @@
+﻿"DomainDNS","Name","SamAccountName","DistinguishedName","Enabled","WhenCreated","LastLogonTimestamp","LastLogonDate","LastActivityDays","StaleBucket","IsDomainController"
+"child.mathiasmotron.com","MM-WIN10-5","MM-WIN10-5$","CN=MM-WIN10-5,CN=Computers,DC=child,DC=mathiasmotron,DC=com","False","5/5/2025 2:25:10 PM","133952665069225813","6/24/2025 7:21:46 PM","219",">=180","False"
+"mathiasmotron.com","AZUREADSSOACC","AZUREADSSOACC$","CN=AZUREADSSOACC,OU=MISC,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com","True","5/15/2020 11:20:25 AM","133922014352830454","5/20/2025 7:57:15 AM","254",">=180","False"
+"mathiasmotron.com","AzureADKerberos","AzureADKerberos$","CN=AzureADKerberos,OU=Domain Controllers,DC=mathiasmotron,DC=com","True","7/25/2024 2:23:47 PM","133663910278828618","7/25/2024 2:23:47 PM","553",">=365","False"

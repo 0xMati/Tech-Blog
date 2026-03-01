@@ -1,0 +1,5 @@
+﻿"DomainDNS","Name","DistinguishedName","OperatingSystem","OperatingSystemVersion","OsRiskLevel"
+"child.mathiasmotron.com","MM-WIN10-5","CN=MM-WIN10-5,CN=Computers,DC=child,DC=mathiasmotron,DC=com","Windows 10 Enterprise","10.0 (19045)","Medium"
+"mathiasmotron.com","MM-PENTEST","CN=MM-PENTEST,CN=Computers,DC=mathiasmotron,DC=com","Windows 10 Enterprise","10.0 (19045)","Medium"
+"mathiasmotron.com","MM-Win10-1","CN=MM-Win10-1,OU=WORKSTATIONS,OU=PRD,DC=mathiasmotron,DC=com","Windows 11 Enterprise","10.0 (22631)",
+"mathiasmotron.com","MM-Win10-2","CN=MM-Win10-2,OU=WORKSTATIONS,OU=PRD,DC=mathiasmotron,DC=com","Windows 10 Entreprise N","10.0 (19045)","Medium"

@@ -1,0 +1,8 @@
+﻿"DomainDNS","Name","DistinguishedName","OperatingSystem","OperatingSystemVersion","OsRiskLevel"
+"mathiasmotron.com","MM-ADFS1","CN=MM-ADFS1,OU=ADFS,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com","Windows Server 2019 Datacenter","10.0 (17763)","High"
+"mathiasmotron.com","MM-APP","CN=MM-APP,OU=APPS,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com","Windows Server 2019 Datacenter","10.0 (17763)","High"
+"mathiasmotron.com","MM-MGMT","CN=MM-MGMT,OU=MISC,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com","Windows Server 2022 Datacenter","10.0 (20348)",
+"mathiasmotron.com","MM-MIM1","CN=MM-MIM1,OU=MIM,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com","Windows Server 2016 Datacenter","10.0 (14393)","Medium"
+"mathiasmotron.com","MM-MIM4","CN=MM-MIM4,OU=MIM,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com","Windows Server 2019 Datacenter","10.0 (17763)","High"
+"mathiasmotron.com","MM-MIM5","CN=MM-MIM5,OU=MIM,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com","Windows Server 2022 Datacenter Azure Edition","10.0 (20348)",
+"mathiasmotron.com","MM-WAP1","CN=MM-WAP1,OU=ADFS,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com","Windows Server 2019 Datacenter","10.0 (17763)","High"
