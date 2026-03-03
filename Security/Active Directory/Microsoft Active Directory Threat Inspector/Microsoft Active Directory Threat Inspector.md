@@ -1,6 +1,6 @@
 # MATI — Microsoft Active Directory Threat Inspector
 
-**MATI** is a PowerShell-based Active Directory security assessment tool. It collects configuration data from your forest, evaluates it against **90 detection rules** across 10 categories, and generates scored HTML / CSV / JSON reports — all from a single read-only scan.
+**MATI** is a PowerShell-based Active Directory security assessment tool. It collects configuration data from your forest, evaluates it against **93 detection rules** across 10 categories, and generates scored HTML / CSV / JSON reports — all from a single read-only scan.
 
 > Think of it as an open, extensible alternative to PingCastle or ORADAD that you can customize to your environment.
 
@@ -11,13 +11,13 @@
 | Category | Rules | Examples |
 |---|:-:|---|
 | **Hardening** | 30 | LDAP signing, SMB signing, NTLMv1 usage, LAPS coverage, Print Spooler, TLS config, SCRIL rotation, anonymous bind … |
-| **Kerberos** | 9 | Kerberoasting, AS-REP Roasting, KRBTGT age, RC4 ticket usage (event-log audit), duplicate SPNs, unconstrained delegation … |
+| **Kerberos** | 7 | Kerberoasting, AS-REP Roasting, KRBTGT age/encryption, RC4 ticket usage, duplicate SPNs, unconstrained delegation … |
 | **ACL** | 7 | DCSync, AdminSDHolder, Schema/Config/Domain root ACLs, GPO permissions, critical object owners |
 | **ADCS** | 9 | ESC1–ESC8, weak CA certificate, CA cert expiry |
 | **Config** | 15 | Functional levels, Recycle Bin, tombstone, trust hardening (SID Filtering, AES, selective auth, TGT delegation), DNS aging … |
-| **Delegation** | 4 | Constrained/unconstrained/protocol-transition delegation targeting DCs |
+| **Delegation** | 6 | Constrained/unconstrained/protocol-transition delegation targeting DCs, RBCD backdoor, Shadow Credentials |
 | **Password Policy** | 3 | Default policy strength, FGPP for privileged accounts, reversible encryption |
-| **Privileged Accounts** | 12 | Inactive/stale admins, non-expiring passwords, disabled accounts in groups, SIDHistory, service accounts in admin groups, RID-500 enabled … |
+| **Privileged Accounts** | 9 | Inactive/stale admins, non-expiring passwords, disabled accounts in groups, SIDHistory, service accounts in DA, gMSA permissions, RID-500 enabled … |
 | **Stale Objects** | 3 | Inactive users, inactive computers, legacy OS |
 | **RODC** | 4 | Cached passwords, allowed/denied replication groups, orphan krbtgt |
 
@@ -67,8 +67,8 @@ Reports are generated in three formats:
 ## Quick start
 
 ```powershell
-# Clone or copy the MATIv2 folder to a machine with RSAT installed
-cd .\MATIv2
+# Clone or copy the project folder to a machine with RSAT installed
+cd '.\Microsoft Active Directory Threat Inspector'
 
 # Run the full assessment
 .\Invoke-MATI.ps1
@@ -90,12 +90,12 @@ Reports are saved to `Outputs\Output_<timestamp>\` with `HTML`, `CSV`, and `JSON
 ## Project structure
 
 ```
-MATIv2/
+Microsoft Active Directory Threat Inspector/
 ├── Invoke-MATI.ps1            # Entry point
 ├── Config/
 │   └── MATI.config.psd1       # All thresholds, weights, exclusions
 ├── Collectors/                 # 16 data collectors (AD queries, event logs)
-├── Rules/                      # 90 detection rules across 10 categories
+├── Rules/                      # 93 detection rules across 10 categories
 │   ├── ACL/
 │   ├── ADCS/
 │   ├── Config/
@@ -179,4 +179,6 @@ Create `Collectors/Get-MATI<Name>.ps1` with a function `Get-MATI<Name>`. The ret
 
 ## License
 
-This project is provided as-is for educational and internal assessment purposes.
+This project is open-source and provided as-is under the [MIT License](LICENSE). Contributions and feedback are welcome.
+
+**GitHub**: [0xMati/Tech-Blog — MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector)
