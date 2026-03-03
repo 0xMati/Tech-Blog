@@ -354,30 +354,32 @@ function Export-MATIHtml {
     }
 
     # ------------------------------------------------------------------
-    # Replace placeholders in template
+    # Replace placeholders in template (use literal .Replace() to avoid
+    # regex $-expansion corrupting text with dollar signs, e.g. computer
+    # names like MM-DC1$ whose $& sequence is a regex back-reference).
     # ------------------------------------------------------------------
     $companyName = if ($config.Report.CompanyName) { $config.Report.CompanyName } else { 'AD Security Assessment' }
     $dateStr = Get-Date -Format $config.Report.DateFormat
 
     $html = $template
-    $html = $html -replace '{{TOOL_NAME}}',       $config.General.ToolName
-    $html = $html -replace '{{VERSION}}',          $config.General.Version
-    $html = $html -replace '{{COMPANY_NAME}}',     $companyName
-    $html = $html -replace '{{DATE}}',             $dateStr
-    $html = $html -replace '{{SCORE}}',            $score.Score
-    $html = $html -replace '{{GRADE}}',            $grade
-    $html = $html -replace '{{GRADE_CLASS}}',      $gradeClass
-    $html = $html -replace '{{TOTAL_FINDINGS}}',   $findings.Count
-    $html = $html -replace '{{CRITICAL_COUNT}}',   $severityCounts.Critical
-    $html = $html -replace '{{HIGH_COUNT}}',       $severityCounts.High
-    $html = $html -replace '{{MEDIUM_COUNT}}',     $severityCounts.Medium
-    $html = $html -replace '{{LOW_COUNT}}',        $severityCounts.Low
-    $html = $html -replace '{{INFO_COUNT}}',       $severityCounts.Informational
-    $html = $html -replace '{{RULES_EVALUATED}}',  $EngineContext.Rules.Count
-    $html = $html -replace '{{DC_CONNECTIVITY}}',  $dcBlock
-    $html = $html -replace '{{PROTOCOL_AUDIT}}',   $protoBlock
-    $html = $html -replace '{{CATEGORY_BLOCKS}}',  $categoryBlocks
-    $html = $html -replace '{{SCORE_BREAKDOWN}}',  $scoreBreakdown
+    $html = $html.Replace('{{TOOL_NAME}}',       [string]$config.General.ToolName)
+    $html = $html.Replace('{{VERSION}}',          [string]$config.General.Version)
+    $html = $html.Replace('{{COMPANY_NAME}}',     [string]$companyName)
+    $html = $html.Replace('{{DATE}}',             [string]$dateStr)
+    $html = $html.Replace('{{SCORE}}',            [string]$score.Score)
+    $html = $html.Replace('{{GRADE}}',            [string]$grade)
+    $html = $html.Replace('{{GRADE_CLASS}}',      [string]$gradeClass)
+    $html = $html.Replace('{{TOTAL_FINDINGS}}',   [string]$findings.Count)
+    $html = $html.Replace('{{CRITICAL_COUNT}}',   [string]$severityCounts.Critical)
+    $html = $html.Replace('{{HIGH_COUNT}}',       [string]$severityCounts.High)
+    $html = $html.Replace('{{MEDIUM_COUNT}}',     [string]$severityCounts.Medium)
+    $html = $html.Replace('{{LOW_COUNT}}',        [string]$severityCounts.Low)
+    $html = $html.Replace('{{INFO_COUNT}}',       [string]$severityCounts.Informational)
+    $html = $html.Replace('{{RULES_EVALUATED}}',  [string]$EngineContext.Rules.Count)
+    $html = $html.Replace('{{DC_CONNECTIVITY}}',  [string]$dcBlock)
+    $html = $html.Replace('{{PROTOCOL_AUDIT}}',   [string]$protoBlock)
+    $html = $html.Replace('{{CATEGORY_BLOCKS}}',  [string]$categoryBlocks)
+    $html = $html.Replace('{{SCORE_BREAKDOWN}}',  [string]$scoreBreakdown)
 
     # ------------------------------------------------------------------
     # Write HTML file

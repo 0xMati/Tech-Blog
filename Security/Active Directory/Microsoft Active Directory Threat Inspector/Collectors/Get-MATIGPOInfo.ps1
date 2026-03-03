@@ -28,6 +28,8 @@ function Get-MATIGPOInfo {
     $null = $privilegedSIDs.Add('S-1-5-32-544')  # Administrators
     $null = $privilegedSIDs.Add('S-1-5-18')       # SYSTEM
     $null = $privilegedSIDs.Add('S-1-5-9')        # Enterprise Domain Controllers
+    $null = $privilegedSIDs.Add('S-1-3-0')        # CREATOR OWNER (default ACE)
+    $null = $privilegedSIDs.Add('S-1-5-10')       # SELF
 
     $gpoList = [System.Collections.Generic.List[PSCustomObject]]::new()
     $dangerousPerms = [System.Collections.Generic.List[PSCustomObject]]::new()
