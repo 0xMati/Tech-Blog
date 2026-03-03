@@ -8,7 +8,7 @@
     Description = "LDAP channel binding (EPA) is not enforced on one or more Domain Controllers. This allows NTLM relay attacks against LDAP/LDAPS endpoints."
     Remediation = "Set LdapEnforceChannelBinding to 2 (Always) on all DCs via GPO or registry: HKLM\System\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding = 2."
     Collectors  = @('ProtocolConfig')
-    References  = @('PingCastle: A-LDAPChannelBinding', 'ANSSI: vuln_ldap_channel_binding')
+    References  = @('https://support.microsoft.com/en-us/topic/2020-ldap-channel-binding-and-ldap-signing-requirements-for-windows-ef185fb8-00f7-167d-744c-f299a66fc00a')
     Condition   = {
         param($Data, $Config)
         $findings = @()

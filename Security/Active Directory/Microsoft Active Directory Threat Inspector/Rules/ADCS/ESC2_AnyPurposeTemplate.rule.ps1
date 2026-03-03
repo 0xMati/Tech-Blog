@@ -8,7 +8,7 @@
     Description = "A published certificate template has the 'Any Purpose' EKU or no EKU defined, combined with low-privileged enrollment rights and no manager approval. This allows any enrolled certificate to be used for any purpose including client authentication, code signing, and more."
     Remediation = "Remove the 'Any Purpose' OID (2.5.29.37.0) from the template and specify explicit EKUs. If the template is a SubCA template, restrict enrollment to highly privileged accounts only and require manager approval."
     Collectors  = @('CertificateServices')
-    References  = @('PingCastle: A-CertTempAnyPurpose', 'SpecterOps: ESC2')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/security-best-practices')
     Condition   = {
         param($Data, $Config)
         $findings = @()

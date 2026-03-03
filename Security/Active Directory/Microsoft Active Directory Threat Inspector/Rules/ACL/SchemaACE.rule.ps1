@@ -8,7 +8,7 @@
     Description = "A non-privileged principal has dangerous permissions on the Schema container. Modifying the schema is irreversible and can compromise the entire forest."
     Remediation = "Remove the dangerous ACEs from the Schema container. Only Schema Admins should have write access to schema objects."
     Collectors  = @('ACLInfo')
-    References  = @('PingCastle: P-SchemaACL', 'ANSSI: vuln_permissions_schema')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory')
     Condition   = {
         param($Data, $Config)
         $findings = @()

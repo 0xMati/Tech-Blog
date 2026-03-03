@@ -8,7 +8,7 @@
     Description = "The 'Allowed RODC Password Replication Group' contains a privileged account (AdminCount=1). This allows the RODC to cache the password of a privileged account, negating the security benefit of the RODC model."
     Remediation = "Remove the privileged account from the Allowed RODC Password Replication Group. Only non-privileged accounts that authenticate at the RODC site should be allowed."
     Collectors  = @('RODCInfo')
-    References  = @('ANSSI: vuln_rodc_allowed_group', 'PingCastle: P-RODCAllowedGroup')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/deploy/rodc/read-only-domain-controller-planning')
     Condition   = {
         param($Data, $Config)
         $findings = @()

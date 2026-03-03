@@ -2,7 +2,7 @@
 
 **MATI** is a PowerShell-based Active Directory security assessment tool. It collects configuration data from your forest, evaluates it against **93 detection rules** across 10 categories, and generates scored HTML / CSV / JSON reports — all from a single read-only scan.
 
-> Think of it as an open, extensible alternative to PingCastle or ORADAD that you can customize to your environment.
+> An open, extensible PowerShell tool for Active Directory security assessment that you can customize to your environment.
 
 ---
 

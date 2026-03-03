@@ -8,7 +8,7 @@
     Description = "The dsHeuristics attribute on the Directory Service object contains dangerous settings. Key flags: character 3 (fLDAPBlockAnonOps) should not be '2' (allows anonymous LDAP), character 7 (fDoListObject) may expose listing, character 16 (AdminSDExMask) should be '0' to keep AdminSDHolder protection active for all built-in groups."
     Remediation = "Review and correct the dsHeuristics value on CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration. Set character 3 to '0' or '1', and character 16 to '0'."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: A-DsHeuristicsAnonymous, P-DsHeuristicsAdminSDExMask', 'ANSSI: vuln_dsheuristics', 'KB5008383 (CVE-2021-42291): chars 28-29 must be 11')
+    References  = @('https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/e5899be4-862e-496f-9a38-33950617d2c5', 'KB5008383 (CVE-2021-42291): chars 28-29 must be 11')
     Condition   = {
         param($Data, $Config)
         $findings = @()

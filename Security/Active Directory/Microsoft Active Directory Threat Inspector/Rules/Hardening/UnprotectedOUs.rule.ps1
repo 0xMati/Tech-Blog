@@ -8,7 +8,7 @@
     Description = "One or more Organizational Units are not protected from accidental deletion. Accidental deletion of OUs can cause significant operational disruption, including loss of GPO links and object organization."
     Remediation = "Enable accidental deletion protection: Set-ADOrganizationalUnit -Identity '<OU_DN>' -ProtectedFromAccidentalDeletion `$true"
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: P-UnprotectedOU', 'ANSSI: vuln_unprotected_ou')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory')
     Condition   = {
         param($Data, $Config)
         $findings = @()

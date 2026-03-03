@@ -8,7 +8,7 @@
     Description = "A significant number of enabled user accounts have the PasswordNeverExpires flag set. Passwords that never expire increase the window for credential compromise through brute-force, password spraying, or credential stuffing."
     Remediation = "Review all accounts with PasswordNeverExpires and remove the flag where possible. For service accounts, migrate to Group Managed Service Accounts (gMSA) which rotate passwords automatically."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: S-PwdNeverExpires', 'ANSSI: vuln_password_never_expires')
+    References  = @('https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/maximum-password-age')
     Condition   = {
         param($Data, $Config)
         $findings = @()

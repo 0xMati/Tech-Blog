@@ -8,7 +8,7 @@
     Description = "The WebClient service (WebDAV) is running on a Domain Controller. This enables attackers to coerce NTLM authentication via the WebDAV protocol and relay it to LDAPS or AD CS endpoints for privilege escalation (PetitPotam-style attacks)."
     Remediation = "Disable the WebClient service on all Domain Controllers: Set-Service -Name WebClient -StartupType Disabled -Status Stopped"
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: A-DC-WebClient', 'ANSSI: vuln_dc_webclient')
+    References  = @('https://learn.microsoft.com/en-us/defender-for-identity/security-assessment-edit-webclient-service')
     Condition   = {
         param($Data, $Config)
         $findings = @()

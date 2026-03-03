@@ -8,7 +8,7 @@
     Description = "A trust relationship does not have AES encryption enabled. Without AES, Kerberos tickets for cross-domain authentication use RC4 encryption, which is vulnerable to offline cracking attacks. Even intra-forest trusts benefit from AES enforcement."
     Remediation = "Enable AES for the trust: ksetup /setenctypeattr <TrustedDomain> AES256-CTS-HMAC-SHA1-96 AES128-CTS-HMAC-SHA1-96. Or use: netdom trust <TrustingDomain> /domain:<TrustedDomain> /SetAes256"
     Collectors  = @('TrustInfo')
-    References  = @('PingCastle: T-AlgsAES', 'ANSSI: vuln_trusts_aes')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/forest-trust/configure-encryption-types')
     Condition   = {
         param($Data, $Config)
         $findings = @()

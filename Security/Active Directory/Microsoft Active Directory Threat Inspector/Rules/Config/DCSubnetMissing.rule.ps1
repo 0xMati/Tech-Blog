@@ -8,7 +8,7 @@
     Description = "A Domain Controller is located in an AD site that has no subnet defined. This causes incorrect site-aware KDC and DC locator behavior, potentially routing authentication to wrong DCs or causing slow logons."
     Remediation = "Create appropriate AD subnets in Active Directory Sites and Services and link them to the correct site for each DC."
     Collectors  = @('DCInfo')
-    References  = @('PingCastle: S-DC-SubnetMissing', 'ANSSI: vuln_dc_subnet')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/networking/core-network-guide/cncg/server-certs/configure-the-server-certificate-template')
     Condition   = {
         param($Data, $Config)
         $findings = @()

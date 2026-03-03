@@ -8,7 +8,7 @@
     Description = "A user account has unconstrained delegation enabled (TrustedForDelegation). Any service running under this account will cache TGTs of connecting users. User accounts with unconstrained delegation are especially dangerous because they can be compromised through password attacks."
     Remediation = "Remove the TrustedForDelegation flag from the user account. Migrate to constrained delegation or RBCD."
     Collectors  = @('KerberosConfig')
-    References  = @('PingCastle: P-DelegationEveryone', 'ANSSI: vuln_delegation_unconstrained_user')
+    References  = @('https://learn.microsoft.com/en-us/defender-for-identity/security-assessment-unsecure-kerberos-delegation')
     Condition   = {
         param($Data, $Config)
         $findings = @()

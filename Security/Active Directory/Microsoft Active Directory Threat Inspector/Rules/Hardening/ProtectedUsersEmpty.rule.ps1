@@ -8,7 +8,7 @@
     Description = "The Protected Users security group is empty or contains very few members. Privileged accounts should be members of this group to receive additional protection: no NTLM authentication, no DES/RC4 encryption, no delegation, no long-lived TGT caching."
     Remediation = "Add all Domain Admins, Enterprise Admins, and other privileged accounts to the Protected Users group. Ensure the domain functional level is at least Windows Server 2012 R2."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: P-ProtectedUsers', 'ANSSI: vuln_protected_users')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/protected-users-security-group')
     Condition   = {
         param($Data, $Config)
         $findings = @()

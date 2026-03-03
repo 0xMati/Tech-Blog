@@ -8,7 +8,7 @@
     Description = "A privileged account (Domain Admins or Enterprise Admins member) does not have the 'Account is sensitive and cannot be delegated' flag set. Without this flag, attackers who compromise a server with delegation can impersonate the admin. Note: accounts in the Protected Users group are already protected."
     Remediation = "Set the AccountNotDelegated flag: Set-ADUser <user> -AccountNotDelegated `$true. Alternatively, add the account to the Protected Users group."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: P-Delegated', 'ANSSI: vuln_admin_delegatable')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory')
     Condition   = {
         param($Data, $Config)
         $findings = @()

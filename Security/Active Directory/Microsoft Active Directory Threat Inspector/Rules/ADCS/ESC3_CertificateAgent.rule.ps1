@@ -8,7 +8,7 @@
     Description = "A published certificate template has the Certificate Request Agent OID (1.3.6.1.4.1.311.20.2.1) in its EKU and allows low-privileged enrollment without manager approval. An enrollment agent certificate can be used to request certificates on behalf of other users, including domain admins."
     Remediation = "Restrict enrollment agent template enrollment to highly privileged groups only. Enable manager approval (CT_FLAG_PEND_ALL_REQUESTS). Configure enrollment agent restrictions on the CA."
     Collectors  = @('CertificateServices')
-    References  = @('PingCastle: A-CertTempAgent', 'SpecterOps: ESC3')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/security-best-practices')
     Condition   = {
         param($Data, $Config)
         $findings = @()

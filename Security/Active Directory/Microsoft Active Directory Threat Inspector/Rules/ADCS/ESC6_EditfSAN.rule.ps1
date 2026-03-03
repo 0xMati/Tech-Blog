@@ -8,7 +8,7 @@
     Description = "The Certificate Authority has the EDITF_ATTRIBUTESUBJECTALTNAME2 flag enabled. This flag allows any certificate requestor to specify an arbitrary Subject Alternative Name (SAN) in their request, regardless of the template settings. This effectively makes ALL templates vulnerable to ESC1-style attacks."
     Remediation = "Disable the flag on the CA: certutil -config 'CA\CAName' -setreg policy\EditFlags -EDITF_ATTRIBUTESUBJECTALTNAME2. Then restart the CertSvc service."
     Collectors  = @('CertificateServices')
-    References  = @('PingCastle: A-CertEditFlag', 'SpecterOps: ESC6')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/security-best-practices')
     Condition   = {
         param($Data, $Config)
         $findings = @()

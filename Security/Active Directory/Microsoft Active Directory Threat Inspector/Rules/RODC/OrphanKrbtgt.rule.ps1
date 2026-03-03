@@ -8,7 +8,7 @@
     Description = "A krbtgt_XXXXX account exists but is not linked to any active RODC via the msDS-KrbTgtLink attribute. This typically occurs when an RODC was decommissioned without proper cleanup. Orphan krbtgt accounts can be used for Golden Ticket-like attacks against former RODC services."
     Remediation = "Delete the orphan krbtgt account after confirming no RODC is using it. Use: Remove-ADUser -Identity <krbtgt_DN> -Confirm"
     Collectors  = @('RODCInfo')
-    References  = @('ANSSI: vuln_rodc_orphan_krbtgt', 'PingCastle: P-RODCOrphan')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/deploy/rodc/read-only-domain-controller-planning')
     Condition   = {
         param($Data, $Config)
         $findings = @()

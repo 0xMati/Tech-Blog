@@ -8,7 +8,7 @@
     Description = "The Print Spooler service is running on a Domain Controller. This service exposes DCs to PrinterBug/SpoolSample attacks, which can coerce NTLM authentication from the DC to an attacker-controlled server, enabling relay attacks or credential theft."
     Remediation = "Disable the Print Spooler service on all Domain Controllers: Set-Service -Name Spooler -StartupType Disabled -Status Stopped"
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: A-DC-Spooler', 'ANSSI: vuln_dc_spooler')
+    References  = @('https://learn.microsoft.com/en-us/defender-for-identity/security-assessment-print-spooler')
     Condition   = {
         param($Data, $Config)
         $findings = @()

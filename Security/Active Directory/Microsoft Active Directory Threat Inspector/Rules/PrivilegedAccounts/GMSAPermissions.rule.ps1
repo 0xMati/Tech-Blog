@@ -16,10 +16,7 @@
                   'principals using Set-ADServiceAccount -PrincipalsAllowedToRetrieveManagedPassword <list>. ' +
                   'Prefer a dedicated security group containing only the specific computer accounts that need access.'
     Collectors  = @('SecurityConfig')
-    References  = @(
-        'https://learn.microsoft.com/en-us/windows-server/security/group-managed-service-accounts/group-managed-service-accounts-overview'
-        'https://www.thehacker.recipes/ad/movement/dacl/readgmsapassword'
-    )
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/group-managed-service-accounts/group-managed-service-accounts-overview')
 
     Condition = {
         param($Data, $Config)

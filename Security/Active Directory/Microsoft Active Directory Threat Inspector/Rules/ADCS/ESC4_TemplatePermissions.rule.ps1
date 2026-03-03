@@ -8,7 +8,7 @@
     Description = "A certificate template can be modified (full control, write permissions) by low-privileged users such as Domain Users, Domain Computers, Everyone, or Authenticated Users. An attacker can modify the template to enable ESC1 (custom SAN) and request a certificate as any user."
     Remediation = "Remove write/modify permissions from the template ACL for low-privileged groups. Only CA Admins and Enterprise Admins should have write access to certificate templates."
     Collectors  = @('CertificateServices')
-    References  = @('PingCastle: A-CertTempAnyone', 'SpecterOps: ESC4')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/security-best-practices')
     Condition   = {
         param($Data, $Config)
         $findings = @()

@@ -8,7 +8,7 @@
     Description = "Local Administrator Password Solution (LAPS) is not deployed or covers less than 80% of member computers. Without LAPS, local admin passwords may be shared or never rotated, enabling lateral movement."
     Remediation = "Deploy Windows LAPS (or legacy Microsoft LAPS) to all domain-joined workstations and member servers. Use GPO to configure password rotation policy."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: A-NoLaps / S-NoLaps', 'ANSSI: vuln_laps_not_installed')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/laps/laps-overview')
     Condition   = {
         param($Data, $Config)
         $findings = @()

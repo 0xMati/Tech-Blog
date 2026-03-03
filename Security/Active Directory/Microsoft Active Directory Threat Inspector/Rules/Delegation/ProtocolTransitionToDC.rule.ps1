@@ -8,7 +8,7 @@
     Description = "An account has both protocol transition (TrustedToAuthForDelegation) and constrained delegation to a Domain Controller service. This allows the account to obtain a TGS for any user (including Domain Admins) to the targeted DC service, without requiring the user's password or TGT."
     Remediation = "Remove the TrustedToAuthForDelegation flag from the account or remove the DC service from the AllowedToDelegateTo list. Consider using RBCD instead."
     Collectors  = @('KerberosConfig', 'DCInfo')
-    References  = @('ANSSI: vuln_delegation_t2a4d', 'PingCastle: P-DelegationT2A4D')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-constrained-delegation-overview')
     Condition   = {
         param($Data, $Config)
         $findings = @()

@@ -8,7 +8,7 @@
     Description = "A Certificate Authority has HTTP enrollment enabled (Certificate Enrollment Web Service or CES). Without NTLM relay protections (EPA), an attacker can relay NTLM authentication from a Domain Controller to the CA web enrollment endpoint and request a certificate as the DC, achieving full domain compromise."
     Remediation = "Disable HTTP enrollment or enable Extended Protection for Authentication (EPA) on the IIS enrollment endpoint. Prefer HTTPS-only enrollment with EPA set to 'Required'."
     Collectors  = @('CertificateServices')
-    References  = @('PingCastle: A-CertEnrollHttp', 'SpecterOps: ESC8')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/security-best-practices')
     Condition   = {
         param($Data, $Config)
         $findings = @()

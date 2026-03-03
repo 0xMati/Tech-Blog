@@ -8,7 +8,7 @@
     Description = "The SrvsvcSessionInfo security descriptor on this Domain Controller has not been hardened. Any authenticated user can enumerate active SMB sessions via NetSessionEnum, enabling reconnaissance of privileged logon sessions for lateral movement."
     Remediation = "Apply NetCease-style hardening by replacing the SrvsvcSessionInfo security descriptor in HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\DefaultSecurity to remove Authenticated Users access. Restart the LanmanServer service after the change."
     Collectors  = @('ProtocolConfig')
-    References  = @('PingCastle: S-NetSessionEnum', 'Blog: Hardening Net Session Enumeration on Domain Controllers')
+    References  = @('https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-access-restrict-clients-allowed-to-make-remote-calls-to-sam')
     Condition   = {
         param($Data, $Config)
         $findings = @()

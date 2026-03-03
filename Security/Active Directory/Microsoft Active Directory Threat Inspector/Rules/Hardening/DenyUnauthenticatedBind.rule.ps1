@@ -8,7 +8,7 @@
     Description = "The DenyUnauthenticatedBind=1 setting is not configured on the Directory Service object. Anonymous LDAP clients can still query RootDSE without authentication, exposing AD metadata (naming contexts, LDAP capabilities, GC readiness)."
     Remediation = "Set DenyUnauthenticatedBind=1 in the msDS-Other-Settings attribute on CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration. This blocks all anonymous LDAP operations including RootDSE lookups. Test for legacy LDAP clients that rely on anonymous discovery before enabling."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: A-DenyUnauthenticatedBind', 'Blog: DenyUnauthenticatedBind Hardening in Active Directory')
+    References  = @('https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/anonymous-ldap-operations-active-directory-disabled')
     Condition   = {
         param($Data, $Config)
         $findings = @()

@@ -8,7 +8,7 @@
     Description = "A critical Active Directory object (domain controller, AdminSDHolder) is owned by a non-privileged principal. The owner of an object has implicit full control, which can be exploited for privilege escalation."
     Remediation = "Change ownership of the critical objects to Domain Admins or SYSTEM. Use: Set-ACL or the Active Directory delegation wizard."
     Collectors  = @('ACLInfo')
-    References  = @('PingCastle: P-DCOwner', 'ANSSI: vuln_owner')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory')
     Condition   = {
         param($Data, $Config)
         $findings = @()

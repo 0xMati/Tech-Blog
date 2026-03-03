@@ -8,7 +8,7 @@
     Description = "A Certificate Authority's root or issuing certificate is expired or will expire within 180 days. An expired CA certificate means no new certificates can be issued, and certificate chain validation will fail for all subordinate certificates."
     Remediation = "Renew the CA certificate before expiration. For root CAs, re-issue the root certificate. For subordinate CAs, submit a renewal request to the parent CA."
     Collectors  = @('CertificateServices')
-    References  = @('PingCastle: S-CertificateExpired', 'ANSSI: vuln_adcs_expired_cert')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/manage-certificates')
     Condition   = {
         param($Data, $Config)
         $findings = @()

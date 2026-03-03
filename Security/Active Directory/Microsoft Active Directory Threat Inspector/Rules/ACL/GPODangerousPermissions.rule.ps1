@@ -8,7 +8,7 @@
     Description = "A Group Policy Object has write, modify, or full control permissions granted to a non-privileged principal. An attacker who compromises this account can modify the GPO to deploy malware, change security settings, or create backdoor accounts on all computers where the GPO is applied."
     Remediation = "Review and restrict GPO permissions. Remove write/modify access for non-privileged accounts. Use delegation of GPO management only to trusted admin groups."
     Collectors  = @('GPOInfo')
-    References  = @('PingCastle: P-GPOPermissions', 'ANSSI: vuln_permissions_gpo')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory')
     Condition   = {
         param($Data, $Config)
         $findings = @()

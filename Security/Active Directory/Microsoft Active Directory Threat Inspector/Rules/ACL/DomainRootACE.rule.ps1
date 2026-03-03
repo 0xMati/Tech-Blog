@@ -8,7 +8,7 @@
     Description = "A non-privileged principal has dangerous permissions (GenericAll, WriteDACL, WriteOwner, GenericWrite, or WriteAllProperties) on a domain root object. This can lead to complete domain compromise."
     Remediation = "Remove the dangerous ACEs from the domain root object. Review and remediate permissions using dsacls or AD Security tools."
     Collectors  = @('ACLInfo')
-    References  = @('PingCastle: P-DomainRootACL', 'ANSSI: vuln_permissions_naming_context')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory')
     Condition   = {
         param($Data, $Config)
         $findings = @()

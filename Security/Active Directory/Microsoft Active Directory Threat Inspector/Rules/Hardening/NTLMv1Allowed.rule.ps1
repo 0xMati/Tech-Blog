@@ -8,7 +8,7 @@
     Description = "One or more Domain Controllers allow NTLMv1 authentication (LmCompatibilityLevel < 5). NTLMv1 responses can be cracked offline in seconds, enabling credential theft."
     Remediation = "Set LmCompatibilityLevel to 5 (Send NTLMv2 response only. Refuse LM & NTLM) on all DCs via GPO: Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Network security: LAN Manager authentication level."
     Collectors  = @('ProtocolConfig')
-    References  = @('PingCastle: A-NTLMv1', 'ANSSI: vuln_ntlmv1')
+    References  = @('https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-security-lan-manager-authentication-level')
     Condition   = {
         param($Data, $Config)
         $findings = @()

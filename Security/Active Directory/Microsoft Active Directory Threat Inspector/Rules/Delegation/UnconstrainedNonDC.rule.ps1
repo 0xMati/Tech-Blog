@@ -8,7 +8,7 @@
     Description = "A computer account that is not a Domain Controller has unconstrained delegation enabled. Any user that authenticates to this server will have their TGT cached on the machine, enabling an attacker to steal Kerberos tickets and impersonate any user including Domain Admins."
     Remediation = "Remove the TrustedForDelegation flag from the computer account. Migrate to constrained delegation or RBCD. Domain Controllers are excluded because they inherently require unconstrained delegation."
     Collectors  = @('KerberosConfig', 'DCInfo')
-    References  = @('PingCastle: P-UnconstrainedDelegation', 'ANSSI: vuln_delegation_unconstrained')
+    References  = @('https://learn.microsoft.com/en-us/defender-for-identity/security-assessment-unsecure-kerberos-delegation')
     Condition   = {
         param($Data, $Config)
         $findings = @()

@@ -8,7 +8,7 @@
     Description = "A non-default principal has both DS-Replication-Get-Changes and DS-Replication-Get-Changes-All permissions on a domain root. This combination allows the principal to replicate all password hashes from the domain (DCSync attack)."
     Remediation = "Remove the DS-Replication-Get-Changes and DS-Replication-Get-Changes-All extended rights from the non-privileged principal on the domain root object."
     Collectors  = @('ACLInfo')
-    References  = @('PingCastle: P-DCSync', 'ANSSI: vuln_dcsync')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-identifiers')
     Condition   = {
         param($Data, $Config)
         $findings = @()

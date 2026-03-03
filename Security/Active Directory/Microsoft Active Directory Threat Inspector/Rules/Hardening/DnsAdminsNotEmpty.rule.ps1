@@ -8,7 +8,7 @@
     Description = "The DnsAdmins group has members. Members of this group can load arbitrary DLLs on Domain Controllers through the DNS service (ServerLevelPluginDll), which runs as SYSTEM. This is a well-known privilege escalation path to Domain Admin."
     Remediation = "Empty the DnsAdmins group. Use a dedicated privileged access model for DNS administration if needed."
     Collectors  = @('DNSConfig')
-    References  = @('PingCastle: P-DNSAdmin', 'ANSSI: vuln_dnsadmins')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/networking/dns/troubleshoot/dns-server-troubleshooting')
     Condition   = {
         param($Data, $Config)
         $findings = @()

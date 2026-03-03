@@ -8,7 +8,7 @@
     Description = "Critical audit subcategories are not configured for success and/or failure auditing on one or more Domain Controllers. Without proper auditing, security incidents cannot be detected or investigated."
     Remediation = "Configure Advanced Audit Policy via GPO to audit at minimum: Logon/Logoff (Success+Failure), Account Logon (Success+Failure), Account Management (Success+Failure), Directory Service Access (Success+Failure), Policy Change (Success), Privilege Use (Failure), System (Success+Failure)."
     Collectors  = @('ProtocolConfig')
-    References  = @('PingCastle: S-AuditPolicy', 'ANSSI: vuln_audit_policy')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/audit-policy-recommendations')
     Condition   = {
         param($Data, $Config)
         $findings = @()

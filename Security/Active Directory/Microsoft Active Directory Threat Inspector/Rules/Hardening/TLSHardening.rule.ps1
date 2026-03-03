@@ -8,7 +8,7 @@
     Description = "This Domain Controller has not explicitly disabled legacy TLS protocols (TLS 1.0/1.1) or has not enabled TLS 1.2 in the Schannel registry. Legacy TLS protocols are vulnerable to BEAST, POODLE, and other attacks."
     Remediation = "Disable TLS 1.0 and TLS 1.1 in HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server (Enabled=0, DisabledByDefault=1) and similarly for TLS 1.1. Ensure TLS 1.2 Server has Enabled=1 and DisabledByDefault=0. Also set .NET Strong Crypto: HKLM\SOFTWARE\Microsoft\.NETFramework\v4.0.30319 SchUseStrongCrypto=1 and SystemDefaultTlsVersions=1."
     Collectors  = @('ProtocolConfig')
-    References  = @('PingCastle: A-TLSLegacy', 'Blog: TLS/SSL Schannel and .NET Strong Crypto Hardening')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/security/tls/tls-registry-settings')
     Condition   = {
         param($Data, $Config)
         $findings = @()

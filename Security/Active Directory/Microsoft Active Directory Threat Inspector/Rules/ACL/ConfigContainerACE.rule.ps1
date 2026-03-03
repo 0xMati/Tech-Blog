@@ -8,7 +8,7 @@
     Description = "A non-privileged principal has dangerous permissions on the Configuration naming context. This container holds forest-wide settings including sites, services, and certificate authorities."
     Remediation = "Remove the dangerous ACEs from the Configuration container. Only Enterprise Admins and Domain Admins of the forest root should have write access."
     Collectors  = @('ACLInfo')
-    References  = @('PingCastle: P-ConfigACL', 'ANSSI: vuln_permissions_configuration')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory')
     Condition   = {
         param($Data, $Config)
         $findings = @()

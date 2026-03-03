@@ -8,7 +8,7 @@
     Description = "A Domain Controller does not advertise AES encryption (AES128 or AES256) in its msDS-SupportedEncryptionTypes attribute. This forces the use of weaker RC4 or DES encryption for Kerberos, making tickets vulnerable to offline cracking attacks."
     Remediation = "Ensure DCs run at least Windows Server 2008 R2 (which supports AES natively). Set msDS-SupportedEncryptionTypes to include AES128 (0x8) and AES256 (0x10): Set-ADComputer <DC> -Replace @{'msDS-SupportedEncryptionTypes'=28}"
     Collectors  = @('DCInfo')
-    References  = @('PingCastle: S-DC-NotUpdated', 'ANSSI: vuln_dc_encryption')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-supported-encryption-types')
     Condition   = {
         param($Data, $Config)
         $findings = @()

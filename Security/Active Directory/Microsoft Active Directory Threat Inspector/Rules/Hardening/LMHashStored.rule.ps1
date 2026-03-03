@@ -8,7 +8,7 @@
     Description = "LM hash storage is not explicitly disabled on one or more Domain Controllers. LM hashes are trivially crackable and provide an easy path to credential compromise."
     Remediation = "Set NoLMHash = 1 via GPO: Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Network security: Do not store LAN Manager hash value on next password change = Enabled. Note: On Windows Vista/2008+ this is disabled by default, but should be explicitly set."
     Collectors  = @('ProtocolConfig')
-    References  = @('PingCastle: A-LMHashAuthorized', 'ANSSI: vuln_lm_hash')
+    References  = @('https://learn.microsoft.com/en-us/troubleshoot/windows-server/windows-security/prevent-windows-store-lm-hash-password')
     Condition   = {
         param($Data, $Config)
         $findings = @()

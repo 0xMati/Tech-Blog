@@ -8,7 +8,7 @@
     Description = "No Fine-Grained Password Policy (FGPP) is applied to privileged accounts or groups. Without a stricter FGPP, privileged accounts use the default domain password policy, which is typically insufficient for high-value targets."
     Remediation = "Create a Fine-Grained Password Policy with stricter settings (minimum 16 characters, 1-day max age, lockout protection) and apply it to Domain Admins and Enterprise Admins groups."
     Collectors  = @('PasswordPolicy')
-    References  = @('PingCastle: A-NoFGPP', 'ANSSI: vuln_privileged_members_password')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/get-started/adac/introduction-to-active-directory-administrative-center-enhancements--level-100-#fine_grained_pswd_policy_mgmt')
     Condition   = {
         param($Data, $Config)
         $findings = @()

@@ -8,7 +8,7 @@
     Description = "The ms-DS-MachineAccountQuota attribute is not set to 0. By default it is set to 10, allowing any authenticated user to join up to 10 computers to the domain. Attacker-joined computers can be used for RBCD attacks and lateral movement."
     Remediation = "Set ms-DS-MachineAccountQuota to 0: Set-ADDomain -Identity <domain> -Replace @{'ms-DS-MachineAccountQuota'=0}. Delegate computer join permissions to specific admin accounts."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: S-ADRegistration', 'ANSSI: vuln_machineaccountquota')
+    References  = @('https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/add-workstations-to-domain')
     Condition   = {
         param($Data, $Config)
         $findings = @()

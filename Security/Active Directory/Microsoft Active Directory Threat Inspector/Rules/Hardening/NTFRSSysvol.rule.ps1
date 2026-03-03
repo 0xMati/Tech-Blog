@@ -8,7 +8,7 @@
     Description = "SYSVOL is still replicated using NTFRS (File Replication Service) instead of DFSR (Distributed File System Replication). NTFRS is deprecated since Windows Server 2008 R2 and has known reliability issues. Migration to DFSR is required before upgrading to newer Windows Server versions."
     Remediation = "Migrate SYSVOL replication from NTFRS to DFSR using: dfsrmig /setglobalstate 3 (after proper preparation steps)."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: A-NTFRSOnSysvol', 'ANSSI: vuln_sysvol_ntfrs')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/migrate-sysvol-replication')
     Condition   = {
         param($Data, $Config)
         $findings = @()

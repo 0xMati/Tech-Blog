@@ -8,7 +8,7 @@
     Description = "An account has the USE_DES_KEY_ONLY flag set in UserAccountControl. DES is a weak, deprecated encryption algorithm. Accounts with DES forced are vulnerable to offline brute-force attacks on Kerberos tickets."
     Remediation = "Disable the USE_DES_KEY_ONLY flag: Set-ADUser <user> -KerberosEncryptionType AES128,AES256 and clear the DES flag."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: S-DesEnabled', 'ANSSI: vuln_des_encryption')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-supported-encryption-types')
     Condition   = {
         param($Data, $Config)
         $findings = @()

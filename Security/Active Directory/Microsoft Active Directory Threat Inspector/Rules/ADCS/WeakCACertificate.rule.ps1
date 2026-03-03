@@ -8,7 +8,7 @@
     Description = "A Certificate Authority is using a weak signing algorithm (SHA1, MD5) or has a key length shorter than 2048 bits. Weak algorithms are vulnerable to collision attacks, and short keys can be factored by modern hardware."
     Remediation = "Renew the CA certificate with SHA256 or higher and a minimum 2048-bit RSA key (4096 recommended). Plan a CA certificate migration if needed."
     Collectors  = @('CertificateServices')
-    References  = @('PingCastle: A-WeakRSARootCert, A-SHA1RootCert', 'ANSSI: vuln_adcs_weak_cert')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/security-best-practices')
     Condition   = {
         param($Data, $Config)
         $findings = @()

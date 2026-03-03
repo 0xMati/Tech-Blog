@@ -8,7 +8,7 @@
     Description = "A trust relationship appears to be inactive based on its age and type. Old trusts that are no longer needed expand the attack surface and may provide unmonitored paths into the domain."
     Remediation = "Verify whether the trust is still needed. If not, remove it: Remove-ADTrust or netdom trust <domain> /domain:<target> /remove."
     Collectors  = @('TrustInfo')
-    References  = @('PingCastle: T-Inactive', 'ANSSI: vuln_trusts_inactive')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/forest-trust/')
     Condition   = {
         param($Data, $Config)
         $findings = @()

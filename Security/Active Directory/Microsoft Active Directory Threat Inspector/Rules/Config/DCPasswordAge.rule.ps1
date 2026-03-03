@@ -8,7 +8,7 @@
     Description = "A Domain Controller's computer account password has not been rotated for an extended period. DC computer passwords should rotate automatically every 30 days. An old password may indicate a broken secure channel or a DC that has been offline."
     Remediation = "Investigate why the DC machine password has not rotated. Check the Netlogon secure channel, verify the DC can reach AD. Consider resetting the computer password with 'Reset-ComputerMachinePassword' or 'netdom resetpwd'."
     Collectors  = @('DCInfo')
-    References  = @('PingCastle: S-PwdLastSet-DC', 'ANSSI: vuln_dc_password_age')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-default-domain-password-policy')
     Condition   = {
         param($Data, $Config)
         $findings = @()

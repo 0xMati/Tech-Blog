@@ -8,7 +8,7 @@
     Description = "An account has constrained delegation (msDS-AllowedToDelegateTo) configured to a service running on a Domain Controller. Compromising this account allows impersonation of any user to the targeted DC service, potentially leading to full domain compromise."
     Remediation = "Remove the constrained delegation to the DC service. If delegation is required, use Resource-Based Constrained Delegation (RBCD) with strict controls instead."
     Collectors  = @('KerberosConfig', 'DCInfo')
-    References  = @('ANSSI: vuln_delegation_a2d2', 'PingCastle: P-DelegationDC')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-constrained-delegation-overview')
     Condition   = {
         param($Data, $Config)
         $findings = @()

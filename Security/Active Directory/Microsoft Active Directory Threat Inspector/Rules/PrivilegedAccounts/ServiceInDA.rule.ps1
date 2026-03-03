@@ -8,7 +8,7 @@
     Description = "A user account with a Service Principal Name (SPN) is a direct or indirect member of a privileged group (Domain Admins, Enterprise Admins, etc.). Service accounts with SPNs are vulnerable to Kerberoasting, and if they are also domain admins, a successful Kerberoast attack directly yields domain admin credentials."
     Remediation = "Remove the service account from privileged groups. Use a dedicated admin account (without SPN) for administration. Migrate to Group Managed Service Accounts (gMSA) where possible."
     Collectors  = @('KerberosConfig', 'PrivilegedAccounts')
-    References  = @('PingCastle: P-ServiceDomainAdmin', 'ANSSI: vuln_service_in_privileged')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/implementing-least-privilege-administrative-models')
     Condition   = {
         param($Data, $Config)
         $findings = @()

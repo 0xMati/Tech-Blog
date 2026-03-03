@@ -8,7 +8,7 @@
     Description = "A certificate template allows the enrollee to supply a Subject Alternative Name (SAN), can be used for authentication, and is enrollable by low-privileged users. An attacker can request a certificate with a Domain Admin SAN and use it to authenticate as that admin."
     Remediation = "Remove the CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT flag from the template (uncheck 'Supply in the request' on the Subject Name tab). If SAN is required, enable manager approval."
     Collectors  = @('CertificateServices')
-    References  = @('PingCastle: A-CertTempCustomSubject', 'SpecterOps: ESC1')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/security-best-practices')
     Condition   = {
         param($Data, $Config)
         $findings = @()

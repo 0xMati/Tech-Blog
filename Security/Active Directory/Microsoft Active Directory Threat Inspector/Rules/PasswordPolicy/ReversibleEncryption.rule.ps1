@@ -8,7 +8,7 @@
     Description = "A password policy (default or Fine-Grained) has reversible encryption enabled. This stores passwords in a form that can be decrypted to plaintext, effectively negating the protection of password hashing."
     Remediation = "Disable reversible encryption in all password policies. If an application requires it, use a dedicated service account and apply the FGPP only to that account."
     Collectors  = @('PasswordPolicy')
-    References  = @('PingCastle: A-ReversiblePwd', 'ANSSI: vuln_reversible_encryption')
+    References  = @('https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/store-passwords-using-reversible-encryption')
     Condition   = {
         param($Data, $Config)
         $findings = @()

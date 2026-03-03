@@ -8,7 +8,7 @@
     Description = "The built-in Guest account is enabled. This account provides unauthenticated access to the domain and can be exploited by attackers to enumerate domain resources and move laterally."
     Remediation = "Disable the Guest account: Disable-ADAccount -Identity Guest"
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: A-Guest', 'ANSSI: vuln_guest_account')
+    References  = @('https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/accounts-guest-account-status')
     Condition   = {
         param($Data, $Config)
         $findings = @()

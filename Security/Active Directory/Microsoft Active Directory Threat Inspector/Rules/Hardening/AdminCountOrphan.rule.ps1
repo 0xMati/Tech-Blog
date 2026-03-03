@@ -8,7 +8,7 @@
     Description = "An enabled account has AdminCount=1 set but is no longer a member of any privileged group. This means the account still has SDProp-hardened ACLs (preventing inheritance) but no longer needs them, creating a security blind spot."
     Remediation = "For each orphan: clear the AdminCount attribute (set to 0 or null), then re-enable ACL inheritance on the account. Investigate why the account was previously privileged."
     Collectors  = @('SecurityConfig')
-    References  = @('PingCastle: S-AdminCountOrphan', 'ANSSI: vuln_admincount_orphan')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/appendix-c--protected-accounts-and-groups-in-active-directory')
     Condition   = {
         param($Data, $Config)
         $findings = @()

@@ -16,10 +16,7 @@
                   'Set-ADUser/Computer <target> -Clear msDS-KeyCredentialLink. ' +
                   'Restrict write access to this attribute to authorized principals only.'
     Collectors  = @('ComputerAccounts', 'UserAccounts')
-    References  = @(
-        'https://posts.specterops.io/shadow-credentials-abusing-key-trust-account-mapping-for-takeover-8ee1a53566ab'
-        'https://attack.mitre.org/techniques/T1556/006/'
-    )
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/key-trust-authentication')
 
     Condition = {
         param($Data, $Config)

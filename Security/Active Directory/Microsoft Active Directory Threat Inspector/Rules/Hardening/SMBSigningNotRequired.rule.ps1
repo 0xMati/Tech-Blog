@@ -8,7 +8,7 @@
     Description = "SMB signing is not required on one or more Domain Controllers. Without mandatory SMB signing, attackers can perform SMB relay attacks and intercept or modify SMB traffic."
     Remediation = "Enable 'Microsoft network server: Digitally sign communications (always)' via GPO on all DCs. Also enable for clients: 'Microsoft network client: Digitally sign communications (always)'."
     Collectors  = @('ProtocolConfig')
-    References  = @('PingCastle: A-SMBSigning', 'ANSSI: vuln_smb_signing')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/storage/file-server/troubleshoot/detect-enable-and-disable-smbv1-v2-v3')
     Condition   = {
         param($Data, $Config)
         $findings = @()

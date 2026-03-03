@@ -8,7 +8,7 @@
     Description = "This AD-integrated DNS zone does not have aging and scavenging enabled. Without aging, stale DNS records accumulate, potentially pointing to decommissioned hosts. Attackers can re-register stale names to intercept traffic."
     Remediation = "Enable aging on the zone (Set-DnsServerZoneAging -Name <Zone> -Aging $true -ScavengingServer <DC>) and configure appropriate NoRefreshInterval and RefreshInterval (default 7 days each). Enable scavenging on at least one DC."
     Collectors  = @('DNSConfig')
-    References  = @('Blog: DNS Aging and Scavenging Configuration', 'PingCastle: S-DNSZoneAging')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/networking/dns/troubleshoot/configure-dns-aging-and-scavenging')
     Condition   = {
         param($Data, $Config)
         $findings = @()

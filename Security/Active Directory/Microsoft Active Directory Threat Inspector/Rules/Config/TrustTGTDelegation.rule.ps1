@@ -8,7 +8,7 @@
     Description = "A trust relationship has the TRUST_ATTRIBUTE_ENABLE_TGT_DELEGATION flag set. This allows TGTs to be forwarded across the trust, enabling protocol transition and potentially allowing accounts from the trusted domain to impersonate users in this domain."
     Remediation = "Disable TGT delegation on the trust: netdom trust <TrustingDomain> /domain:<TrustedDomain> /EnableTGTDelegation:no"
     Collectors  = @('TrustInfo')
-    References  = @('PingCastle: T-TGTDelegation', 'ANSSI: vuln_trusts_tgt_deleg')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-constrained-delegation-overview')
     Condition   = {
         param($Data, $Config)
         $findings = @()

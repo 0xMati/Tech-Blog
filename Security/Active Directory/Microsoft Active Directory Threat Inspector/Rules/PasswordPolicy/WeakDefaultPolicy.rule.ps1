@@ -8,7 +8,7 @@
     Description = "The default domain password policy does not meet recommended security standards. A minimum password length of 12 characters (or more) is recommended. Complexity should be enabled and the password history should contain at least 24 entries."
     Remediation = "Increase the minimum password length to at least 12 characters. Enable password complexity and set the history count to 24 or more via the Default Domain Policy GPO."
     Collectors  = @('PasswordPolicy')
-    References  = @('PingCastle: A-MinPwdLen', 'ANSSI: vuln_password_policy')
+    References  = @('https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/password-policy')
     Condition   = {
         param($Data, $Config)
         $findings = @()

@@ -8,7 +8,7 @@
     Description = "The 'Denied RODC Password Replication Group' is missing one or more default members (Domain Admins, Enterprise Admins, Schema Admins, Administrators, Account Operators, Server Operators, Backup Operators, or krbtgt). Removing these defaults allows their passwords to be potentially cached on RODCs."
     Remediation = "Restore all default members to the Denied RODC Password Replication Group. Never remove privileged groups from this deny list."
     Collectors  = @('RODCInfo')
-    References  = @('ANSSI: vuln_rodc_denied_group', 'PingCastle: P-RODCDeniedGroup')
+    References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/deploy/rodc/read-only-domain-controller-planning')
     Condition   = {
         param($Data, $Config)
         $findings = @()

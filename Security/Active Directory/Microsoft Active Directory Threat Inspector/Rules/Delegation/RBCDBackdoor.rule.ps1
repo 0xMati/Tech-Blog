@@ -15,10 +15,7 @@
                   'Set-ADComputer <target> -PrincipalsAllowedToDelegateToAccount $null. ' +
                   'Limit who can write to this attribute via ACL hardening.'
     Collectors  = @('ComputerAccounts')
-    References  = @(
-        'https://www.thehacker.recipes/ad/movement/kerberos/delegations/rbcd'
-        'https://attack.mitre.org/techniques/T1550/003/'
-    )
+    References  = @('https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-constrained-delegation-overview')
 
     Condition = {
         param($Data, $Config)
