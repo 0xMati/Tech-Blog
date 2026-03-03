@@ -1,4 +1,0 @@
-﻿"Name","Source","Target","Direction","TrustType","ForestTransitive","IntraForest","SIDFilteringQuarantined","SelectiveAuthentication"
-"child.mathiasmotron.com","DC=mathiasmotron,DC=com","child.mathiasmotron.com","BiDirectional","Uplevel","False","True","False","False"
-"ext.local","DC=mathiasmotron,DC=com","ext.local","BiDirectional","Uplevel","True","False","False","False"
-"red.local","DC=mathiasmotron,DC=com","red.local","Outbound","Uplevel","True","False","False","True"

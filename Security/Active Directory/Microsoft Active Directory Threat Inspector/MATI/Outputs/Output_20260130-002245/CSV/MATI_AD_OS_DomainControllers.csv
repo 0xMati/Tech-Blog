@@ -1,5 +1,0 @@
-﻿"DomainDNS","Name","DistinguishedName","OperatingSystem","OperatingSystemVersion","OsRiskLevel"
-"child.mathiasmotron.com","MM-DC4","CN=MM-DC4,OU=Domain Controllers,DC=child,DC=mathiasmotron,DC=com","Windows Server 2022 Datacenter","10.0 (20348)",
-"mathiasmotron.com","MM-DC1","CN=MM-DC1,OU=Domain Controllers,DC=mathiasmotron,DC=com","Windows Server 2025 Datacenter","10.0 (26100)",
-"mathiasmotron.com","MM-DC2","CN=MM-DC2,OU=Domain Controllers,DC=mathiasmotron,DC=com","Windows Server 2019 Datacenter","10.0 (17763)","High"
-"mathiasmotron.com","MM-DC3","CN=MM-DC3,OU=Domain Controllers,DC=mathiasmotron,DC=com","Windows Server 2019 Datacenter","10.0 (17763)","High"

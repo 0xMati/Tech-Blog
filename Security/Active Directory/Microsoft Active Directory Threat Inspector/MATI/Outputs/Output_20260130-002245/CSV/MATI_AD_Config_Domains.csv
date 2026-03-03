@@ -1,3 +1,0 @@
-﻿"ForestName","DomainDNS","DomainNetBIOS","DomainMode","ForestMode","RecycleBinEnabled","TombstoneLifetimeDays","SchemaVersion","SysvolReplication","PDCEmulator","RIDMaster","InfrastructureMaster","DomainSID"
-"mathiasmotron.com","child.mathiasmotron.com","CHILD","Windows2016Domain","Windows2016Forest","True","180","91","DFSR","MM-DC4.child.mathiasmotron.com","MM-DC4.child.mathiasmotron.com","MM-DC4.child.mathiasmotron.com","S-1-5-21-3274687931-2194606015-4130333083"
-"mathiasmotron.com","mathiasmotron.com","MATHIASMOTRON","Windows2016Domain","Windows2016Forest","True","180","91","DFSR","MM-DC3.mathiasmotron.com","MM-DC3.mathiasmotron.com","MM-DC3.mathiasmotron.com","S-1-5-21-2462332226-1795882094-2017209951"

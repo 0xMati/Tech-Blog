@@ -1,5 +1,0 @@
-﻿"DomainDNS","DCName","IsPDC","OperatingSystem","SupportedEncryptionTypes","DefaultDomainSupportedEncTypes","KdcRC4Allowed","OsIsAtLeast2022"
-"child.mathiasmotron.com","MM-DC4.child.mathiasmotron.com","True","Windows Server 2022 Datacenter","0x7FFFFFFC",,"True","True"
-"mathiasmotron.com","MM-DC1.mathiasmotron.com","False","Windows Server 2025 Datacenter","0x7FFFFFFC",,"True","True"
-"mathiasmotron.com","MM-DC2.mathiasmotron.com","False","Windows Server 2019 Datacenter","0x7FFFFFFC",,"True","False"
-"mathiasmotron.com","MM-DC3.mathiasmotron.com","True","Windows Server 2019 Datacenter","0x7FFFFFFC",,"True","False"
