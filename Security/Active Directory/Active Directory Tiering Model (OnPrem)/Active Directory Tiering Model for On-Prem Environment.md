@@ -981,6 +981,126 @@ These are powerful but introduce significant cost and complexity. Evaluate wheth
 | 9 | Reduce Domain Admins to break-glass + JIT only | Week 4 |
 | 10 | Extend JIT to Tier 1 privileged groups | Weeks 5-8 |
 
+### 2.5 — Secrets Management and Password Vaults
+
+Tiering creates multiple admin accounts per person and many service accounts across tiers. Without a structured approach to storing and managing these credentials, admins will revert to sticky notes, shared spreadsheets, or a single password for everything — destroying the separation you just built.
+
+#### Core Principle
+
+> **The vault is classified at the tier of the highest-sensitivity secret it contains.** A KeePass database holding both T0 break-glass passwords and T2 LAPS passwords is a **Tier 0 asset** — because compromising it yields T0 access.
+
+This leads to the fundamental rule: **separate vaults per tier**.
+
+#### Choosing a Solution
+
+| Solution | Best For | Tier Separation | Auto-Rotation | Audit Trail | Session Recording | Cost |
+|----------|----------|-----------------|---------------|-------------|-------------------|------|
+| **KeePass / KeePassXC** | Small teams, budget-constrained | Manual (separate `.kdbx` per tier) | No | No native audit | No | Free |
+| **CyberArk PAM** | Enterprise, regulated industries | Built-in safes per tier | Yes | Full audit | Yes | $$$ |
+| **BeyondTrust PM** | Enterprise, session management focus | Policy-based separation | Yes | Full audit | Yes | $$$ |
+| **Delinea Secret Server** | Mid-market, good UI | Folder-based separation | Yes | Full audit | Yes | $$ |
+| **HashiCorp Vault** | DevOps-heavy, hybrid/cloud | Namespace/policy-based | Yes (dynamic secrets) | Full audit | No | $ (OSS) / $$ (Enterprise) |
+| **Azure Key Vault** | Hybrid environments with Entra ID | RBAC-based separation | Yes (certificates) | Full audit via Azure Monitor | No | $ |
+
+#### Recommendation by Environment Size
+
+**Small environment (< 500 users, 1-3 T0 admins):**
+Use **KeePass/KeePassXC** with strict discipline:
+
+- Create **one `.kdbx` database per tier**: `T0-Secrets.kdbx`, `T1-Secrets.kdbx`, `T2-Secrets.kdbx`
+- T0 database stored on a **T0-only file share** (or locally on the PAW, with offline backup)
+- T1/T2 databases stored on their respective tier-restricted shares
+- Each database encrypted with a **unique, strong master passphrase** (30+ characters)
+- Optionally add a **key file** stored separately from the database (defense in depth)
+- **Never open T0 KeePass on a non-T0 machine** — the decrypted secrets exist in memory
+
+```
+T0-Secrets.kdbx                          T1-Secrets.kdbx
+├── Break-glass accounts                 ├── T1 admin passwords
+├── T0 admin account passwords           ├── T1 service accounts
+├── DSRM passwords (all DCs)             ├── Application admin accounts
+├── T0 service account passwords         └── Infrastructure credentials
+├── AD CS private key passphrase
+├── krbtgt rotation records
+└── T0 backup encryption keys
+```
+
+KeePass hardening settings (in `Tools → Options → Security`):
+- Lock workspace after 300 seconds of inactivity
+- Lock workspace when minimizing
+- Clear clipboard after 12 seconds
+- Use Windows user account as additional key (optional — ties DB to specific PAW)
+- Enable secure desktop for master key entry
+
+> **Limitation:** KeePass has **no centralized audit trail**. If compliance requires proof of "who accessed what credential and when," you need an enterprise PAM solution.
+
+**Medium environment (500-5000 users):**
+Use **Delinea Secret Server** or **HashiCorp Vault**:
+
+- Deploy Secret Server on a **Tier 0 server** (the vault manages T0 secrets, so it IS T0)
+- Create **folders per tier** with RBAC: T0 admins see T0 secrets only, T1 admins see T1 only
+- Enable **auto-rotation** for service accounts and local admin passwords
+- Integrate with AD groups for access control (use tiered groups: `T0-VaultAdmins`, `T1-VaultUsers`)
+- Enable **dual authorization** ("check-out approval") for T0 secrets
+- Forward vault audit logs to your SIEM
+
+**Large enterprise (5000+ users, regulated):**
+Use **CyberArk** or **BeyondTrust**:
+
+- Deploy CyberArk Vault on a **dedicated, hardened T0 server** (CyberArk calls it the "Vault server" — it must be treated as Tier 0)
+- Configure **safes** per tier: `Safe-T0`, `Safe-T1`, `Safe-T2`
+- Use **Privileged Session Manager (PSM)** to proxy and record all T0 sessions — admins never see the actual password
+- Enable **auto-rotation** for all service accounts, LAPS backup, and break-glass passwords
+- Integrate with JIT: CyberArk can grant temporary access to a safe, combining vaulting with JIT
+- Use **CPM (Central Policy Manager)** for password rotation policies per tier
+- Forward all CyberArk audit events to SIEM
+
+#### What Goes in the Vault
+
+Every secret must have a designated home. If it's not in a vault, it's unmanaged and a risk.
+
+| Secret Type | Tier | Vault Location | Rotation |
+|-------------|------|----------------|----------|
+| Break-glass domain admin passwords | T0 | T0 vault, dual-authorization required | After every use |
+| DSRM (Directory Services Restore Mode) passwords | T0 | T0 vault | Every 180 days |
+| T0 admin account passwords | T0 | T0 vault | Every 90 days (or per policy) |
+| krbtgt rotation records | T0 | T0 vault (documentation entry) | Every 90-180 days |
+| AD CS CA private key passphrase | T0 | T0 vault, restricted to PKI admins | On CA renewal |
+| T0 backup encryption keys | T0 | T0 vault | On key rotation schedule |
+| gMSA secrets | Auto | Managed by AD (no vault needed) | Automatic (30 days default) |
+| T1 service account passwords | T1 | T1 vault | Every 90 days |
+| Application admin passwords | T1 | T1 vault | Every 90 days |
+| LAPS passwords | T0/T1/T2 | Managed by LAPS (stored in AD) | Automatic per LAPS policy |
+| T2 support account passwords | T2 | T2 vault | Every 90 days |
+| Wi-Fi / VPN shared keys | T2 | T2 vault | Every 180 days |
+
+#### Anti-Patterns to Avoid
+
+| Anti-Pattern | Risk | Fix |
+|-------------|------|-----|
+| One KeePass database for all tiers | T0 compromise via T2 workstation | Separate databases per tier |
+| KeePass database on a shared network drive accessible to all IT | Any compromised IT account accesses all secrets | Tier-restricted shares with ACLs |
+| Passwords in OneNote, Teams, SharePoint | No encryption at rest, no access control | Move to vault immediately |
+| Passwords in GPO Preferences (cpassword) | Trivially decryptable by any domain user | Remove immediately; use LAPS or gMSA |
+| Same password for T0 and T1 admin accounts | Compromising T1 = compromising T0 | Unique passwords per account, enforced by vault |
+| Storing secrets in scripts or config files | Anyone with file access reads the password | Use gMSA, or retrieve from vault at runtime |
+| Browser-saved passwords for admin portals | Extractable via credential theft tools | Disable browser password saving on PAWs |
+
+#### Implementation Roadmap
+
+| Step | Action | Timeline |
+|------|--------|----------|
+| 1 | Select vault solution based on environment size and budget | Week 1 |
+| 2 | Deploy vault infrastructure (classify and place in correct tier OU) | Week 2-3 |
+| 3 | Create tier-separated containers (databases/safes/folders) | Week 3 |
+| 4 | Migrate break-glass and DSRM passwords to T0 vault first | Week 3 |
+| 5 | Migrate T0 admin and service account passwords | Week 4 |
+| 6 | Configure auto-rotation for eligible accounts | Week 4-5 |
+| 7 | Migrate T1 and T2 secrets | Week 5-6 |
+| 8 | Remove all passwords from spreadsheets, OneNote, GPO Preferences | Week 6 |
+| 9 | Enable audit logging and forward to SIEM | Week 6 |
+| 10 | Train all admins on vault usage per tier | Week 7 |
+
 ### Phase 2 Checklist
 
 - [ ] Naming convention for tiered admin accounts defined and documented
@@ -1011,6 +1131,15 @@ These are powerful but introduce significant cost and complexity. Evaluate wheth
 - [ ] Monitoring alert configured for permanent additions to T0 groups
 - [ ] T0 admins trained on JIT elevation workflow
 - [ ] JIT extended to Tier 1 privileged groups (planned or completed)
+- [ ] Vault solution selected and deployed (classified at correct tier)
+- [ ] Separate vault containers created per tier (T0/T1/T2)
+- [ ] Break-glass and DSRM passwords stored in T0 vault
+- [ ] All T0 admin/service account passwords migrated to T0 vault
+- [ ] Auto-rotation configured for eligible accounts (if enterprise PAM)
+- [ ] T1 and T2 secrets migrated to their respective vaults
+- [ ] All passwords removed from spreadsheets, OneNote, GPO Preferences, scripts
+- [ ] Vault audit logging enabled and forwarded to SIEM
+- [ ] Admins trained on vault usage per tier (T0 vault only from PAW)
 
 ---
 
