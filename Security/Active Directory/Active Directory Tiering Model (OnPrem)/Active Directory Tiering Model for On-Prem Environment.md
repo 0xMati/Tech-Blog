@@ -247,11 +247,15 @@ Run these tools **before** implementing tiering to establish a baseline:
 | **BloodHound / SharpHound** | Visualize attack paths from any user to Domain Admins | Shortest paths to DA, Kerberoastable accounts with paths to T0, delegation abuse |
 | **PingCastle** | AD security health check with a score | Privileged group hygiene, stale accounts, dangerous trusts, Kerberos weaknesses |
 | **Purple Knight** | AD security assessment | Similar to PingCastle, different detection engine |
+| **[MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector)** | AD threat inspection with multiplicative scoring | WDigest, Credential Guard, RunAsPPL, LSASS protection, Auth Silos, NTLM config, Kerberos encryption, GPO hardening, privileged group hygiene, delegation abuse, tiering OU compliance |
 | **Invoke-TrimarcADChecks** | Open-source AD security checks | Focused on common misconfigurations |
 
 ```powershell
 # Run PingCastle (example)
 .\PingCastle.exe --healthcheck --server domain.local
+
+# Run MATI (Microsoft Active Directory Threat Inspector)
+.\Invoke-MATI.ps1
 
 # Run SharpHound collector
 .\SharpHound.exe -c All --domaincontroller dc01.domain.local
@@ -317,7 +321,7 @@ Each forest is an independent security boundary. Tiering must be implemented **p
 - [ ] Current OU structure documented
 - [ ] All GPOs and their links documented
 - [ ] GPO owners verified (no non-admin GPO owners for sensitive GPOs)
-- [ ] BloodHound/PingCastle/Purple Knight baseline reports generated and saved
+- [ ] BloodHound/PingCastle/Purple Knight/MATI baseline reports generated and saved
 - [ ] Attack paths from Tier 2 to Tier 0 documented
 
 ---
@@ -1885,6 +1889,7 @@ Get-GPInheritance -Target "OU=Tier 0,$((Get-ADDomain).DistinguishedName)" |
 - [ ] LAPS read permissions verified per tier (no cross-tier access)
 - [ ] All GPOs tested on pilot machines before broad deployment
 - [ ] Basline `gpresult` captured for compliance verification
+- [ ] [MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector) assessment run to validate DC hardening (WDigest, Credential Guard, RunAsPPL, Kerberos encryption, LDAP signing, SMB signing, Print Spooler, etc.)
 - [ ] NTLM audit GPO deployed (audit incoming, outgoing, and domain NTLM)
 - [ ] NTLM operational event log enabled on all DCs
 - [ ] NTLM usage baseline collected for 30+ days
@@ -2117,7 +2122,7 @@ AD CS is one of the most commonly exploited Tier 0 components. Certificate-based
 | Remove unnecessary templates | Disable or delete templates that are not in use |
 | Audit CA permissions | Only T0 admins should have CA manager/admin roles |
 | Place CA servers in T0 OU | They are Tier 0 — treat them accordingly |
-| Disable web enrollment if not needed | The web enrollment page is a frequent attack vector |
+| Disable web enrollment if not needed | The web enrollment page is a frequent attack vector — see [ADCS Web Enrollment Hardening](https://github.com/0xMati/Tech-Blog/blob/main/Security/PKI/ADCS%20Web%20Enrollment%20Hardening.md) for a detailed hardening guide |
 | Enable CA auditing | Log all certificate requests, issuances, and revocations |
 
 ```powershell
@@ -2256,7 +2261,7 @@ foreach ($acct in $backupAccounts) {
 - [ ] Certificate templates audited for ESC1-ESC8 vulnerabilities
 - [ ] `ENROLLEE_SUPPLIES_SUBJECT` removed from templates where not required
 - [ ] CA permissions restricted to T0 admins only
-- [ ] Web enrollment disabled or hardened
+- [ ] Web enrollment disabled or hardened (see [ADCS Web Enrollment Hardening](https://github.com/0xMati/Tech-Blog/blob/main/Security/PKI/ADCS%20Web%20Enrollment%20Hardening.md))
 - [ ] CA auditing enabled
 - [ ] `dSHeuristics` attribute permissions verified
 - [ ] Backup servers backing up T0 assets classified as Tier 0
@@ -2269,6 +2274,7 @@ foreach ($acct in $backupAccounts) {
 - [ ] T0 backup console accessible from PAW only
 - [ ] Backup agents on DCs inventoried and service accounts verified as T0
 - [ ] Restore permissions restricted to T0 admins only
+- [ ] [MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector) assessment run to validate T0 object protection (ACLs, privileged groups, Auth Silos, GPO ownership, tiering OU compliance)
 
 ---
 
@@ -2399,6 +2405,7 @@ Track these metrics monthly to measure tiering health:
 | stale T0 accounts (>90 days inactive) | 0 | AD query on lastLogonTimestamp |
 | krbtgt password age | <180 days | `(Get-ADUser krbtgt -Properties PasswordLastSet).PasswordLastSet` |
 | BloodHound: paths from T2 to T0 | 0 | Quarterly BloodHound assessment |
+| MATI score | ≥ 80/100 | Quarterly [MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector) assessment |
 
 ### Phase 6 Checklist
 
@@ -2415,6 +2422,7 @@ Track these metrics monthly to measure tiering health:
 - [ ] Monthly tiering compliance review scheduled
 - [ ] Kerberoasting simulation tool scheduled quarterly
 - [ ] BloodHound assessment scheduled quarterly
+- [ ] [MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector) assessment scheduled quarterly (track score evolution)
 - [ ] Incident response playbook for tiering violations documented
 - [ ] Alerting for audit log clearing (Event 1102) configured
 - [ ] Alerting for new service installation on DCs (Event 7045) configured
@@ -2469,6 +2477,7 @@ Tiering is not a one-time project. Without ongoing maintenance, the model degrad
 | **LAPS compliance** | Monthly | Verify all machines have LAPS passwords set and within age policy |
 | **BloodHound assessment** | Quarterly | Run SharpHound collector; analyze attack paths; compare with baseline |
 | **PingCastle score** | Quarterly | Run health check; compare with baseline; address new findings |
+| **MATI score** | Quarterly | Run [MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector); compare score with baseline; address new Critical/High findings |
 | **krbtgt rotation** | Every 90-180 days | Rotate password (twice with interval) |
 | **PAW health check** | Monthly | Verify OS patching, Credential Guard status, policy compliance |
 | **Authentication Policy audit** | Quarterly | Review silo membership; check for accounts that should be in silos but aren't |
@@ -2704,3 +2713,4 @@ If the organization uses or plans to use Entra ID:
 - [Microsoft: Active Directory Administrative Tier Model](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/implementing-least-privilege-administrative-models)
 - [BloodHound](https://github.com/SpecterOps/BloodHound)
 - [PingCastle](https://www.pingcastle.com/)
+- [MATI — Microsoft Active Directory Threat Inspector](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector)

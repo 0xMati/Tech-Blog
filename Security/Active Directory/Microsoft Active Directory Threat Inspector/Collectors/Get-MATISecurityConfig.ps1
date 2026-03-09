@@ -471,6 +471,45 @@ function Get-MATISecurityConfig {
         }
     }
 
+    # ---- Authentication Policies and Silos ----
+    $authPolicies = @()
+    $authSilos = @()
+    try {
+        # Authentication Policies and Silos are forest-wide (stored in Configuration partition)
+        $rootDomain = $forest.RootDomain
+        $policies = Get-ADAuthenticationPolicy -Filter * -Server $rootDomain -ErrorAction SilentlyContinue
+        foreach ($policy in $policies) {
+            $authPolicies += [PSCustomObject]@{
+                Name              = $policy.Name
+                DistinguishedName = $policy.DistinguishedName
+                Enforce           = $policy.Enforce
+                UserTGTLifetime   = $policy.UserAllowedToAuthenticateFrom
+                Description       = $policy.Description
+            }
+        }
+        $silos = Get-ADAuthenticationPolicySilo -Filter * -Server $rootDomain -ErrorAction SilentlyContinue
+        foreach ($silo in $silos) {
+            $members = @()
+            try {
+                $members = @(Get-ADAuthenticationPolicySilo -Identity $silo.Name -Server $rootDomain `
+                    -Properties Members -ErrorAction SilentlyContinue).Members
+            } catch { }
+            $authSilos += [PSCustomObject]@{
+                Name              = $silo.Name
+                DistinguishedName = $silo.DistinguishedName
+                Enforce           = $silo.Enforce
+                MemberCount       = $members.Count
+                Members           = @($members)
+                UserPolicy        = $silo.UserAuthenticationPolicy
+                ComputerPolicy    = $silo.ComputerAuthenticationPolicy
+                ServicePolicy     = $silo.ServiceAuthenticationPolicy
+                Description       = $silo.Description
+            }
+        }
+    } catch {
+        Write-Verbose "    Cannot enumerate Authentication Policies/Silos: $($_.Exception.Message)"
+    }
+
     return @{
         DsHeuristics             = $dsHeuristics
         DenyUnauthenticatedBind  = $denyUnauthBind
@@ -491,5 +530,7 @@ function Get-MATISecurityConfig {
         PwdNeverExpiresAll   = @($pwdNeverExpiresAll)
         SCRILRotation        = @($scrilRotation)
         GMSAAccounts         = @($gmsaAccounts)
+        AuthPolicies         = @($authPolicies)
+        AuthSilos            = @($authSilos)
     }
 }

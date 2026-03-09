@@ -8,7 +8,7 @@
 #   .\Invoke-MATI.ps1 -CategoriesOnly Config,Kerberos
 #   .\Invoke-MATI.ps1 -RulesOnly MATI-CONFIG-001,MATI-KERB-005
 
-#requires -Version 5.1
+#requires -Version 7.0
 
 [CmdletBinding()]
 param(
@@ -54,7 +54,20 @@ $matiVersion = if (Test-Path $configFile) { (Import-PowerShellDataFile $configFi
 
 Write-Host $banner -ForegroundColor Cyan
 Write-Host "    v$matiVersion | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor DarkGray
-Write-Host "    $('-' * 50)`n" -ForegroundColor DarkGray
+Write-Host "    $('-' * 50)" -ForegroundColor DarkGray
+
+# ==================================================================
+# 0.1 PowerShell version check
+# ==================================================================
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    Write-Host "    [OK] PowerShell $($PSVersionTable.PSVersion) detected" -ForegroundColor Green
+} else {
+    Write-Host "    [ERROR] PowerShell 7+ is required. Current version: $($PSVersionTable.PSVersion)" -ForegroundColor Red
+    Write-Host "    Download PowerShell 7: https://aka.ms/powershell-release?tag=stable" -ForegroundColor Yellow
+    Write-Host ""
+    throw "MATI requires PowerShell 7 or later. Please re-run this script using pwsh.exe."
+}
+Write-Host ""
 
 # ==================================================================
 # 1. Load engine components

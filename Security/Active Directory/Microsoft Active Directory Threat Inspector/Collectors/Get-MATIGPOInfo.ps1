@@ -208,9 +208,30 @@ function Get-MATIGPOInfo {
         }
     }
 
+    # ---- OU GPO Inheritance (Block Inheritance detection) ----
+    $ouInheritance = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            # gPOptions attribute: 0 or not set = inherit, 1 = Block Inheritance
+            $ous = Get-ADOrganizationalUnit -Filter * -Server $domainDns `
+                -Properties gPOptions, Name, DistinguishedName -ErrorAction Stop
+            foreach ($ou in $ous) {
+                $ouInheritance.Add([PSCustomObject]@{
+                    Name              = $ou.Name
+                    DistinguishedName = $ou.DistinguishedName
+                    Domain            = $domainDns
+                    BlockInheritance  = ($ou.gPOptions -eq 1)
+                })
+            }
+        } catch {
+            Write-Verbose "    Cannot query OU inheritance for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
     return @{
         GPOs             = @($gpoList)
         DangerousGPOPerms = @($dangerousPerms)
         OrphanGPOs       = @($orphanGPOs)
+        OUInheritance    = @($ouInheritance)
     }
 }

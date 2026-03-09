@@ -35,6 +35,9 @@ function Get-MATIProtocolConfig {
                     AuditPolicySub         = $null   # Subcategory audit results
                     NetSessionHardened     = $null   # SrvsvcSessionInfo hardened (NetCease)
                     TLS                    = $null   # TLS/Schannel settings hashtable
+                    WDigestEnabled         = $null   # UseLogonCredential: 0=disabled, 1=enabled
+                    CredentialGuard        = $null   # LsaCfgFlags: 0=off, 1=with lock, 2=without lock
+                    RunAsPPL               = $null   # RunAsPPL: 0=off, 1=enabled
                     WinRMAccessible        = $false
                 }
 
@@ -128,6 +131,30 @@ function Get-MATIProtocolConfig {
                         } catch { }
                         $out['NetSession'] = $netSession
 
+                        # ---- WDigest (UseLogonCredential) ----
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' `
+                                -Name 'UseLogonCredential' -ErrorAction SilentlyContinue
+                            $out['WDigest'] = $v.UseLogonCredential
+                        } catch { $out['WDigest'] = $null }
+
+                        # ---- Credential Guard (LsaCfgFlags) ----
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' `
+                                -Name 'EnableVirtualizationBasedSecurity' -ErrorAction SilentlyContinue
+                            $out['VBSEnabled'] = $v.EnableVirtualizationBasedSecurity
+                            $v2 = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
+                                -Name 'LsaCfgFlags' -ErrorAction SilentlyContinue
+                            $out['LsaCfgFlags'] = $v2.LsaCfgFlags
+                        } catch { $out['VBSEnabled'] = $null; $out['LsaCfgFlags'] = $null }
+
+                        # ---- LSASS RunAsPPL ----
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
+                                -Name 'RunAsPPL' -ErrorAction SilentlyContinue
+                            $out['RunAsPPL'] = $v.RunAsPPL
+                        } catch { $out['RunAsPPL'] = $null }
+
                         return $out
                     }
 
@@ -140,6 +167,9 @@ function Get-MATIProtocolConfig {
                     $result.AuditPolicySub     = $regData['AuditPolicy']
                     $result.NetSessionHardened = $regData['NetSession']?.Hardened
                     $result.TLS                = $regData['TLS']
+                    $result.WDigestEnabled     = $regData['WDigest']
+                    $result.CredentialGuard    = $regData['LsaCfgFlags']
+                    $result.RunAsPPL           = $regData['RunAsPPL']
                 }
                 catch {
                     $errors.Add([PSCustomObject]@{
