@@ -247,7 +247,7 @@ Run these tools **before** implementing tiering to establish a baseline:
 | **BloodHound / SharpHound** | Visualize attack paths from any user to Domain Admins | Shortest paths to DA, Kerberoastable accounts with paths to T0, delegation abuse |
 | **PingCastle** | AD security health check with a score | Privileged group hygiene, stale accounts, dangerous trusts, Kerberos weaknesses |
 | **Purple Knight** | AD security assessment | Similar to PingCastle, different detection engine |
-| **[MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector)** | AD threat inspection with multiplicative scoring | WDigest, Credential Guard, RunAsPPL, LSASS protection, Auth Silos, NTLM config, Kerberos encryption, GPO hardening, privileged group hygiene, delegation abuse, tiering OU compliance |
+| **[MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector)** | AD threat inspection with multiplicative scoring | WDigest, RunAsPPL, LSASS protection, Auth Silos, NTLM config, Kerberos encryption, GPO hardening, privileged group hygiene, delegation abuse, tiering OU compliance |
 | **Invoke-TrimarcADChecks** | Open-source AD security checks | Focused on common misconfigurations |
 
 ```powershell
@@ -1383,10 +1383,11 @@ Link to: `Domain Controllers` OU
 
 | Setting | Value | Path |
 |---------|-------|------|
-| Credential Guard | Enabled with UEFI lock | Computer → Admin Templates → System → Device Guard |
 | WDigest Authentication | Disabled | `HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest\UseLogonCredential = 0` |
 | LSASS Protected Mode | Enabled | `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\RunAsPPL = 1` |
 | Net Logon: Require strong session key | Enabled | Computer → Windows Settings → Security → Local Policies → Security Options |
+
+> **Important — Credential Guard on DCs:** Microsoft explicitly states: *"Enabling Credential Guard on domain controllers is not recommended. Credential Guard does not provide any added security to domain controllers, and can cause application compatibility issues."* On DCs, rely on **LSASS Protected Mode (RunAsPPL)** and the **Protected Users group** for credential protection. Deploy Credential Guard on **PAWs and member servers** instead.
 
 **Protocol Hardening:**
 
@@ -1510,7 +1511,7 @@ Link to: `Tier 1\Servers` OU
 | Setting | Value |
 |---------|-------|
 | LAPS (Windows LAPS or Legacy LAPS) | Enabled — unique local admin password per server, rotated every 30 days |
-| Credential Guard | Enabled (if compatible with applications; test first) |
+| Credential Guard | Enabled (if compatible with applications; test first — **do NOT enable on Exchange servers**) |
 | WDigest | Disabled |
 | LSASS Protected Mode | Enabled |
 
@@ -1862,7 +1863,7 @@ Get-GPInheritance -Target "OU=Tier 0,$((Get-ADDomain).DistinguishedName)" |
 ### Phase 4 Checklist
 
 - [ ] DC hardening GPO created and linked to Domain Controllers OU
-- [ ] Credential Guard enabled on DCs (verified with `msinfo32`)
+- [ ] Credential Guard **NOT** enabled on DCs (not recommended per Microsoft)
 - [ ] LSASS Protected Mode (RunAsPPL) enabled on DCs
 - [ ] WDigest disabled on all tiers
 - [ ] LDAP signing set to Required on DCs
@@ -1878,7 +1879,7 @@ Get-GPInheritance -Target "OU=Tier 0,$((Get-ADDomain).DistinguishedName)" |
 - [ ] Tier 0 server hardening GPO created and linked
 - [ ] Tier 1 server hardening GPO created and linked
 - [ ] LAPS deployed on all Tier 1 servers
-- [ ] Credential Guard deployed on Tier 1 servers (where compatible)
+- [ ] Credential Guard deployed on Tier 1 servers (where compatible — **not on Exchange servers**)
 - [ ] Domain Admins removed from local admin group on Tier 1 servers
 - [ ] AppLocker or WDAC deployed on Tier 1 servers
 - [ ] PowerShell Script Block Logging enabled on all tiers

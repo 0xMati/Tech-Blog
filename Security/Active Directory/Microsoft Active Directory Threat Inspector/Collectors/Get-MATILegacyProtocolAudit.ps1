@@ -203,7 +203,7 @@ function Get-MATILegacyProtocolAudit {
     if ($remoteErrors) {
         foreach ($re in $remoteErrors) {
             $failedDC = if ($re.TargetObject) { "$($re.TargetObject)" } else { 'Unknown' }
-            $failedDomain = if ($failedDC -and $dcMap.ContainsKey($failedDC)) { $dcMap[$failedDC] } else { '?' }
+            $failedDomain = if ($failedDC -and $dcMap.Contains($failedDC)) { $dcMap[$failedDC] } else { '?' }
             $errors.Add([PSCustomObject]@{ Domain = $failedDomain; DC = $failedDC; Error = $re.Exception.Message })
         }
     }

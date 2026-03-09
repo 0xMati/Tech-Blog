@@ -1,16 +1,17 @@
 # Rules\Hardening\CredentialGuardNotEnabled.rule.ps1
-# Flags DCs where Credential Guard (VBS-based credential isolation) is not enabled.
+# Flags DCs where Credential Guard is enabled — Microsoft explicitly recommends AGAINST it on DCs.
+# Credential Guard should be deployed on PAWs and member servers, NOT on Domain Controllers.
 
 @{
     Id          = 'MATI-HARD-032'
-    Title       = 'Credential Guard not enabled on Domain Controller'
-    Severity    = 'High'
-    Description = "Credential Guard is not enabled on a Domain Controller. Credential Guard uses Virtualization-Based Security (VBS) to isolate NTLM hashes, Kerberos TGTs, and other credentials in a protected container inaccessible to LSASS. Without it, credential theft tools like Mimikatz can extract secrets from LSASS memory."
-    Remediation = "Enable Credential Guard via GPO: Computer Configuration > Policies > Administrative Templates > System > Device Guard > Turn On Virtualization Based Security > Credential Guard Configuration = Enabled with UEFI lock. Prerequisites: UEFI firmware, Secure Boot, TPM 2.0, and VBS-compatible CPU."
+    Title       = 'Credential Guard enabled on Domain Controller (not recommended)'
+    Severity    = 'Medium'
+    Description = "Credential Guard is enabled on a Domain Controller. Microsoft explicitly states: 'Enabling Credential Guard on domain controllers is not recommended. Credential Guard does not provide any added security to domain controllers, and can cause application compatibility issues on domain controllers.' Credential Guard should be deployed on PAWs, member servers, and workstations instead."
+    Remediation = "Disable Credential Guard on Domain Controllers. Deploy it instead on PAWs (Tier 0/1/2) and member servers where it provides actual value. On DCs, rely on LSASS Protected Mode (RunAsPPL) and Protected Users group to mitigate credential theft."
     Collectors  = @('ProtocolConfig')
     References  = @(
-        'https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/configure'
         'https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/'
+        'https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/credential-guard-known-issues'
     )
     Condition   = {
         param($Data, $Config)
@@ -19,17 +20,18 @@
         foreach ($dc in $Data.ProtocolConfig.DCProtocolSettings) {
             if (-not $dc.WinRMAccessible) { continue }
             # LsaCfgFlags: 0 or $null = not enabled, 1 = enabled with UEFI lock, 2 = enabled without lock
-            if ($null -eq $dc.CredentialGuard -or $dc.CredentialGuard -eq 0) {
+            if ($dc.CredentialGuard -and $dc.CredentialGuard -ne 0) {
                 $findings += @{
                     ObjectDN = $dc.HostName
                     Domain   = $dc.Domain
                     Details  = @{
                         DCName          = $dc.DCName
                         CredentialGuard = switch ($dc.CredentialGuard) {
-                            0       { 'Disabled' }
-                            $null   { 'Not configured (disabled)' }
-                            default { $dc.CredentialGuard }
+                            1       { 'Enabled with UEFI lock' }
+                            2       { 'Enabled without UEFI lock' }
+                            default { "Enabled (value: $($dc.CredentialGuard))" }
                         }
+                        Warning         = 'Microsoft recommends NOT enabling Credential Guard on DCs'
                     }
                 }
             }
