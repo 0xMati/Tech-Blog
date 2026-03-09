@@ -878,41 +878,64 @@ For Tier 1, you have two options:
 | Tier 1 PAW Feature | Option A (Dedicated) | Option B (Jump Server) |
 |---------------------|---------------------|----------------------|
 | Hardware isolation | Yes (physical) | No (shared server) |
-| Credential protection | Credential Guard + Remote Credential Guard | Restricted Admin Mode or Remote Credential Guard |
+| Credential protection | Credential Guard + Remote Credential Guard | Remote Credential Guard (preferred) or Restricted Admin Mode (fallback) |
 | Cost | Higher (one per admin) | Lower (shared infrastructure) |
 | Management | Same as T0 PAW model | Can use T1 management tools |
 | Internet access | Proxy-filtered only | None (RDP only) |
 
-If using jump servers:
+If using jump servers, configure **Remote Credential Guard** (preferred) so administrators retain Single Sign-On (SSO) to network resources from the remote session without ever exposing credentials on the jump server:
 
 ```powershell
-# Enable Restricted Admin Mode on the jump server (prevents credential caching on the target)
+# Option 1 (PREFERRED): Remote Credential Guard — credentials stay on the source PAW,
+# Kerberos requests are redirected back to the PAW. SSO to network resources is preserved.
+# Deploy via GPO on the PAW (source machine):
+#   Computer Configuration → Admin Templates → System → Credential Delegation
+#   "Restrict delegation of credentials to remote servers" = Enabled
+#   Mode = Require Remote Credential Guard
+#
+# Or connect manually:
+mstsc /remoteGuard /v:jumpserver01.domain.local
+
+# Option 2 (FALLBACK ONLY): Restricted Admin Mode — use ONLY when the target server
+# does not support Remote Credential Guard (Server 2012 R2 or older).
+# WARNING: In Restricted Admin Mode you lose SSO — you cannot access any network resources
+# (file shares, LDAP, RDP to another host) from the remote session.
 New-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Lsa" `
     -Name "DisableRestrictedAdmin" -Value 0 -PropertyType DWORD -Force
 
-# Connect using Restricted Admin Mode (credentials NOT cached on remote machine)
 mstsc /restrictedadmin /v:jumpserver01.domain.local
 ```
 
+> **Important:** Restricted Admin Mode should only be used as a **last resort** when Remote Credential Guard is not available. It logs you in as a local administrator on the target, with no access to domain resources from that session. This makes AD administration nearly impossible (no MMC snap-ins, no PowerShell remoting to other servers, no LDAP queries with your identity).
+
 ### 3.5 — Remote Credential Guard vs. Restricted Admin Mode
 
-Both prevent credential caching on the remote machine, but they work differently:
+Both prevent credential caching on the remote machine, but **Remote Credential Guard is strictly superior** and should always be used when the infrastructure supports it.
 
 | Feature | Remote Credential Guard | Restricted Admin Mode |
 |---------|------------------------|----------------------|
 | Credential caching on target | No | No |
-| Single Sign-On from target | Yes (credentials redirected to source) | No (logs in as local admin) |
-| Network resource access | Yes (using source credentials) | No (cannot access network resources) |
+| Single Sign-On from target | **Yes** — Kerberos requests redirected to PAW | **No** — logs in as local admin, no domain identity |
+| Network resource access from session | **Yes** — file shares, LDAP, RDP hop all work | **No** — cannot reach any network resource |
+| AD administration possible | **Yes** — full MMC, PowerShell, RSAT experience | **Severely limited** — no LDAP bind, no remote PS |
+| Security against relay attacks | Protected (Kerberos only, no NTLM forwarding) | Potentially exploitable (local admin token on target) |
 | Requirements | Windows 10 1607+ / Server 2016+ | Windows 8.1+ / Server 2012 R2+ |
-| Recommended for | PAW → DC/T0 server connections | Fallback when RCG is not available |
+| **Recommendation** | **Always use this** for PAW → DC and PAW → T0/T1 connections | **Fallback only** — when target is Server 2012 R2 or older |
 
-**Recommended:** Use Remote Credential Guard for PAW → DC connections.
+> **Strong recommendation:** Deploy Remote Credential Guard via GPO on all PAWs. Only fall back to Restricted Admin Mode for legacy servers (2012 R2 and older) that do not support RCG. Plan to decommission these legacy servers to eliminate the need for Restricted Admin Mode entirely.
 
 ```
-# GPO: Computer Configuration → Administrative Templates → System → Credential Delegation
+# GPO on PAW (source machine):
+# Computer Configuration → Administrative Templates → System → Credential Delegation
 # "Restrict delegation of credentials to remote servers" = Enabled
 # Use mode: Require Remote Credential Guard
+#
+# This forces ALL outbound RDP from this machine to use Remote Credential Guard.
+# If the target does not support it, the connection will fail (by design — prevents
+# accidental credential exposure on legacy targets).
 ```
+
+> **Note:** If you set the GPO mode to "Require Remote Credential Guard" and an admin tries to RDP to a Server 2012 R2 machine, the connection will be refused. This is intentional — it forces the organization to migrate legacy servers or use an explicit exception path.
 
 ### Phase 3 Checklist
 
@@ -933,7 +956,7 @@ Both prevent credential caching on the remote machine, but they work differently
 - [ ] PAW management model defined (no SCCM/Intune; T0-only WSUS or direct Microsoft Update)
 - [ ] Event log forwarding configured (WEF to SIEM)
 - [ ] Tier 1 PAW or jump server strategy decided (dedicated hardware or shared jump servers)
-- [ ] Jump servers hardened if using Option B (Restricted Admin Mode or RCG enabled)
+- [ ] Jump servers hardened if using Option B (Remote Credential Guard preferred; Restricted Admin only for legacy targets)
 - [ ] PAW rebuild procedure documented (how to rebuild from scratch if compromised)
 - [ ] BitLocker recovery keys stored securely in T0 infrastructure
 
