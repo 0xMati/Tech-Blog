@@ -73,6 +73,7 @@ These are systems that can **directly control Active Directory**. If compromised
 | Hyper-V / VMware hosts running DCs | Can snapshot/clone a DC, extract NTDS.dit offline |
 | Backup servers that back up DCs | Can restore a DC and extract NTDS.dit |
 | PAM/Vault servers (CyberArk, etc.) | Store credentials for Tier 0 accounts |
+| MIM (Microsoft Identity Manager) servers | Can manage identities, group memberships, and provision privileged accounts in AD |
 | RADIUS/NPS servers authenticating DC access | Control who can authenticate to Tier 0 |
 
 > **Critical:** Any system that can **deploy code to**, **restore**, or **manage** a Tier 0 asset is itself Tier 0. This is the transitive trust principle.
@@ -257,6 +258,45 @@ Run these tools **before** implementing tiering to establish a baseline:
 ```
 
 Save the reports — you will compare them after tiering is implemented to measure improvement.
+
+### 0.6 — Multi-Domain and Multi-Forest Considerations
+
+Many organizations have child domains, resource forests, or external trusts. Tiering must account for all of them.
+
+#### Trusts and Tier Boundaries
+
+| Trust Type | Tiering Impact |
+|------------|---------------|
+| **Parent-child (same forest)** | Enterprise Admins in the forest root can control ALL child domains → EA is Tier 0 across the entire forest |
+| **External trust (one-way or two-way)** | Verify SID filtering is enabled. Without SID filtering, a compromised trusted domain can inject SIDs (e.g., Enterprise Admins SID) into tickets |
+| **Forest trust** | SID filtering is enabled by default. Verify with `netdom trust /d:domain.local /quarantine` |
+| **PAM trust (bastion forest)** | Used for MIM PAM (now deprecated) — shadow principals in bastion forest. If already deployed, plan migration to native JIT or third-party PAM |
+
+#### Key Rules for Multi-Domain Forests
+
+1. **Enterprise Admins and Schema Admins should only exist in the forest root domain.** Child domain admins should never be EA/SA.
+2. **Each domain needs its own tiering structure** — OU hierarchy, groups, GPOs. Do not rely on forest-level GPOs.
+3. **Authentication Policies and Silos are per-domain.** You must create them in each domain independently.
+4. **Cross-domain admin accounts are Tier 0.** If `t0-john.doe` in `root.local` also administers `child.root.local`, that account is T0 in both domains.
+5. **Trusts to external partners must be audited.** Enable SID filtering, enforce selective authentication where possible, and ensure TGT delegation is disabled (`netdom trust /EnableTGTDelegation:No`).
+
+```powershell
+# Verify SID filtering status on all trusts
+Get-ADTrust -Filter * -Properties SIDFilteringQuarantined, SIDFilteringForestAware, TGTDelegation |
+    Select-Object Name, Direction, TrustType, SIDFilteringQuarantined, SIDFilteringForestAware, TGTDelegation |
+    Format-Table -AutoSize
+
+# Verify selective authentication on external trusts
+Get-ADTrust -Filter {TrustType -eq "External"} -Properties SelectiveAuthentication |
+    Select-Object Name, SelectiveAuthentication
+```
+
+#### If You Have Multiple Forests
+
+Each forest is an independent security boundary. Tiering must be implemented **per forest**. A compromise in Forest A does not automatically compromise Forest B (assuming SID filtering is intact), but:
+- Entra ID Connect may sync from multiple forests → the Connect server is T0 for ALL forests it syncs from
+- Shared backup infrastructure across forests makes backup servers T0 for all forests
+- Shared PAM vaults (CyberArk) holding credentials for both forests are T0 for both
 
 ### Phase 0 Checklist
 
@@ -497,6 +537,97 @@ Get-ADComputer -Filter * -SearchBase "OU=Computers,OU=Quarantine,DC=domain,DC=lo
 
 > **Caution:** Moving objects changes which GPOs are applied. Verify GPO inheritance with `gpresult /r` on key systems after the move.
 
+### 1.4 — Design the Delegation Model
+
+Tiering defines *who can log on where*. The delegation model defines *who can manage what inside Active Directory*. Without a delegation model, tiering is incomplete — an admin who can't log on to a DC but can reset Domain Admin passwords via ADUC still has Tier 0 power.
+
+#### Delegation Principles
+
+1. **No one touches Tier 0 objects except Tier 0 admins.** Period.
+2. **Tier 1 admins manage Tier 1 OUs** — create/delete/modify servers, reset server local admin passwords (LAPS), manage server groups.
+3. **Tier 2 admins (helpdesk) manage Tier 2 OUs** — reset user passwords, unlock accounts, manage workstation objects, join computers to the domain (in the Quarantine OU only).
+4. **Standard users have no delegation anywhere.**
+5. **Delegation is applied at the OU level** using the Delegation of Control Wizard or PowerShell `dsacls`.
+
+#### Recommended Delegation Matrix
+
+| Action | Who Can Do It | Where (OU) |
+|--------|--------------|------------|
+| Create/delete/modify user objects | T0-Admins | `Tier 0\Accounts` |
+| Create/delete/modify user objects | T1-Admins | `Tier 1\Accounts` |
+| Create/delete/modify user objects | T2-Admins | `Tier 2\Accounts`, `Standard Users` |
+| Reset passwords | T0-Admins | `Tier 0\Accounts` |
+| Reset passwords | T1-Admins | `Tier 1\Accounts`, `Tier 1\Service Accounts` |
+| Reset passwords | T2-Admins | `Tier 2\Accounts`, `Standard Users` |
+| Join computers to domain | T2-Admins | `Quarantine\Computers` only |
+| Create/delete computer objects | T1-Admins | `Tier 1\Servers` |
+| Create/delete computer objects | T2-Admins | `Tier 2\Workstations` |
+| Manage group membership | T0-Admins | `Tier 0\Groups` |
+| Manage group membership | T1-Admins | `Tier 1\Groups` |
+| Manage group membership | T2-Admins | `Tier 2\Groups` |
+| Link GPOs | T0-Admins only | `Tier 0`, `Domain Controllers` |
+| Link GPOs | T1-Admins | `Tier 1` (with T0 approval for sensitive GPOs) |
+| Link GPOs | T2-Admins | None — GPO linking is not a helpdesk function |
+| Modify schema / configuration | Schema Admins / Enterprise Admins (T0 only) | Schema / Config partitions |
+
+#### Implementation with `dsacls`
+
+```powershell
+$DomainDN = (Get-ADDomain).DistinguishedName
+
+# --- Tier 2 Admins: delegate password reset on Standard Users OU ---
+$StandardUsersOU = "OU=Standard Users,$DomainDN"
+dsacls $StandardUsersOU /I:S /G "DOMAIN\T2-Admins:CA;Reset Password;user"
+dsacls $StandardUsersOU /I:S /G "DOMAIN\T2-Admins:WP;lockoutTime;user"       # Unlock accounts
+dsacls $StandardUsersOU /I:S /G "DOMAIN\T2-Admins:WP;pwdLastSet;user"        # Force password change at next logon
+
+# --- Tier 2 Admins: delegate computer join in Quarantine ---
+$QuarantineOU = "OU=Computers,OU=Quarantine,$DomainDN"
+dsacls $QuarantineOU /I:S /G "DOMAIN\T2-Admins:CC;computer;"                  # Create computer objects
+dsacls $QuarantineOU /I:S /G "DOMAIN\T2-Admins:WP;servicePrincipalName;computer"
+dsacls $QuarantineOU /I:S /G "DOMAIN\T2-Admins:WP;userAccountControl;computer"
+
+# --- Tier 1 Admins: delegate server management in Tier 1 ---
+$T1ServersOU = "OU=Servers,OU=Tier 1,$DomainDN"
+dsacls $T1ServersOU /I:S /G "DOMAIN\T1-Admins:GA;computer;"                   # Full control on computer objects
+dsacls $T1ServersOU /I:S /G "DOMAIN\T1-Admins:CC;computer;"                   # Create computer objects
+
+# --- Tier 1 Admins: delegate group management in Tier 1 ---
+$T1GroupsOU = "OU=Groups,OU=Tier 1,$DomainDN"
+dsacls $T1GroupsOU /I:S /G "DOMAIN\T1-Admins:WP;member;group"                 # Manage group membership
+
+# --- CRITICAL: Remove any inherited delegation from Tier 0 OUs ---
+# Block inheritance on Tier 0 OU if needed, then re-apply only T0 delegations
+# Verify no T1/T2 admin has accidental write access to Tier 0 objects:
+(Get-Acl "AD:\OU=Tier 0,$DomainDN").Access |
+    Where-Object {
+        $_.IdentityReference -match "T1-|T2-|Helpdesk" -and
+        $_.ActiveDirectoryRights -match "Write|Create|Delete|GenericAll"
+    } | Format-Table IdentityReference, ActiveDirectoryRights, AccessControlType -AutoSize
+```
+
+> **Critical rule:** Tier 2 admins must NEVER have password reset rights on Tier 0 or Tier 1 accounts. Verify this explicitly. A helpdesk operator who can reset a Domain Admin password is effectively Tier 0.
+
+#### Audit Existing Delegations
+
+Before setting up clean delegations, audit what exists today:
+
+```powershell
+# Export all non-inherited ACEs on the Tier 0 OU to find unauthorized delegations
+$T0OU = "OU=Tier 0,$((Get-ADDomain).DistinguishedName)"
+(Get-Acl "AD:\$T0OU").Access |
+    Where-Object { $_.IsInherited -eq $false } |
+    Select-Object IdentityReference, ActiveDirectoryRights, ObjectType, InheritedObjectType, AccessControlType |
+    Format-Table -AutoSize
+
+# Same for Domain Controllers OU
+$DCsOU = "OU=Domain Controllers,$((Get-ADDomain).DistinguishedName)"
+(Get-Acl "AD:\$DCsOU").Access |
+    Where-Object { $_.IsInherited -eq $false } |
+    Select-Object IdentityReference, ActiveDirectoryRights, ObjectType, InheritedObjectType, AccessControlType |
+    Format-Table -AutoSize
+```
+
 ### Phase 1 Checklist
 
 - [ ] Tiering OU structure created (Tier 0, Tier 1, Tier 2, Quarantine, Standard Users, Disabled)
@@ -511,6 +642,12 @@ Get-ADComputer -Filter * -SearchBase "OU=Computers,OU=Quarantine,DC=domain,DC=lo
 - [ ] GPO application verified on moved objects (`gpresult /r`)
 - [ ] No objects left in default `CN=Computers` container
 - [ ] OU protections enabled (Protect object from accidental deletion)
+- [ ] Delegation model designed (who can manage what in which OU)
+- [ ] Delegations implemented with `dsacls` or Delegation of Control Wizard
+- [ ] T2 admins verified: NO password reset rights on Tier 0 or Tier 1 accounts
+- [ ] T1 admins verified: NO write access on Tier 0 OUs or Domain Controllers OU
+- [ ] Existing unauthorized delegations on Tier 0 OUs removed
+- [ ] Delegation audit scripts retained for quarterly reviews
 
 ---
 
@@ -721,6 +858,129 @@ foreach ($comp in $T0Computers) {
 
 > **Recommendation:** Deploy Authentication Policies in **audit mode** first. Monitor Event ID **105** (Authentication Policy) and **106** (Authentication Silo) in the `AuthenticationPolicyFailures-DomainController` event log on DCs.
 
+### 2.4 — Just-In-Time (JIT) Administration
+
+Even with proper tiering, **permanent standing access** remains a risk: compromised accounts have privileges 24/7 whether or not the admin is working. Just-In-Time administration ensures that privileged group memberships are granted **only when needed** and **automatically revoked** after a defined window.
+
+#### Why JIT Matters for Tiering
+
+| Problem | Without JIT | With JIT |
+|---------|------------|----------|
+| **Attack surface** | T0 groups (Domain Admins, Enterprise Admins, Schema Admins) have permanent members — always targetable | Groups are **empty by default** — nothing to steal |
+| **Lateral movement** | Compromised T0 account has instant domain-level access | Attacker must wait for or trigger a JIT elevation window |
+| **Blast radius** | Credential theft = full T0 access indefinitely | Credential theft = T0 access only during the TTL (minutes/hours) |
+| **Audit trail** | "Who has access?" requires group membership review | Every elevation generates a time-stamped event — full accountability |
+
+#### Strategy: Empty Groups by Default
+
+The core principle:
+
+> **Enterprise Admins and Schema Admins should have ZERO permanent members.** Domain Admins should have only the bare minimum (ideally one break-glass account). All other T0 access is granted through JIT.
+
+#### Option 1 — Native Temporary Group Membership (Recommended for On-Prem)
+
+Windows Server 2016 Forest Functional Level (FFL) introduced **Privileged Access Management (PAM) features** that include temporary, time-bound group memberships via the `MemberTimeToLive` (TTL) attribute.
+
+**Prerequisites:**
+- Forest Functional Level **2016** or higher
+- The PAM optional feature must be enabled (one-time, **irreversible**):
+
+```powershell
+# Check if already enabled
+Get-ADOptionalFeature -Filter { Name -eq "Privileged Access Management Feature" }
+
+# Enable the PAM feature (irreversible — test in lab first)
+Enable-ADOptionalFeature `
+    -Identity "Privileged Access Management Feature" `
+    -Scope ForestOrConfigurationSet `
+    -Target (Get-ADForest).Name
+```
+
+**Granting Temporary Membership:**
+
+```powershell
+# Add a user to Domain Admins for 1 hour (TTL in minutes)
+Add-ADGroupMember -Identity "Domain Admins" `
+    -Members "t0-admin-jsmith" `
+    -MemberTimeToLive (New-TimeSpan -Hours 1)
+
+# Verify the TTL
+Get-ADGroup "Domain Admins" -Properties member -ShowMemberTimeToLive
+```
+
+After the TTL expires, the membership is **automatically removed** by Active Directory — no scheduled task, no script, no manual cleanup.
+
+**Building a Self-Service JIT Workflow:**
+
+Since there is no built-in GUI for requesting JIT elevation, you need to build a lightweight workflow:
+
+| Component | Implementation |
+|-----------|---------------|
+| **Request portal** | PowerShell script, internal web app, or ticketing integration (ServiceNow, Jira) |
+| **Approval** | Manager/peer approval via email or portal; for T0 changes, require **dual approval** |
+| **Elevation script** | `Add-ADGroupMember` with `-MemberTimeToLive` (called by approved automation, not by the admin themselves) |
+| **Audit log** | Log every elevation: who, to which group, TTL, approver, timestamp |
+| **Max TTL** | Enforce a maximum TTL (e.g., 4 hours for T0, 8 hours for T1) — never 24h+ |
+| **Monitoring** | Alert on any **permanent** additions to T0 groups (Event ID 4728/4756 without TTL) |
+
+**Auditing Temporary Group Memberships:**
+
+```powershell
+# List all current temporary memberships in Domain Admins
+$group = Get-ADGroup "Domain Admins" -Properties member -ShowMemberTimeToLive
+$group.member | ForEach-Object {
+    if ($_ -match '<TTL=(\d+)>') {
+        [PSCustomObject]@{
+            Member = ($_ -replace '<TTL=\d+>,','')
+            TTLSeconds = $Matches[1]
+            ExpiresIn = [TimeSpan]::FromSeconds($Matches[1])
+        }
+    }
+}
+
+# Find all groups with temporary members across the domain
+Get-ADGroup -Filter * -Properties member -ShowMemberTimeToLive |
+    Where-Object { ($_.member | Where-Object { $_ -match '<TTL=' }).Count -gt 0 } |
+    Select-Object Name, @{N='TempMembers';E={($_.member | Where-Object { $_ -match '<TTL=' }).Count}}
+```
+
+#### Option 2 — Entra PIM for Hybrid Environments
+
+If your environment is **hybrid** (Entra ID Connect syncing on-prem groups to Entra ID), you can use **Entra Privileged Identity Management (PIM)** to manage on-prem group memberships:
+
+- Create **Entra ID security groups** that are **written back** to on-prem AD (group writeback v2)
+- Configure PIM policies: max duration, approval, MFA on activation, justification required
+- Admins request elevation in the Entra portal → group membership syncs to on-prem via Entra ID Connect
+
+**Limitations:** Sync latency (up to 30 minutes with default Entra ID Connect cycle), dependency on cloud availability, not suitable for break-glass scenarios.
+
+#### Option 3 — Third-Party PAM Solutions
+
+Commercial PAM solutions (CyberArk, BeyondTrust, Delinea, One Identity) provide:
+- Vaulted credentials with check-out/check-in
+- Session recording for privileged access
+- JIT elevation with approval workflows
+- Integration with ITSM tools
+
+These are powerful but introduce significant cost and complexity. Evaluate whether native JIT (Option 1) meets your requirements before committing to a third-party solution.
+
+> **⚠️ Note on MIM PAM:** Microsoft Identity Manager (MIM) 2016 included a PAM feature that used a bastion forest to provide JIT access. **MIM has reached end of mainstream support (January 2029 extended support end) and Microsoft is not investing in new features.** Do not start new MIM PAM deployments. For new implementations, use **native temporary group membership** (Option 1) or **Entra PIM** (Option 2).
+
+#### JIT Implementation Roadmap
+
+| Step | Action | Timeline |
+|------|--------|----------|
+| 1 | Verify Forest Functional Level ≥ 2016 | Week 1 |
+| 2 | Enable PAM optional feature in **lab** first | Week 1 |
+| 3 | Enable PAM optional feature in **production** | Week 2 |
+| 4 | Remove permanent members from Enterprise Admins and Schema Admins | Week 2 |
+| 5 | Build JIT request/approval workflow (script or portal) | Weeks 2-4 |
+| 6 | Define max TTL per group and per tier | Week 2 |
+| 7 | Deploy monitoring: alert on permanent additions to T0 groups | Week 3 |
+| 8 | Train T0 admins on JIT workflow | Week 3 |
+| 9 | Reduce Domain Admins to break-glass + JIT only | Week 4 |
+| 10 | Extend JIT to Tier 1 privileged groups | Weeks 5-8 |
+
 ### Phase 2 Checklist
 
 - [ ] Naming convention for tiered admin accounts defined and documented
@@ -742,6 +1002,15 @@ foreach ($comp in $T0Computers) {
 - [ ] Authentication Policies switched to enforce mode after validation
 - [ ] Break-glass procedure documented (in case of lockout)
 - [ ] Old admin accounts disabled (not deleted — keep for attribution in logs) or migrated
+- [ ] Forest Functional Level verified ≥ 2016 for PAM feature
+- [ ] PAM optional feature enabled (tested in lab first)
+- [ ] Enterprise Admins and Schema Admins emptied (zero permanent members)
+- [ ] Domain Admins reduced to break-glass account(s) only
+- [ ] JIT request/approval workflow built and tested
+- [ ] Maximum TTL defined per tier (e.g., 4h T0, 8h T1)
+- [ ] Monitoring alert configured for permanent additions to T0 groups
+- [ ] T0 admins trained on JIT elevation workflow
+- [ ] JIT extended to Tier 1 privileged groups (planned or completed)
 
 ---
 
@@ -784,6 +1053,7 @@ Install a **clean** Windows 11 Enterprise (or Windows 10 Enterprise LTSC) from t
 | **AppLocker / WDAC Policy** | Whitelist: MMC, PowerShell (constrained), RSAT tools, RDP client only |
 | **Windows Update** | Direct from Microsoft Update or a dedicated T0 WSUS |
 | **Antimalware** | Microsoft Defender for Endpoint (if available) or Defender AV with latest definitions |
+| **Authentication** | Smartcard or FIDO2 security key required (phishing-resistant MFA); password-only logon disabled via GPO |
 | **Local admin** | Only the T0 PAW admin group — no Domain Admins |
 
 #### GPO for Tier 0 PAWs
@@ -1241,6 +1511,217 @@ Computer Configuration → Policies → Administrative Templates → System → 
 
 > **Critical:** LAPS read permissions must follow tiering. T2-Admins can read T2 LAPS passwords. T1-Admins can read T1 LAPS passwords. T0-Admins can read T0 LAPS passwords. **Never** grant cross-tier LAPS read access.
 
+### 4.5 — NTLM Restriction Roadmap
+
+NTLM is a legacy authentication protocol that is inherently less secure than Kerberos. It is vulnerable to **relay attacks**, **Pass-the-Hash**, and **credential theft**. Eliminating NTLM usage is a critical hardening step, but it cannot be done overnight — many legacy applications still depend on it.
+
+#### Why NTLM Is Dangerous in a Tiered Environment
+
+- **NTLM relay:** An attacker captures an NTLM authentication and relays it to another server (e.g., LDAP on a DC) to gain unauthorized access — no password cracking needed
+- **Pass-the-Hash:** NTLM hashes are stored in memory and can be extracted with tools like Mimikatz — Kerberos TGTs are harder to abuse
+- **No mutual authentication:** NTLM does not verify the server's identity, making MitM attacks trivial
+- **Breaks tiering boundaries:** NTLM relay can cross tier boundaries if not restricted
+
+#### Phase 1: Audit NTLM Usage
+
+Before restricting anything, you must understand where NTLM is used:
+
+```
+Computer Configuration → Policies → Windows Settings → Security Settings → Local Policies → Security Options:
+- Network security: Restrict NTLM: Audit Incoming NTLM Traffic = Enable auditing for all accounts
+- Network security: Restrict NTLM: Audit NTLM authentication in this domain = Enable all
+- Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers = Audit all
+```
+
+**Key Event IDs on Domain Controllers:**
+
+| Event ID | Log | Description |
+|----------|-----|-------------|
+| **8001** | Microsoft-Windows-NTLM/Operational | NTLM authentication in the domain (outgoing) |
+| **8002** | Microsoft-Windows-NTLM/Operational | NTLM authentication in the domain (incoming to DC) |
+| **8003** | Microsoft-Windows-NTLM/Operational | NTLM pass-through authentication |
+| **8004** | Microsoft-Windows-NTLM/Operational | NTLM authentication blocked (when restrictions are applied) |
+
+```powershell
+# Enable the NTLM operational log on all DCs
+wevtutil set-log Microsoft-Windows-NTLM/Operational /enabled:true
+
+# Collect NTLM authentication events from all DCs
+$DCs = (Get-ADDomainController -Filter *).HostName
+$NTLMEvents = foreach ($DC in $DCs) {
+    Get-WinEvent -ComputerName $DC -LogName 'Microsoft-Windows-NTLM/Operational' -MaxEvents 1000 |
+        Where-Object { $_.Id -in 8001,8002,8003 } |
+        Select-Object @{N='DC';E={$DC}}, TimeCreated, Id,
+            @{N='TargetServer';E={$_.Properties[0].Value}},
+            @{N='CallingComputer';E={$_.Properties[1].Value}},
+            @{N='UserName';E={$_.Properties[2].Value}}
+}
+
+# Export for analysis
+$NTLMEvents | Export-Csv -Path "C:\Temp\NTLM_Audit.csv" -NoTypeInformation
+
+# Top NTLM consumers
+$NTLMEvents | Group-Object TargetServer | Sort-Object Count -Descending | Select-Object -First 20
+```
+
+> **Audit for at least 30 days** in production to capture monthly processes (backup jobs, batch scripts, etc.).
+
+#### Phase 2: Identify and Remediate Dependencies
+
+Common NTLM dependencies and their remediation:
+
+| Dependency | Remediation |
+|-----------|-------------|
+| **Legacy applications** using IP instead of hostname | Configure applications to use FQDN (Kerberos requires SPNs) |
+| **Applications with hardcoded NTLM** | Update application, use IIS Windows Auth with Negotiate |
+| **Cross-forest trusts without Kerberos** | Ensure proper DNS configuration and trust validation |
+| **NAS/Linux devices** using NTLM | Configure Kerberos with keytab files |
+| **Load balancers breaking Kerberos** | Configure Kerberos constrained delegation or use alternative authentication |
+| **SQL Server connections** using IP | Switch to FQDN connections; register SPNs for SQL service accounts |
+
+#### Phase 3: Restrict NTLM Progressively
+
+Apply restrictions **per tier**, starting with Tier 0 (most critical):
+
+**Step 1 — Tier 0 DCs: Deny NTLM for Tier 0 accounts**
+```
+Network security: Restrict NTLM: NTLM authentication in this domain = Deny for domain accounts to domain servers
+```
+
+Add exceptions to the allowlist only for validated legacy dependencies:
+```
+Network security: Restrict NTLM: Add server exceptions in this domain = <server1.domain.local>
+```
+
+**Step 2 — Tier 0 Servers: Restrict incoming NTLM**
+```
+Network security: Restrict NTLM: Incoming NTLM traffic = Deny all accounts
+```
+
+**Step 3 — Tier 1 Servers: Restrict NTLM**
+Repeat the same pattern on Tier 1, adding exceptions as needed.
+
+**Step 4 — Tier 2 Workstations: Restrict outgoing NTLM**
+```
+Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers = Deny all
+```
+
+#### Phase 4: Block and Monitor
+
+Once dependencies are remediated:
+
+```
+Network security: Restrict NTLM: NTLM authentication in this domain = Deny all
+Network security: Restrict NTLM: Incoming NTLM traffic = Deny all accounts (on all tiers)
+```
+
+Monitor Event ID **8004** (blocked NTLM) to catch any missed dependencies.
+
+> **Timeline:** NTLM restriction is typically a 3–6 month project. Do not rush — broken NTLM can cause authentication failures across the environment.
+
+### 4.6 — GPO Inheritance and Tiering Design
+
+In a tiered Active Directory, GPO design must ensure that **higher-tier policies cannot be overridden by lower-tier GPOs**, and that **policy inheritance does not leak across tiers**.
+
+#### Key Principles
+
+1. **Block Inheritance on Tier 0 OUs:** Tier 0 OUs should block inheritance from the domain root to prevent any domain-level GPO from weakening T0 hardening.
+2. **Use Enforced (No Override) sparingly:** Only for security baselines that must apply everywhere regardless of blocking.
+3. **Loopback Processing on PAW OUs:** Ensures PAW security settings apply even when a T0 admin (whose user object is in the T0 Accounts OU) logs on.
+4. **Minimize GPO count:** Fewer GPOs = easier to audit, less risk of conflict.
+5. **WMI Filters only when necessary:** They slow down GPO processing; prefer OU-based targeting.
+
+#### GPO Precedence and Tiering
+
+```
+                    ┌─────────────────────────────────┐
+                    │    Domain Root GPO               │
+                    │  (Default Domain Policy)         │
+                    │  (Password Policy, Kerberos)     │
+                    └────────────────┬────────────────┘
+                                     │
+          ┌──────────────────────────┼──────────────────────────┐
+          │                          │                          │
+  ┌───────▼────────┐      ┌─────────▼────────┐      ┌─────────▼────────┐
+  │   Tier 0 OU    │      │    Tier 1 OU     │      │    Tier 2 OU     │
+  │ ❌ Block Inherit│      │ (inherits domain)│      │ (inherits domain)│
+  │ ✅ T0 Hardening│      │ ✅ T1 Hardening  │      │ ✅ T2 Hardening  │
+  └───────┬────────┘      └─────────┬────────┘      └─────────┬────────┘
+          │                          │                          │
+  ┌───────▼────────┐      ┌─────────▼────────┐      ┌─────────▼────────┐
+  │ T0\Servers OU  │      │ T1\Servers OU    │      │ T2\Workstations  │
+  │ ✅ DC Hardening│      │ ✅ Server Harden │      │ ✅ WS Hardening  │
+  │ ✅ DC Firewall │      │                  │      │ ✅ LAPS           │
+  └────────────────┘      └──────────────────┘      └──────────────────┘
+```
+
+#### Implementing Block Inheritance on Tier 0
+
+```powershell
+# Block inheritance on Tier 0 OU
+$T0OU = "OU=Tier 0,$((Get-ADDomain).DistinguishedName)"
+Set-GPInheritance -Target $T0OU -IsBlocked Yes
+
+# Verify
+Get-GPInheritance -Target $T0OU | Select-Object Path, GpoInheritanceBlocked
+```
+
+> **Important:** When you block inheritance on Tier 0, you must explicitly link all necessary GPOs to the T0 OU (password policy via Fine-Grained Password Policy, audit policy, hardening baseline). Nothing from above will flow down.
+
+#### Loopback Processing for PAW OUs
+
+PAW machines are in the `Tier 0\PAW` OU, but the admin logging in has their user object in `Tier 0\Accounts`. Without loopback processing, user-side GPO settings from `Tier 0\Accounts` would apply — not the stricter PAW user settings.
+
+```
+Computer Configuration → Policies → Administrative Templates → System → Group Policy:
+  - Configure user Group Policy loopback processing mode = Enabled
+  - Mode: Replace (PAW settings fully replace user OU settings)
+```
+
+```powershell
+# Create a GPO for PAW loopback
+$pawGPO = New-GPO -Name "PAW-Loopback-Replace"
+Set-GPRegistryValue -Name $pawGPO.DisplayName `
+    -Key "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" `
+    -ValueName "UserPolicyMode" `
+    -Type DWord -Value 1  # 1 = Replace
+
+# Link to PAW OU
+New-GPLink -Name $pawGPO.DisplayName -Target "OU=PAW,OU=Tier 0,$((Get-ADDomain).DistinguishedName)"
+```
+
+#### GPO Naming Convention
+
+Use a consistent naming convention that makes tier ownership obvious:
+
+| Pattern | Example | Description |
+|---------|---------|-------------|
+| `T{tier}-{target}-{function}` | `T0-DC-Hardening` | Tier 0, applied to DCs, hardening baseline |
+| `T{tier}-{target}-{function}` | `T0-PAW-Loopback` | Tier 0, applied to PAWs, loopback config |
+| `T{tier}-{target}-{function}` | `T1-SRV-LAPS` | Tier 1, applied to servers, LAPS deployment |
+| `T{tier}-{target}-{function}` | `T2-WS-Firewall` | Tier 2, applied to workstations, firewall rules |
+| `BASELINE-{function}` | `BASELINE-AuditPolicy` | Enforced domain-wide, not tier-specific |
+
+#### Auditing GPO Compliance
+
+```powershell
+# List all GPOs and their links to verify tier alignment
+Get-GPO -All | ForEach-Object {
+    $gpo = $_
+    $links = (Get-GPOReport -Guid $gpo.Id -ReportType XML | 
+        Select-Xml "//gpo:LinksTo" -Namespace @{gpo="http://www.microsoft.com/GroupPolicy/Settings/Base"}).Node
+    [PSCustomObject]@{
+        GPOName = $gpo.DisplayName
+        Links = ($links.SOMPath -join "; ")
+        Enabled = $gpo.GpoStatus
+    }
+} | Sort-Object GPOName | Format-Table -AutoSize
+
+# Verify Block Inheritance is set on Tier 0
+Get-GPInheritance -Target "OU=Tier 0,$((Get-ADDomain).DistinguishedName)" |
+    Select-Object Path, GpoInheritanceBlocked, @{N='InheritedGPOs';E={$_.InheritedGpoLinks.DisplayName -join ', '}}
+```
+
 ### Phase 4 Checklist
 
 - [ ] DC hardening GPO created and linked to Domain Controllers OU
@@ -1271,6 +1752,21 @@ Computer Configuration → Policies → Administrative Templates → System → 
 - [ ] LAPS read permissions verified per tier (no cross-tier access)
 - [ ] All GPOs tested on pilot machines before broad deployment
 - [ ] Basline `gpresult` captured for compliance verification
+- [ ] NTLM audit GPO deployed (audit incoming, outgoing, and domain NTLM)
+- [ ] NTLM operational event log enabled on all DCs
+- [ ] NTLM usage baseline collected for 30+ days
+- [ ] NTLM dependencies identified and remediation plan documented
+- [ ] NTLM restricted on Tier 0 DCs (deny for domain accounts)
+- [ ] NTLM restricted on Tier 0 servers (deny all accounts)
+- [ ] NTLM restrictions extended to Tier 1 servers
+- [ ] NTLM restrictions extended to Tier 2 workstations
+- [ ] NTLM exception list documented and reviewed (minimal entries)
+- [ ] Block Inheritance enabled on Tier 0 OU
+- [ ] All required GPOs explicitly linked to Tier 0 OU (since inheritance blocked)
+- [ ] Loopback Processing (Replace mode) configured on PAW OU
+- [ ] GPO naming convention adopted (tier-target-function pattern)
+- [ ] GPO-to-OU link audit performed (no cross-tier GPO links)
+- [ ] Fine-Grained Password Policy applied to T0 accounts (since DDPP won't inherit)
 
 ---
 
@@ -1509,6 +2005,102 @@ Get-CertificateTemplate | ForEach-Object {
     Format-Table -AutoSize
 ```
 
+### 5.6 — Backup Infrastructure Tiering
+
+Backup systems are one of the most overlooked attack vectors in a tiered environment. A compromised backup server can **extract the entire AD database (ntds.dit)**, render all tiering controls worthless, and provide full domain compromise. Backup infrastructure must be treated with the same rigor as any other Tier 0 asset.
+
+#### Why Backup Is Tier 0
+
+| Risk | Impact |
+|------|--------|
+| **Backup agent on DCs** | The agent runs as SYSTEM or with high privileges — a compromised backup server can command the agent to exfiltrate the ntds.dit |
+| **Backup data at rest** | Backup files contain full AD database dumps; access to backup storage = access to all credentials |
+| **Restore permissions** | Anyone who can restore a DC can inject a backdoor (e.g., add an account to Domain Admins) |
+| **Backup server compromise** | If the backup server is on a Tier 1 network, a Tier 1 compromise cascades to Tier 0 |
+
+#### Tiering Rules for Backup
+
+1. **Backup servers that back up Tier 0 assets are Tier 0 assets** — place them in the `Tier 0\Servers` OU
+2. **Separate backup infrastructure per tier** if possible:
+   - T0 backup server → backs up DCs, AD CS, AD FS, T0 servers only
+   - T1 backup server → backs up application servers only
+   - T2 backup server → backs up workstations only
+3. If separate backup servers per tier are not feasible, **at minimum isolate the T0 backup jobs** with:
+   - Separate service accounts per tier (T0 backup service account ≠ T1 account)
+   - Separate backup repositories/storage per tier
+   - T0 backup admin role restricted to T0 admins only
+
+#### Backup Agent Security
+
+| Setting | Configuration |
+|---------|---------------|
+| **Agent communication** | Encrypted channel only (TLS); no plaintext management traffic |
+| **Agent service account** | gMSA dedicated per tier; do NOT use a shared account across tiers |
+| **Agent firewall rules** | DC allows inbound from T0 backup server only on backup ports; block all other backup server IPs |
+| **Agent updates** | Managed through T0 change process (same as DC patching) |
+
+#### Protecting Backup Data
+
+```
+Tier 0 backup data requirements:
+├── Encrypted at rest (AES-256 or equivalent)
+├── Encrypted in transit (TLS 1.2+)
+├── Stored on isolated storage (not accessible from T1/T2 networks)
+├── Access restricted to T0 backup admins only
+├── Immutable copies (WORM / air-gapped) for ransomware resilience
+└── Retention policy aligned with AD recovery requirements (minimum 60 days)
+```
+
+#### Backup Administrator Accounts
+
+- Backup admin accounts that manage T0 backups **must be T0 accounts** (in `Tier 0\Accounts`, with Protected Users membership, Authentication Silo, etc.)
+- Backup administration for T0 should be performed from a **PAW** only
+- The backup console/web UI for T0 should be accessible only from the T0 network segment
+
+#### Vendor-Specific Considerations
+
+| Product | Key T0 Consideration |
+|---------|---------------------|
+| **Veeam** | Veeam server backing up DCs = T0. Use separate Veeam instances or isolated backup jobs. Disable "Guest Processing" credentials sharing across tiers. Use per-job service accounts. |
+| **Commvault** | CommServe managing DC backups = T0. Use separate storage policies per tier. Restrict CommCell console access by tier. |
+| **DPM / Azure Backup** | DPM server backing up DCs = T0. For Azure Backup, the MARS agent on DCs connects to a Recovery Services Vault — restrict vault access to T0 admins via Azure RBAC. |
+| **Windows Server Backup** | Native backup on DCs — simplest option. Backup files stored locally or on isolated T0 share. Ensure share permissions are T0-only. |
+| **Veritas NetBackup** | Master server managing DC backups = T0. Use separate policy domains per tier. |
+
+> **Recommendation:** For environments where separate backup infrastructure per tier is too costly, **Windows Server Backup on DCs writing to an isolated T0 share** is a practical, low-cost approach that avoids introducing third-party agents on DCs entirely.
+
+#### Validating Backup Tiering
+
+```powershell
+# Check which backup agents are installed on Domain Controllers
+$DCs = (Get-ADDomainController -Filter *).HostName
+foreach ($DC in $DCs) {
+    $services = Get-Service -ComputerName $DC |
+        Where-Object { $_.DisplayName -match 'Veeam|Commvault|DPM|NetBackup|Backup' }
+    if ($services) {
+        [PSCustomObject]@{
+            DC = $DC
+            BackupServices = ($services.DisplayName -join ', ')
+            ServiceAccounts = ($services | ForEach-Object {
+                (Get-WmiObject Win32_Service -ComputerName $DC -Filter "Name='$($_.Name)'").StartName
+            }) -join ', '
+        }
+    }
+}
+
+# Verify backup service accounts are in Tier 0
+$backupAccounts = @("svc-backup-t0", "svc-veeam-t0")  # Adjust to your naming
+foreach ($acct in $backupAccounts) {
+    $user = Get-ADUser -Identity $acct -Properties MemberOf, DistinguishedName
+    [PSCustomObject]@{
+        Account = $acct
+        OU = ($user.DistinguishedName -split ',',2)[1]
+        InProtectedUsers = ($user.MemberOf -match 'Protected Users')
+        InT0Group = ($user.MemberOf -match 'T0')
+    }
+}
+```
+
 ### Phase 5 Checklist
 
 - [ ] ACLs on domain root object audited — no non-admin `WriteDACL`/`GenericAll`
@@ -1534,6 +2126,16 @@ Get-CertificateTemplate | ForEach-Object {
 - [ ] Web enrollment disabled or hardened
 - [ ] CA auditing enabled
 - [ ] `dSHeuristics` attribute permissions verified
+- [ ] Backup servers backing up T0 assets classified as Tier 0
+- [ ] Backup servers placed in `Tier 0\Servers` OU (or equivalent)
+- [ ] Separate backup service accounts per tier (no shared accounts)
+- [ ] T0 backup data encrypted at rest and in transit
+- [ ] T0 backup storage isolated from T1/T2 network access
+- [ ] Immutable/air-gapped backup copies configured for ransomware resilience
+- [ ] Backup admin accounts for T0 are T0 accounts (Protected Users, Auth Silo)
+- [ ] T0 backup console accessible from PAW only
+- [ ] Backup agents on DCs inventoried and service accounts verified as T0
+- [ ] Restore permissions restricted to T0 admins only
 
 ---
 
