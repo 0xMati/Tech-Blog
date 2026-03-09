@@ -1015,15 +1015,19 @@ Use **KeePass/KeePassXC** with strict discipline:
 - **Never open T0 KeePass on a non-T0 machine** — the decrypted secrets exist in memory
 
 ```
-T0-Secrets.kdbx                          T1-Secrets.kdbx
-├── Break-glass accounts                 ├── T1 admin passwords
-├── T0 admin account passwords           ├── T1 service accounts
-├── DSRM passwords (all DCs)             ├── Application admin accounts
-├── T0 service account passwords         └── Infrastructure credentials
-├── AD CS private key passphrase
-├── krbtgt rotation records
-└── T0 backup encryption keys
+Physical Safe (sealed envelopes)         T0-Secrets.kdbx
+├── Break-glass account passwords        ├── T0 admin account passwords
+├── DSRM passwords (all DCs)             ├── T0 service account passwords
+└── (printed, one envelope per secret)   ├── AD CS private key passphrase
+                                         ├── krbtgt rotation records
+T1-Secrets.kdbx                          └── T0 backup encryption keys
+├── T1 admin passwords
+├── T1 service accounts
+├── Application admin accounts
+└── Infrastructure credentials
 ```
+
+> **Break-glass and DSRM passwords belong in a physical safe** — printed on paper, in sealed tamper-evident envelopes, stored in a locked safe accessible only to authorized personnel. These passwords must work when all digital systems are unavailable (PAW destroyed, KeePass file corrupted, network down). Optionally, keep a **secondary copy** in the T0 digital vault for operational convenience, but the physical safe is the **primary** and **authoritative** copy.
 
 KeePass hardening settings (in `Tools → Options → Security`):
 - Lock workspace after 300 seconds of inactivity
@@ -1061,8 +1065,8 @@ Every secret must have a designated home. If it's not in a vault, it's unmanaged
 
 | Secret Type | Tier | Vault Location | Rotation |
 |-------------|------|----------------|----------|
-| Break-glass domain admin passwords | T0 | T0 vault, dual-authorization required | After every use |
-| DSRM (Directory Services Restore Mode) passwords | T0 | T0 vault | Every 180 days |
+| Break-glass domain admin passwords | T0 | **Physical safe** (sealed envelope) — optional secondary copy in T0 vault | After every use (reseal envelope) |
+| DSRM (Directory Services Restore Mode) passwords | T0 | **Physical safe** (sealed envelope) — optional secondary copy in T0 vault | Every 180 days (reseal envelope) |
 | T0 admin account passwords | T0 | T0 vault | Every 90 days (or per policy) |
 | krbtgt rotation records | T0 | T0 vault (documentation entry) | Every 90-180 days |
 | AD CS CA private key passphrase | T0 | T0 vault, restricted to PKI admins | On CA renewal |

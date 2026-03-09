@@ -1,4 +1,4 @@
-# Harden AD CS Web Enrollment
+# ADCS Web Enrollment Hardening
 🗓️ Published: 2026-02-27
 
 ## Introduction
