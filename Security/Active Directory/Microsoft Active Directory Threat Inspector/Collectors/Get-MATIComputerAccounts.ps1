@@ -36,6 +36,8 @@ function Get-MATIComputerAccounts {
                     WhenCreated           = $comp.WhenCreated
                     Description           = $comp.Description
                     SID                   = $comp.SID.Value
+                    PrimaryGroupID        = $comp.PrimaryGroupID
+                    UserAccountControl    = $comp.UserAccountControl
                     IsDomainController    = $comp.DistinguishedName -match 'OU=Domain Controllers'
                     # RBCD: Resource-Based Constrained Delegation
                     AllowedToActOnBehalf  = $comp.'msDS-AllowedToActOnBehalfOfOtherIdentity'

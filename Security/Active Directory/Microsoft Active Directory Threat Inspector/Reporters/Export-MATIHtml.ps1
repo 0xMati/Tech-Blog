@@ -212,13 +212,20 @@ function Export-MATIHtml {
             # Donut: AES vs RC4 (global)
             $aesP = [double]$krb.AESPercent
             $rc4P = [double]$krb.RC4Percent
-            $othP = [math]::Round(100 - $aesP - $rc4P, 1)
+            $failP = if ($krb.FailedPercent) { [double]$krb.FailedPercent } else { 0 }
+            $othP  = if ($krb.OtherPercent)  { [double]$krb.OtherPercent  } else { 0 }
             $protoBlock += "<div class=`"chart-card`">`n"
             $protoBlock += "<div class=`"chart-title`">All Tickets ($($krb.TotalAll))</div>`n"
             $protoBlock += (Build-Donut $aesP '#00e676' $rc4P '#ff2d55' "$($krb.RC4Percent)%" 'RC4')
             $protoBlock += "<div class=`"chart-legend`">"
             $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#00e676`"></span>AES $($krb.AESCount)</span>"
             $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#ff2d55`"></span>RC4 $($krb.RC4Count)</span>"
+            if ($krb.FailedCount -gt 0) {
+                $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#666680`"></span>Failed $($krb.FailedCount)</span>"
+            }
+            if ($krb.OtherCount -gt 0) {
+                $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#2a2a4a`"></span>Other $($krb.OtherCount)</span>"
+            }
             $protoBlock += "</div></div>`n"
 
             # Donut: TGT breakdown
@@ -226,6 +233,8 @@ function Export-MATIHtml {
             if ($tgtTotal -gt 0) {
                 $tgtAes = $krb.Totals.TGT_AES256 + $krb.Totals.TGT_AES128
                 $tgtRc4 = $krb.Totals.TGT_RC4
+                $tgtFailed = if ($krb.Totals.TGT_Failed) { $krb.Totals.TGT_Failed } else { 0 }
+                $tgtOther  = if ($krb.Totals.TGT_Other)  { $krb.Totals.TGT_Other  } else { 0 }
                 $tgtAesP = [math]::Round(100 * $tgtAes / $tgtTotal, 1)
                 $tgtRc4P = [math]::Round(100 * $tgtRc4 / $tgtTotal, 1)
                 $protoBlock += "<div class=`"chart-card`">`n"
@@ -234,6 +243,12 @@ function Export-MATIHtml {
                 $protoBlock += "<div class=`"chart-legend`">"
                 $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#00e676`"></span>AES $tgtAes</span>"
                 $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#ff6b35`"></span>RC4 $tgtRc4</span>"
+                if ($tgtFailed -gt 0) {
+                    $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#666680`"></span>Failed $tgtFailed</span>"
+                }
+                if ($tgtOther -gt 0) {
+                    $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#2a2a4a`"></span>Other $tgtOther</span>"
+                }
                 $protoBlock += "</div></div>`n"
             }
 
@@ -242,6 +257,8 @@ function Export-MATIHtml {
             if ($tgsTotal -gt 0) {
                 $tgsAes = $krb.Totals.TGS_AES256 + $krb.Totals.TGS_AES128
                 $tgsRc4 = $krb.Totals.TGS_RC4
+                $tgsFailed = if ($krb.Totals.TGS_Failed) { $krb.Totals.TGS_Failed } else { 0 }
+                $tgsOther  = if ($krb.Totals.TGS_Other)  { $krb.Totals.TGS_Other  } else { 0 }
                 $tgsAesP = [math]::Round(100 * $tgsAes / $tgsTotal, 1)
                 $tgsRc4P = [math]::Round(100 * $tgsRc4 / $tgsTotal, 1)
                 $protoBlock += "<div class=`"chart-card`">`n"
@@ -250,6 +267,12 @@ function Export-MATIHtml {
                 $protoBlock += "<div class=`"chart-legend`">"
                 $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#00e676`"></span>AES $tgsAes</span>"
                 $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#ff6b35`"></span>RC4 $tgsRc4</span>"
+                if ($tgsFailed -gt 0) {
+                    $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#666680`"></span>Failed $tgsFailed</span>"
+                }
+                if ($tgsOther -gt 0) {
+                    $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#2a2a4a`"></span>Other $tgsOther</span>"
+                }
                 $protoBlock += "</div></div>`n"
             }
 
@@ -261,6 +284,19 @@ function Export-MATIHtml {
                 $protoBlock += (Build-TopTable 'Top RC4 TGT Accounts (4768)' 'Account' $krb.TopRC4TGTAccounts)
                 $protoBlock += (Build-TopTable 'Top RC4 Service Targets (4769)' 'Service' $krb.TopRC4TGSServices)
                 $protoBlock += (Build-TopTable 'Top RC4 Client IPs' 'IP Address' $krb.TopRC4ClientIPs)
+                $protoBlock += "</div>`n"
+            }
+
+            # Top-N tables for Failed auth and Unknown encryption types
+            $hasFailedOrOther = ($krb.FailedCount -gt 0 -or $krb.OtherCount -gt 0)
+            if ($hasFailedOrOther) {
+                $protoBlock += "<div class=`"top-tables-row`">`n"
+                if ($krb.TopFailedAccounts -and $krb.TopFailedAccounts.Count -gt 0) {
+                    $protoBlock += (Build-TopTable 'Top Failed Kerberos Auth Accounts' 'Account' $krb.TopFailedAccounts)
+                }
+                if ($krb.OtherEncTypes -and $krb.OtherEncTypes.Count -gt 0) {
+                    $protoBlock += (Build-TopTable 'Unknown Encryption Types (successful tickets)' 'Enc Type' $krb.OtherEncTypes)
+                }
                 $protoBlock += "</div>`n"
             }
         }
@@ -287,12 +323,25 @@ function Export-MATIHtml {
             $protoBlock += "</div></div>`n"
             $protoBlock += "</div>`n"
 
-            # Top-N tables
-            $protoBlock += "<div class=`"top-tables-row`">`n"
-            $protoBlock += (Build-TopTable 'Top NTLM Accounts' 'Account' $ntlm.TopAccounts)
-            $protoBlock += (Build-TopTable 'Top NTLM Workstations' 'Workstation' $ntlm.TopWorkstations)
-            $protoBlock += (Build-TopTable 'Top NTLM Source IPs' 'IP Address' $ntlm.TopIPs)
-            $protoBlock += "</div>`n"
+            # NTLMv1 Top-N tables (only if v1 events exist)
+            if ($ntlm.NTLMv1Count -gt 0) {
+                $protoBlock += "<h4 style=`"color:#ff2d55;margin-top:1.2em`">NTLMv1 Breakdown</h4>`n"
+                $protoBlock += "<div class=`"top-tables-row`">`n"
+                $protoBlock += (Build-TopTable 'Top NTLMv1 Accounts' 'Account' $ntlm.TopV1Accounts)
+                $protoBlock += (Build-TopTable 'Top NTLMv1 Workstations' 'Workstation' $ntlm.TopV1Workstations)
+                $protoBlock += (Build-TopTable 'Top NTLMv1 Source IPs' 'IP Address' $ntlm.TopV1IPs)
+                $protoBlock += "</div>`n"
+            }
+
+            # NTLMv2 Top-N tables (only if v2 events exist)
+            if ($ntlm.NTLMv2Count -gt 0) {
+                $protoBlock += "<h4 style=`"color:#ffc107;margin-top:1.2em`">NTLMv2 Breakdown</h4>`n"
+                $protoBlock += "<div class=`"top-tables-row`">`n"
+                $protoBlock += (Build-TopTable 'Top NTLMv2 Accounts' 'Account' $ntlm.TopV2Accounts)
+                $protoBlock += (Build-TopTable 'Top NTLMv2 Workstations' 'Workstation' $ntlm.TopV2Workstations)
+                $protoBlock += (Build-TopTable 'Top NTLMv2 Source IPs' 'IP Address' $ntlm.TopV2IPs)
+                $protoBlock += "</div>`n"
+            }
         }
         elseif ($ntlm) {
             $protoBlock += "<p style=`"color:var(--text-secondary)`">No NTLM logon events found in the last $($auditData.AuditHours) hours.</p>`n"

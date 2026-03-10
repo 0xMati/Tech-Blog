@@ -45,6 +45,32 @@ function Export-MATICsv {
     # ------------------------------------------------------------------
     # 2. Raw data CSVs (one per collector that returned data)
     # ------------------------------------------------------------------
+    # Helper: flatten objects for CSV — convert non-scalar properties to strings
+    function ConvertTo-CsvSafe {
+        param([Parameter(ValueFromPipeline)][PSObject]$InputObject)
+        process {
+            if ($null -eq $InputObject) { return }
+            $flat = [ordered]@{}
+            foreach ($prop in $InputObject.PSObject.Properties) {
+                $val = $prop.Value
+                if ($null -eq $val) {
+                    $flat[$prop.Name] = ''
+                }
+                elseif ($val -is [string] -or $val -is [int] -or $val -is [long] -or
+                        $val -is [double] -or $val -is [bool] -or $val -is [datetime]) {
+                    $flat[$prop.Name] = $val
+                }
+                elseif ($val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                    $flat[$prop.Name] = ($val | ForEach-Object { "$_" }) -join '; '
+                }
+                else {
+                    $flat[$prop.Name] = "$val"
+                }
+            }
+            [PSCustomObject]$flat
+        }
+    }
+
     foreach ($collectorName in $dataCache.Keys) {
         # Skip LegacyProtocolAudit — handled separately below
         if ($collectorName -eq 'LegacyProtocolAudit') { continue }
@@ -54,16 +80,27 @@ function Export-MATICsv {
         if ($data -is [hashtable]) {
             # Collector returned a hashtable with multiple datasets
             foreach ($subKey in $data.Keys) {
-                $subData = @($data[$subKey])
+                $subData = @($data[$subKey] | Where-Object { $null -ne $_ })
                 if ($subData.Count -gt 0 -and $subData[0] -is [PSCustomObject]) {
                     $subPath = Join-Path $csvDir "MATI_${collectorName}_${subKey}.csv"
-                    $subData | Export-Csv -Path $subPath -NoTypeInformation -Encoding UTF8
+                    try {
+                        $subData | ConvertTo-CsvSafe | Export-Csv -Path $subPath -NoTypeInformation -Encoding UTF8
+                    } catch {
+                        Write-Warning "    CSV export failed for ${collectorName}/${subKey}: $($_.Exception.Message)"
+                    }
                 }
             }
         }
-        elseif ($data -is [array] -and $data.Count -gt 0) {
-            $dataPath = Join-Path $csvDir "MATI_${collectorName}.csv"
-            $data | Export-Csv -Path $dataPath -NoTypeInformation -Encoding UTF8
+        elseif ($data -is [array]) {
+            $validData = @($data | Where-Object { $null -ne $_ })
+            if ($validData.Count -gt 0) {
+                $dataPath = Join-Path $csvDir "MATI_${collectorName}.csv"
+                try {
+                    $validData | ConvertTo-CsvSafe | Export-Csv -Path $dataPath -NoTypeInformation -Encoding UTF8
+                } catch {
+                    Write-Warning "    CSV export failed for ${collectorName}: $($_.Exception.Message)"
+                }
+            }
         }
     }
 
@@ -87,11 +124,15 @@ function Export-MATICsv {
                 TGT_AES256   = $krb.Totals.TGT_AES256
                 TGT_AES128   = $krb.Totals.TGT_AES128
                 TGT_RC4      = $krb.Totals.TGT_RC4
-                TGT_Unknown  = $krb.Totals.TGT_Unknown
+                TGT_Failed   = $krb.Totals.TGT_Failed
+                TGT_Other    = $krb.Totals.TGT_Other
                 TGS_AES256   = $krb.Totals.TGS_AES256
                 TGS_AES128   = $krb.Totals.TGS_AES128
                 TGS_RC4      = $krb.Totals.TGS_RC4
-                TGS_Unknown  = $krb.Totals.TGS_Unknown
+                TGS_Failed   = $krb.Totals.TGS_Failed
+                TGS_Other    = $krb.Totals.TGS_Other
+                Failed_Total = $krb.FailedCount
+                Other_Total  = $krb.OtherCount
             }
             @($krbSummary) | Export-Csv -Path (Join-Path $csvDir "${prefix}_Kerberos_Summary.csv") -NoTypeInformation -Encoding UTF8
 
@@ -110,6 +151,14 @@ function Export-MATICsv {
             # Top RC4 DCs
             if ($krb.TopRC4DCs -and $krb.TopRC4DCs.Count -gt 0) {
                 $krb.TopRC4DCs | Export-Csv -Path (Join-Path $csvDir "${prefix}_RC4_DCs.csv") -NoTypeInformation -Encoding UTF8
+            }
+            # Top Failed auth accounts
+            if ($krb.TopFailedAccounts -and $krb.TopFailedAccounts.Count -gt 0) {
+                $krb.TopFailedAccounts | Export-Csv -Path (Join-Path $csvDir "${prefix}_Kerberos_FailedAccounts.csv") -NoTypeInformation -Encoding UTF8
+            }
+            # Unknown encryption types breakdown
+            if ($krb.OtherEncTypes -and $krb.OtherEncTypes.Count -gt 0) {
+                $krb.OtherEncTypes | Export-Csv -Path (Join-Path $csvDir "${prefix}_Kerberos_OtherEncTypes.csv") -NoTypeInformation -Encoding UTF8
             }
         }
 
@@ -137,6 +186,25 @@ function Export-MATICsv {
             }
             if ($ntlm.TopDCs -and $ntlm.TopDCs.Count -gt 0) {
                 $ntlm.TopDCs | Export-Csv -Path (Join-Path $csvDir "${prefix}_NTLM_DCs.csv") -NoTypeInformation -Encoding UTF8
+            }
+            # Per-version CSVs
+            if ($ntlm.TopV1Accounts -and $ntlm.TopV1Accounts.Count -gt 0) {
+                $ntlm.TopV1Accounts | Export-Csv -Path (Join-Path $csvDir "${prefix}_NTLMv1_Accounts.csv") -NoTypeInformation -Encoding UTF8
+            }
+            if ($ntlm.TopV1Workstations -and $ntlm.TopV1Workstations.Count -gt 0) {
+                $ntlm.TopV1Workstations | Export-Csv -Path (Join-Path $csvDir "${prefix}_NTLMv1_Workstations.csv") -NoTypeInformation -Encoding UTF8
+            }
+            if ($ntlm.TopV1IPs -and $ntlm.TopV1IPs.Count -gt 0) {
+                $ntlm.TopV1IPs | Export-Csv -Path (Join-Path $csvDir "${prefix}_NTLMv1_IPs.csv") -NoTypeInformation -Encoding UTF8
+            }
+            if ($ntlm.TopV2Accounts -and $ntlm.TopV2Accounts.Count -gt 0) {
+                $ntlm.TopV2Accounts | Export-Csv -Path (Join-Path $csvDir "${prefix}_NTLMv2_Accounts.csv") -NoTypeInformation -Encoding UTF8
+            }
+            if ($ntlm.TopV2Workstations -and $ntlm.TopV2Workstations.Count -gt 0) {
+                $ntlm.TopV2Workstations | Export-Csv -Path (Join-Path $csvDir "${prefix}_NTLMv2_Workstations.csv") -NoTypeInformation -Encoding UTF8
+            }
+            if ($ntlm.TopV2IPs -and $ntlm.TopV2IPs.Count -gt 0) {
+                $ntlm.TopV2IPs | Export-Csv -Path (Join-Path $csvDir "${prefix}_NTLMv2_IPs.csv") -NoTypeInformation -Encoding UTF8
             }
         }
     }

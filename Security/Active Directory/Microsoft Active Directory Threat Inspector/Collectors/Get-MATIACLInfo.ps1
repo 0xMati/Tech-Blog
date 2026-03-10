@@ -300,6 +300,141 @@ function Get-MATIACLInfo {
         }
     }
 
+    # ---- DC Computer Object ACLs (vuln_permissions_dc) ----
+    $dcObjectACEs = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $dcs = Get-ADDomainController -Filter * -Server $domainDns -ErrorAction Stop
+            foreach ($dc in $dcs) {
+                try {
+                    $acl = Get-RemoteADACL -DN $dc.ComputerObjectDN -Server $domainDns
+                    $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $dc.ComputerObjectDN
+                    foreach ($a in $aces) {
+                        $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force
+                        $a | Add-Member -NotePropertyName 'DCName' -NotePropertyValue $dc.Name -Force
+                    }
+                    $dcObjectACEs += $aces
+                } catch { }
+            }
+        } catch {
+            Write-Warning "    Cannot read DC object ACLs for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- DFSR SYSVOL Object ACLs (vuln_permissions_dfsr_sysvol) ----
+    $dfsrSysvolACEs = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            # DFSR Global Settings — Domain System Volume
+            $dfsrDN = "CN=Domain System Volume,CN=DFSR-GlobalSettings,CN=System,$domainDN"
+            try {
+                $acl = Get-RemoteADACL -DN $dfsrDN -Server $domainDns
+                $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $dfsrDN
+                foreach ($a in $aces) { $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force }
+                $dfsrSysvolACEs += $aces
+            } catch { }
+            # SYSVOL Subscription object
+            $sysvolSubDN = "CN=SYSVOL Subscription,CN=Domain System Volume,CN=DFSR-GlobalSettings,CN=System,$domainDN"
+            try {
+                $acl = Get-RemoteADACL -DN $sysvolSubDN -Server $domainDns
+                $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $sysvolSubDN
+                foreach ($a in $aces) { $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force }
+                $dfsrSysvolACEs += $aces
+            } catch { }
+            # Per-DC DFSR-LocalSettings
+            $dcs = Get-ADDomainController -Filter * -Server $domainDns -ErrorAction SilentlyContinue
+            foreach ($dc in $dcs) {
+                $localDN = "CN=DFSR-LocalSettings,$($dc.ComputerObjectDN)"
+                try {
+                    $acl = Get-RemoteADACL -DN $localDN -Server $domainDns
+                    $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $localDN
+                    foreach ($a in $aces) { $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force }
+                    $dfsrSysvolACEs += $aces
+                } catch { }
+            }
+        } catch {
+            Write-Warning "    Cannot read DFSR SYSVOL ACLs for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- DPAPI Backup Key ACLs (vuln_permissions_dpapi) ----
+    $dpapiACEs = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            # DPAPI domain backup keys: CN=BCKUPKEY_* under CN=System
+            $bckupKeys = Get-ADObject -SearchBase "CN=System,$domainDN" -Filter { Name -like 'BCKUPKEY_*' } `
+                -Server $domainDns -ErrorAction SilentlyContinue
+            foreach ($key in $bckupKeys) {
+                try {
+                    $acl = Get-RemoteADACL -DN $key.DistinguishedName -Server $domainDns
+                    $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $key.DistinguishedName
+                    foreach ($a in $aces) { $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force }
+                    $dpapiACEs += $aces
+                } catch { }
+            }
+        } catch {
+            Write-Warning "    Cannot read DPAPI ACLs for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- MicrosoftDNS Container ACLs (vuln_permissions_msdns) ----
+    $dnsACEs = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            # DomainDnsZones partition
+            $dnsDN = "CN=MicrosoftDNS,DC=DomainDnsZones,$domainDN"
+            try {
+                $acl = Get-RemoteADACL -DN $dnsDN -Server $domainDns
+                $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $dnsDN
+                foreach ($a in $aces) { $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force }
+                $dnsACEs += $aces
+            } catch { }
+        } catch {
+            Write-Warning "    Cannot read DNS ACLs for $domainDns : $($_.Exception.Message)"
+        }
+    }
+    # ForestDnsZones (checked once for forest root)
+    try {
+        $forestDN = ($domCache[$forest.RootDomain] ?? (Get-ADDomain -Server $forest.RootDomain -ErrorAction Stop)).DistinguishedName
+        $forestDnsDN = "CN=MicrosoftDNS,DC=ForestDnsZones,$forestDN"
+        $acl = Get-RemoteADACL -DN $forestDnsDN -Server $forest.RootDomain
+        $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $forestDnsDN
+        foreach ($a in $aces) { $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $forest.RootDomain -Force }
+        $dnsACEs += $aces
+    } catch { }
+
+    # ---- GPOs linked to Domain Controllers OU (vuln_permissions_gpo_container_priv) ----
+    $gpoPrivACEs = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            $dcOU = "OU=Domain Controllers,$domainDN"
+            $gpLink = (Get-ADObject -Identity $dcOU -Server $domainDns -Properties gPLink -ErrorAction Stop).gPLink
+            if ($gpLink) {
+                # Parse gPLink format: [LDAP://cn={GUID},cn=policies,cn=system,DC=...;status]
+                $gpoDNs = [regex]::Matches($gpLink, '\[LDAP://([^;]+);\d+\]') | ForEach-Object { $_.Groups[1].Value }
+                foreach ($gpoDN in $gpoDNs) {
+                    try {
+                        $gpoName = (Get-ADObject -Identity $gpoDN -Server $domainDns -Properties DisplayName -ErrorAction SilentlyContinue).DisplayName
+                        $acl = Get-RemoteADACL -DN $gpoDN -Server $domainDns
+                        $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $gpoDN
+                        foreach ($a in $aces) {
+                            $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force
+                            $a | Add-Member -NotePropertyName 'LinkedTo' -NotePropertyValue $dcOU -Force
+                            $a | Add-Member -NotePropertyName 'GPOName' -NotePropertyValue $gpoName -Force
+                        }
+                        $gpoPrivACEs += $aces
+                    } catch { }
+                }
+            }
+        } catch {
+            Write-Warning "    Cannot read GPO ACLs for privileged OUs in $domainDns : $($_.Exception.Message)"
+        }
+    }
+
     return @{
         AdminSDHolder     = @($adminSDHolderACEs)
         DomainRoots       = @($domainRootACEs)
@@ -307,5 +442,10 @@ function Get-MATIACLInfo {
         ConfigObjects     = @($configACEs)
         DCSyncRights      = @($dcSyncRights)
         Owners            = @($ownerIssues)
+        DCObjects         = @($dcObjectACEs)
+        DFSRSysvolObjects = @($dfsrSysvolACEs)
+        DPAPIObjects      = @($dpapiACEs)
+        DNSObjects        = @($dnsACEs)
+        GPOPrivilegedOUs  = @($gpoPrivACEs)
     }
 }

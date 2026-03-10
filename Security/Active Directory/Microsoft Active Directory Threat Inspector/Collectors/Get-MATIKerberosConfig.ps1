@@ -143,10 +143,14 @@ function Get-MATIKerberosConfig {
         }
     }
 
-    # Build duplicate SPN list
+    # Build duplicate SPN list (exclude krbtgt accounts — they legitimately share kadmin/* SPNs)
     $duplicateSPNs = [System.Collections.Generic.List[PSCustomObject]]::new()
     foreach ($entry in $allSPNs.GetEnumerator()) {
         if ($entry.Value.Count -gt 1) {
+            # Filter out entries where ALL holders are krbtgt accounts (expected duplication)
+            $nonKrbtgt = @($entry.Value | Where-Object { $_.SamAccountName -notlike 'krbtgt*' })
+            $krbtgtOnly = ($nonKrbtgt.Count -eq 0)
+            if ($krbtgtOnly) { continue }
             $duplicateSPNs.Add([PSCustomObject]@{
                 SPN      = $entry.Key
                 Count    = $entry.Value.Count

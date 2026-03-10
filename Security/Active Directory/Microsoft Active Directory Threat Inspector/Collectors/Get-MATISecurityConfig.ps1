@@ -192,9 +192,11 @@ function Get-MATISecurityConfig {
     foreach ($domainDns in $forest.Domains) {
         try {
             $users = Get-ADUser -Filter { PasswordNotRequired -eq $true } `
-                -Server $domainDns -Properties SamAccountName, Enabled, PasswordNotRequired -ErrorAction Stop
+                -Server $domainDns -Properties SamAccountName, Enabled, PasswordNotRequired, UserAccountControl -ErrorAction Stop
             foreach ($u in $users) {
                 if (-not $u.Enabled) { continue }
+                # Skip interdomain trust accounts (UAC flag 0x800) — PASSWD_NOTREQD is expected on them
+                if ($u.UserAccountControl -band 0x800) { continue }
                 $pwdNotReqAccounts += [PSCustomObject]@{
                     SamAccountName    = $u.SamAccountName
                     Domain            = $domainDns
@@ -510,6 +512,241 @@ function Get-MATISecurityConfig {
         Write-Verbose "    Cannot enumerate Authentication Policies/Silos: $($_.Exception.Message)"
     }
 
+    # ---- Standalone Managed Service Accounts (sMSA, not gMSA) ----
+    $msaAccounts = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            $msas = Get-ADObject -Filter { objectClass -eq 'msDS-ManagedServiceAccount' } `
+                -SearchBase "CN=Managed Service Accounts,$domainDN" -Server $domainDns `
+                -Properties SamAccountName, Enabled, PasswordLastSet, WhenCreated, Description `
+                -ErrorAction SilentlyContinue
+            foreach ($msa in $msas) {
+                $pwdAge = if ($msa.PasswordLastSet) { ((Get-Date) - $msa.PasswordLastSet).Days } else { 9999 }
+                $msaAccounts += [PSCustomObject]@{
+                    SamAccountName    = $msa.SamAccountName
+                    DistinguishedName = $msa.DistinguishedName
+                    Domain            = $domainDns
+                    Enabled           = $msa.Enabled
+                    PasswordLastSet   = $msa.PasswordLastSet
+                    PasswordAgeDays   = $pwdAge
+                    WhenCreated       = $msa.WhenCreated
+                    Description       = $msa.Description
+                    IsGMSA            = $false
+                }
+            }
+        } catch {
+            Write-Verbose "    Cannot enumerate sMSAs for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Cluster Virtual Computer Objects (VCOs) — password age check ----
+    $clusterAccounts = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            # Cluster computer accounts often have ServicePrincipalName containing MSClusterVirtualServer
+            $clusterComps = Get-ADComputer -Filter { ServicePrincipalName -like '*MSClusterVirtualServer*' } `
+                -Server $domainDns -Properties SamAccountName, PasswordLastSet, Enabled, ServicePrincipalName, Description `
+                -ErrorAction SilentlyContinue
+            foreach ($c in $clusterComps) {
+                $pwdAge = if ($c.PasswordLastSet) { ((Get-Date) - $c.PasswordLastSet).Days } else { 9999 }
+                $clusterAccounts += [PSCustomObject]@{
+                    SamAccountName    = $c.SamAccountName
+                    DistinguishedName = $c.DistinguishedName
+                    Domain            = $domainDns
+                    Enabled           = $c.Enabled
+                    PasswordLastSet   = $c.PasswordLastSet
+                    PasswordAgeDays   = $pwdAge
+                    Description       = $c.Description
+                }
+            }
+        } catch {
+            Write-Verbose "    Cannot enumerate cluster accounts for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Trust account password age (trust user objects: CN=<domain>$) ----
+    $trustAccounts = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            # Trust accounts have UAC flag INTERDOMAIN_TRUST_ACCOUNT (0x800)
+            $trustUsers = Get-ADUser -Filter { UserAccountControl -band 2048 } `
+                -Server $domainDns -Properties SamAccountName, PasswordLastSet, Enabled, UserAccountControl `
+                -ErrorAction SilentlyContinue
+            foreach ($t in $trustUsers) {
+                $pwdAge = if ($t.PasswordLastSet) { ((Get-Date) - $t.PasswordLastSet).Days } else { 9999 }
+                $trustAccounts += [PSCustomObject]@{
+                    SamAccountName    = $t.SamAccountName
+                    DistinguishedName = $t.DistinguishedName
+                    Domain            = $domainDns
+                    Enabled           = $t.Enabled
+                    PasswordLastSet   = $t.PasswordLastSet
+                    PasswordAgeDays   = $pwdAge
+                }
+            }
+        } catch {
+            Write-Verbose "    Cannot enumerate trust accounts for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Group nesting loops (cycle detection) ----
+    $groupLoops = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $allGroups = Get-ADGroup -Filter * -Server $domainDns -Properties MemberOf -ErrorAction Stop
+            # Build adjacency: group DN -> set of parent group DNs
+            $memberOfMap = @{}
+            foreach ($g in $allGroups) {
+                $memberOfMap[$g.DistinguishedName] = @($g.MemberOf)
+            }
+            # DFS cycle detection
+            $visited = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            $inStack = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            $reportedCycles = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+
+            function Find-GroupCycle {
+                param([string]$Node, [System.Collections.Generic.List[string]]$Path)
+                if ($inStack.Contains($Node)) {
+                    # Found a cycle — extract the loop portion
+                    $loopStart = $Path.IndexOf($Node)
+                    if ($loopStart -ge 0) {
+                        $cycle = @($Path[$loopStart..($Path.Count - 1)])
+                        $cycleKey = ($cycle | Sort-Object) -join '|'
+                        if (-not $reportedCycles.Contains($cycleKey)) {
+                            $null = $reportedCycles.Add($cycleKey)
+                            return $cycle
+                        }
+                    }
+                    return $null
+                }
+                if ($visited.Contains($Node)) { return $null }
+                $null = $visited.Add($Node)
+                $null = $inStack.Add($Node)
+                $Path.Add($Node)
+                if ($memberOfMap.ContainsKey($Node)) {
+                    foreach ($parent in $memberOfMap[$Node]) {
+                        if ($memberOfMap.ContainsKey($parent)) {
+                            $result = Find-GroupCycle -Node $parent -Path $Path
+                            if ($result) {
+                                # Remove last item and continue looking for more cycles
+                                $script:foundCycles += ,@($result)
+                            }
+                        }
+                    }
+                }
+                $Path.RemoveAt($Path.Count - 1)
+                $null = $inStack.Remove($Node)
+                return $null
+            }
+
+            $script:foundCycles = @()
+            foreach ($gDN in $memberOfMap.Keys) {
+                if (-not $visited.Contains($gDN)) {
+                    $path = [System.Collections.Generic.List[string]]::new()
+                    Find-GroupCycle -Node $gDN -Path $path
+                }
+            }
+
+            foreach ($cycle in $script:foundCycles) {
+                $groupLoops += [PSCustomObject]@{
+                    Domain     = $domainDns
+                    CycleLength = $cycle.Count
+                    Groups     = @($cycle)
+                    GroupNames = @($cycle | ForEach-Object { ($_ -split ',')[0] -replace 'CN=' })
+                }
+            }
+        } catch {
+            Write-Warning "    Cannot check group loops for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Display Specifiers with scriptPath (potential backdoor) ----
+    $dangerousDisplaySpecifiers = @()
+    try {
+        $configDN = $rootDSE.configurationNamingContext
+        # Display Specifiers live under CN=DisplaySpecifiers,CN=Configuration,...
+        $displaySpecDN = "CN=DisplaySpecifiers,$configDN"
+        $specEntries = Get-ADObject -SearchBase $displaySpecDN -Filter * `
+            -Properties adminContextMenu, contextMenu, shellContextMenu, adminPropertyPages, `
+                        shellPropertyPages, treatAsLeaf, extraColumns `
+            -ErrorAction SilentlyContinue
+        foreach ($spec in $specEntries) {
+            # Check for any attribute containing a script/executable path
+            foreach ($attr in @('adminContextMenu', 'contextMenu', 'shellContextMenu')) {
+                $values = @($spec.$attr | Where-Object { $_ })
+                foreach ($val in $values) {
+                    if ($val -match '\\\\|\.exe|\.vbs|\.ps1|\.bat|\.cmd|\.js|\.wsh|\.wsf|http') {
+                        $dangerousDisplaySpecifiers += [PSCustomObject]@{
+                            DistinguishedName = $spec.DistinguishedName
+                            Attribute         = $attr
+                            Value             = $val
+                        }
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Warning "    Cannot check Display Specifiers: $($_.Exception.Message)"
+    }
+
+    # ---- Critical AD objects existence check ----
+    $criticalObjectsStatus = @()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domObj = $domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)
+            $domainDN = $domObj.DistinguishedName
+            $domSID   = $domObj.DomainSID.Value
+
+            # List of critical well-known containers/objects that must exist
+            $criticalObjDNs = @(
+                "CN=Users,$domainDN"
+                "CN=Computers,$domainDN"
+                "CN=System,$domainDN"
+                "CN=Builtin,$domainDN"
+                "OU=Domain Controllers,$domainDN"
+                "CN=Infrastructure,$domainDN"
+                "CN=Managed Service Accounts,$domainDN"
+                "CN=NTDS Quotas,$domainDN"
+            )
+            foreach ($dn in $criticalObjDNs) {
+                try {
+                    $null = Get-ADObject -Identity $dn -Server $domainDns -ErrorAction Stop
+                } catch {
+                    $criticalObjectsStatus += [PSCustomObject]@{
+                        Domain            = $domainDns
+                        DistinguishedName = $dn
+                        Status            = 'Missing'
+                    }
+                }
+            }
+
+            # Critical well-known groups (by RID)
+            $criticalGroups = @{
+                'Domain Admins'      = "$domSID-512"
+                'Domain Users'       = "$domSID-513"
+                'Domain Computers'   = "$domSID-515"
+                'Domain Controllers' = "$domSID-516"
+                'Cert Publishers'    = "$domSID-517"
+                'Schema Admins'      = "$domSID-518"
+                'Enterprise Admins'  = "$domSID-519"
+                'Group Policy CO'    = "$domSID-520"
+            }
+            foreach ($name in $criticalGroups.Keys) {
+                try {
+                    $null = Get-ADGroup -Identity $criticalGroups[$name] -Server $domainDns -ErrorAction Stop
+                } catch {
+                    $criticalObjectsStatus += [PSCustomObject]@{
+                        Domain            = $domainDns
+                        DistinguishedName = "$name ($($criticalGroups[$name]))"
+                        Status            = 'Missing'
+                    }
+                }
+            }
+        } catch {
+            Write-Warning "    Cannot check critical objects for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
     return @{
         DsHeuristics             = $dsHeuristics
         DenyUnauthenticatedBind  = $denyUnauthBind
@@ -530,6 +767,12 @@ function Get-MATISecurityConfig {
         PwdNeverExpiresAll   = @($pwdNeverExpiresAll)
         SCRILRotation        = @($scrilRotation)
         GMSAAccounts         = @($gmsaAccounts)
+        MSAAccounts          = @($msaAccounts)
+        ClusterAccounts      = @($clusterAccounts)
+        TrustAccounts        = @($trustAccounts)
+        GroupLoops           = @($groupLoops)
+        DangerousDisplaySpecifiers = @($dangerousDisplaySpecifiers)
+        CriticalObjectsStatus = @($criticalObjectsStatus)
         AuthPolicies         = @($authPolicies)
         AuthSilos            = @($authSilos)
     }

@@ -35,7 +35,7 @@ function Get-MATIDCInfo {
                 # Get computer object for additional properties
                 $dcComputer = Get-ADComputer $dc.Name -Server $domainDns -Properties `
                     OperatingSystem, OperatingSystemVersion, PasswordLastSet, `
-                    'msDS-SupportedEncryptionTypes', WhenCreated -ErrorAction SilentlyContinue
+                    'msDS-SupportedEncryptionTypes', UserAccountControl, WhenCreated -ErrorAction SilentlyContinue
 
                 [PSCustomObject]@{
                     Name                        = $dc.Name
@@ -55,6 +55,7 @@ function Get-MATIDCInfo {
                     SupportedEncryptionTypes    = $dcComputer.'msDS-SupportedEncryptionTypes'
                     DistinguishedName           = $dc.ComputerObjectDN
                     WhenCreated                 = $dcComputer.WhenCreated
+                    UserAccountControl          = $dcComputer.UserAccountControl
                     SiteHasSubnets              = ($adSubnets.ContainsKey($dc.Site) -and $adSubnets[$dc.Site].Count -gt 0)
                     SiteSubnetCount             = if ($adSubnets.ContainsKey($dc.Site)) { $adSubnets[$dc.Site].Count } else { 0 }
                 }

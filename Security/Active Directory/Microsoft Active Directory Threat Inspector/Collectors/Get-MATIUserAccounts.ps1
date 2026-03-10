@@ -35,6 +35,9 @@ function Get-MATIUserAccounts {
                     WhenCreated           = $user.WhenCreated
                     Description           = $user.Description
                     SID                   = $user.SID.Value
+                    PrimaryGroupID        = $user.PrimaryGroupID
+                    SIDHistory            = $user.SIDHistory
+                    UserAccountControl    = $user.UserAccountControl
                     # Shadow Credentials
                     KeyCredentialLink     = $user.'msDS-KeyCredentialLink'
                 }

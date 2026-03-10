@@ -29,6 +29,8 @@ function Get-MATIDomainInfo {
                 RIDMaster             = $dom.RIDMaster
                 ParentDomain          = $dom.ParentDomain
                 ChildDomains          = $dom.ChildDomains
+                ComputersContainer    = $dom.ComputersContainer
+                UsersContainer        = $dom.UsersContainer
             }
         }
         catch {
@@ -56,6 +58,10 @@ function Get-MATIDomainInfo {
                 (Get-ADRootDSE).configurationNamingContext
             )" -Properties tombstoneLifetime -ErrorAction SilentlyContinue
         ).tombstoneLifetime
+        # AD Schema version (objectVersion on Schema container)
+        SchemaVersion       = (
+            Get-ADObject (Get-ADRootDSE).schemaNamingContext -Properties objectVersion -ErrorAction SilentlyContinue
+        ).objectVersion
     }
 
     return @{

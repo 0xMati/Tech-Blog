@@ -38,6 +38,7 @@ function Get-MATIProtocolConfig {
                     WDigestEnabled         = $null   # UseLogonCredential: 0=disabled, 1=enabled
                     CredentialGuard        = $null   # LsaCfgFlags: 0=off, 1=with lock, 2=without lock
                     RunAsPPL               = $null   # RunAsPPL: 0=off, 1=enabled
+                    KdcArmoring            = $null   # EnableCbacAndArmor: 0=off, 1=supported, 2=always
                     WinRMAccessible        = $false
                 }
 
@@ -155,6 +156,13 @@ function Get-MATIProtocolConfig {
                             $out['RunAsPPL'] = $v.RunAsPPL
                         } catch { $out['RunAsPPL'] = $null }
 
+                        # ---- KDC Kerberos Armoring (FAST) ----
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\KDC\Parameters' `
+                                -Name 'EnableCbacAndArmor' -ErrorAction SilentlyContinue
+                            $out['KdcArmoring'] = $v.EnableCbacAndArmor
+                        } catch { $out['KdcArmoring'] = $null }
+
                         return $out
                     }
 
@@ -170,6 +178,7 @@ function Get-MATIProtocolConfig {
                     $result.WDigestEnabled     = $regData['WDigest']
                     $result.CredentialGuard    = $regData['LsaCfgFlags']
                     $result.RunAsPPL           = $regData['RunAsPPL']
+                    $result.KdcArmoring        = $regData['KdcArmoring']
                 }
                 catch {
                     $errors.Add([PSCustomObject]@{

@@ -184,7 +184,7 @@
         UserProperties = @(
             'SamAccountName', 'DistinguishedName', 'Enabled', 'LastLogonTimestamp',
             'PasswordLastSet', 'PasswordNeverExpires', 'PasswordNotRequired',
-            'DoesNotRequirePreAuth', 'AdminCount', 'SIDHistory',
+            'DoesNotRequirePreAuth', 'AdminCount', 'SIDHistory', 'PrimaryGroupID',
             'ServicePrincipalName', 'UserAccountControl', 'MemberOf',
             'msDS-SupportedEncryptionTypes', 'WhenCreated', 'Description',
             'TrustedForDelegation', 'TrustedToAuthForDelegation',
@@ -200,6 +200,7 @@
             'TrustedForDelegation', 'TrustedToAuthForDelegation',
             'msDS-AllowedToDelegateTo', 'msDS-SupportedEncryptionTypes',
             'UserAccountControl', 'WhenCreated', 'Description', 'AdminCount',
+            'PrimaryGroupID',
             'msDS-AllowedToActOnBehalfOfOtherIdentity',
             'msDS-KeyCredentialLink'
         )

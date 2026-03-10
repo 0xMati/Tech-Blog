@@ -32,13 +32,15 @@ function Get-MATILegacyProtocolAudit {
 
     # --- Global accumulators ---
     $krbTotals = @{
-        TGT_AES256 = 0; TGT_AES128 = 0; TGT_RC4 = 0; TGT_Unknown = 0
-        TGS_AES256 = 0; TGS_AES128 = 0; TGS_RC4 = 0; TGS_Unknown = 0
+        TGT_AES256 = 0; TGT_AES128 = 0; TGT_RC4 = 0; TGT_Failed = 0; TGT_Other = 0
+        TGS_AES256 = 0; TGS_AES128 = 0; TGS_RC4 = 0; TGS_Failed = 0; TGS_Other = 0
     }
     $rc4TGTAccounts  = @{}
     $rc4TGSServices  = @{}
     $rc4ClientIPs    = @{}
     $rc4DCs          = @{}
+    $failedAccounts  = @{}
+    $otherEncTypes   = @{}
 
     $ntlmV1Total = 0
     $ntlmV2Total = 0
@@ -46,6 +48,12 @@ function Get-MATILegacyProtocolAudit {
     $ntlmWorkstations = @{}
     $ntlmIPs          = @{}
     $ntlmDCs          = @{}
+    $ntlmV1Accounts     = @{}
+    $ntlmV1Workstations = @{}
+    $ntlmV1IPs          = @{}
+    $ntlmV2Accounts     = @{}
+    $ntlmV2Workstations = @{}
+    $ntlmV2IPs          = @{}
 
     # ---------------------------------------------------------------
     # Remote scriptblock — executed on each DC via Invoke-Command.
@@ -58,16 +66,24 @@ function Get-MATILegacyProtocolAudit {
         $result = @{
             DC = $env:COMPUTERNAME
             # Kerberos
-            TGT_AES256 = 0; TGT_AES128 = 0; TGT_RC4 = 0; TGT_Unknown = 0
-            TGS_AES256 = 0; TGS_AES128 = 0; TGS_RC4 = 0; TGS_Unknown = 0
+            TGT_AES256 = 0; TGT_AES128 = 0; TGT_RC4 = 0; TGT_Failed = 0; TGT_Other = 0
+            TGS_AES256 = 0; TGS_AES128 = 0; TGS_RC4 = 0; TGS_Failed = 0; TGS_Other = 0
             RC4TGTAccounts = @{}
             RC4TGSServices = @{}
             RC4ClientIPs   = @{}
+            FailedAccounts = @{}
+            OtherEncTypes  = @{}
             # NTLM
             NTLMv1 = 0; NTLMv2 = 0
             NTLMAccounts     = @{}
             NTLMWorkstations = @{}
             NTLMIPs          = @{}
+            NTLMv1Accounts     = @{}
+            NTLMv1Workstations = @{}
+            NTLMv1IPs          = @{}
+            NTLMv2Accounts     = @{}
+            NTLMv2Workstations = @{}
+            NTLMv2IPs          = @{}
         }
 
         # ---------- Kerberos 4768 / 4769 ----------
@@ -80,10 +96,11 @@ function Get-MATILegacyProtocolAudit {
 
             foreach ($ev in $krbEvents) {
                 $xml = [xml]$ev.ToXml()
-                $encRaw = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TicketEncryptionType' }).'#text'
+                $encRaw  = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TicketEncryptionType' }).'#text'
                 $account = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TargetUserName' }).'#text'
                 $service = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'ServiceName' }).'#text'
                 $ip      = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'IpAddress' }).'#text'
+                $status  = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'Status' }).'#text'
                 if ($ip) { $ip = $ip -replace '::ffff:', '' }
 
                 $prefix = if ($ev.Id -eq 4768) { 'TGT' } else { 'TGS' }
@@ -106,7 +123,21 @@ function Get-MATILegacyProtocolAudit {
                             $result.RC4ClientIPs[$ip]++
                         }
                     }
-                    default { $result["${prefix}_Unknown"]++ }
+                    default {
+                        # Status 0x0 = success. Any other status = failed auth (no ticket issued, encryption type is meaningless)
+                        if ($status -and $status -ne '0x0') {
+                            $result["${prefix}_Failed"]++
+                            if ($account) {
+                                if (-not $result.FailedAccounts.ContainsKey($account)) { $result.FailedAccounts[$account] = 0 }
+                                $result.FailedAccounts[$account]++
+                            }
+                        } else {
+                            $result["${prefix}_Other"]++
+                            $encLabel = if ($encRaw) { $encRaw } else { '(empty)' }
+                            if (-not $result.OtherEncTypes.ContainsKey($encLabel)) { $result.OtherEncTypes[$encLabel] = 0 }
+                            $result.OtherEncTypes[$encLabel]++
+                        }
+                    }
                 }
             }
         } catch { }
@@ -130,21 +161,31 @@ function Get-MATILegacyProtocolAudit {
                 $ws     = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'WorkstationName' }).'#text'
                 $ip     = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'IpAddress' }).'#text'
 
-                if ($lmPkg -match 'V1|v1') { $result.NTLMv1++ }
+                $isV1 = $false
+                if ($lmPkg -match 'V1|v1') { $result.NTLMv1++; $isV1 = $true }
                 elseif ($lmPkg -match 'V2|v2') { $result.NTLMv2++ }
                 else { $result.NTLMv2++ }   # default bucket
+
+                # Per-version prefix for hashtable keys
+                $vPrefix = if ($isV1) { 'NTLMv1' } else { 'NTLMv2' }
 
                 if ($acct) {
                     if (-not $result.NTLMAccounts.ContainsKey($acct)) { $result.NTLMAccounts[$acct] = 0 }
                     $result.NTLMAccounts[$acct]++
+                    if (-not $result."${vPrefix}Accounts".ContainsKey($acct)) { $result."${vPrefix}Accounts"[$acct] = 0 }
+                    $result."${vPrefix}Accounts"[$acct]++
                 }
                 if ($ws) {
                     if (-not $result.NTLMWorkstations.ContainsKey($ws)) { $result.NTLMWorkstations[$ws] = 0 }
                     $result.NTLMWorkstations[$ws]++
+                    if (-not $result."${vPrefix}Workstations".ContainsKey($ws)) { $result."${vPrefix}Workstations"[$ws] = 0 }
+                    $result."${vPrefix}Workstations"[$ws]++
                 }
                 if ($ip) {
                     if (-not $result.NTLMIPs.ContainsKey($ip)) { $result.NTLMIPs[$ip] = 0 }
                     $result.NTLMIPs[$ip]++
+                    if (-not $result."${vPrefix}IPs".ContainsKey($ip)) { $result."${vPrefix}IPs"[$ip] = 0 }
+                    $result."${vPrefix}IPs"[$ip]++
                 }
             }
         } catch { }
@@ -171,11 +212,15 @@ function Get-MATILegacyProtocolAudit {
         Write-Host "    [!] No DCs found — skipping event log audit" -ForegroundColor Yellow
         return @{
             Kerberos   = @{ Totals = $krbTotals; TotalTGT = 0; TotalTGS = 0; TotalAll = 0
-                            AESCount = 0; RC4Count = 0; AESPercent = 0; RC4Percent = 0
-                            TopRC4TGTAccounts = @(); TopRC4TGSServices = @(); TopRC4ClientIPs = @(); TopRC4DCs = @() }
+                            AESCount = 0; RC4Count = 0; FailedCount = 0; OtherCount = 0
+                            AESPercent = 0; RC4Percent = 0; FailedPercent = 0; OtherPercent = 0
+                            TopRC4TGTAccounts = @(); TopRC4TGSServices = @(); TopRC4ClientIPs = @(); TopRC4DCs = @()
+                            TopFailedAccounts = @(); OtherEncTypes = @() }
             NTLM       = @{ TotalEvents = 0; NTLMv1Count = 0; NTLMv2Count = 0
                             NTLMv1Percent = 0; NTLMv2Percent = 0
-                            TopAccounts = @(); TopWorkstations = @(); TopIPs = @(); TopDCs = @() }
+                            TopAccounts = @(); TopWorkstations = @(); TopIPs = @(); TopDCs = @()
+                            TopV1Accounts = @(); TopV1Workstations = @(); TopV1IPs = @()
+                            TopV2Accounts = @(); TopV2Workstations = @(); TopV2IPs = @() }
             AuditHours = $hours
             Errors     = @($errors)
         }
@@ -223,8 +268,8 @@ function Get-MATILegacyProtocolAudit {
         $processedDCs[$dcHost] = $true
 
         # --- Kerberos aggregation ---
-        foreach ($k in @('TGT_AES256','TGT_AES128','TGT_RC4','TGT_Unknown',
-                         'TGS_AES256','TGS_AES128','TGS_RC4','TGS_Unknown')) {
+        foreach ($k in @('TGT_AES256','TGT_AES128','TGT_RC4','TGT_Failed','TGT_Other',
+                         'TGS_AES256','TGS_AES128','TGS_RC4','TGS_Failed','TGS_Other')) {
             $krbTotals[$k] += [int]$dcResult[$k]
         }
         if ($dcResult.RC4TGTAccounts) {
@@ -247,6 +292,18 @@ function Get-MATILegacyProtocolAudit {
         }
         $dcRc4 = [int]$dcResult['TGT_RC4'] + [int]$dcResult['TGS_RC4']
         if ($dcRc4 -gt 0) { $rc4DCs[$dcHost] = $dcRc4 }
+        if ($dcResult.FailedAccounts) {
+            foreach ($entry in $dcResult.FailedAccounts.GetEnumerator()) {
+                if (-not $failedAccounts.ContainsKey($entry.Key)) { $failedAccounts[$entry.Key] = 0 }
+                $failedAccounts[$entry.Key] += $entry.Value
+            }
+        }
+        if ($dcResult.OtherEncTypes) {
+            foreach ($entry in $dcResult.OtherEncTypes.GetEnumerator()) {
+                if (-not $otherEncTypes.ContainsKey($entry.Key)) { $otherEncTypes[$entry.Key] = 0 }
+                $otherEncTypes[$entry.Key] += $entry.Value
+            }
+        }
 
         # --- NTLM aggregation ---
         $ntlmV1Total += [int]$dcResult.NTLMv1
@@ -269,12 +326,50 @@ function Get-MATILegacyProtocolAudit {
                 $ntlmIPs[$entry.Key] += $entry.Value
             }
         }
+        # Per-version aggregation (v1)
+        if ($dcResult.NTLMv1Accounts) {
+            foreach ($entry in $dcResult.NTLMv1Accounts.GetEnumerator()) {
+                if (-not $ntlmV1Accounts.ContainsKey($entry.Key)) { $ntlmV1Accounts[$entry.Key] = 0 }
+                $ntlmV1Accounts[$entry.Key] += $entry.Value
+            }
+        }
+        if ($dcResult.NTLMv1Workstations) {
+            foreach ($entry in $dcResult.NTLMv1Workstations.GetEnumerator()) {
+                if (-not $ntlmV1Workstations.ContainsKey($entry.Key)) { $ntlmV1Workstations[$entry.Key] = 0 }
+                $ntlmV1Workstations[$entry.Key] += $entry.Value
+            }
+        }
+        if ($dcResult.NTLMv1IPs) {
+            foreach ($entry in $dcResult.NTLMv1IPs.GetEnumerator()) {
+                if (-not $ntlmV1IPs.ContainsKey($entry.Key)) { $ntlmV1IPs[$entry.Key] = 0 }
+                $ntlmV1IPs[$entry.Key] += $entry.Value
+            }
+        }
+        # Per-version aggregation (v2)
+        if ($dcResult.NTLMv2Accounts) {
+            foreach ($entry in $dcResult.NTLMv2Accounts.GetEnumerator()) {
+                if (-not $ntlmV2Accounts.ContainsKey($entry.Key)) { $ntlmV2Accounts[$entry.Key] = 0 }
+                $ntlmV2Accounts[$entry.Key] += $entry.Value
+            }
+        }
+        if ($dcResult.NTLMv2Workstations) {
+            foreach ($entry in $dcResult.NTLMv2Workstations.GetEnumerator()) {
+                if (-not $ntlmV2Workstations.ContainsKey($entry.Key)) { $ntlmV2Workstations[$entry.Key] = 0 }
+                $ntlmV2Workstations[$entry.Key] += $entry.Value
+            }
+        }
+        if ($dcResult.NTLMv2IPs) {
+            foreach ($entry in $dcResult.NTLMv2IPs.GetEnumerator()) {
+                if (-not $ntlmV2IPs.ContainsKey($entry.Key)) { $ntlmV2IPs[$entry.Key] = 0 }
+                $ntlmV2IPs[$entry.Key] += $entry.Value
+            }
+        }
         $dcNtlm = [int]$dcResult.NTLMv1 + [int]$dcResult.NTLMv2
         if ($dcNtlm -gt 0) { $ntlmDCs[$dcHost] = $dcNtlm }
 
         # Per-DC status line
-        $kTotal = [int]$dcResult.TGT_AES256 + [int]$dcResult.TGT_AES128 + [int]$dcResult.TGT_RC4 + [int]$dcResult.TGT_Unknown +
-                  [int]$dcResult.TGS_AES256 + [int]$dcResult.TGS_AES128 + [int]$dcResult.TGS_RC4 + [int]$dcResult.TGS_Unknown
+        $kTotal = [int]$dcResult.TGT_AES256 + [int]$dcResult.TGT_AES128 + [int]$dcResult.TGT_RC4 + [int]$dcResult.TGT_Failed + [int]$dcResult.TGT_Other +
+                  [int]$dcResult.TGS_AES256 + [int]$dcResult.TGS_AES128 + [int]$dcResult.TGS_RC4 + [int]$dcResult.TGS_Failed + [int]$dcResult.TGS_Other
         $nTotal = [int]$dcResult.NTLMv1 + [int]$dcResult.NTLMv2
         Write-Host "    [+] $dcHost — Krb: $kTotal, NTLM: $nTotal" -ForegroundColor Green
     }
@@ -305,14 +400,18 @@ function Get-MATILegacyProtocolAudit {
     # ---------------------------------------------------------------
     # Build Kerberos summary
     # ---------------------------------------------------------------
-    $totalTGT = $krbTotals.TGT_AES256 + $krbTotals.TGT_AES128 + $krbTotals.TGT_RC4 + $krbTotals.TGT_Unknown
-    $totalTGS = $krbTotals.TGS_AES256 + $krbTotals.TGS_AES128 + $krbTotals.TGS_RC4 + $krbTotals.TGS_Unknown
+    $totalTGT = $krbTotals.TGT_AES256 + $krbTotals.TGT_AES128 + $krbTotals.TGT_RC4 + $krbTotals.TGT_Failed + $krbTotals.TGT_Other
+    $totalTGS = $krbTotals.TGS_AES256 + $krbTotals.TGS_AES128 + $krbTotals.TGS_RC4 + $krbTotals.TGS_Failed + $krbTotals.TGS_Other
     $totalAES = $krbTotals.TGT_AES256 + $krbTotals.TGT_AES128 + $krbTotals.TGS_AES256 + $krbTotals.TGS_AES128
     $totalRC4 = $krbTotals.TGT_RC4 + $krbTotals.TGS_RC4
+    $totalFailed = $krbTotals.TGT_Failed + $krbTotals.TGS_Failed
+    $totalOther  = $krbTotals.TGT_Other + $krbTotals.TGS_Other
     $totalAll = $totalTGT + $totalTGS
 
     $aesPercent = if ($totalAll -gt 0) { [math]::Round(100 * $totalAES / $totalAll, 1) } else { 0 }
     $rc4Percent = if ($totalAll -gt 0) { [math]::Round(100 * $totalRC4 / $totalAll, 1) } else { 0 }
+    $failedPercent = if ($totalAll -gt 0) { [math]::Round(100 * $totalFailed / $totalAll, 1) } else { 0 }
+    $otherPercent  = if ($totalAll -gt 0) { [math]::Round(100 * $totalOther / $totalAll, 1) } else { 0 }
 
     $kerberos = @{
         Totals     = $krbTotals
@@ -321,12 +420,18 @@ function Get-MATILegacyProtocolAudit {
         TotalAll   = $totalAll
         AESCount   = $totalAES
         RC4Count   = $totalRC4
+        FailedCount  = $totalFailed
+        OtherCount   = $totalOther
         AESPercent = $aesPercent
         RC4Percent = $rc4Percent
+        FailedPercent = $failedPercent
+        OtherPercent  = $otherPercent
         TopRC4TGTAccounts = @(ConvertTo-TopN $rc4TGTAccounts $topN)
         TopRC4TGSServices = @(ConvertTo-TopN $rc4TGSServices $topN)
         TopRC4ClientIPs   = @(ConvertTo-TopN $rc4ClientIPs   $topN)
         TopRC4DCs         = @(ConvertTo-TopN $rc4DCs          $topN)
+        TopFailedAccounts = @(ConvertTo-TopN $failedAccounts $topN)
+        OtherEncTypes     = @(ConvertTo-TopN $otherEncTypes  $topN)
     }
 
     # ---------------------------------------------------------------
@@ -346,6 +451,12 @@ function Get-MATILegacyProtocolAudit {
         TopWorkstations  = @(ConvertTo-TopN $ntlmWorkstations  $topN)
         TopIPs           = @(ConvertTo-TopN $ntlmIPs           $topN)
         TopDCs           = @(ConvertTo-TopN $ntlmDCs           $topN)
+        TopV1Accounts      = @(ConvertTo-TopN $ntlmV1Accounts      $topN)
+        TopV1Workstations  = @(ConvertTo-TopN $ntlmV1Workstations  $topN)
+        TopV1IPs           = @(ConvertTo-TopN $ntlmV1IPs           $topN)
+        TopV2Accounts      = @(ConvertTo-TopN $ntlmV2Accounts      $topN)
+        TopV2Workstations  = @(ConvertTo-TopN $ntlmV2Workstations  $topN)
+        TopV2IPs           = @(ConvertTo-TopN $ntlmV2IPs           $topN)
     }
 
     # ---------------------------------------------------------------
