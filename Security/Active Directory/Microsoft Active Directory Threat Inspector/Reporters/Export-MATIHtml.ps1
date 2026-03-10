@@ -46,6 +46,7 @@ function Export-MATIHtml {
     $categoryOrder = @(
         'Config'
         'Hardening'
+        'GPO'
         'Kerberos'
         'PasswordPolicy'
         'PrivilegedAccounts'
