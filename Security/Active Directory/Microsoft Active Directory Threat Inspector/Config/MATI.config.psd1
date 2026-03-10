@@ -9,7 +9,7 @@
     # ----------------------------------------------------------------
     General = @{
         ToolName    = 'MATI - Microsoft Active Directory Threat Inspector'
-        Version     = '2.0.0'
+        Version     = '2.1.0'
         Author      = 'mamotron'
         # Maximum parallel jobs for collectors (0 = sequential)
         MaxParallel = 0
@@ -189,7 +189,8 @@
             'msDS-SupportedEncryptionTypes', 'WhenCreated', 'Description',
             'TrustedForDelegation', 'TrustedToAuthForDelegation',
             'msDS-AllowedToDelegateTo',
-            'msDS-KeyCredentialLink'
+            'msDS-KeyCredentialLink',
+            'mail', 'userPassword', 'unixUserPassword'
         )
 
         # Properties to request via Get-ADComputer

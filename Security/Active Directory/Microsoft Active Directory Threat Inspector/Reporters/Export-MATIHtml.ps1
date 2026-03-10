@@ -65,43 +65,57 @@ function Export-MATIHtml {
     foreach ($group in $grouped) {
         $categoryBlocks += "<details class=`"category-section`" open>`n"
         $categoryBlocks += "<summary class=`"category-header`">$($group.Name) <span class=`"badge`">$($group.Count)</span></summary>`n"
-        $categoryBlocks += "<table class=`"findings-table`">`n"
-        $categoryBlocks += "<thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Description</th><th>Object</th><th>Domain</th><th>Remediation</th><th>Details</th><th>References</th></tr></thead>`n"
-        $categoryBlocks += "<tbody>`n"
 
-        foreach ($f in ($group.Group | Sort-Object @{Expression={
-            switch ($_.Severity) { 'Critical'{0} 'High'{1} 'Medium'{2} 'Low'{3} 'Informational'{4} }
-        }})) {
-            $severityClass = $f.Severity.ToLower()
-            $detailsStr = ($f.Details.GetEnumerator() | ForEach-Object { "<b>$($_.Key)</b>: $($_.Value)" }) -join '<br>'
-            $escapedDesc = [System.Web.HttpUtility]::HtmlEncode($f.Description)
-            $escapedRem  = [System.Web.HttpUtility]::HtmlEncode($f.Remediation)
-            $escapedDN   = [System.Web.HttpUtility]::HtmlEncode($f.ObjectDN)
+        # Group findings by ID within each category, sorted by severity then ID
+        $byId = $group.Group | Group-Object Id | Sort-Object @{Expression={
+            $sev = $_.Group[0].Severity
+            switch ($sev) { 'Critical'{0} 'High'{1} 'Medium'{2} 'Low'{3} 'Informational'{4} }
+        }}, Name
 
-            $categoryBlocks += "<tr class=`"severity-$severityClass`">"
-            $categoryBlocks += "<td>$($f.Id)</td>"
-            $categoryBlocks += "<td><span class=`"severity-badge $severityClass`">$($f.Severity)</span></td>"
-            $categoryBlocks += "<td>$($f.Title)</td>"
-            $categoryBlocks += "<td>$escapedDesc</td>"
-            $categoryBlocks += "<td class=`"object-dn`">$escapedDN</td>"
-            $categoryBlocks += "<td>$($f.Domain)</td>"
-            $categoryBlocks += "<td>$escapedRem</td>"
-            $categoryBlocks += "<td>$detailsStr</td>"
+        foreach ($idGroup in $byId) {
+            $firstFinding = $idGroup.Group[0]
+            $severityClass = $firstFinding.Severity.ToLower()
+            $idCount = $idGroup.Count
+            $categoryBlocks += "<details class=`"finding-section`" open>`n"
+            $categoryBlocks += "<summary class=`"finding-header`"><span class=`"severity-badge $severityClass`">$($firstFinding.Severity)</span> $($idGroup.Name) &mdash; $($firstFinding.Title) <span class=`"badge`">$idCount</span></summary>`n"
+            $categoryBlocks += "<table class=`"findings-table`">`n"
+            $categoryBlocks += "<thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Description</th><th>Object</th><th>Domain</th><th>Remediation</th><th>Details</th><th>References</th></tr></thead>`n"
+            $categoryBlocks += "<tbody>`n"
 
-            # References
-            $refsStr = ''
-            if ($f.References -and $f.References.Count -gt 0) {
-                $refsStr = ($f.References | ForEach-Object {
-                    $escaped = [System.Web.HttpUtility]::HtmlEncode($_)
-                    "<a href=`"$escaped`" target=`"_blank`" rel=`"noopener`">$escaped</a>"
-                }) -join '<br>'
+            foreach ($f in $idGroup.Group) {
+                $fSevClass = $f.Severity.ToLower()
+                $detailsStr = ($f.Details.GetEnumerator() | ForEach-Object { "<b>$($_.Key)</b>: $($_.Value)" }) -join '<br>'
+                $escapedDesc = [System.Web.HttpUtility]::HtmlEncode($f.Description)
+                $escapedRem  = [System.Web.HttpUtility]::HtmlEncode($f.Remediation)
+                $escapedDN   = [System.Web.HttpUtility]::HtmlEncode($f.ObjectDN)
+
+                $categoryBlocks += "<tr class=`"severity-$fSevClass`">"
+                $categoryBlocks += "<td>$($f.Id)</td>"
+                $categoryBlocks += "<td><span class=`"severity-badge $fSevClass`">$($f.Severity)</span></td>"
+                $categoryBlocks += "<td>$($f.Title)</td>"
+                $categoryBlocks += "<td>$escapedDesc</td>"
+                $categoryBlocks += "<td class=`"object-dn`">$escapedDN</td>"
+                $categoryBlocks += "<td>$($f.Domain)</td>"
+                $categoryBlocks += "<td>$escapedRem</td>"
+                $categoryBlocks += "<td>$detailsStr</td>"
+
+                # References
+                $refsStr = ''
+                if ($f.References -and $f.References.Count -gt 0) {
+                    $refsStr = ($f.References | ForEach-Object {
+                        $escaped = [System.Web.HttpUtility]::HtmlEncode($_)
+                        "<a href=`"$escaped`" target=`"_blank`" rel=`"noopener`">$escaped</a>"
+                    }) -join '<br>'
+                }
+                $categoryBlocks += "<td class=`"refs-cell`">$refsStr</td>"
+
+                $categoryBlocks += "</tr>`n"
             }
-            $categoryBlocks += "<td class=`"refs-cell`">$refsStr</td>"
 
-            $categoryBlocks += "</tr>`n"
+            $categoryBlocks += "</tbody></table>`n"
+            $categoryBlocks += "</details>`n"
         }
 
-        $categoryBlocks += "</tbody></table>`n"
         $categoryBlocks += "</details>`n"
     }
 

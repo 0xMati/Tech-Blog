@@ -228,6 +228,39 @@
             margin-bottom: 0.5rem;
         }
 
+        .finding-section {
+            margin: 0.3rem 0 0.6rem 0;
+            border-left: 3px solid var(--border);
+            padding-left: 0.75rem;
+        }
+
+        .finding-header {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.35rem 0;
+            user-select: none;
+        }
+
+        .finding-header::-webkit-details-marker { display: none; }
+        .finding-header::marker { display: none; content: ''; }
+
+        .finding-header::before {
+            content: '\25BC';
+            font-size: 0.6rem;
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+
+        .finding-section:not([open]) .finding-header::before {
+            transform: rotate(-90deg);
+        }
+
         .badge {
             background: var(--bg-table);
             color: var(--text-secondary);
@@ -622,8 +655,8 @@
     <hr style="border-color: var(--border); margin: 2rem 0;">
 
     <div class="section-toolbar">
-        <button onclick="document.querySelectorAll('.category-section').forEach(d=>d.open=true)">&#9660; Expand All</button>
-        <button onclick="document.querySelectorAll('.category-section').forEach(d=>d.open=false)">&#9654; Collapse All</button>
+        <button onclick="document.querySelectorAll('.category-section').forEach(d=>d.open=true);document.querySelectorAll('.finding-section').forEach(d=>d.open=true)">&#9660; Expand All</button>
+        <button onclick="document.querySelectorAll('.category-section').forEach(d=>d.open=false);document.querySelectorAll('.finding-section').forEach(d=>d.open=false)">&#9654; Collapse All</button>
     </div>
 
     {{CATEGORY_BLOCKS}}

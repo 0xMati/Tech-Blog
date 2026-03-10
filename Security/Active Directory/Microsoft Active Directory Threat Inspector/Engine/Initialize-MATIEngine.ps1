@@ -155,7 +155,8 @@ function Initialize-MATIEngine {
     # ------------------------------------------------------------------
     $timestamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
     $outputBase = Join-Path $RootPath 'Outputs'
-    $outputRoot = Join-Path $outputBase "Output_$timestamp"
+    $modeFolder = if ($global:MATIMode -eq 'TieringModel') { 'TieringModel' } else { 'ThreatDetection' }
+    $outputRoot = Join-Path $outputBase "$modeFolder\Output_$timestamp"
     $csvDir     = Join-Path $outputRoot 'CSV'
     $htmlDir    = Join-Path $outputRoot 'HTML'
     $jsonDir    = Join-Path $outputRoot 'JSON'

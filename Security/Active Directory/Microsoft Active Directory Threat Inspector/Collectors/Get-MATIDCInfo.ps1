@@ -37,6 +37,20 @@ function Get-MATIDCInfo {
                     OperatingSystem, OperatingSystemVersion, PasswordLastSet, `
                     'msDS-SupportedEncryptionTypes', UserAccountControl, WhenCreated -ErrorAction SilentlyContinue
 
+                # Read SMBv1 and RefusePasswordChange registry settings
+                $smb1Enabled = $null
+                $refusePasswordChange = $null
+                try {
+                    $smbReg = Invoke-Command -ComputerName $dc.HostName -ScriptBlock {
+                        $smb1 = (Get-SmbServerConfiguration -ErrorAction SilentlyContinue).EnableSMB1Protocol
+                        $refuse = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters' `
+                            -Name 'RefusePasswordChange' -ErrorAction SilentlyContinue).RefusePasswordChange
+                        @{ SMB1 = $smb1; Refuse = $refuse }
+                    } -ErrorAction SilentlyContinue
+                    $smb1Enabled = $smbReg.SMB1
+                    $refusePasswordChange = $smbReg.Refuse
+                } catch { }
+
                 [PSCustomObject]@{
                     Name                        = $dc.Name
                     HostName                    = $dc.HostName
@@ -58,6 +72,8 @@ function Get-MATIDCInfo {
                     UserAccountControl          = $dcComputer.UserAccountControl
                     SiteHasSubnets              = ($adSubnets.ContainsKey($dc.Site) -and $adSubnets[$dc.Site].Count -gt 0)
                     SiteSubnetCount             = if ($adSubnets.ContainsKey($dc.Site)) { $adSubnets[$dc.Site].Count } else { 0 }
+                    SMB1Enabled                 = $smb1Enabled
+                    RefusePasswordChange        = $refusePasswordChange
                 }
             }
         }

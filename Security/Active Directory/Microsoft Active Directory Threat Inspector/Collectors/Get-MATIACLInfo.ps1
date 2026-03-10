@@ -435,6 +435,157 @@ function Get-MATIACLInfo {
         }
     }
 
+    # ---- Exchange-specific ACEs on AdminSDHolder and Domain Root ----
+    # Tags any ACE where the identity matches a known Exchange group
+    $exchangeACEs = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            # Build a set of Exchange-related group names and SIDs
+            $exchangeSIDs = @{}
+            $exchangeGroupNames = @(
+                'Exchange Windows Permissions', 'Exchange Trusted Subsystem',
+                'Exchange Servers', 'Organization Management'
+            )
+            foreach ($gn in $exchangeGroupNames) {
+                try {
+                    $g = Get-ADGroup -Filter "Name -eq '$gn'" -Server $domainDns -Properties objectSid -ErrorAction SilentlyContinue
+                    if ($g) { $exchangeSIDs[$g.SID.Value] = $gn }
+                } catch { }
+            }
+            if ($exchangeSIDs.Count -eq 0) { continue }
+
+            # Check Domain Root ACL for Exchange WriteDACL
+            $domainRootACL = Get-RemoteADACL -DN $domainDN -Server $domainDns
+            foreach ($ace in $domainRootACL.Access) {
+                if ($ace.AccessControlType -ne 'Allow') { continue }
+                $sidStr = try { $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { '' }
+                if (-not $exchangeSIDs.ContainsKey($sidStr)) { continue }
+                $rights = $ace.ActiveDirectoryRights.ToString()
+                $isDangerous = $rights -match 'GenericAll|WriteDacl|WriteOwner|GenericWrite|AllExtendedRights'
+                if ($isDangerous) {
+                    $exchangeACEs.Add([PSCustomObject]@{
+                        TargetDN    = $domainDN
+                        TargetType  = 'DomainRoot'
+                        IdentityRef = $exchangeSIDs[$sidStr]
+                        IdentitySID = $sidStr
+                        Right       = ($rights -split ',' | Where-Object { $_ -match 'GenericAll|WriteDacl|WriteOwner|GenericWrite|AllExtendedRights' }) -join ', '
+                        Domain      = $domainDns
+                    })
+                }
+            }
+
+            # Check AdminSDHolder ACL for Exchange
+            $adminSDHolderDN = "CN=AdminSDHolder,CN=System,$domainDN"
+            try {
+                $asdACL = Get-RemoteADACL -DN $adminSDHolderDN -Server $domainDns
+                foreach ($ace in $asdACL.Access) {
+                    if ($ace.AccessControlType -ne 'Allow') { continue }
+                    $sidStr = try { $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { '' }
+                    if (-not $exchangeSIDs.ContainsKey($sidStr)) { continue }
+                    $rights = $ace.ActiveDirectoryRights.ToString()
+                    $isDangerous = $rights -match 'GenericAll|WriteDacl|WriteOwner|GenericWrite|AllExtendedRights'
+                    if ($isDangerous) {
+                        $exchangeACEs.Add([PSCustomObject]@{
+                            TargetDN    = $adminSDHolderDN
+                            TargetType  = 'AdminSDHolder'
+                            IdentityRef = $exchangeSIDs[$sidStr]
+                            IdentitySID = $sidStr
+                            Right       = ($rights -split ',' | Where-Object { $_ -match 'GenericAll|WriteDacl|WriteOwner|GenericWrite|AllExtendedRights' }) -join ', '
+                            Domain      = $domainDns
+                        })
+                    }
+                }
+            } catch { }
+        } catch {
+            Write-Warning "    Cannot check Exchange ACLs for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Key Admins group dangerous permissions ----
+    $keyAdminACEs = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            # Key Admins = domSID-526, Enterprise Key Admins = rootDomSID-527
+            $keyAdminSIDs = @{}
+            foreach ($rid in @('526', '527')) {
+                $testSID = "$domSID-$rid"
+                try {
+                    $g = Get-ADGroup -Identity $testSID -Server $domainDns -ErrorAction SilentlyContinue
+                    if ($g) { $keyAdminSIDs[$testSID] = $g.Name }
+                } catch { }
+            }
+            if ($keyAdminSIDs.Count -eq 0) { continue }
+
+            # Check domain root for Key Admin ACEs with msDS-KeyCredentialLink write
+            $acl = Get-RemoteADACL -DN $domainDN -Server $domainDns
+            foreach ($ace in $acl.Access) {
+                if ($ace.AccessControlType -ne 'Allow') { continue }
+                $sidStr = try { $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { '' }
+                if (-not $keyAdminSIDs.ContainsKey($sidStr)) { continue }
+                $rights = $ace.ActiveDirectoryRights.ToString()
+                # GenericAll or WriteProperty for msDS-KeyCredentialLink
+                if ($rights -match 'GenericAll|GenericWrite|WriteProperty|WriteDacl|WriteOwner') {
+                    $keyAdminACEs.Add([PSCustomObject]@{
+                        TargetDN    = $domainDN
+                        IdentityRef = $keyAdminSIDs[$sidStr]
+                        IdentitySID = $sidStr
+                        Right       = $rights
+                        Domain      = $domainDns
+                    })
+                }
+            }
+        } catch {
+            Write-Warning "    Cannot check Key Admin ACLs for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- DNS Zone CreateChild by Authenticated Users ----
+    $dnsZoneCreateChild = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $authUsersSID = 'S-1-5-11'  # Authenticated Users
+    $everyoneSID  = 'S-1-1-0'   # Everyone
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            $dnsPartitions = @(
+                "CN=MicrosoftDNS,DC=DomainDnsZones,$domainDN"
+            )
+            foreach ($dnsBaseDN in $dnsPartitions) {
+                try {
+                    $zones = Get-ADObject -SearchBase $dnsBaseDN -Filter { objectClass -eq 'dnsZone' } `
+                        -Server $domainDns -ErrorAction SilentlyContinue
+                    foreach ($zone in @($zones)) {
+                        if ($null -eq $zone) { continue }
+                        try {
+                            $acl = Get-RemoteADACL -DN $zone.DistinguishedName -Server $domainDns
+                            foreach ($ace in $acl.Access) {
+                                if ($ace.AccessControlType -ne 'Allow') { continue }
+                                $sidStr = try { $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { '' }
+                                if ($sidStr -ne $authUsersSID -and $sidStr -ne $everyoneSID) { continue }
+                                $rights = $ace.ActiveDirectoryRights.ToString()
+                                if ($rights -match 'CreateChild|GenericAll|GenericWrite') {
+                                    $dnsZoneCreateChild.Add([PSCustomObject]@{
+                                        ZoneDN      = $zone.DistinguishedName
+                                        ZoneName    = $zone.Name
+                                        IdentitySID = $sidStr
+                                        IdentityRef = if ($sidStr -eq $authUsersSID) { 'Authenticated Users' } else { 'Everyone' }
+                                        Right       = $rights
+                                        Domain      = $domainDns
+                                    })
+                                }
+                            }
+                        } catch { }
+                    }
+                } catch { }
+            }
+        } catch {
+            Write-Warning "    Cannot check DNS zone ACLs for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
     return @{
         AdminSDHolder     = @($adminSDHolderACEs)
         DomainRoots       = @($domainRootACEs)
@@ -447,5 +598,8 @@ function Get-MATIACLInfo {
         DPAPIObjects      = @($dpapiACEs)
         DNSObjects        = @($dnsACEs)
         GPOPrivilegedOUs  = @($gpoPrivACEs)
+        ExchangeACEs      = @($exchangeACEs)
+        KeyAdminACEs      = @($keyAdminACEs)
+        DnsZoneCreateChild = @($dnsZoneCreateChild)
     }
 }

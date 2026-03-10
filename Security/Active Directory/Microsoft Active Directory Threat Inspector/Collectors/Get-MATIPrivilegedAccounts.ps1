@@ -137,6 +137,7 @@ function Get-MATIPrivilegedAccounts {
                             SID                   = $user.SID.Value
                             TrustedForDelegation  = $user.TrustedForDelegation
                             UserAccountControl    = $user.UserAccountControl
+                            mail                  = $user.mail
                         })
                     }
                     catch {

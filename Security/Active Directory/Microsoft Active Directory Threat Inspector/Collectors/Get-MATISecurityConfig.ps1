@@ -747,6 +747,128 @@ function Get-MATISecurityConfig {
         }
     }
 
+    # ---- Azure AD Seamless SSO account (AZUREADSSOACC$) ----
+    $azureADSSOAccounts = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $ssoAcct = Get-ADComputer -Filter 'SamAccountName -eq "AZUREADSSOACC$"' -Server $domainDns `
+                -Properties PasswordLastSet, WhenCreated, Enabled -ErrorAction SilentlyContinue
+            foreach ($a in @($ssoAcct)) {
+                if ($null -eq $a) { continue }
+                $azureADSSOAccounts.Add([PSCustomObject]@{
+                    Domain            = $domainDns
+                    SamAccountName    = $a.SamAccountName
+                    DistinguishedName = $a.DistinguishedName
+                    PasswordLastSet   = $a.PasswordLastSet
+                    PasswordAgeDays   = if ($a.PasswordLastSet) { [math]::Round(((Get-Date) - $a.PasswordLastSet).TotalDays) } else { 9999 }
+                    Enabled           = $a.Enabled
+                    WhenCreated       = $a.WhenCreated
+                })
+            }
+        } catch {
+            Write-Warning "    Cannot check Azure AD SSO account for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Java Schema Extension (RFC 2713) ----
+    $javaSchemaDetected = $false
+    try {
+        $javaClass = Get-ADObject -SearchBase $rootDSE.schemaNamingContext `
+            -Filter 'cn -eq "javaSerializedObject"' -ErrorAction SilentlyContinue
+        $javaSchemaDetected = ($null -ne $javaClass)
+    } catch { }
+
+    # ---- AD Backup Metadata ----
+    $backupMetadata = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
+            $lastBackup = $null
+            try {
+                $domHead = Get-ADObject -Identity $domainDN -Server $domainDns `
+                    -Properties 'msDS-LastBackupRestoreTime' -ErrorAction Stop
+                $lastBackup = $domHead.'msDS-LastBackupRestoreTime'
+            } catch {
+                # Attribute may not exist in schema — silently ignore
+            }
+
+            $backupMetadata.Add([PSCustomObject]@{
+                Domain                  = $domainDns
+                LastBackupRestoreTime   = $lastBackup
+                BackupAgeDays           = if ($lastBackup) { [math]::Round(((Get-Date) - $lastBackup).TotalDays) } else { -1 }
+            })
+        } catch {
+            Write-Warning "    Cannot check backup metadata for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Migration-mode accounts (accounts ending with $$$) ----
+    $migrationAccounts = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $migAccts = Get-ADUser -Filter 'SamAccountName -like "*$$$"' -Server $domainDns `
+                -Properties Enabled, PasswordLastSet, WhenCreated -ErrorAction SilentlyContinue
+            foreach ($a in @($migAccts)) {
+                if ($null -eq $a) { continue }
+                $migrationAccounts.Add([PSCustomObject]@{
+                    Domain            = $domainDns
+                    SamAccountName    = $a.SamAccountName
+                    DistinguishedName = $a.DistinguishedName
+                    Enabled           = $a.Enabled
+                    PasswordLastSet   = $a.PasswordLastSet
+                    WhenCreated       = $a.WhenCreated
+                })
+            }
+        } catch {
+            Write-Warning "    Cannot check migration accounts for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Unix/LDAP password attributes ----
+    $unixPwdAccounts = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($domainDns in $forest.Domains) {
+        try {
+            $upwdAccts = Get-ADUser -LDAPFilter '(|(userPassword=*)(unixUserPassword=*))' -Server $domainDns `
+                -Properties userPassword, unixUserPassword, Enabled -ErrorAction SilentlyContinue
+            foreach ($a in @($upwdAccts)) {
+                if ($null -eq $a) { continue }
+                $unixPwdAccounts.Add([PSCustomObject]@{
+                    Domain            = $domainDns
+                    SamAccountName    = $a.SamAccountName
+                    DistinguishedName = $a.DistinguishedName
+                    Enabled           = $a.Enabled
+                    HasUserPassword   = ($null -ne $a.userPassword -and $a.userPassword.Length -gt 0)
+                    HasUnixPassword   = ($null -ne $a.unixUserPassword -and $a.unixUserPassword.Length -gt 0)
+                })
+            }
+        } catch {
+            Write-Warning "    Cannot check unix password attributes for $domainDns : $($_.Exception.Message)"
+        }
+    }
+
+    # ---- Schema possSuperiors risk (S-ADRegistrationSchema) ----
+    $schemaClassRisks = [System.Collections.Generic.List[PSCustomObject]]::new()
+    try {
+        # Check if 'computer' class can be created in unexpected containers
+        $computerClass = Get-ADObject -SearchBase $rootDSE.schemaNamingContext `
+            -Filter 'cn -eq "computer"' -Properties possSuperiors, systemPossSuperiors -ErrorAction SilentlyContinue
+        if ($computerClass) {
+            $allSuper = @($computerClass.possSuperiors) + @($computerClass.systemPossSuperiors)
+            # Expected parents for computer objects
+            $expectedParents = @('organizationalUnit', 'container', 'domainDNS', 'builtinDomain')
+            foreach ($sup in $allSuper) {
+                if ($null -eq $sup -or $sup -in $expectedParents) { continue }
+                $schemaClassRisks.Add([PSCustomObject]@{
+                    ClassName       = 'computer'
+                    PossSuperior    = $sup
+                    Risk            = 'Computer objects can be created inside unexpected parent class'
+                })
+            }
+        }
+    } catch {
+        Write-Warning "    Cannot check schema possSuperiors: $($_.Exception.Message)"
+    }
+
     return @{
         DsHeuristics             = $dsHeuristics
         DenyUnauthenticatedBind  = $denyUnauthBind
@@ -775,5 +897,11 @@ function Get-MATISecurityConfig {
         CriticalObjectsStatus = @($criticalObjectsStatus)
         AuthPolicies         = @($authPolicies)
         AuthSilos            = @($authSilos)
+        AzureADSSOAccounts   = @($azureADSSOAccounts)
+        JavaSchemaDetected   = $javaSchemaDetected
+        BackupMetadata       = @($backupMetadata)
+        MigrationAccounts    = @($migrationAccounts)
+        UnixPwdAccounts      = @($unixPwdAccounts)
+        SchemaClassRisks     = @($schemaClassRisks)
     }
 }

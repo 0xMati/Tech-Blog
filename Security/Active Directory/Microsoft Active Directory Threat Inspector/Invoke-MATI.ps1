@@ -57,6 +57,45 @@ Write-Host "    v$matiVersion | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Fore
 Write-Host "    $('-' * 50)" -ForegroundColor DarkGray
 
 # ==================================================================
+# 0.05 Main Menu
+# ==================================================================
+Write-Host ""
+Write-Host "    ┌─────────────────────────────────────────────────┐" -ForegroundColor Cyan
+Write-Host "    │                  MAIN MENU                      │" -ForegroundColor Cyan
+Write-Host "    ├─────────────────────────────────────────────────┤" -ForegroundColor Cyan
+Write-Host "    │  [1]  Threat Detection & Security Analysis      │" -ForegroundColor Green
+Write-Host "    │  [2]  Implement Tiering Model  (Coming Soon)    │" -ForegroundColor DarkGray
+Write-Host "    │  [Q]  Quit                                      │" -ForegroundColor Red
+Write-Host "    └─────────────────────────────────────────────────┘" -ForegroundColor Cyan
+Write-Host ""
+
+$menuChoice = Read-Host "    Select an option [1/2/Q]"
+switch ($menuChoice.Trim().ToUpper()) {
+    '2' {
+        Write-Host ""
+        Write-Host "    [!] Tiering Model implementation is not yet available." -ForegroundColor Yellow
+        Write-Host "    [!] This feature will allow you to automatically deploy an AD tiering model." -ForegroundColor Yellow
+        Write-Host "    [!] Stay tuned for a future release!" -ForegroundColor Yellow
+        Write-Host ""
+        return
+    }
+    'Q' {
+        Write-Host "    Exiting MATI. Goodbye!" -ForegroundColor Cyan
+        return
+    }
+    '1' {
+        # Continue with Threat Detection
+    }
+    default {
+        Write-Host "    [!] Invalid option. Defaulting to Threat Detection & Security Analysis." -ForegroundColor Yellow
+    }
+}
+$global:MATIMode = 'ThreatDetection'
+Write-Host ""
+Write-Host "    [>] Launching Threat Detection & Security Analysis..." -ForegroundColor Green
+Write-Host ""
+
+# ==================================================================
 # 0.1 PowerShell version check
 # ==================================================================
 if ($PSVersionTable.PSVersion.Major -ge 7) {
