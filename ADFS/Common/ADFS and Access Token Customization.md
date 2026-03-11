@@ -21,19 +21,19 @@ Instead of staying theoretical, we will reproduce the entire authentication flow
 
 1. Request an authorization code
 2. Exchange it for tokens
-3. Decode the Access Token and the ID Token
+3. Decode the Access Token
 4. Modify ADFS claim rules
-5. Verify the result on both tokens
+5. Verify the result
 
-By the end, you will fully understand how ADFS produces and customizes both Access Tokens and ID Tokens.
+By the end, you will fully understand how Access Tokens are produced and customized in ADFS.
 
 ---
 
 ## 2. Goal of the Lab
 
-We want the tokens issued by ADFS to include a custom claim: `preferred_username`.
+We want the Access Token issued by ADFS to include a custom claim: `preferred_username`.
 
-Expected result inside the **Access Token**:
+Expected result inside the Access Token:
 
 ```json
 {
@@ -42,20 +42,9 @@ Expected result inside the **Access Token**:
 }
 ```
 
-Expected result inside the **ID Token**:
-
-```json
-{
-  "aud": "73311fb6-dc1f-4ab4-96c1-16801f985071",
-  "preferred_username": "darth.vader"
-}
-```
-
 To achieve this, we configure a claim rule in ADFS that transforms:
 
 **`samAccountName`** → **`preferred_username`**
-
-> With the scope `allatclaims`, this single rule applies to **both** tokens.
 
 ---
 
@@ -63,13 +52,12 @@ To achieve this, we configure a claim rule in ADFS that transforms:
 
 By the end of this lab you will understand:
 
-- How ADFS issues Access Tokens and ID Tokens in an OIDC flow
-- How Web API Issuance Transform Rules affect both tokens
+- How ADFS issues Access Tokens in an OIDC flow
+- How Web API claim rules affect the Access Token
 - How the `resource` parameter determines the audience
-- How the scope `allatclaims` controls claim injection into both tokens
-- How to retrieve and decode tokens using PowerShell
-- How to inject custom claims into Access Tokens and ID Tokens
-- Why you cannot selectively customize one token without the other
+- How to retrieve tokens using PowerShell
+- How to decode and inspect JWT tokens
+- How to inject custom claims into an Access Token
 
 ---
 
@@ -94,7 +82,7 @@ sequenceDiagram
 2. ADFS authenticates the user
 3. ADFS returns an authorization code
 4. The client exchanges the code at `/oauth2/token`
-5. ADFS returns the Access Token and the ID Token
+5. ADFS returns the Access Token
 
 ---
 
@@ -109,12 +97,10 @@ OIDC produces two different tokens.
 
 > **Important rule in ADFS:**
 >
-> Web API **Issuance Transform Rules** primarily target the **Access Token**.
-> However, when the scope `allatclaims` is used, these rules also affect the **ID Token** — meaning custom claims injected via the Web API will appear in **both tokens**.
->
-> Without `allatclaims`, the ID Token typically contains only standard OIDC claims (`sub`, `upn`, `nonce`, etc.) and is not affected by the Web API claim rules.
+> Web API claim rules affect the **Access Token**.
+> They do **not** necessarily modify the ID Token.
 
-In this lab we customize **both tokens** using the Web API Issuance Transform Rules combined with the `allatclaims` scope.
+In this lab we focus on **Access Token customization**.
 
 ---
 
@@ -230,9 +216,7 @@ The **Web API** identifier becomes the **audience** (`aud`) of the Access Token.
 
 We generate the authorization URL using PowerShell.
 
-> **Note:** The scope `allatclaims` is an ADFS-specific scope that instructs ADFS to include all configured claims in the tokens. Without it, ADFS may only include a minimal set of claims. **When `allatclaims` is used, the Web API Issuance Transform Rules affect both the Access Token and the ID Token.**
-
-> **Important:** The `resource` parameter is **critical**. It tells ADFS which Web API the Access Token is intended for. Without it, ADFS does not know which Issuance Transform Rules to apply, and the Access Token will **not contain any custom claims** — only the default ADFS claims. Always specify `resource` matching your Web API identifier.
+> **Note:** The scope `allatclaims` is an ADFS-specific scope that instructs ADFS to include all configured claims in the Access Token. Without it, ADFS may only include a minimal set of claims.
 
 ```powershell
 $clientId    = "9668b94b-ca52-4e93-8917-be74ce931d5a"
@@ -293,11 +277,9 @@ The response contains:
 
 ---
 
-## 10. Decoding the Tokens
+## 10. Decoding the Access Token
 
-Both tokens are JWTs. We decode them using the same PowerShell technique.
-
-### Decoding the Access Token
+The Access Token is a JWT. We decode it using PowerShell.
 
 ```powershell
 $token   = $response.access_token
@@ -315,33 +297,23 @@ $json    = [System.Text.Encoding]::UTF8.GetString($bytes)
 $json | ConvertFrom-Json
 ```
 
-### Decoding the ID Token
+Example decoded token:
 
-```powershell
-$token   = $response.id_token
-$payload = $token.Split('.')[1]
-
-switch ($payload.Length % 4) {
-    2 { $payload += '==' }
-    3 { $payload += '=' }
+```json
+{
+  "aud": "https://oidcdebugger",
+  "preferred_username": "darth.vader",
+  "appid": "9668b94b-ca52-4e93-8917-be74ce931d5a"
 }
-
-$payload = $payload.Replace('-', '+').Replace('_', '/')
-$bytes   = [System.Convert]::FromBase64String($payload)
-$json    = [System.Text.Encoding]::UTF8.GetString($bytes)
-
-$json | ConvertFrom-Json
 ```
-
-> **Note:** At this point (before adding claim rules), both tokens contain only default ADFS claims — no custom claims yet.
 
 ---
 
-## 11. Customizing the Tokens in ADFS
+# Part A — Access Token Customization
 
-To inject a custom claim into both tokens, we configure a **claim rule** on the **Web API** (Issuance Transform Rules).
+## 11. Customizing the Access Token in ADFS
 
-With `allatclaims` in the scope, this single rule will affect **both** the Access Token and the ID Token.
+To inject a custom claim, we configure a **claim rule** on the **Web API** (Issuance Transform Rules).
 
 ### Claim rule
 
@@ -350,7 +322,7 @@ c:[Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/samaccountname
 => issue(Type = "preferred_username", Value = c.Value);
 ```
 
-This transforms `samAccountName` into `preferred_username` inside both tokens.
+This transforms `samAccountName` into `preferred_username` inside the Access Token.
 
 ### Applying the rule via PowerShell
 
@@ -380,10 +352,10 @@ Set-AdfsWebApiApplication -TargetName "OIDC Debugger Test - Web API" -IssuanceTr
 Repeat the flow:
 
 1. Request authorization code
-2. Exchange code for tokens
-3. Decode both tokens
+2. Exchange code for token
+3. Decode token
 
-### Access Token
+You should now see:
 
 ```json
 {
@@ -392,78 +364,30 @@ Repeat the flow:
 }
 ```
 
-### ID Token
-
-```json
-{
-  "aud": "73311fb6-dc1f-4ab4-96c1-16801f985071",
-  "preferred_username": "darth.vader",
-  "upn": "darth.vader@mathiasmotron.com"
-}
-```
-
-The custom claim `preferred_username` is now present in **both tokens**.
+The claim is now successfully injected.
 
 ---
 
-## 13. Understanding the Differences Between the Two Tokens
+# Part B — ID Token Customization
 
-Although both tokens now contain the same custom claim (`preferred_username`), they are **structurally different**.
+> **Coming soon** — This section will cover how to customize the ID Token issued by ADFS, including which claim rules affect the ID Token and how they differ from Access Token rules.
 
-### Audience (`aud`)
-
-| Token        | `aud` value                              | Meaning                          |
-|--------------|------------------------------------------|----------------------------------|
-| Access Token | Web API identifier (`https://oidcdebugger`) | Intended for the API/resource    |
-| ID Token     | Client ID (`73311fb6-dc1f-4ab4-96c1-16801f985071`) | Intended for the client app      |
-
-### Claims specific to each token
-
-| Claim               | Access Token | ID Token |
-|---------------------|:------------:|:--------:|
-| `preferred_username`| Yes          | Yes      |
-| `upn`               | No           | Yes      |
-| `unique_name`       | No           | Yes      |
-| `sub`               | No           | Yes      |
-| `nonce`             | No           | Yes      |
-| `scp` (scopes)      | Yes          | Yes      |
-
-The ID Token contains more identity-related claims by default, while the Access Token is leaner.
-
-### Claim rule behavior
-
-In an ADFS Application Group (OIDC), there is **only one place** to configure custom claim rules: the **Web API Issuance Transform Rules**.
-
-There are **no separate claim rules dedicated to the ID Token**.
-
-| Scope requested        | Access Token                  | ID Token                               |
-|------------------------|-------------------------------|----------------------------------------|
-| `allatclaims` included | Web API claim rules applied   | Web API claim rules **also** applied   |
-| `allatclaims` absent   | Minimal default claims only   | Standard OIDC claims only (`sub`, `upn`, `nonce`…) |
-
-### Key insight
-
-- You **cannot** customize the Access Token without also affecting the ID Token (and vice versa)
-- There is **no way** to add a custom claim to only one of the two tokens using Application Group claim rules alone
-- It is **all or nothing** — both tokens receive the same custom claims from the Web API Issuance Transform Rules
+<!-- TODO: Add ID Token customization content -->
 
 ---
 
-## 14. Key Takeaways
+## 13. Key Takeaways
 
 - Access Tokens are generated for a **specific resource**
 - The `resource` parameter determines the **audience** (`aud`)
-- **Web API Issuance Transform Rules** are the **only** place to configure custom claims in Application Groups
-- With `allatclaims`, these rules affect **both** the Access Token and the ID Token
-- Without `allatclaims`, tokens contain only minimal/default claims
-- You **cannot** selectively customize one token without the other using Application Group claim rules
-- The Access Token `aud` = Web API identifier; the ID Token `aud` = Client ID
+- **Web API claim rules** affect Access Tokens
 - OIDC flows can be reproduced entirely using PowerShell
 - JWT tokens can be decoded easily for inspection
+- ID Token and Access Token are customized via **different** claim rule sets in ADFS
 
 ---
 
-## 15. Final Thoughts
+## 14. Final Thoughts
 
 Once you understand this flow, you can:
 
@@ -473,6 +397,6 @@ Once you understand this flow, you can:
 
 And most importantly:
 
-You now understand exactly how ADFS builds and customizes both Access Tokens and ID Tokens.
+You now understand exactly how ADFS builds an Access Token.
 
 Welcome to the ADFS token wizard club.
