@@ -128,6 +128,8 @@ The [official documentation](https://learn.microsoft.com/en-us/windows-server/id
 
 > **Key detail:** Both options mention `response_mode=form_post`, which is used in **implicit/hybrid flows** where the ID Token is returned directly from the `/authorize` endpoint. This is important context for understanding our test results (section 16).
 
+> **In this lab, we fall under Option 2:** our Web API identifier (`https://oidcdebugger`) is different from our Client ID (`73311fb6-dc1f-4ab4-96c1-16801f985071`), and we have granted the `allatclaims` scope via `Grant-AdfsApplicationPermission`. However, we use the **Authorization Code Flow** (not implicit/hybrid with `form_post`), which is why `allatclaims` had no observable effect in our tests — see section 16.
+
 In this lab we customize **both tokens** using the Web API Issuance Transform Rules.
 
 ---
