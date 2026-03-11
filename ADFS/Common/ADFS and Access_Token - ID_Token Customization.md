@@ -134,7 +134,7 @@ Before we can request tokens, we need to register an **Application Group** in AD
 
 #### Server application (OIDC Client)
 
-5. Note the **Client ID** generated automatically (e.g. `9668b94b-ca52-4e93-8917-be74ce931d5a`)
+5. Note the **Client ID** generated automatically (e.g. `73311fb6-dc1f-4ab4-96c1-16801f985071`)
 6. Add the **Redirect URI**: `https://oidcdebugger.com/debug` → click **Add**, then **Next**
 7. Check **Generate a shared secret** — copy and save it securely → click **Next**
 
@@ -217,7 +217,7 @@ To recap, the Application Group contains:
 | Component          | Name                                    | Key Property                             |
 |--------------------|-----------------------------------------|------------------------------------------|
 | Application Group  | `OIDC Debugger Test`                    | —                                        |
-| Server application | `OIDC Debugger Test - Server application` | Client ID: `9668b94b-ca52-4e93-8917-be74ce931d5a` |
+| Server application | `OIDC Debugger Test - Server application` | Client ID: `73311fb6-dc1f-4ab4-96c1-16801f985071` |
 | Web API            | `OIDC Debugger Test - Web API`          | Identifier: `https://oidcdebugger`       |
 
 The **Server application** Client ID is used as the `client_id` in OIDC requests.
@@ -235,7 +235,7 @@ We generate the authorization URL using PowerShell.
 > **Important:** The `resource` parameter is **critical**. It tells ADFS which Web API the Access Token is intended for. Without it, ADFS does not know which Issuance Transform Rules to apply, and the Access Token will **not contain any custom claims** — only the default ADFS claims. Always specify `resource` matching your Web API identifier.
 
 ```powershell
-$clientId    = "9668b94b-ca52-4e93-8917-be74ce931d5a"
+$clientId    = "73311fb6-dc1f-4ab4-96c1-16801f985071"
 $redirectUri = "https://oidcdebugger.com/debug"
 $scope       = "openid profile email allatclaims"
 $resource    = "https://oidcdebugger"
@@ -263,7 +263,7 @@ After authentication, ADFS returns an **authorization code**.
 Now we exchange the authorization code for tokens.
 
 ```powershell
-$clientId     = "9668b94b-ca52-4e93-8917-be74ce931d5a"
+$clientId     = "73311fb6-dc1f-4ab4-96c1-16801f985071"
 $clientSecret = "CLIENT_SECRET"
 $code         = "AUTHORIZATION_CODE"
 $redirectUri  = "https://oidcdebugger.com/debug"
