@@ -121,10 +121,12 @@ The [official documentation](https://learn.microsoft.com/en-us/windows-server/id
 | | Option 1 | Option 2 |
 |---|---|---|
 | **Use case** | Public client, **no separate resource** | Client **with** a separate resource |
+| **Typical flow** | Implicit / Hybrid (`response_type=id_token` or `id_token+token`) | Implicit / Hybrid, or Authorization Code Flow |
 | **Requirement** | `response_mode` = `form_post` | `response_mode` = `form_post` |
 | **RP identifier** | Same as the Client ID | Different from Client ID |
 | **`allatclaims`** | Not needed | Required — assigned via `Grant-AdfsApplicationPermission` |
 | **KB** | — | KB4019472 installed on ADFS |
+| **When IT gets custom claims** | Rules applied directly (RP = client) | `allatclaims` copies AT claims into IT at `/authorize` |
 
 > **Key detail:** Both options mention `response_mode=form_post`, which is used in **implicit/hybrid flows** where the ID Token is returned directly from the `/authorize` endpoint. This is important context for understanding our test results (section 16).
 
