@@ -223,6 +223,8 @@ Name                         Identifier
 OIDC Debugger Test - Web API {https://oidcdebugger}
 ```
 
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-32-56.png)
+
 ---
 
 ## 7. ADFS Components Summary
@@ -245,7 +247,7 @@ The **Web API** identifier becomes the **audience** (`aud`) of the Access Token.
 
 We generate the authorization URL using PowerShell.
 
-> **Note:** The scope `allatclaims` is an ADFS-specific scope that instructs ADFS to include all configured claims in the tokens. Without it, ADFS may only include a minimal set of claims. **When `allatclaims` is used, the Web API Issuance Transform Rules affect both the Access Token and the ID Token.**
+> **Note:** The scope `allatclaims` is an ADFS-specific scope. Without it, the Web API Issuance Transform Rules apply only to the Access Token. **With `allatclaims`, these rules also apply to the ID Token** — both tokens then receive custom claims.
 
 > **Important:** The `resource` parameter is **critical**. It tells ADFS which Web API the Access Token is intended for. Without it, ADFS does not know which Issuance Transform Rules to apply, and the Access Token will **not contain any custom claims** — only the default ADFS claims. Always specify `resource` matching your Web API identifier.
 
@@ -267,9 +269,13 @@ $authUrl = "https://adfs.mathiasmotron.com/adfs/oauth2/authorize" +
 $authUrl
 ```
 
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-33-26.png)
+
 Open the generated URL in a browser.
 
 After authentication, ADFS returns an **authorization code**.
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-33-40.png)
 
 ---
 
@@ -303,8 +309,16 @@ $response
 The response contains:
 
 - `access_token`
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-33-53.png)
+
 - `id_token`
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-34-01.png)
+
 - `refresh_token`
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-34-08.png)
 
 ---
 
@@ -350,6 +364,8 @@ $json | ConvertFrom-Json
 
 > **Note:** At this point (before adding claim rules), both tokens contain only default ADFS claims — no custom claims yet.
 
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-34-39.png)
+
 ---
 
 ## 11. Customizing the Tokens in ADFS
@@ -388,44 +404,161 @@ Set-AdfsWebApiApplication -TargetName "OIDC Debugger Test - Web API" -IssuanceTr
 5. Click **Add Rule…** → choose **Send Claims Using a Custom Rule**
 6. Paste the claim rule above and click **Finish**
 
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-34-53.png)
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-35-00.png)
 ---
 
-## 12. Verifying the Result
+## 12. Test 1 — With `allatclaims`: Both Tokens Customized
 
-Repeat the flow:
+Now that the claim rule is in place, we repeat the full flow **with `allatclaims` in the scope** (as configured in section 8).
 
-1. Request authorization code
+1. Request a new authorization code (same URL as section 8, scope includes `allatclaims`)
 2. Exchange code for tokens
 3. Decode both tokens
 
-### Access Token
+### Access Token result
 
 ```json
 {
   "aud": "https://oidcdebugger",
-  "preferred_username": "darth.vader"
+  "iss": "https://adfs.mathiasmotron.com/adfs",
+  "preferred_username": "darth.vader",
+  "scp": "openid profile email allatclaims"
 }
 ```
 
-### ID Token
+The custom claim `preferred_username` **is present** in the Access Token.
+
+### ID Token result
 
 ```json
 {
   "aud": "73311fb6-dc1f-4ab4-96c1-16801f985071",
+  "iss": "https://adfs.mathiasmotron.com/adfs",
   "preferred_username": "darth.vader",
-  "upn": "darth.vader@mathiasmotron.com"
+  "upn": "darth.vader@mathiasmotron.com",
+  "sub": "..."
 }
 ```
 
-The custom claim `preferred_username` is now present in **both tokens**.
+The custom claim `preferred_username` **is also present** in the ID Token.
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-35-11.png)
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-35-36.png)
+
+> **Conclusion:** With `allatclaims`, the Web API Issuance Transform Rules apply to **both** tokens. Both contain `preferred_username`.
 
 ---
 
-## 13. Understanding the Differences Between the Two Tokens
+## 13. Test 2 — Without `allatclaims`: Only the Access Token Is Customized
 
-Although both tokens now contain the same custom claim (`preferred_username`), they are **structurally different**.
+Now we repeat the exact same flow, but **without `allatclaims`** in the scope.
 
-### Audience (`aud`)
+### Modified authorization request
+
+```powershell
+$clientId    = "73311fb6-dc1f-4ab4-96c1-16801f985071"
+$redirectUri = "https://oidcdebugger.com/debug"
+$scope       = "openid profile email"
+$resource    = "https://oidcdebugger"
+
+$authUrl = "https://adfs.mathiasmotron.com/adfs/oauth2/authorize" +
+    "?client_id=$clientId" +
+    "&response_type=code" +
+    "&redirect_uri=$([uri]::EscapeDataString($redirectUri))" +
+    "&scope=$([uri]::EscapeDataString($scope))" +
+    "&resource=$([uri]::EscapeDataString($resource))" +
+    "&state=test123" +
+    "&nonce=test456"
+
+$authUrl
+```
+
+> **The only change:** `allatclaims` has been removed from the `$scope` variable.
+
+### Access Token result
+
+```json
+{
+  "aud": "https://oidcdebugger",
+  "iss": "https://adfs.mathiasmotron.com/adfs",
+  "preferred_username": "darth.vader",
+  "scp": "openid profile email"
+}
+```
+
+The custom claim `preferred_username` **is still present** in the Access Token. The Web API Issuance Transform Rules always apply to the Access Token.
+
+### ID Token result
+
+```json
+{
+  "aud": "73311fb6-dc1f-4ab4-96c1-16801f985071",
+  "iss": "https://adfs.mathiasmotron.com/adfs",
+  "upn": "darth.vader@mathiasmotron.com",
+  "sub": "...",
+  "nonce": "test456"
+}
+```
+
+The custom claim `preferred_username` **is NOT present** in the ID Token. Without `allatclaims`, the ID Token only contains standard OIDC claims.
+
+> **Conclusion:** Without `allatclaims`, only the Access Token receives custom claims. The ID Token is **not affected** by the Web API Issuance Transform Rules.
+
+---
+
+## 14. Understanding the Behavior: `allatclaims` Is the Switch
+
+### Summary table
+
+| Scope requested        | Access Token                  | ID Token                               |
+|------------------------|-------------------------------|----------------------------------------|
+| `allatclaims` included | Custom claims ✓               | Custom claims ✓                        |
+| `allatclaims` absent   | Custom claims ✓               | Standard OIDC claims only              |
+
+The behavior is **asymmetric**:
+
+```
+                        ┌──────────────────────────────┐
+                        │  Web API Issuance Transform   │
+                        │         Rules                 │
+                        └──────────┬───────────────────┘
+                                   │
+                    ┌──────────────┼──────────────────┐
+                    │              │                   │
+                    ▼              ▼                   │
+             Access Token    ID Token                  │
+             (ALWAYS)        (ONLY if allatclaims)     │
+                                                       │
+                        ┌──────────────────────────────┘
+                        │
+                        ▼
+              The `resource` parameter
+              must also be specified for
+              the Access Token to receive
+              custom claims
+```
+
+### Why this matters
+
+In an ADFS Application Group (OIDC), there is **only one place** to configure custom claim rules: the **Web API Issuance Transform Rules**.
+
+There are **no separate claim rules dedicated to the ID Token**.
+
+This gives you **two options**, not three:
+
+| Option | How | Access Token | ID Token |
+|--------|-----|:---:|:---:|
+| **A** — Customize Access Token only | Do not request `allatclaims` | Custom claims ✓ | Standard claims only |
+| **B** — Customize both tokens | Request `allatclaims` | Custom claims ✓ | Custom claims ✓ |
+
+> **Option C — Customize ID Token only?** **Not possible.** There is no way to inject custom claims into the ID Token without also having them in the Access Token.
+
+### Audience (`aud`) — always different
+
+Regardless of the scopes requested, each token has a different audience:
 
 | Token        | `aud` value                              | Meaning                          |
 |--------------|------------------------------------------|----------------------------------|
@@ -434,60 +567,44 @@ Although both tokens now contain the same custom claim (`preferred_username`), t
 
 ### Claims specific to each token
 
+Even when both tokens receive custom claims, they still differ structurally:
+
 | Claim               | Access Token | ID Token |
 |---------------------|:------------:|:--------:|
-| `preferred_username`| Yes          | Yes      |
-| `upn`               | No           | Yes      |
-| `unique_name`       | No           | Yes      |
-| `sub`               | No           | Yes      |
-| `nonce`             | No           | Yes      |
-| `scp` (scopes)      | Yes          | Yes      |
-
-The ID Token contains more identity-related claims by default, while the Access Token is leaner.
-
-### Claim rule behavior
-
-In an ADFS Application Group (OIDC), there is **only one place** to configure custom claim rules: the **Web API Issuance Transform Rules**.
-
-There are **no separate claim rules dedicated to the ID Token**.
-
-| Scope requested        | Access Token                  | ID Token                               |
-|------------------------|-------------------------------|----------------------------------------|
-| `allatclaims` included | Web API claim rules applied   | Web API claim rules **also** applied   |
-| `allatclaims` absent   | Minimal default claims only   | Standard OIDC claims only (`sub`, `upn`, `nonce`…) |
-
-### Key insight
-
-- You **cannot** customize the Access Token without also affecting the ID Token (and vice versa)
-- There is **no way** to add a custom claim to only one of the two tokens using Application Group claim rules alone
-- It is **all or nothing** — both tokens receive the same custom claims from the Web API Issuance Transform Rules
+| `preferred_username`| ✓ (custom)   | ✓ (with `allatclaims`) |
+| `upn`               | –            | ✓        |
+| `unique_name`       | –            | ✓        |
+| `sub`               | –            | ✓        |
+| `nonce`             | –            | ✓        |
+| `scp` (scopes)      | ✓            | ✓        |
 
 ---
 
-## 14. Key Takeaways
+## 15. Key Takeaways
 
-- Access Tokens are generated for a **specific resource**
-- The `resource` parameter determines the **audience** (`aud`)
+- Access Tokens are generated for a **specific resource** — the `resource` parameter determines the audience (`aud`)
 - **Web API Issuance Transform Rules** are the **only** place to configure custom claims in Application Groups
-- With `allatclaims`, these rules affect **both** the Access Token and the ID Token
-- Without `allatclaims`, tokens contain only minimal/default claims
-- You **cannot** selectively customize one token without the other using Application Group claim rules
+- These rules **always** apply to the Access Token (when `resource` is specified)
+- The scope `allatclaims` controls whether these rules **also** apply to the ID Token
+- Without `allatclaims`, only the Access Token receives custom claims — the ID Token keeps standard OIDC claims only
+- You **can** customize the Access Token alone (without `allatclaims`)
+- You **cannot** customize the ID Token alone — there is no dedicated claim rule mechanism for the ID Token
 - The Access Token `aud` = Web API identifier; the ID Token `aud` = Client ID
 - OIDC flows can be reproduced entirely using PowerShell
-- JWT tokens can be decoded easily for inspection
 
 ---
 
-## 15. Final Thoughts
+## 16. Final Thoughts
 
 Once you understand this flow, you can:
 
 - Inject custom claims into Access Tokens and ID Tokens
 - Build API authorization systems
 - Integrate ADFS with modern applications
+- Choose whether to customize one or both tokens based on your needs
 
 And most importantly:
 
-You now understand exactly how ADFS builds and customizes both Access Tokens and ID Tokens.
+You now understand exactly how ADFS builds and customizes both Access Tokens and ID Tokens — and you know the `allatclaims` switch that controls it.
 
 Welcome to the ADFS token wizard club.
