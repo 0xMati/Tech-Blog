@@ -1,12 +1,12 @@
-# ADFS Lab — Customizing an Access Token (OIDC)
+# ADFS Lab — Customizing Access Tokens and ID Tokens (OIDC)
 
-> A fun, geek-friendly deep dive into how ADFS issues and customizes Access Tokens.
+> A fun, geek-friendly deep dive into how ADFS issues and customizes Access Tokens and ID Tokens.
 
 ---
 
 ## 1. Introduction
 
-This lab explains how to customize an **Access Token** issued by ADFS using OpenID Connect (OIDC).
+This lab explains how to customize an **Access Token** and an **ID Token** issued by ADFS using OpenID Connect (OIDC).
 
 Instead of staying theoretical, we will reproduce the entire authentication flow step by step, inspect the tokens, and modify the claims issued by ADFS.
 
@@ -104,29 +104,89 @@ In this lab we focus on **Access Token customization**.
 
 ---
 
-## 6. ADFS Components Required
+## 6. Creating the Application Group in ADFS
 
-To reproduce this lab you need:
+Before we can request tokens, we need to register an **Application Group** in ADFS. This group contains two components:
 
-### ADFS Client
+- A **Server application** (the OIDC client)
+- A **Web API** (the resource / audience)
 
-Example:
+### Via the ADFS Management Console
 
-| Property  | Value                                  |
-|-----------|----------------------------------------|
-| Client ID | `9668b94b-ca52-4e93-8917-be74ce931d5a` |
+1. Open **ADFS Management**
+2. Right-click **Application Groups** → **Add Application Group…**
+3. Enter a name, e.g. `OIDC Debugger Test`
+4. Select the template **Server application accessing a web API** → click **Next**
 
-### ADFS Web API
+#### Server application (OIDC Client)
 
-Example identifier: `https://oidcdebugger`
+5. Note the **Client ID** generated automatically (e.g. `9668b94b-ca52-4e93-8917-be74ce931d5a`)
+6. Add the **Redirect URI**: `https://oidcdebugger.com/debug` → click **Add**, then **Next**
+7. Check **Generate a shared secret** — copy and save it securely → click **Next**
 
-You can verify existing Web APIs with:
+<!-- TODO: insert screenshot of the Server application properties -->
+
+#### Web API (Resource)
+
+8. In the **Identifier** field, enter: `https://oidcdebugger` → click **Add**, then **Next**
+9. Choose an **Access Control Policy** (e.g. `Permit everyone`) → click **Next**
+10. Under **Application Permissions**, ensure at least `openid`, `profile`, `email` and `allatclaims` are checked → click **Next**
+11. Review the summary and click **Close**
+
+<!-- TODO: insert screenshot of the Web API properties -->
+
+### Via PowerShell
+
+You can also create the Application Group entirely via PowerShell:
 
 ```powershell
+# 1. Create the Application Group
+New-AdfsApplicationGroup -Name "OIDC Debugger Test"
+
+# 2. Create the Server application (OIDC Client)
+$clientId    = [guid]::NewGuid().ToString()
+$redirectUri = "https://oidcdebugger.com/debug"
+$secret      = "YOUR_SECRET_HERE"
+
+Add-AdfsServerApplication `
+    -Name "OIDC Debugger Test - Server application" `
+    -ApplicationGroupIdentifier "OIDC Debugger Test" `
+    -ClientId $clientId `
+    -RedirectUri $redirectUri `
+    -GenerateClientSecret
+
+# 3. Create the Web API (Resource)
+Add-AdfsWebApiApplication `
+    -Name "OIDC Debugger Test - Web API" `
+    -ApplicationGroupIdentifier "OIDC Debugger Test" `
+    -Identifier "https://oidcdebugger" `
+    -AccessControlPolicyName "Permit everyone"
+
+# 4. Grant permissions to the client
+Grant-AdfsApplicationPermission `
+    -ClientRoleIdentifier $clientId `
+    -ServerRoleIdentifier "https://oidcdebugger" `
+    -ScopeNames "openid", "profile", "email", "allatclaims"
+```
+
+> **Tip:** Save the `$clientId` and the generated secret — you will need them in later steps.
+
+### Verifying the setup
+
+You can verify the Application Group was created correctly:
+
+```powershell
+# List Application Groups
+Get-AdfsApplicationGroup | Select Name
+
+# List Server applications
+Get-AdfsServerApplication | Select Name, Identifier
+
+# List Web APIs
 Get-AdfsWebApiApplication | Select Name, Identifier
 ```
 
-Example output:
+Expected output:
 
 ```
 Name                         Identifier
@@ -134,11 +194,25 @@ Name                         Identifier
 OIDC Debugger Test - Web API {https://oidcdebugger}
 ```
 
-The identifier becomes the **audience** (`aud`) of the Access Token.
+---
+
+## 7. ADFS Components Summary
+
+To recap, the Application Group contains:
+
+| Component          | Name                                    | Key Property                             |
+|--------------------|-----------------------------------------|------------------------------------------|
+| Application Group  | `OIDC Debugger Test`                    | —                                        |
+| Server application | `OIDC Debugger Test - Server application` | Client ID: `9668b94b-ca52-4e93-8917-be74ce931d5a` |
+| Web API            | `OIDC Debugger Test - Web API`          | Identifier: `https://oidcdebugger`       |
+
+The **Server application** Client ID is used as the `client_id` in OIDC requests.
+
+The **Web API** identifier becomes the **audience** (`aud`) of the Access Token.
 
 ---
 
-## 7. Building the Authorization Request
+## 8. Building the Authorization Request
 
 We generate the authorization URL using PowerShell.
 
@@ -168,7 +242,7 @@ After authentication, ADFS returns an **authorization code**.
 
 ---
 
-## 8. Exchanging the Code for Tokens
+## 9. Exchanging the Code for Tokens
 
 Now we exchange the authorization code for tokens.
 
@@ -203,7 +277,7 @@ The response contains:
 
 ---
 
-## 9. Decoding the Access Token
+## 10. Decoding the Access Token
 
 The Access Token is a JWT. We decode it using PowerShell.
 
@@ -235,7 +309,9 @@ Example decoded token:
 
 ---
 
-## 10. Customizing the Access Token in ADFS
+# Part A — Access Token Customization
+
+## 11. Customizing the Access Token in ADFS
 
 To inject a custom claim, we configure a **claim rule** on the **Web API** (Issuance Transform Rules).
 
@@ -271,7 +347,7 @@ Set-AdfsWebApiApplication -TargetName "OIDC Debugger Test - Web API" -IssuanceTr
 
 ---
 
-## 11. Verifying the Result
+## 12. Verifying the Result
 
 Repeat the flow:
 
@@ -292,21 +368,30 @@ The claim is now successfully injected.
 
 ---
 
-## 12. Key Takeaways
+# Part B — ID Token Customization
+
+> **Coming soon** — This section will cover how to customize the ID Token issued by ADFS, including which claim rules affect the ID Token and how they differ from Access Token rules.
+
+<!-- TODO: Add ID Token customization content -->
+
+---
+
+## 13. Key Takeaways
 
 - Access Tokens are generated for a **specific resource**
 - The `resource` parameter determines the **audience** (`aud`)
 - **Web API claim rules** affect Access Tokens
 - OIDC flows can be reproduced entirely using PowerShell
 - JWT tokens can be decoded easily for inspection
+- ID Token and Access Token are customized via **different** claim rule sets in ADFS
 
 ---
 
-## 13. Final Thoughts
+## 14. Final Thoughts
 
 Once you understand this flow, you can:
 
-- Inject custom claims into Access Tokens
+- Inject custom claims into Access Tokens and ID Tokens
 - Build API authorization systems
 - Integrate ADFS with modern applications
 
