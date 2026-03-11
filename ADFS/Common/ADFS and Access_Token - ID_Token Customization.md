@@ -132,22 +132,37 @@ Before we can request tokens, we need to register an **Application Group** in AD
 3. Enter a name, e.g. `OIDC Debugger Test`
 4. Select the template **Server application accessing a web API** → click **Next**
 
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-30-21.png)
+
 #### Server application (OIDC Client)
 
 5. Note the **Client ID** generated automatically (e.g. `73311fb6-dc1f-4ab4-96c1-16801f985071`)
 6. Add the **Redirect URI**: `https://oidcdebugger.com/debug` → click **Add**, then **Next**
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-30-36.png)
+
+
 7. Check **Generate a shared secret** — copy and save it securely → click **Next**
 
-<!-- TODO: insert screenshot of the Server application properties -->
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-31-00.png)
+
 
 #### Web API (Resource)
 
 8. In the **Identifier** field, enter: `https://oidcdebugger` → click **Add**, then **Next**
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-31-33.png)
+
 9. Choose an **Access Control Policy** (e.g. `Permit everyone`) → click **Next**
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-31-41.png)
+
 10. Under **Application Permissions**, ensure at least `openid`, `profile`, `email` and `allatclaims` are checked → click **Next**
+
+![](assets/ADFS%20and%20Access_Token%20-%20ID_Token%20Customization/2026-03-11-15-31-50.png)
+
 11. Review the summary and click **Close**
 
-<!-- TODO: insert screenshot of the Web API properties -->
 
 ### Via PowerShell
 
