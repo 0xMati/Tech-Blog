@@ -124,10 +124,14 @@ function Initialize-MATIEngine {
     Write-Host "  [+] PowerShell $psVer" -ForegroundColor Green
 
     # ActiveDirectory module
-    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+    # Try importing directly — on older OS (e.g. Server 2012) the module may only
+    # be visible through the WinPSCompatibility layer and not via Get-Module -ListAvailable.
+    try {
+        Import-Module ActiveDirectory -SkipEditionCheck -ErrorAction Stop
+    }
+    catch {
         throw "ActiveDirectory module not found. Install RSAT (AD DS and LDS tools)."
     }
-    Import-Module ActiveDirectory -ErrorAction Stop
     Write-Host "  [+] ActiveDirectory module loaded" -ForegroundColor Green
 
     # Basic AD read access + build forest/domain cache
