@@ -37,6 +37,7 @@ function Get-MATILegacyProtocolAudit {
     }
     $rc4TGTAccounts  = @{}
     $rc4TGSServices  = @{}
+    $rc4TGSAccounts  = @{}
     $rc4ClientIPs    = @{}
     $rc4DCs          = @{}
     $failedAccounts  = @{}
@@ -70,6 +71,7 @@ function Get-MATILegacyProtocolAudit {
             TGS_AES256 = 0; TGS_AES128 = 0; TGS_RC4 = 0; TGS_Failed = 0; TGS_Other = 0
             RC4TGTAccounts = @{}
             RC4TGSServices = @{}
+            RC4TGSAccounts = @{}
             RC4ClientIPs   = @{}
             FailedAccounts = @{}
             OtherEncTypes  = @{}
@@ -117,6 +119,10 @@ function Get-MATILegacyProtocolAudit {
                         if ($prefix -eq 'TGS' -and $service) {
                             if (-not $result.RC4TGSServices.ContainsKey($service)) { $result.RC4TGSServices[$service] = 0 }
                             $result.RC4TGSServices[$service]++
+                        }
+                        if ($prefix -eq 'TGS' -and $account) {
+                            if (-not $result.RC4TGSAccounts.ContainsKey($account)) { $result.RC4TGSAccounts[$account] = 0 }
+                            $result.RC4TGSAccounts[$account]++
                         }
                         if ($ip) {
                             if (-not $result.RC4ClientIPs.ContainsKey($ip)) { $result.RC4ClientIPs[$ip] = 0 }
@@ -284,6 +290,12 @@ function Get-MATILegacyProtocolAudit {
                 $rc4TGSServices[$entry.Key] += $entry.Value
             }
         }
+        if ($dcResult.RC4TGSAccounts) {
+            foreach ($entry in $dcResult.RC4TGSAccounts.GetEnumerator()) {
+                if (-not $rc4TGSAccounts.ContainsKey($entry.Key)) { $rc4TGSAccounts[$entry.Key] = 0 }
+                $rc4TGSAccounts[$entry.Key] += $entry.Value
+            }
+        }
         if ($dcResult.RC4ClientIPs) {
             foreach ($entry in $dcResult.RC4ClientIPs.GetEnumerator()) {
                 if (-not $rc4ClientIPs.ContainsKey($entry.Key)) { $rc4ClientIPs[$entry.Key] = 0 }
@@ -428,10 +440,92 @@ function Get-MATILegacyProtocolAudit {
         OtherPercent  = $otherPercent
         TopRC4TGTAccounts = @(ConvertTo-TopN $rc4TGTAccounts $topN)
         TopRC4TGSServices = @(ConvertTo-TopN $rc4TGSServices $topN)
+        TopRC4TGSAccounts = @(ConvertTo-TopN $rc4TGSAccounts $topN)
         TopRC4ClientIPs   = @(ConvertTo-TopN $rc4ClientIPs   $topN)
         TopRC4DCs         = @(ConvertTo-TopN $rc4DCs          $topN)
         TopFailedAccounts = @(ConvertTo-TopN $failedAccounts $topN)
         OtherEncTypes     = @(ConvertTo-TopN $otherEncTypes  $topN)
+        RC4AccountDetails = @()
+        RC4ServiceDetails = @()
+    }
+
+    # ---------------------------------------------------------------
+    # AD enrichment for RC4 accounts and services
+    # ---------------------------------------------------------------
+    try {
+        Import-Module ActiveDirectory -ErrorAction Stop
+        Write-Host "    [>] Enriching RC4 accounts/services with AD details..." -ForegroundColor DarkGray
+
+        function Get-MATIEncFlags {
+            param([Nullable[int]]$v)
+            if ($null -eq $v -or $v -eq 0) { return '(unset)' }
+            $flags = @()
+            if (($v -band 0x01) -ne 0) { $flags += 'DES-CBC-CRC' }
+            if (($v -band 0x02) -ne 0) { $flags += 'DES-CBC-MD5' }
+            if (($v -band 0x04) -ne 0) { $flags += 'RC4-HMAC' }
+            if (($v -band 0x08) -ne 0) { $flags += 'AES128' }
+            if (($v -band 0x10) -ne 0) { $flags += 'AES256' }
+            if ($flags.Count -eq 0) { return "0x$($v.ToString('X'))" }
+            return ($flags -join ', ')
+        }
+
+        function Resolve-MATIAdPrincipal {
+            param([string]$Identity)
+            if (-not $Identity -or $Identity -eq '(n/a)') { return $null }
+            $props = 'pwdLastSet','msDS-SupportedEncryptionTypes','lastLogonDate','userAccountControl','servicePrincipalName'
+            $obj = $null; $objClass = $null
+            # Try UPN first
+            if ($Identity -like '*@*') {
+                try { $obj = Get-ADUser -Filter "userPrincipalName -eq '$Identity'" -Properties $props -ErrorAction Stop; $objClass = 'user' } catch {}
+            }
+            if (-not $obj) { try { $obj = Get-ADUser -Identity $Identity -Properties $props -ErrorAction Stop; $objClass = 'user' } catch {} }
+            if (-not $obj) { try { $obj = Get-ADComputer -Identity $Identity -Properties $props -ErrorAction Stop; $objClass = 'computer' } catch {} }
+            if (-not $obj) { try { $obj = Get-ADServiceAccount -Identity $Identity -Properties $props -ErrorAction Stop; $objClass = 'gMSA' } catch {} }
+            if (-not $obj) { return $null }
+
+            $encVal = $obj.'msDS-SupportedEncryptionTypes'
+            $hasAES = ($encVal -ne $null) -and ((($encVal -band 0x08) -ne 0) -or (($encVal -band 0x10) -ne 0))
+            $preAuth = if ($obj.userAccountControl) { (($obj.userAccountControl -band 0x400000) -ne 0) } else { $false }
+            $pwdDate = $null
+            if ($obj.pwdLastSet -and $obj.pwdLastSet -is [long] -and $obj.pwdLastSet -ne 0) {
+                $pwdDate = [DateTime]::FromFileTime($obj.pwdLastSet)
+            }
+
+            [PSCustomObject]@{
+                Name                = $obj.SamAccountName
+                ObjectClass         = $objClass
+                EncValue            = if ($encVal -ne $null) { $encVal } else { 0 }
+                EncFlags            = Get-MATIEncFlags $encVal
+                HasAES              = $hasAES
+                PwdLastSet          = $pwdDate
+                LastLogon           = $obj.lastLogonDate
+                PreAuthNotRequired  = $preAuth
+                HasSPN              = [bool]($obj.servicePrincipalName)
+            }
+        }
+
+        # Enrich unique RC4 accounts (TGT + TGS requestors)
+        $uniqueAccts = @()
+        foreach ($a in $kerberos.TopRC4TGTAccounts) { $uniqueAccts += $a.Name }
+        foreach ($a in $kerberos.TopRC4TGSAccounts) { $uniqueAccts += $a.Name }
+        $uniqueAccts = $uniqueAccts | Select-Object -Unique | Where-Object { $_ -and $_ -ne '(n/a)' }
+        foreach ($acctName in $uniqueAccts) {
+            $detail = Resolve-MATIAdPrincipal -Identity $acctName
+            if ($detail) { $kerberos.RC4AccountDetails += $detail }
+        }
+
+        # Enrich unique RC4 target services
+        $uniqueSvcs = @()
+        foreach ($s in $kerberos.TopRC4TGSServices) { $uniqueSvcs += $s.Name }
+        $uniqueSvcs = $uniqueSvcs | Select-Object -Unique | Where-Object { $_ -and $_ -ne '(n/a)' }
+        foreach ($svcName in $uniqueSvcs) {
+            $detail = Resolve-MATIAdPrincipal -Identity $svcName
+            if ($detail) { $kerberos.RC4ServiceDetails += $detail }
+        }
+
+        Write-Host "    [+] AD enrichment done — $($kerberos.RC4AccountDetails.Count) accounts, $($kerberos.RC4ServiceDetails.Count) services" -ForegroundColor Green
+    } catch {
+        Write-Host "    [!] AD enrichment skipped: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 
     # ---------------------------------------------------------------

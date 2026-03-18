@@ -41,6 +41,27 @@ function Export-MATIHtml {
     }
 
     # ------------------------------------------------------------------
+    # Build severity bar segments
+    # ------------------------------------------------------------------
+    $totalFindings = $findings.Count
+    $severityBar = ''
+    if ($totalFindings -gt 0) {
+        $barItems = @(
+            @{ Key = 'Critical'; Color = 'var(--severity-critical)'; Count = $severityCounts.Critical }
+            @{ Key = 'High';     Color = 'var(--severity-high)';     Count = $severityCounts.High }
+            @{ Key = 'Medium';   Color = 'var(--severity-medium)';   Count = $severityCounts.Medium }
+            @{ Key = 'Low';      Color = 'var(--severity-low)';      Count = $severityCounts.Low }
+            @{ Key = 'Info';     Color = 'var(--severity-info)';     Count = $severityCounts.Informational }
+        )
+        foreach ($bi in $barItems) {
+            if ($bi.Count -gt 0) {
+                $pct = [math]::Round(100 * $bi.Count / $totalFindings, 1)
+                $severityBar += "<div class=`"severity-segment`" style=`"width:$pct%;background:$($bi.Color)`" title=`"$($bi.Key): $($bi.Count)`">$($bi.Count)</div>"
+            }
+        }
+    }
+
+    # ------------------------------------------------------------------
     # Build findings table rows grouped by category (custom order)
     # ------------------------------------------------------------------
     $categoryOrder = @(
@@ -129,8 +150,9 @@ function Export-MATIHtml {
         $total       = $EngineContext.DCConnectivity.Count
         $unreachable = $total - $reachable
 
-        $dcBlock += "<div class=`"dc-section`">`n"
-        $dcBlock += "<h2>Domain Controllers <span class=`"badge`">$total contacted &mdash; $reachable reachable &mdash; $unreachable unreachable</span></h2>`n"
+        $dcBlock += "<div id=`"dc`" class=`"dc-section`">`n"
+        $dcBlock += "<h2 class=`"section-header`"><span class=`"section-icon`">&#x1F5A5;</span> Domain Controllers <span class=`"badge`">$total contacted &mdash; $reachable reachable &mdash; $unreachable unreachable</span></h2>`n"
+        $dcBlock += "<p class=`"section-intro`">Connectivity status for all discovered domain controllers.</p>`n"
         $dcBlock += "<table class=`"dc-table`">`n"
         $dcBlock += "<thead><tr><th>Name</th><th>FQDN</th><th>Domain</th><th>IP</th><th>Site</th><th>OS</th><th>GC</th><th>RODC</th><th>Status</th><th>Latency</th></tr></thead>`n"
         $dcBlock += "<tbody>`n"
@@ -170,8 +192,9 @@ function Export-MATIHtml {
     $protoBlock = ''
     $auditData = $EngineContext.DataCache['LegacyProtocolAudit']
     if ($auditData) {
-        $protoBlock += "<div class=`"protocol-audit`">`n"
-        $protoBlock += "<h2>Legacy Protocol Audit <span class=`"badge`">last $($auditData.AuditHours) hours</span></h2>`n"
+        $protoBlock += "<div id=`"protocol`" class=`"protocol-audit`">`n"
+        $protoBlock += "<h2 class=`"section-header`"><span class=`"section-icon`">&#x1F510;</span> Legacy Protocol Audit <span class=`"badge`">last $($auditData.AuditHours) hours</span></h2>`n"
+        $protoBlock += "<p class=`"section-intro`">Analysis of Kerberos encryption types and NTLM authentication events collected from domain controllers.</p>`n"
 
         # --- Helper: build SVG donut ---
         function Build-Donut {
@@ -293,16 +316,136 @@ function Export-MATIHtml {
 
             $protoBlock += "</div>`n"  # end chart-row
 
-            # Top-N tables for RC4
+            # --- Encryption Breakdown by Ticket Type (detailed table) ---
+            $breakdownRows = @()
+            $encMap = [ordered]@{
+                'AES256-CTS-HMAC-SHA1-96' = @{ TGT = $krb.Totals.TGT_AES256; TGS = $krb.Totals.TGS_AES256 }
+                'AES128-CTS-HMAC-SHA1-96' = @{ TGT = $krb.Totals.TGT_AES128; TGS = $krb.Totals.TGS_AES128 }
+                'RC4-HMAC'                = @{ TGT = $krb.Totals.TGT_RC4;    TGS = $krb.Totals.TGS_RC4 }
+            }
+            foreach ($enc in $encMap.GetEnumerator()) {
+                if ($enc.Value.TGT -gt 0) { $breakdownRows += @{ TicketType = 'TGT'; EncType = $enc.Key; Events = $enc.Value.TGT } }
+                if ($enc.Value.TGS -gt 0) { $breakdownRows += @{ TicketType = 'TGS'; EncType = $enc.Key; Events = $enc.Value.TGS } }
+            }
+            if ($breakdownRows.Count -gt 0) {
+                $protoBlock += "<h4 class=`"proto-sub`">Encryption Breakdown by Ticket Type</h4>`n"
+                $protoBlock += "<table class=`"top-table proto-detail-table`"><thead><tr><th>Ticket Type</th><th>Encryption Type</th><th>Events</th><th>%</th></tr></thead><tbody>`n"
+                foreach ($row in ($breakdownRows | Sort-Object { $_.TicketType }, { $_.Events } -Descending:$false)) {
+                    $pct = if ($krb.TotalAll -gt 0) { [math]::Round(100 * $row.Events / $krb.TotalAll, 2) } else { 0 }
+                    $encColor = if ($row.EncType -eq 'RC4-HMAC') { ' style="color:#ff2d55;font-weight:600"' } else { '' }
+                    $protoBlock += "<tr><td>$($row.TicketType)</td><td$encColor>$($row.EncType)</td><td>$($row.Events)</td><td>$pct%</td></tr>`n"
+                }
+                $protoBlock += "</tbody></table>`n"
+            }
+
+            # --- Global Encryption Breakdown (combined) ---
+            $protoBlock += "<h4 class=`"proto-sub`">Global Encryption Breakdown (4768/4769 combined)</h4>`n"
+            $protoBlock += "<table class=`"top-table proto-detail-table`"><thead><tr><th>Type</th><th>Events</th><th>%</th></tr></thead><tbody>`n"
+            $globalEnc = @(
+                @{ Type = 'AES256-CTS-HMAC-SHA1-96'; Count = ($krb.Totals.TGT_AES256 + $krb.Totals.TGS_AES256) }
+                @{ Type = 'AES128-CTS-HMAC-SHA1-96'; Count = ($krb.Totals.TGT_AES128 + $krb.Totals.TGS_AES128) }
+                @{ Type = 'RC4-HMAC'; Count = $krb.RC4Count }
+            ) | Where-Object { $_.Count -gt 0 } | Sort-Object { $_.Count } -Descending
+            foreach ($g in $globalEnc) {
+                $pct = if ($krb.TotalAll -gt 0) { [math]::Round(100 * $g.Count / $krb.TotalAll, 2) } else { 0 }
+                $encColor = if ($g.Type -eq 'RC4-HMAC') { ' style="color:#ff2d55;font-weight:600"' } else { '' }
+                $protoBlock += "<tr><td$encColor>$($g.Type)</td><td>$($g.Count)</td><td>$pct%</td></tr>`n"
+            }
+            $protoBlock += "</tbody></table>`n"
+
+            # --- RC4 by Ticket Type ---
             if ($krb.RC4Count -gt 0) {
-                $protoBlock += "<div class=`"top-tables-row`">`n"
-                $protoBlock += (Build-TopTable 'Top RC4 TGT Accounts (4768)' 'Account' $krb.TopRC4TGTAccounts)
-                $protoBlock += (Build-TopTable 'Top RC4 Service Targets (4769)' 'Service' $krb.TopRC4TGSServices)
-                $protoBlock += (Build-TopTable 'Top RC4 Client IPs' 'IP Address' $krb.TopRC4ClientIPs)
+                $protoBlock += "<h4 class=`"proto-sub`">RC4 Events by Ticket Type</h4>`n"
+                $protoBlock += "<div class=`"rc4-type-summary`">`n"
+                $tgtRc4 = $krb.Totals.TGT_RC4
+                $tgsRc4 = $krb.Totals.TGS_RC4
+                if ($tgtRc4 -gt 0) { $protoBlock += "<span class=`"rc4-type-badge tgt`">TGT: $tgtRc4</span>`n" }
+                if ($tgsRc4 -gt 0) { $protoBlock += "<span class=`"rc4-type-badge tgs`">TGS: $tgsRc4</span>`n" }
                 $protoBlock += "</div>`n"
             }
 
-            # Top-N tables for Failed auth and Unknown encryption types
+            # --- TGT RC4 Alert ---
+            $tgtRc4Count = $krb.Totals.TGT_RC4
+            if ($tgtRc4Count -gt 0) {
+                $protoBlock += "<div class=`"proto-alert alert-critical`">`n"
+                $protoBlock += "<span class=`"alert-icon`">&#9888;</span>`n"
+                $protoBlock += "<div><strong>ALERT: $tgtRc4Count TGT(s) using RC4-HMAC detected!</strong><br>`n"
+                $protoBlock += "TGT tickets encrypted with RC4 indicate the <code>krbtgt</code> account or requesting accounts may lack AES keys. This is a critical security risk.</div>`n"
+                $protoBlock += "</div>`n"
+            } else {
+                $protoBlock += "<div class=`"proto-alert alert-ok`">`n"
+                $protoBlock += "<span class=`"alert-icon`">&#10003;</span>`n"
+                $protoBlock += "<div><strong>No TGT using RC4-HMAC detected</strong> &mdash; expected in modern, hardened environments.</div>`n"
+                $protoBlock += "</div>`n"
+            }
+
+            # --- Top-N tables for RC4 ---
+            if ($krb.RC4Count -gt 0) {
+                $protoBlock += "<div class=`"top-tables-row`">`n"
+                $protoBlock += (Build-TopTable 'Top RC4 Requestor Accounts' 'Account' $krb.TopRC4TGSAccounts)
+                $protoBlock += (Build-TopTable 'Top RC4 Service Targets (4769)' 'Service' $krb.TopRC4TGSServices)
+                $protoBlock += (Build-TopTable 'Top RC4 Client IPs' 'IP Address' $krb.TopRC4ClientIPs)
+                $protoBlock += "</div>`n"
+
+                # Second row: TGT accounts + DCs
+                $protoBlock += "<div class=`"top-tables-row`">`n"
+                if ($krb.TopRC4TGTAccounts -and $krb.TopRC4TGTAccounts.Count -gt 0) {
+                    $protoBlock += (Build-TopTable 'Top RC4 TGT Accounts (4768)' 'Account' $krb.TopRC4TGTAccounts)
+                }
+                if ($krb.TopRC4DCs -and $krb.TopRC4DCs.Count -gt 0) {
+                    $protoBlock += (Build-TopTable 'Domain Controllers contacted (RC4)' 'DC' $krb.TopRC4DCs)
+                }
+                $protoBlock += "</div>`n"
+            }
+
+            # --- AD Enrichment: RC4 Requestor Account Details ---
+            if ($krb.RC4AccountDetails -and $krb.RC4AccountDetails.Count -gt 0) {
+                $protoBlock += "<h4 class=`"proto-sub`">RC4 Requestor Accounts &mdash; AD Details</h4>`n"
+                $protoBlock += "<p class=`"section-intro`">Active Directory attributes for accounts requesting RC4 tickets. Accounts without AES support require remediation.</p>`n"
+                $protoBlock += "<table class=`"top-table proto-detail-table proto-wide-table`"><thead><tr>"
+                $protoBlock += "<th>Account</th><th>Type</th><th>msDS-SupportedEncryptionTypes</th><th>AES?</th><th>Password Last Set</th><th>Last Logon</th><th>PreAuth Not Required</th>"
+                $protoBlock += "</tr></thead><tbody>`n"
+                foreach ($acct in $krb.RC4AccountDetails) {
+                    $aesClass = if ($acct.HasAES) { 'aes-yes' } else { 'aes-no' }
+                    $aesLabel = if ($acct.HasAES) { '&#10003; Yes' } else { '&#10007; No' }
+                    $preAuthClass = if ($acct.PreAuthNotRequired) { 'aes-no' } else { '' }
+                    $preAuthLabel = if ($acct.PreAuthNotRequired) { '&#9888; True' } else { 'False' }
+                    $escaped = [System.Web.HttpUtility]::HtmlEncode($acct.Name)
+                    $pwdStr = if ($acct.PwdLastSet) { $acct.PwdLastSet.ToString('yyyy-MM-dd HH:mm') } else { '(never)' }
+                    $logonStr = if ($acct.LastLogon) { $acct.LastLogon.ToString('yyyy-MM-dd HH:mm') } else { '(never)' }
+                    $protoBlock += "<tr><td><strong>$escaped</strong></td><td>$($acct.ObjectClass)</td>"
+                    $protoBlock += "<td>$($acct.EncValue) &mdash; $($acct.EncFlags)</td>"
+                    $protoBlock += "<td class=`"$aesClass`">$aesLabel</td>"
+                    $protoBlock += "<td>$pwdStr</td><td>$logonStr</td>"
+                    $protoBlock += "<td class=`"$preAuthClass`">$preAuthLabel</td></tr>`n"
+                }
+                $protoBlock += "</tbody></table>`n"
+            }
+
+            # --- AD Enrichment: RC4 Target Service Details ---
+            if ($krb.RC4ServiceDetails -and $krb.RC4ServiceDetails.Count -gt 0) {
+                $protoBlock += "<h4 class=`"proto-sub`">RC4 Target Services &mdash; AD Details</h4>`n"
+                $protoBlock += "<p class=`"section-intro`">Active Directory attributes for services receiving RC4 TGS tickets. These accounts need AES keys enabled and password rotation.</p>`n"
+                $protoBlock += "<table class=`"top-table proto-detail-table proto-wide-table`"><thead><tr>"
+                $protoBlock += "<th>Service</th><th>Type</th><th>msDS-SupportedEncryptionTypes</th><th>AES?</th><th>Password Last Set</th><th>Last Logon</th><th>Has SPN</th>"
+                $protoBlock += "</tr></thead><tbody>`n"
+                foreach ($svc in $krb.RC4ServiceDetails) {
+                    $aesClass = if ($svc.HasAES) { 'aes-yes' } else { 'aes-no' }
+                    $aesLabel = if ($svc.HasAES) { '&#10003; Yes' } else { '&#10007; No' }
+                    $escaped = [System.Web.HttpUtility]::HtmlEncode($svc.Name)
+                    $pwdStr = if ($svc.PwdLastSet) { $svc.PwdLastSet.ToString('yyyy-MM-dd HH:mm') } else { '(never)' }
+                    $logonStr = if ($svc.LastLogon) { $svc.LastLogon.ToString('yyyy-MM-dd HH:mm') } else { '(never)' }
+                    $spnLabel = if ($svc.HasSPN) { '&#10003; Yes' } else { 'No' }
+                    $protoBlock += "<tr><td><strong>$escaped</strong></td><td>$($svc.ObjectClass)</td>"
+                    $protoBlock += "<td>$($svc.EncValue) &mdash; $($svc.EncFlags)</td>"
+                    $protoBlock += "<td class=`"$aesClass`">$aesLabel</td>"
+                    $protoBlock += "<td>$pwdStr</td><td>$logonStr</td>"
+                    $protoBlock += "<td>$spnLabel</td></tr>`n"
+                }
+                $protoBlock += "</tbody></table>`n"
+            }
+
+            # --- Failed auth and Unknown encryption types ---
             $hasFailedOrOther = ($krb.FailedCount -gt 0 -or $krb.OtherCount -gt 0)
             if ($hasFailedOrOther) {
                 $protoBlock += "<div class=`"top-tables-row`">`n"
@@ -373,8 +516,9 @@ function Export-MATIHtml {
         $catWeights = $config.Scoring.CategoryWeights
         $defaultWt  = if ($config.Scoring.DefaultCategoryWeight) { $config.Scoring.DefaultCategoryWeight } else { 8 }
 
-        $scoreBreakdown += "<div class=`"score-breakdown`">`n"
-        $scoreBreakdown += "<h2>Scoring Breakdown <span class=`"badge`">$($score.Score) / $($score.BaseScore)</span></h2>`n"
+        $scoreBreakdown += "<div id=`"breakdown`" class=`"score-breakdown`">`n"
+        $scoreBreakdown += "<h2 class=`"section-header`"><span class=`"section-icon`">&#x1F4CA;</span> Scoring Breakdown <span class=`"badge`">$($score.Score) / $($score.BaseScore)</span></h2>`n"
+        $scoreBreakdown += "<p class=`"section-intro`">Points deducted per category against the allocated budget.</p>`n"
         $scoreBreakdown += "<table class=`"dc-table`">`n"
         $scoreBreakdown += "<thead><tr><th>Category</th><th>Budget</th><th>Deduction</th><th>Consumed</th><th>Visual</th></tr></thead>`n"
         $scoreBreakdown += "<tbody>`n"
@@ -440,6 +584,7 @@ function Export-MATIHtml {
     $html = $html.Replace('{{LOW_COUNT}}',        [string]$severityCounts.Low)
     $html = $html.Replace('{{INFO_COUNT}}',       [string]$severityCounts.Informational)
     $html = $html.Replace('{{RULES_EVALUATED}}',  [string]$EngineContext.Rules.Count)
+    $html = $html.Replace('{{SEVERITY_BAR}}',     [string]$severityBar)
     $html = $html.Replace('{{DC_CONNECTIVITY}}',  [string]$dcBlock)
     $html = $html.Replace('{{PROTOCOL_AUDIT}}',   [string]$protoBlock)
     $html = $html.Replace('{{CATEGORY_BLOCKS}}',  [string]$categoryBlocks)
@@ -450,4 +595,10 @@ function Export-MATIHtml {
     # ------------------------------------------------------------------
     $htmlPath = Join-Path $htmlDir "MATI_Report_$timestamp.html"
     $html | Out-File -FilePath $htmlPath -Encoding UTF8
+
+    # Offer to open the report in the default browser
+    $openChoice = Read-Host "  Open HTML report in browser? (Y/N)"
+    if ($openChoice -match '^[Yy]') {
+        Start-Process $htmlPath
+    }
 }
