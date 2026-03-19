@@ -55,6 +55,7 @@
             PrivilegedAccounts = 10
             StaleObjects       = 7
             RODC               = 5
+            GPO                = 10
         }
 
         # Fallback budget for categories not listed above

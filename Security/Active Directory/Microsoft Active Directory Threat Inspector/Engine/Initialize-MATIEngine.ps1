@@ -116,13 +116,6 @@ function Initialize-MATIEngine {
     # ------------------------------------------------------------------
     Write-Host "`n  Checking prerequisites..." -ForegroundColor DarkGray
 
-    # PowerShell version
-    if ($PSVersionTable.PSVersion.Major -lt 5) {
-        throw "MATI requires PowerShell 5.1 or later (PowerShell 7 recommended)."
-    }
-    $psVer = "$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)"
-    Write-Host "  [+] PowerShell $psVer" -ForegroundColor Green
-
     # ActiveDirectory module
     # Try importing directly — on older OS (e.g. Server 2012) the module may only
     # be visible through the WinPSCompatibility layer and not via Get-Module -ListAvailable.

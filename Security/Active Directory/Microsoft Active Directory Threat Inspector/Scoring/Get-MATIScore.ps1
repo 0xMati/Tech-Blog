@@ -186,7 +186,11 @@ function Save-MATIScoreHistory {
         [hashtable]$EngineContext
     )
 
-    $historyPath = Join-Path $EngineContext.RootPath 'History\MATI_ScoreHistory.csv'
+    $historyDir  = Join-Path $EngineContext.RootPath 'History'
+    if (-not (Test-Path $historyDir)) {
+        New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
+    }
+    $historyPath = Join-Path $historyDir 'MATI_ScoreHistory.csv'
     $score = $EngineContext.Score
 
     $entry = [PSCustomObject]@{

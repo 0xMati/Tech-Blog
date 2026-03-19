@@ -50,7 +50,7 @@ $banner = @"
 "@
 # Read version from config
 $configFile = if ($ConfigPath -and (Test-Path $ConfigPath)) { $ConfigPath } else { Join-Path $RootPath 'Config\MATI.config.psd1' }
-$matiVersion = if (Test-Path $configFile) { (Import-PowerShellDataFile $configFile).Metadata.Version } else { '?.?.?' }
+$matiVersion = if (Test-Path $configFile) { (Import-PowerShellDataFile $configFile).General.Version } else { '?.?.?' }
 
 Write-Host $banner -ForegroundColor Cyan
 Write-Host "    v$matiVersion | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor DarkGray

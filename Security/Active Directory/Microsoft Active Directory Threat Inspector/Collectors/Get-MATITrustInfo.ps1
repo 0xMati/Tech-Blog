@@ -18,19 +18,24 @@ function Get-MATITrustInfo {
         try {
             $domainTrusts = Get-ADTrust -Filter * -Server $domainDns -Properties * -ErrorAction Stop
             foreach ($trust in $domainTrusts) {
+                $encTypes = $trust.'msDS-SupportedEncryptionTypes'
                 [PSCustomObject]@{
-                    SourceDomain          = $domainDns
-                    TargetDomain          = $trust.Target
-                    TrustDirection        = $trust.Direction          # Inbound, Outbound, Bidirectional
-                    TrustType             = $trust.TrustType          # External, Forest, ParentChild...
-                    TrustAttributes       = $trust.TrustAttributes
-                    IsTransitive          = ($trust.TrustAttributes -band 0x00000001) -ne 0
-                    SIDFilteringEnabled   = -not (($trust.TrustAttributes -band 0x00000004) -ne 0)  # TRUST_ATTRIBUTE_QUARANTINED_DOMAIN
-                    SelectiveAuth         = ($trust.TrustAttributes -band 0x00000010) -ne 0          # TRUST_ATTRIBUTE_CROSS_ORGANIZATION
-                    ForestTransitive      = ($trust.TrustAttributes -band 0x00000008) -ne 0          # TRUST_ATTRIBUTE_FOREST_TRANSITIVE
-                    IntraForest           = $trust.IntraForest
-                    DistinguishedName     = $trust.DistinguishedName
-                    WhenCreated           = $trust.WhenCreated
+                    SourceDomain                = $domainDns
+                    TargetDomain                = $trust.Target
+                    TrustDirection              = $trust.Direction          # Inbound, Outbound, Bidirectional
+                    TrustType                   = $trust.TrustType          # External, Forest, ParentChild...
+                    TrustAttributes             = $trust.TrustAttributes
+                    SupportedEncryptionTypes    = $encTypes
+                    AES128Enabled               = ($null -ne $encTypes) -and (($encTypes -band 0x08) -ne 0)
+                    AES256Enabled               = ($null -ne $encTypes) -and (($encTypes -band 0x10) -ne 0)
+                    RC4Enabled                  = ($null -ne $encTypes) -and (($encTypes -band 0x04) -ne 0)
+                    IsTransitive                = ($trust.TrustAttributes -band 0x00000001) -ne 0
+                    SIDFilteringEnabled         = -not (($trust.TrustAttributes -band 0x00000004) -ne 0)  # TRUST_ATTRIBUTE_QUARANTINED_DOMAIN
+                    SelectiveAuth               = ($trust.TrustAttributes -band 0x00000010) -ne 0          # TRUST_ATTRIBUTE_CROSS_ORGANIZATION
+                    ForestTransitive            = ($trust.TrustAttributes -band 0x00000008) -ne 0          # TRUST_ATTRIBUTE_FOREST_TRANSITIVE
+                    IntraForest                 = $trust.IntraForest
+                    DistinguishedName           = $trust.DistinguishedName
+                    WhenCreated                 = $trust.WhenCreated
                 }
             }
         }

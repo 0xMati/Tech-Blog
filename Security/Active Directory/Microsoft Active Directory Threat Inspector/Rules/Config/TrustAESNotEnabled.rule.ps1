@@ -13,18 +13,28 @@
         param($Data, $Config)
         $findings = @()
         foreach ($trust in $Data.TrustInfo) {
-            # TRUST_ATTRIBUTE_USES_AES_KEYS = 0x00000100
-            $aesEnabled = ($trust.TrustAttributes -band 0x00000100) -ne 0
-            if (-not $aesEnabled) {
+            # Check msDS-SupportedEncryptionTypes for AES bits:
+            #   AES128_CTS_HMAC_SHA1 = 0x08
+            #   AES256_CTS_HMAC_SHA1 = 0x10
+            $hasAES = $trust.AES128Enabled -or $trust.AES256Enabled
+
+            if (-not $hasAES) {
+                $encTypes = $trust.SupportedEncryptionTypes
+                $severity = if ($trust.IntraForest) { 'Medium' } else { 'High' }
+
                 $findings += @{
+                    Severity = $severity
                     ObjectDN = $trust.DistinguishedName
                     Domain   = $trust.SourceDomain
                     Details  = @{
-                        TargetDomain    = $trust.TargetDomain
-                        TrustType       = "$($trust.TrustType)"
-                        Direction       = "$($trust.TrustDirection)"
-                        AESEnabled      = 'False'
-                        TrustAttributes = "$($trust.TrustAttributes)"
+                        TargetDomain             = $trust.TargetDomain
+                        TrustType                = "$($trust.TrustType)"
+                        Direction                = "$($trust.TrustDirection)"
+                        IntraForest              = "$($trust.IntraForest)"
+                        AES128Enabled            = "$($trust.AES128Enabled)"
+                        AES256Enabled            = "$($trust.AES256Enabled)"
+                        RC4Enabled               = "$($trust.RC4Enabled)"
+                        SupportedEncryptionTypes = "$encTypes"
                     }
                 }
             }
