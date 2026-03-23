@@ -76,7 +76,7 @@ The original "Device Guard" term encompassed two technologies:
 
 Microsoft now recommends using the term **WDAC** for application control policies and **HVCI** for the hypervisor-based kernel protection. They are **two distinct protections** that can be enabled independently.
 
-🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/introduction
+🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/appcontrol
 
 ### What Does It Protect Against?
 
@@ -118,7 +118,7 @@ WDAC protects against:
 - Use the **Microsoft recommended block rules** and **Microsoft recommended driver block rules** as baselines
 - Test thoroughly in **Audit mode** before enforcement
 
-🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/applications-that-can-bypass-wdac
+🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/applications-that-can-bypass-appcontrol
 
 ### How to Deploy WDAC
 
@@ -226,7 +226,7 @@ In simple terms:
 
 > ⚠️ **Important**: HVCI is a key defense against the increasingly popular **BYOVD** attack technique, where attackers use legitimate but vulnerable signed drivers (e.g., old hardware drivers with known exploits) to gain kernel-level access. Microsoft maintains a **vulnerable driver blocklist** that works with HVCI.
 >
-> 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/microsoft-recommended-driver-block-rules
+> 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/microsoft-recommended-driver-block-rules
 
 ### Requirements {#requirements-hvci}
 
@@ -859,12 +859,12 @@ if ($dg) {
 
 ## 📚 References
 
-- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/introduction — WDAC Overview
+- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/appcontrol — WDAC / App Control Overview
 - 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/ — Credential Guard
 - 🔗 https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/configuring-additional-lsa-protection — LSA Protection
 - 🔗 https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity — HVCI / VBS
 - 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/considerations-known-issues — Credential Guard Considerations & Known Issues
 - 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/configure — Configure Credential Guard (GPO, Intune, Registry)
-- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/wdac-wizard — WDAC Policy Wizard Tool
+- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/appcontrol-wizard — App Control Policy Wizard Tool
 - 🔗 https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/credentials-protection-and-management — Credentials Protection Overview
-- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/microsoft-recommended-driver-block-rules — Microsoft Recommended Driver Block Rules (HVCI)
+- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/microsoft-recommended-driver-block-rules — Microsoft Recommended Driver Block Rules (HVCI)
