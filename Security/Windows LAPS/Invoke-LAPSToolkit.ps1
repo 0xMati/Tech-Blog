@@ -113,6 +113,106 @@ function Read-Param ([string]$Prompt, [string]$Default = "", [switch]$Mandatory)
     return $value
 }
 
+function Select-OU ([string]$Title = "Select the target OU", [string]$Description = "", [switch]$AllowDomain) {
+    Write-Host ""
+    Write-Host "  $Title" -ForegroundColor Yellow
+    if ($Description) { Write-Host "  $Description" -ForegroundColor DarkGray }
+    Write-Host ""
+
+    $allOUs = @(Get-ADOrganizationalUnit -Filter * -SearchScope Subtree -ErrorAction SilentlyContinue |
+        Sort-Object DistinguishedName)
+
+    $options = @()
+    if ($AllowDomain) {
+        $options += [PSCustomObject]@{ Index = 1; DN = $script:Domain.DistinguishedName; Label = "(entire domain) $($script:Domain.DistinguishedName)" }
+        $offset = 1
+    } else { $offset = 0 }
+
+    for ($i = 0; $i -lt [math]::Min($allOUs.Count, 30); $i++) {
+        $options += [PSCustomObject]@{ Index = $i + $offset + 1; DN = $allOUs[$i].DistinguishedName; Label = $allOUs[$i].DistinguishedName }
+    }
+
+    foreach ($opt in $options) {
+        Write-Host "   [$($opt.Index)] $($opt.Label)" -ForegroundColor White
+    }
+    if ($allOUs.Count -gt 30) { Write-Host "   ... ($($allOUs.Count - 30) more -- type a DN manually)" -ForegroundColor DarkGray }
+    Write-Host ""
+    $input = Read-Host "  Select a number or type a DN"
+    $match = $options | Where-Object { "$($_.Index)" -eq $input }
+    if ($match) { $selected = $match.DN }
+    else { $selected = $input }
+
+    if (-not $selected) { return $null }
+    try {
+        if ($selected -eq $script:Domain.DistinguishedName) { return $selected }
+        Get-ADOrganizationalUnit -Identity $selected -ErrorAction Stop | Out-Null
+        Write-Status "Selected: $selected" "OK"
+        return $selected
+    } catch {
+        Write-Status "OU not found: $selected" "ERROR"
+        return $null
+    }
+}
+
+function Select-Group ([string]$Title = "Select the LAPS admin group", [string]$Description = "") {
+    Write-Host ""
+    Write-Host "  $Title" -ForegroundColor Yellow
+    if ($Description) { Write-Host "  $Description" -ForegroundColor DarkGray }
+    Write-Host ""
+
+    $candidates = @(Get-ADGroup -Filter { Name -like "*LAPS*" -or Name -like "*Admin*Password*" } -ErrorAction SilentlyContinue |
+        Sort-Object Name | Select-Object -First 15)
+    $domPrefix = $script:Domain.NetBIOSName
+
+    if ($candidates.Count -gt 0) {
+        Write-Host "  Groups matching *LAPS* or *Admin*Password*:" -ForegroundColor DarkGray
+        for ($i = 0; $i -lt $candidates.Count; $i++) {
+            Write-Host "   [$($i+1)] $domPrefix\$($candidates[$i].Name)" -ForegroundColor White
+        }
+        Write-Host ""
+        Write-Host "  Select a number, or type DOMAIN\GroupName manually." -ForegroundColor DarkGray
+    } else {
+        Write-Host "  No LAPS-related groups found. Type the group manually." -ForegroundColor DarkGray
+        Write-Host "  Example: $domPrefix\LAPS-Password-Readers" -ForegroundColor DarkGray
+    }
+
+    $grpInput = Read-Host "  Group"
+    if ($grpInput -match '^\d+$' -and [int]$grpInput -ge 1 -and [int]$grpInput -le $candidates.Count) {
+        $selected = "$domPrefix\$($candidates[[int]$grpInput - 1].Name)"
+    } else {
+        $selected = $grpInput
+    }
+
+    if (-not $selected) { return $null }
+    $grpName = $selected -replace '^[^\\]+\\', ''
+    try {
+        Get-ADGroup -Identity $grpName -ErrorAction Stop | Out-Null
+        Write-Status "Selected: $selected" "OK"
+        return $selected
+    } catch {
+        Write-Status "Group not found: $selected" "ERROR"
+        return $null
+    }
+}
+
+function Select-Computer ([string]$Title = "Enter a computer name") {
+    Write-Host ""
+    Write-Host "  $Title" -ForegroundColor Yellow
+    Write-Host "  Type the computer name (sAMAccountName without $)." -ForegroundColor DarkGray
+    Write-Host "  Example: PC-001, SRV-WEB1" -ForegroundColor DarkGray
+    $name = Read-Host "  Computer"
+    if (-not $name) { Write-Status "No computer specified." "ERROR"; return $null }
+    # Validate it exists in AD
+    try {
+        $obj = Get-ADComputer -Identity $name -ErrorAction Stop
+        Write-Status "Found: $($obj.Name) ($($obj.DNSHostName))" "OK"
+        return $obj.Name
+    } catch {
+        Write-Host "  Computer not found in AD. Proceeding anyway (may be offline)." -ForegroundColor DarkYellow
+        return $name
+    }
+}
+
 function Confirm-Action ([string]$Message) {
     Write-Host ""
     $answer = Read-Host "  $Message (y/N)"
@@ -599,44 +699,111 @@ function Invoke-Deployment {
         Pause-Screen; return
     }
 
-    # Collect parameters interactively
+    # ── Detect OUs ──
     Write-Host ""
-    Write-Host "  Configure deployment parameters:" -ForegroundColor Yellow
-    Write-Host "  ─────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host "  STEP 1/4 -- Select the target OU" -ForegroundColor Yellow
+    Write-Host "  The OU where the computers that LAPS will manage are located." -ForegroundColor DarkGray
+    Write-Host ""
 
-    $targetOU     = Read-Param "Target OU (DN)" -Mandatory
-    $readGroup    = Read-Param "Read/Reset group (DOMAIN\Group)" -Mandatory
-    $gpoName      = Read-Param "GPO name" -Default "Windows LAPS Policy"
-    $pwdLength    = [int](Read-Param "Password length" -Default "20")
-    $pwdAge       = [int](Read-Param "Password age (days)" -Default "30")
-    $postAuthH    = [int](Read-Param "Post-auth reset delay (hours)" -Default "8")
-    $adminAcct    = Read-Param "Custom admin account name (leave empty for built-in)"
-    $doEncrypt    = $script:DFLSupportsEncryption
+    $allOUs = @(Get-ADOrganizationalUnit -Filter * -SearchScope Subtree -ErrorAction SilentlyContinue |
+        Sort-Object DistinguishedName)
 
-    if (-not $doEncrypt) {
-        Write-Status "DFL does not support encryption -- passwords will be stored in clear text" "WARN"
+    if ($allOUs.Count -gt 0) {
+        Write-Host "  Available OUs:" -ForegroundColor DarkGray
+        for ($i = 0; $i -lt [math]::Min($allOUs.Count, 30); $i++) {
+            Write-Host "   [$($i+1)] $($allOUs[$i].DistinguishedName)" -ForegroundColor White
+        }
+        if ($allOUs.Count -gt 30) { Write-Host "   ... ($($allOUs.Count - 30) more -- type the DN manually if not listed)" -ForegroundColor DarkGray }
+        Write-Host ""
+        $ouInput = Read-Host "  Select a number or type a DN"
+        if ($ouInput -match '^\d+$' -and [int]$ouInput -ge 1 -and [int]$ouInput -le $allOUs.Count) {
+            $targetOU = $allOUs[[int]$ouInput - 1].DistinguishedName
+        } else {
+            $targetOU = $ouInput
+        }
+    } else {
+        Write-Host "  Example: OU=Workstations,DC=contoso,DC=com" -ForegroundColor DarkGray
+        $targetOU = Read-Param "Target OU (DN)" -Mandatory
     }
 
-    # Verify OU
+    if (-not $targetOU) { Write-Status "No OU selected." "ERROR"; Pause-Screen; return }
     try { Get-ADOrganizationalUnit -Identity $targetOU -ErrorAction Stop | Out-Null }
     catch { Write-Status "OU not found: $targetOU" "ERROR"; Pause-Screen; return }
+    Write-Status "Target OU: $targetOU" "OK"
 
-    # Verify group
-    try {
-        $grpName = $readGroup -replace '^[^\\]+\\', ''
-        Get-ADGroup -Identity $grpName -ErrorAction Stop | Out-Null
-    } catch { Write-Status "Group not found: $readGroup" "ERROR"; Pause-Screen; return }
-
-    # Summary
+    # ── Select group ──
     Write-Host ""
-    Write-Host "  ─────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host "  STEP 2/4 -- Select the LAPS admin group" -ForegroundColor Yellow
+    Write-Host "  This AD group will be able to READ and RESET LAPS passwords." -ForegroundColor DarkGray
+    Write-Host "  It is also used as the encryption decryptor (only this group can decrypt)." -ForegroundColor DarkGray
+    Write-Host ""
+
+    # List groups that look like LAPS-related
+    $candidateGroups = @(Get-ADGroup -Filter { Name -like "*LAPS*" -or Name -like "*Admin*Password*" } -ErrorAction SilentlyContinue |
+        Sort-Object Name | Select-Object -First 15)
+    if ($candidateGroups.Count -gt 0) {
+        Write-Host "  Groups matching *LAPS* or *Admin*Password*:" -ForegroundColor DarkGray
+        for ($i = 0; $i -lt $candidateGroups.Count; $i++) {
+            $domPrefix = ($script:Domain.NetBIOSName)
+            Write-Host "   [$($i+1)] $domPrefix\$($candidateGroups[$i].Name)" -ForegroundColor White
+        }
+        Write-Host ""
+        Write-Host "  Select a number, or type DOMAIN\GroupName manually." -ForegroundColor DarkGray
+        $grpInput = Read-Host "  Group"
+        if ($grpInput -match '^\d+$' -and [int]$grpInput -ge 1 -and [int]$grpInput -le $candidateGroups.Count) {
+            $readGroup = "$($script:Domain.NetBIOSName)\$($candidateGroups[[int]$grpInput - 1].Name)"
+        } else {
+            $readGroup = $grpInput
+        }
+    } else {
+        Write-Host "  No LAPS-related groups found. Type the group manually." -ForegroundColor DarkGray
+        Write-Host "  Example: CONTOSO\LAPS-Password-Readers" -ForegroundColor DarkGray
+        $readGroup = Read-Param "Read/Reset group (DOMAIN\Group)" -Mandatory
+    }
+
+    if (-not $readGroup) { Write-Status "No group selected." "ERROR"; Pause-Screen; return }
+    $grpName = $readGroup -replace '^[^\\]+\\', ''
+    try { Get-ADGroup -Identity $grpName -ErrorAction Stop | Out-Null }
+    catch { Write-Status "Group not found: $readGroup" "ERROR"; Pause-Screen; return }
+    Write-Status "Admin group: $readGroup" "OK"
+
+    # ── GPO and password settings ──
+    Write-Host ""
+    Write-Host "  STEP 3/4 -- GPO and password settings" -ForegroundColor Yellow
+    Write-Host "  A GPO will be created (or updated) and linked to the target OU." -ForegroundColor DarkGray
+    Write-Host "  Default values are best-practice -- press Enter to accept them." -ForegroundColor DarkGray
+    Write-Host ""
+
+    $gpoName   = Read-Param "GPO name" -Default "Windows LAPS Policy"
+    $pwdLength = [int](Read-Param "Password length (8-64)" -Default "20")
+    $pwdAge    = [int](Read-Param "Password age in days (1-365)" -Default "30")
+    $postAuthH = [int](Read-Param "Post-auth reset delay in hours (0-24, after password retrieval)" -Default "8")
+
+    Write-Host ""
+    Write-Host "  Optional -- Custom admin account name" -ForegroundColor DarkGray
+    Write-Host "  Leave empty = LAPS manages the built-in Administrator (RID 500)." -ForegroundColor DarkGray
+    Write-Host "  Specify a name only if you use a different local admin account." -ForegroundColor DarkGray
+    $adminAcct = Read-Param "Custom admin account name (or Enter for built-in)"
+
+    $doEncrypt = $script:DFLSupportsEncryption
+    if (-not $doEncrypt) {
+        Write-Host ""
+        Write-Status "DFL does not support encryption -- passwords will be stored in clear text" "WARN"
+        Write-Host "  Encryption requires Domain Functional Level 2016 or higher." -ForegroundColor DarkGray
+    }
+
+    # ── Recap ──
+    Write-Host ""
+    Write-Host "  STEP 4/4 -- Review and confirm" -ForegroundColor Yellow
+    Write-Host "  ==============================================" -ForegroundColor DarkGray
     Write-Host "  Target OU         : $targetOU" -ForegroundColor White
     Write-Host "  Read/Reset Group  : $readGroup" -ForegroundColor White
     Write-Host "  GPO Name          : $gpoName" -ForegroundColor White
-    Write-Host "  Password          : $pwdLength chars, $pwdAge days, encryption=$doEncrypt" -ForegroundColor White
-    Write-Host "  Post-Auth Delay   : $postAuthH hours" -ForegroundColor White
-    Write-Host "  Admin Account     : $(if ($adminAcct) { $adminAcct } else { '(built-in)' })" -ForegroundColor White
-    Write-Host "  ─────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host "  Password          : $pwdLength chars, rotate every $pwdAge days" -ForegroundColor White
+    Write-Host "  Encryption        : $(if ($doEncrypt) { 'Yes (decryptor: ' + $readGroup + ')' } else { 'No (DFL < 2016)' })" -ForegroundColor White
+    Write-Host "  Post-Auth         : Reset password + logoff after $postAuthH hours" -ForegroundColor White
+    Write-Host "  Admin Account     : $(if ($adminAcct) { $adminAcct } else { 'Built-in Administrator (RID 500)' })" -ForegroundColor White
+    Write-Host "  ==============================================" -ForegroundColor DarkGray
 
     if (-not (Confirm-Action "Proceed with deployment?")) {
         Write-Status "Cancelled." "INFO"; Pause-Screen; return
@@ -775,10 +942,19 @@ function Invoke-Migration {
 }
 
 function Invoke-MigrationPreCheck {
-    $targetOU = Read-Param "Target OU (DN)" -Mandatory
+    Write-Banner
+    Write-Section "Phase 1: Pre-Migration Assessment"
+    Write-Host "  This phase checks your environment readiness for migrating from" -ForegroundColor DarkGray
+    Write-Host "  Legacy LAPS (MSI-based) to Windows LAPS (built into the OS)." -ForegroundColor DarkGray
+    Write-Host "  It scans: schema, GPOs, computer accounts, DFL, and LAPS module." -ForegroundColor DarkGray
+
+    $targetOU = Select-OU -Title "Which OU should be assessed?" -Description "Select the OU containing computers managed by Legacy LAPS." -AllowDomain
+    if (-not $targetOU) { Pause-Screen; return }
 
     Write-Banner
     Write-Section "Phase 1: Pre-Migration Assessment"
+    Write-Host "  Scope: $targetOU" -ForegroundColor White
+    Write-Host ""
 
     # Legacy schema
     if ($script:HasLegacySchema) {
@@ -851,10 +1027,20 @@ function Invoke-MigrationSchemaEmulation {
         Write-Status "LAPS module required" "ERROR"; Pause-Screen; return
     }
 
-    $targetOU = Read-Param "Target OU (DN)" -Mandatory
+    Write-Banner
+    Write-Section "Phase 2: Schema Update and Emulation Mode"
+    Write-Host "  This phase extends the AD schema with Windows LAPS attributes and" -ForegroundColor DarkGray
+    Write-Host "  grants SELF write permissions so that computers can update their own" -ForegroundColor DarkGray
+    Write-Host "  password attributes. After this, uninstall the Legacy CSE from pilot" -ForegroundColor DarkGray
+    Write-Host "  machines -- Windows LAPS will take over using the existing GPO." -ForegroundColor DarkGray
+
+    $targetOU = Select-OU -Title "Which OU receives SELF write permission?" -Description "Typically the same OU that currently has Legacy LAPS deployed."
+    if (-not $targetOU) { Pause-Screen; return }
 
     Write-Banner
     Write-Section "Phase 2: Schema Update and Emulation Mode"
+    Write-Host "  Target OU: $targetOU" -ForegroundColor White
+    Write-Host ""
 
     # Schema
     if ($script:HasWLAPSSchema) {
@@ -899,10 +1085,19 @@ function Invoke-MigrationSchemaEmulation {
 }
 
 function Invoke-MigrationValidatePilot {
-    $targetOU = Read-Param "Pilot OU (DN)" -Mandatory
+    Write-Banner
+    Write-Section "Phase 3: Pilot Validation"
+    Write-Host "  This phase scans computers in a target OU and shows which password" -ForegroundColor DarkGray
+    Write-Host "  backend (Legacy, Emulation, or Windows LAPS native) each machine uses." -ForegroundColor DarkGray
+    Write-Host "  Run this after uninstalling the Legacy CSE from pilot machines." -ForegroundColor DarkGray
+
+    $targetOU = Select-OU -Title "Which OU contains the pilot machines?" -Description "Select the OU where you uninstalled the Legacy CSE."
+    if (-not $targetOU) { Pause-Screen; return }
 
     Write-Banner
     Write-Section "Phase 3: Pilot Validation"
+    Write-Host "  Scope: $targetOU" -ForegroundColor White
+    Write-Host ""
 
     $props = @("Name", "Enabled", "OperatingSystem")
     if ($script:HasLegacySchema) { $props += "ms-Mcs-AdmPwd", "ms-Mcs-AdmPwdExpirationTime" }
@@ -959,15 +1154,47 @@ function Invoke-MigrationSwitchNative {
         Write-Status "LAPS module required" "ERROR"; Pause-Screen; return
     }
 
-    $targetOU  = Read-Param "Target OU (DN)" -Mandatory
-    $readGroup = Read-Param "Read/Reset group (DOMAIN\Group)" -Mandatory
-    $gpoName   = Read-Param "GPO name" -Default "Windows LAPS Policy"
-    $pwdLen    = [int](Read-Param "Password length" -Default "20")
-    $pwdAge    = [int](Read-Param "Password age (days)" -Default "30")
-    $postAuth  = [int](Read-Param "Post-auth delay (hours)" -Default "8")
-
     Write-Banner
     Write-Section "Phase 4: Switch to Native Mode"
+    Write-Host "  This phase creates a dedicated Windows LAPS GPO, grants permissions" -ForegroundColor DarkGray
+    Write-Host "  to a reader group, and links the GPO to the target OU." -ForegroundColor DarkGray
+    Write-Host "  After this, machines will store their password in msLAPS-* attributes" -ForegroundColor DarkGray
+    Write-Host "  instead of the old ms-Mcs-* attributes." -ForegroundColor DarkGray
+
+    # STEP 1 -- Target OU
+    Write-Host ""
+    Write-Host "  ── STEP 1/4: Target OU ──" -ForegroundColor Cyan
+    $targetOU = Select-OU -Title "Which OU should receive the Windows LAPS GPO?" -Description "The GPO will be linked here. All computers below will be affected."
+    if (-not $targetOU) { Pause-Screen; return }
+
+    # STEP 2 -- Admin group
+    Write-Host ""
+    Write-Host "  ── STEP 2/4: LAPS Admin Group ──" -ForegroundColor Cyan
+    Write-Host "  This group will receive Read and Reset permissions on LAPS passwords." -ForegroundColor DarkGray
+    $readGroup = Select-Group -Title "Select the LAPS admin group" -Description "Members of this group can read and reset LAPS passwords."
+    if (-not $readGroup) { Pause-Screen; return }
+
+    # STEP 3 -- Password policy
+    Write-Host ""
+    Write-Host "  ── STEP 3/4: Password Policy ──" -ForegroundColor Cyan
+    Write-Host "  Configure the password settings for the Windows LAPS GPO." -ForegroundColor DarkGray
+    Write-Host ""
+    $gpoName   = Read-Param "GPO display name" -Default "Windows LAPS Policy"
+    $pwdLen    = [int](Read-Param "Password length (8-64)" -Default "20")
+    $pwdAge    = [int](Read-Param "Password age in days (1-365)" -Default "30")
+    $postAuth  = [int](Read-Param "Post-auth reset delay in hours (0-24)" -Default "8")
+
+    # STEP 4 -- Recap and confirm
+    Write-Host ""
+    Write-Host "  ── STEP 4/4: Review ──" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "    Target OU      : $targetOU" -ForegroundColor White
+    Write-Host "    Admin group    : $readGroup" -ForegroundColor White
+    Write-Host "    GPO name       : $gpoName" -ForegroundColor White
+    Write-Host "    Password length: $pwdLen" -ForegroundColor White
+    Write-Host "    Password age   : $pwdAge days" -ForegroundColor White
+    Write-Host "    Post-auth delay: $postAuth hours" -ForegroundColor White
+    Write-Host "    Encryption     : $(if ($script:DFLSupportsEncryption) { 'Enabled' } else { 'Disabled (DFL too low)' })" -ForegroundColor White
 
     if (-not (Confirm-Action "Switch $targetOU to Windows LAPS native mode?")) {
         Pause-Screen; return
@@ -1030,10 +1257,19 @@ function Invoke-MigrationSwitchNative {
 }
 
 function Invoke-MigrationCleanup {
-    $targetOU = Read-Param "Target OU (DN)" -Mandatory
+    Write-Banner
+    Write-Section "Phase 5: Legacy LAPS Cleanup"
+    Write-Host "  This phase removes Legacy LAPS artifacts:" -ForegroundColor DarkGray
+    Write-Host "    - Unlinks Legacy LAPS GPOs from the target OU" -ForegroundColor DarkGray
+    Write-Host "    - Clears ms-Mcs-AdmPwd and ms-Mcs-AdmPwdExpirationTime on computers" -ForegroundColor DarkGray
+    Write-Host "    - Scans and optionally removes Legacy LAPS ACEs from OUs" -ForegroundColor DarkGray
+
+    $targetOU = Select-OU -Title "Which OU should be cleaned up?" -Description "All Legacy LAPS data under this OU will be removed."
+    if (-not $targetOU) { Pause-Screen; return }
 
     Write-Banner
     Write-Section "Phase 5: Legacy LAPS Cleanup"
+    Write-Host "  Scope: $targetOU" -ForegroundColor White
 
     if (-not (Confirm-Action "Clean up Legacy LAPS in $targetOU ?")) {
         Pause-Screen; return
@@ -1217,7 +1453,11 @@ function Invoke-QuickTools {
 
         switch ($choice) {
             "1" {
-                $pc = Read-Param "Computer name" -Mandatory
+                Write-Host ""
+                Write-Host "  Retrieve the current LAPS password stored in AD for a computer." -ForegroundColor DarkGray
+                Write-Host "  Works with both Windows LAPS and Legacy LAPS." -ForegroundColor DarkGray
+                $pc = Select-Computer -Title "Which computer's LAPS password do you want?"
+                if (-not $pc) { Pause-Screen; continue }
                 Write-Host ""
                 try {
                     $pwd = Get-LapsADPassword -Identity $pc -AsPlainText -ErrorAction Stop
@@ -1245,7 +1485,11 @@ function Invoke-QuickTools {
                 Pause-Screen
             }
             "2" {
-                $pc = Read-Param "Computer name" -Mandatory
+                Write-Host ""
+                Write-Host "  Trigger an immediate password rotation on a remote computer." -ForegroundColor DarkGray
+                Write-Host "  The machine must be online and reachable via PSRemoting." -ForegroundColor DarkGray
+                $pc = Select-Computer -Title "Which computer should rotate its LAPS password?"
+                if (-not $pc) { Pause-Screen; continue }
                 Write-Host ""
                 try {
                     Reset-LapsPassword -Identity $pc -ErrorAction Stop
@@ -1265,7 +1509,11 @@ function Invoke-QuickTools {
                 Pause-Screen
             }
             "3" {
-                $pc = Read-Param "Computer name" -Mandatory
+                Write-Host ""
+                Write-Host "  Read the last 20 events from the Microsoft-Windows-LAPS/Operational" -ForegroundColor DarkGray
+                Write-Host "  event log on a remote machine (requires PSRemoting)." -ForegroundColor DarkGray
+                $pc = Select-Computer -Title "Which computer's LAPS event log to read?"
+                if (-not $pc) { Pause-Screen; continue }
                 Write-Host ""
                 try {
                     $events = Invoke-Command -ComputerName $pc -ScriptBlock {
@@ -1292,7 +1540,11 @@ function Invoke-QuickTools {
                 Pause-Screen
             }
             "5" {
-                $ou = Read-Param "OU distinguished name" -Mandatory
+                Write-Host ""
+                Write-Host "  Shows which principals have LAPS extended rights on an OU." -ForegroundColor DarkGray
+                Write-Host "  This tells you who can read or reset LAPS passwords." -ForegroundColor DarkGray
+                $ou = Select-OU -Title "Which OU to audit?" -Description "Extended rights (Read/Reset password) will be listed."
+                if (-not $ou) { Pause-Screen; continue }
                 Write-Host ""
                 if ($script:LAPSModuleAvailable) {
                     try {
@@ -1315,7 +1567,12 @@ function Invoke-QuickTools {
                 Pause-Screen
             }
             "6" {
-                $searchBase = Read-Param "Search base OU (DN)" -Mandatory
+                Write-Host ""
+                Write-Host "  Checks whether the Legacy LAPS CSE (AdmPwd.dll) is still installed" -ForegroundColor DarkGray
+                Write-Host "  on remote computers. Uses PSRemoting (WinRM must be enabled)." -ForegroundColor DarkGray
+                Write-Host "  Machines with the CSE still present will NOT activate Windows LAPS." -ForegroundColor DarkGray
+                $searchBase = Select-OU -Title "Which OU to scan for Legacy CSE?" -Description "All computers under this OU will be checked via PSRemoting."
+                if (-not $searchBase) { Pause-Screen; continue }
                 Write-Host ""
                 Write-Host "  Querying computers and checking Legacy CSE via PSRemoting..." -ForegroundColor DarkGray
                 Write-Host "  (Requires WinRM/PSRemoting enabled on target machines)" -ForegroundColor DarkGray
@@ -1378,7 +1635,11 @@ function Invoke-QuickTools {
                 Pause-Screen
             }
             "7" {
-                $rootOU = Read-Param "Root OU to scan (DN)" -Mandatory
+                Write-Host ""
+                Write-Host "  Scans OUs for Legacy LAPS ACEs (ms-Mcs-AdmPwd permissions)." -ForegroundColor DarkGray
+                Write-Host "  Shows direct vs inherited ACEs. Use Migration > Phase 5 to remove them." -ForegroundColor DarkGray
+                $rootOU = Select-OU -Title "Which root OU to scan?" -Description "All child OUs will also be scanned recursively."
+                if (-not $rootOU) { Pause-Screen; continue }
                 Write-Host ""
 
                 $schemaNC    = (Get-ADRootDSE).schemaNamingContext

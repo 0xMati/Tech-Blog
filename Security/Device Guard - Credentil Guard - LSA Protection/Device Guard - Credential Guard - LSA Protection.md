@@ -252,15 +252,18 @@ In simple terms:
 
 > 💡 **Tip**: You can check driver HVCI compatibility before enabling it:
 > ```powershell
-> # List drivers not compatible with HVCI
-> Get-WindowsDriver -Online | Where-Object { $_.BootCritical -eq $false } |
->     ForEach-Object {
->         $driverInfo = Get-WindowsDriver -Online -Driver $_.Driver
->         # Check for HVCI compatibility flags in the driver
->     }
+> # Check HVCI compatibility via System Information
+> # Run msinfo32.exe → look for "Virtualization-based security" and
+> # "Virtualization-based security Services Running" to see the current state.
 >
-> # Or use the Device Guard Readiness Tool from Microsoft
-> # https://www.microsoft.com/en-us/download/details.aspx?id=53337
+> # Check via PowerShell / WMI
+> $dg = Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\Microsoft\Windows\DeviceGuard
+> $dg | Select-Object VirtualizationBasedSecurityStatus, SecurityServicesRunning
+> # VirtualizationBasedSecurityStatus: 0 = Not enabled, 1 = Enabled but not running, 2 = Running
+> # SecurityServicesRunning: look for value 2 (HVCI)
+>
+> # On Windows Security App → Device Security → Core Isolation → Memory Integrity
+> # Windows will show a list of incompatible drivers preventing HVCI from being enabled.
 > ```
 
 ### Can I Deploy HVCI on Domain Controllers?
@@ -412,12 +415,12 @@ Credential Guard specifically mitigates:
 
 | Area | Impact |
 |---|---|
-| **NTLM v1** | ❌ **Blocked** — NTLMv1 authentication no longer works (good for security!) |
+| **NTLM v1** | ⚠️ **SSO blocked** — NTLMv1 single sign-on no longer works. Users are forced to enter credentials manually. Consider eliminating NTLMv1 entirely. |
 | **Unconstrained delegation** | ❌ **Broken** — Credential Guard blocks TGT delegation. Use **constrained** or **resource-based constrained delegation** instead. |
 | **MS-CHAPv2 / CredSSP** | ⚠️ **SSO blocked** — Single sign-on for MS-CHAPv2 (PEAP-MSCHAPv2, EAP-MSCHAPv2) and CredSSP is blocked. Manual credential entry still works. Move to certificate-based auth (PEAP-TLS, EAP-TLS). |
 | **Kerberos DES encryption** | ❌ **Blocked** — DES-based Kerberos is not supported. |
 | **Kerberos TGT extraction** | ❌ **Blocked** — Applications that require extracting Kerberos TGTs (e.g. Java GSS API) will fail. |
-| **Digest authentication** | ❌ **Blocked** — WDigest plaintext credentials are not cached. |
+| **Digest authentication** | ⚠️ **SSO blocked** — WDigest single sign-on is blocked; users are prompted for credentials. Plaintext credential caching is also prevented. |
 | **DPAPI (machine)** | ⚠️ Machine DPAPI works but user DPAPI-protected data loaded at boot may have caveats. |
 | **Third-party SSPs** | ❌ **Blocked** — Custom Security Support Providers cannot load into LSASS. |
 | **Performance** | Low — VBS adds minimal overhead (~1-2% CPU). May be more noticeable on older hardware. |
@@ -704,19 +707,12 @@ Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "RunAs
     Select-Object RunAsPPL
 # Value 1 = Enabled
 
-# Method 2: Check LSASS process protection level
-(Get-Process lsass).Path
-# Look in Task Manager → Details tab → Add column "Protection" → should show "PsProtectedSignerLsa-Light"
+# Method 2: Check via Task Manager
+# Open Task Manager → Details tab → right-click column headers → Select Columns → add "Protection"
+# The lsass.exe process should show "PsProtectedSignerLsa-Light" when PPL is enabled.
+# If it shows empty or "None", LSA Protection is not active.
 
-# Method 3: WMI/CIM query
-Get-CimInstance -ClassName Win32_Process -Filter "Name='lsass.exe'" |
-    Select-Object Name, ProcessId, @{N='Protection';E={
-        $_.GetOwner() | Out-Null
-        # If the process is PPL, attempting certain operations will be blocked
-        "Check Task Manager Details → Protection column"
-    }}
-
-# Method 4: Check event log for LSA protection status
+# Method 3: Check event log for LSA protection status
 # Event ID 12 from WinInit in the System log
 Get-WinEvent -LogName "System" | Where-Object {
     $_.ProviderName -eq "Wininit" -and $_.Id -eq 12
@@ -809,9 +805,15 @@ Get-ADUser -Filter { TrustedForDelegation -eq $true } -Properties TrustedForDele
     Select-Object Name, DistinguishedName
 
 Write-Host "`n=== LSASS Loaded Modules ===" -ForegroundColor Cyan
-Get-Process lsass | Select-Object -ExpandProperty Modules |
-    Where-Object { $_.Company -notlike "*Microsoft*" } |
-    Select-Object FileName, Company, Description
+# Note: requires elevation. Will fail if LSA Protection (PPL) is already enabled.
+try {
+    Get-Process lsass -ErrorAction Stop | Select-Object -ExpandProperty Modules |
+        Where-Object { $_.FileVersionInfo.CompanyName -notlike "*Microsoft*" } |
+        Select-Object FileName, @{N='Company';E={$_.FileVersionInfo.CompanyName}},
+            @{N='Description';E={$_.FileVersionInfo.FileDescription}}
+} catch {
+    Write-Host "Cannot read LSASS modules (access denied — PPL may already be enabled)" -ForegroundColor Yellow
+}
 
 Write-Host "`n=== LSA Protection Status ===" -ForegroundColor Cyan
 try {
@@ -843,11 +845,11 @@ if ($dg) {
 
 4. **UEFI Lock with no rollback plan** — Enabling Credential Guard or LSA Protection with UEFI lock means you need **physical access** (or firmware tools) to disable it. Use "without lock" mode during initial rollout.
 
-5. **Ignoring NTLMv1 dependencies** — Credential Guard blocks NTLMv1. Old network printers, legacy applications, or misconfigured Linux/Samba clients may break.
+5. **Ignoring NTLMv1 dependencies** — Credential Guard blocks NTLMv1 single sign-on. Old network printers, legacy applications, or misconfigured Linux/Samba clients relying on NTLMv1 SSO will require manual credential entry or will break.
 
 6. **Not monitoring event logs after deployment** — Always monitor the relevant event logs for at least 2 weeks after enabling any feature:
    - Code Integrity / WDAC / LSA: `Microsoft-Windows-CodeIntegrity/Operational` (3076, 3077 for WDAC ; 3065, 3066 for LSA audit ; 3033, 3063 for LSA enforcement)
-   - Credential Guard: `System` log, source `Wininit` (Event IDs 13, 14, 15, 16)
+   - Credential Guard: `System` log, source `Wininit` (Event IDs 13, 14, 15, 16, 17)
 
 7. **Enabling Credential Guard on Domain Controllers** — Microsoft explicitly states that Credential Guard **does not provide additional security on DCs** (credentials are also in NTDS.dit) and can cause compatibility issues. Do not enable it on DCs. Similarly, Credential Guard is **not supported on Exchange Server** and can lead to performance issues.
 
