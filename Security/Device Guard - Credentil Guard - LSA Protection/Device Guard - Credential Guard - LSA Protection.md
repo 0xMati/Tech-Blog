@@ -20,7 +20,6 @@ Hey everyone! In this article we're going to deep dive into four critical Window
   - [How to Deploy WDAC](#how-to-deploy-wdac)
 - [🧱 HVCI — Hypervisor-protected Code Integrity](#-hvci--hypervisor-protected-code-integrity)
   - [What Is HVCI?](#what-is-hvci)
-  - [HVCI vs WDAC — What's the Difference?](#hvci-vs-wdac--whats-the-difference)
   - [What Does HVCI Protect Against?](#what-does-hvci-protect-against)
   - [Requirements](#requirements-hvci)
   - [Impact & Considerations](#impact--considerations-hvci)
@@ -150,11 +149,11 @@ ConvertFrom-CIPolicy -XmlFilePath "C:\Policies\BasePolicy.xml" `
 
 #### Step 4 — Deploy via Group Policy
 
-1. **Copier le fichier de policy** sur un partage réseau accessible par les machines cibles (ex: `\\domain.local\SYSVOL\domain.local\Policies\WDAC\`) ou dans un dossier local
-2. **Ouvrir la console GPMC** (`gpmc.msc`)
-3. **Créer une nouvelle GPO** : clic droit sur l'OU cible → *Create a GPO in this domain, and Link it here...*
-   - Nommer la GPO de manière explicite, ex: `SEC - WDAC - Audit Mode` ou `SEC - WDAC - Enforce`
-4. **Éditer la GPO** → naviguer vers :
+1. **Copy the policy file** to a network share accessible by target machines (e.g. `\\domain.local\SYSVOL\domain.local\Policies\WDAC\`) or to a local folder
+2. **Open the GPMC console** (`gpmc.msc`)
+3. **Create a new GPO**: right-click the target OU → *Create a GPO in this domain, and Link it here...*
+   - Name the GPO explicitly, e.g. `SEC - WDAC - Audit Mode` or `SEC - WDAC - Enforce`
+4. **Edit the GPO** → navigate to:
 
 ```
 Computer Configuration
@@ -164,19 +163,19 @@ Computer Configuration
         → Deploy Windows Defender Application Control
 ```
 
-5. **Activer le setting** → sélectionner **Enabled**
-6. **Spécifier le chemin** vers le fichier `.cip` ou `.p7b` :
-   - Ex: `\\domain.local\SYSVOL\domain.local\Policies\WDAC\BasePolicy.cip`
-   - Ou le chemin local si déployé autrement : `C:\Windows\System32\CodeIntegrity\CiPolicies\Active\{PolicyID}.cip`
-7. **Cliquer OK** et fermer l'éditeur
+5. **Enable the setting** → select **Enabled**
+6. **Specify the path** to the `.cip` or `.p7b` file:
+   - E.g. `\\domain.local\SYSVOL\domain.local\Policies\WDAC\BasePolicy.cip`
+   - Or the local path if deployed differently: `C:\Windows\System32\CodeIntegrity\CiPolicies\Active\{PolicyID}.cip`
+7. **Click OK** and close the editor
 
-> 💡 **Tip**: Pour un déploiement progressif :
-> - Créer un **groupe de sécurité AD** (ex: `GRP-WDAC-Pilot`) et filtrer la GPO avec **Security Filtering** sur ce groupe
-> - Commencer par quelques machines pilotes en **Audit mode**
-> - Analyser les Event IDs 3076 pendant 2-4 semaines
-> - Puis élargir progressivement le scope
+> 💡 **Tip**: For a progressive rollout:
+> - Create an **AD security group** (e.g. `GRP-WDAC-Pilot`) and filter the GPO with **Security Filtering** on that group
+> - Start with a few pilot machines in **Audit mode**
+> - Analyze Event IDs 3076 for 2-4 weeks
+> - Then gradually expand the scope
 
-> ⚠️ **Important**: La GPO ne fait que pointer vers le fichier de policy — le contenu de la policy (audit vs enforce, règles d'autorisation) est défini dans le fichier XML/CIP lui-même. Modifier le mode nécessite de re-générer et redéployer le fichier `.cip`.
+> ⚠️ **Important**: The GPO only points to the policy file — the policy content (audit vs enforce, authorization rules) is defined in the XML/CIP file itself. Changing the mode requires regenerating and redeploying the `.cip` file.
 
 #### Step 5 — Monitor Audit Events
 
@@ -197,8 +196,8 @@ Set-RuleOption -FilePath "C:\Policies\BasePolicy.xml" -Option 3 -Delete
 ConvertFrom-CIPolicy -XmlFilePath "C:\Policies\BasePolicy.xml" `
     -BinaryFilePath "C:\Policies\{PolicyID}.cip"
 
-# Remplacer le fichier .cip sur le partage réseau ou le chemin utilisé par la GPO
-# La GPO appliquera automatiquement la nouvelle policy au prochain gpupdate
+# Replace the .cip file on the network share or the path used by the GPO
+# The GPO will automatically apply the new policy at the next gpupdate
 ```
 
 ---
@@ -214,19 +213,6 @@ In simple terms:
 - **With HVCI**: A separate VBS-isolated process checks kernel code → even a compromised kernel cannot bypass the verification
 
 🔗 https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity
-
-### HVCI vs WDAC — What's the Difference?
-
-| Aspect | WDAC | HVCI |
-|---|---|---|
-| **Scope** | User-mode applications, scripts, DLLs | Kernel-mode drivers and code |
-| **Mechanism** | Code integrity policies (whitelist/blocklist) | VBS-isolated kernel code integrity verification |
-| **Requires VBS** | ❌ No | ✅ Yes |
-| **Protects against** | Malware, unauthorized apps, LOLBins | Vulnerable/malicious kernel drivers |
-| **Independent** | ✅ Can be used alone | ✅ Can be used alone |
-| **Best together** | ✅ WDAC + HVCI = full stack code integrity | ✅ HVCI + WDAC = full stack code integrity |
-
-> 💡 **Tip**: WDAC controls **what** is allowed to run. HVCI ensures the **kernel verification** of that code cannot be tampered with. They are complementary but independent.
 
 ### What Does HVCI Protect Against?
 
@@ -291,10 +277,10 @@ In simple terms:
 
 #### Option 1 — via Group Policy
 
-1. **Ouvrir la console GPMC** (`gpmc.msc`)
-2. **Créer une nouvelle GPO** : clic droit sur l'OU cible → *Create a GPO in this domain, and Link it here...*
-   - Nommer la GPO : ex: `SEC - VBS and HVCI`
-3. **Éditer la GPO** → naviguer vers :
+1. **Open the GPMC console** (`gpmc.msc`)
+2. **Create a new GPO**: right-click the target OU → *Create a GPO in this domain, and Link it here...*
+   - Name the GPO: e.g. `SEC - VBS and HVCI`
+3. **Edit the GPO** → navigate to:
 
 ```
 Computer Configuration
@@ -304,22 +290,22 @@ Computer Configuration
         → Turn On Virtualization Based Security
 ```
 
-4. **Activer le setting** → sélectionner **Enabled**
-5. **Configurer les options** :
+4. **Enable the setting** → select **Enabled**
+5. **Configure the options**:
 
-| Option | Valeur recommandée | Description |
+| Option | Recommended value | Description |
 |---|---|---|
-| **Select Platform Security Level** | `Secure Boot and DMA Protection` | Niveau de protection de la plateforme. "Secure Boot" seul est le minimum. "Secure Boot and DMA Protection" est plus sécurisé mais nécessite un hardware compatible IOMMU (Intel VT-d / AMD-Vi). |
-| **Virtualization Based Protection of Code Integrity** | `Enabled with UEFI lock` (prod) ou `Enabled without lock` (test) | Active HVCI. Le UEFI lock empêche la désactivation à distance — nécessite un accès physique pour le désactiver. |
-| **Require UEFI Memory Attributes Table** | `True` (si supporté) | Renforce la protection en exigeant que le firmware expose les attributs mémoire via UEFI MAT. |
-| **Credential Guard Configuration** | Laisser `Not Configured` ici si géré séparément | Credential Guard peut être activé dans la même GPO ou séparément (voir section Credential Guard). |
+| **Select Platform Security Level** | `Secure Boot and DMA Protection` | Platform security level. "Secure Boot" alone is the minimum. "Secure Boot and DMA Protection" is more secure but requires IOMMU-compatible hardware (Intel VT-d / AMD-Vi). |
+| **Virtualization Based Protection of Code Integrity** | `Enabled with UEFI lock` (prod) or `Enabled without lock` (test) | Enables HVCI. The UEFI lock prevents remote disabling — requires physical access to disable. |
+| **Require UEFI Memory Attributes Table** | `True` (if supported) | Strengthens protection by requiring the firmware to expose memory attributes via UEFI MAT. |
+| **Credential Guard Configuration** | Leave `Not Configured` here if managed separately | Credential Guard can be enabled in the same GPO or separately (see Credential Guard section). |
 
-6. **Cliquer OK** → fermer l'éditeur
-7. **Lier la GPO** à l'OU appropriée (commencer par un scope limité)
+6. **Click OK** → close the editor
+7. **Link the GPO** to the appropriate OU (start with a limited scope)
 
-> 💡 **Tip**: Utilisez **"Enabled without lock"** pendant les tests pour pouvoir facilement revenir en arrière. Passez en **"Enabled with UEFI lock"** uniquement quand vous êtes sûr que tous les drivers sont compatibles.
+> 💡 **Tip**: Use **“Enabled without lock”** during testing so you can easily roll back. Switch to **“Enabled with UEFI lock”** only when you are confident all drivers are compatible.
 
-> ⚠️ **Important**: Cette GPO active VBS **et** HVCI. Si vous souhaitez activer VBS sans HVCI (par exemple pour Credential Guard seul), laissez l'option "Virtualization Based Protection of Code Integrity" sur `Not Configured` ou `Disabled`.
+> ⚠️ **Important**: This GPO enables VBS **and** HVCI. If you want to enable VBS without HVCI (e.g. for Credential Guard only), leave the “Virtualization Based Protection of Code Integrity” option set to `Not Configured` or `Disabled`.
 
 #### Option 2 — via Registry
 
@@ -418,7 +404,7 @@ Credential Guard specifically mitigates:
 | **Virtualization** | Hardware virtualization (Intel VT-x / AMD-V) + SLAT (Intel EPT / AMD RVI) |
 | **Hyper-V** | Hyper-V role must be available (installed automatically when enabling VBS) |
 
-> ⚠️ **Important**: Starting with **Windows 11 22H2** and **Windows Server 2025**, Credential Guard is **enabled by default** (without UEFI lock) on devices that meet the requirements. On Windows Server 2025, les Domain Controllers sont **explicitement exclus** de l'activation par défaut.
+> ⚠️ **Important**: Starting with **Windows 11 22H2** and **Windows Server 2025**, Credential Guard is **enabled by default** (without UEFI lock) on devices that meet the requirements. On Windows Server 2025, Domain Controllers are **explicitly excluded** from default enablement.
 >
 > 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/configure
 
@@ -448,18 +434,18 @@ Credential Guard specifically mitigates:
 
 ### Can I Deploy Credential Guard on Domain Controllers?
 
-**Non recommandé par Microsoft.** La documentation officielle indique explicitement :
+**Not recommended by Microsoft.** The official documentation explicitly states:
 
 > ⚠️ *"Enabling Credential Guard on domain controllers isn't recommended. Credential Guard doesn't provide any added security to domain controllers, and can cause application compatibility issues on domain controllers."*
 
-**Pourquoi ça ne protège pas les DCs ?**
+**Why doesn't it protect DCs?**
 
-Credential Guard protège les **derived credentials** en mémoire (NTLM hashes, Kerberos TGTs dans LSASS). Or sur un Domain Controller, ces secrets sont aussi stockés dans la **base Active Directory (NTDS.dit)** et dans le **SAM**. Même avec Credential Guard, un attaquant ayant accès au DC peut extraire les credentials directement depuis la base AD.
+Credential Guard protects **derived credentials** in memory (NTLM hashes, Kerberos TGTs in LSASS). However, on a Domain Controller, these secrets are also stored in the **Active Directory database (NTDS.dit)** and in the **SAM**. Even with Credential Guard, an attacker with access to the DC can extract credentials directly from the AD database.
 
-- ❌ Microsoft ne recommande **pas** Credential Guard sur les DCs
-- ❌ Les DCs sont **explicitement exclus** de l'activation par défaut sur Windows Server 2025
-- ⚠️ Peut causer des problèmes de compatibilité applicative sur les DCs
-- 💡 Pour protéger les DCs, privilégiez : **LSA Protection (RunAsPPL)**, **HVCI**, **WDAC**, et les bonnes pratiques de tiering
+- ❌ Microsoft does **not** recommend Credential Guard on DCs
+- ❌ DCs are **explicitly excluded** from default enablement on Windows Server 2025
+- ⚠️ Can cause application compatibility issues on DCs
+- 💡 To protect DCs, use instead: **LSA Protection (RunAsPPL)**, **HVCI**, **WDAC**, and tiering best practices
 
 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/
 
@@ -467,9 +453,9 @@ Credential Guard protège les **derived credentials** en mémoire (NTLM hashes, 
 
 #### Option 1 — via Group Policy
 
-1. **Ouvrir la console GPMC** (`gpmc.msc`)
-2. **Créer ou réutiliser une GPO VBS** : Si vous avez déjà une GPO pour HVCI (ex: `SEC - VBS and HVCI`), vous pouvez ajouter Credential Guard dans la même GPO. Sinon, créer une nouvelle GPO dédiée (ex: `SEC - Credential Guard`)
-3. **Éditer la GPO** → naviguer vers :
+1. **Open the GPMC console** (`gpmc.msc`)
+2. **Create or reuse a VBS GPO**: If you already have a GPO for HVCI (e.g. `SEC - VBS and HVCI`), you can add Credential Guard in the same GPO. Otherwise, create a dedicated new GPO (e.g. `SEC - Credential Guard`)
+3. **Edit the GPO** → navigate to:
 
 ```
 Computer Configuration
@@ -479,28 +465,28 @@ Computer Configuration
         → Turn On Virtualization Based Security
 ```
 
-4. **Activer le setting** → sélectionner **Enabled** (si pas déjà fait)
-5. **Configurer les options Credential Guard** :
+4. **Enable the setting** → select **Enabled** (if not already done)
+5. **Configure Credential Guard options**:
 
-| Option | Valeur recommandée | Description |
+| Option | Recommended value | Description |
 |---|---|---|
-| **Select Platform Security Level** | `Secure Boot and DMA Protection` | Comme pour HVCI. |
-| **Credential Guard Configuration** | `Enabled with UEFI lock` (prod) ou `Enabled without lock` (test) | Active Credential Guard. Le UEFI lock protège contre la désactivation à distance. |
-| **Secure Launch Configuration** | `Enabled` (si supporté) | Active System Guard Secure Launch pour une protection supplémentaire au démarrage. |
+| **Select Platform Security Level** | `Secure Boot and DMA Protection` | Same as for HVCI. |
+| **Credential Guard Configuration** | `Enabled with UEFI lock` (prod) or `Enabled without lock` (test) | Enables Credential Guard. The UEFI lock protects against remote disabling. |
+| **Secure Launch Configuration** | `Enabled` (if supported) | Enables System Guard Secure Launch for additional boot-time protection. |
 
-6. **Cliquer OK** → fermer l'éditeur
-7. **Filtrer le scope** :
-   - **Ne jamais lier cette GPO à l'OU des Domain Controllers** (non recommandé par Microsoft)
-   - Lier la GPO à l'OU des workstations / member servers
-   - Utiliser le **Security Filtering** pour cibler un groupe pilote d'abord (ex: `GRP-CredGuard-Pilot`)
-   - Ou utiliser un **WMI Filter** pour cibler uniquement les machines Enterprise : 
+6. **Click OK** → close the editor
+7. **Filter the scope**:
+   - **Never link this GPO to the Domain Controllers OU** (not recommended by Microsoft)
+   - Link the GPO to the workstations / member servers OU
+   - Use **Security Filtering** to target a pilot group first (e.g. `GRP-CredGuard-Pilot`)
+   - Or use a **WMI Filter** to target Enterprise edition machines only: 
      ```
      SELECT * FROM Win32_OperatingSystem WHERE Caption LIKE "%Enterprise%"
      ```
 
-> 💡 **Tip**: Utilisez **"Enabled without lock"** pendant les tests — avec le UEFI lock, il faut un accès physique (ou une intervention firmware) pour désactiver Credential Guard. En phase de test, vous voulez pouvoir faire marche arrière via GPO ou registry.
+> 💡 **Tip**: Use **“Enabled without lock”** during testing — with the UEFI lock, you need physical access (or firmware intervention) to disable Credential Guard. During testing, you want to be able to roll back via GPO or registry.
 
-> ⚠️ **Important**: Si vous activez Credential Guard **et** HVCI, les deux peuvent être configurés dans la **même GPO** sous le même setting "Turn On Virtualization Based Security". Pas besoin de 2 GPO séparées.
+> ⚠️ **Important**: If you enable Credential Guard **and** HVCI, both can be configured in the **same GPO** under the same “Turn On Virtualization Based Security” setting. No need for 2 separate GPOs.
 
 #### Option 2 — via Registry
 
@@ -524,15 +510,15 @@ Restart-Computer
 Use the **Endpoint Security** > **Account Protection** profile, or a custom OMA-URI policy with **two settings** :
 
 ```
-# Activer VBS
+# Enable VBS
 OMA-URI: ./Device/Vendor/MSFT/Policy/Config/DeviceGuard/EnableVirtualizationBasedSecurity
 Type: Integer
 Value: 1
 
-# Activer Credential Guard
+# Enable Credential Guard
 OMA-URI: ./Device/Vendor/MSFT/Policy/Config/DeviceGuard/LsaCfgFlags
 Type: Integer
-Value: 1 (UEFI lock) ou 2 (sans lock)
+Value: 1 (UEFI lock) or 2 (without lock)
 ```
 
 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/configure
@@ -617,7 +603,7 @@ Get-WinEvent -LogName "System" | Where-Object {
 | **WDigest** | Plaintext credential caching is blocked (same as disabling WDigest via registry). |
 | **Audit mode** | Available on **Windows 11 22H2+** and **Windows Server 2025** — logs what would be blocked without actually blocking. |
 
-> 💡 **Tip**: On **Windows 11 22H2+**, LSA Protection audit mode est **activé par défaut**. L'audit log les plugins/drivers qui ne pourraient pas se charger sous LSA Protection. Check event log: `Microsoft-Windows-CodeIntegrity/Operational` — look for **Event ID 3065** (a code integrity check found a driver that didn't meet security requirements) and **Event ID 3066** (same, but the image was blocked).
+> 💡 **Tip**: On **Windows 11 22H2+**, LSA Protection audit mode is **enabled by default**. The audit logs plugins/drivers that would fail to load under LSA Protection. Check event log: `Microsoft-Windows-CodeIntegrity/Operational` — look for **Event ID 3065** (a code integrity check found a driver that didn't meet security requirements) and **Event ID 3066** (same, but the image was blocked).
 
 ### Can I Deploy LSA Protection on Domain Controllers?
 
@@ -633,12 +619,12 @@ Get-WinEvent -LogName "System" | Where-Object {
 
 #### Option 1 — via GPO Registry Preferences (All OS versions)
 
-Pour les OS **antérieurs à Windows 11 22H2** (pas de setting GPO natif), on utilise les **GPO Preferences** pour pousser la clé de registre :
+For OS versions **prior to Windows 11 22H2** (no native GPO setting), use **GPO Preferences** to push the registry key:
 
-1. **Ouvrir la console GPMC** (`gpmc.msc`)
-2. **Créer une nouvelle GPO** : clic droit sur l'OU cible → *Create a GPO in this domain, and Link it here...*
-   - Nommer la GPO : ex: `SEC - LSA Protection (RunAsPPL)`
-3. **Éditer la GPO** → naviguer vers :
+1. **Open the GPMC console** (`gpmc.msc`)
+2. **Create a new GPO**: right-click the target OU → *Create a GPO in this domain, and Link it here...*
+   - Name the GPO: e.g. `SEC - LSA Protection (RunAsPPL)`
+3. **Edit the GPO** → navigate to:
 
 ```
 Computer Configuration
@@ -647,39 +633,39 @@ Computer Configuration
       → Registry
 ```
 
-4. **Clic droit → New → Registry Item** et configurer :
+4. **Right-click → New → Registry Item** and configure:
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
 | **Action** | `Update` |
 | **Hive** | `HKEY_LOCAL_MACHINE` |
 | **Key Path** | `SYSTEM\CurrentControlSet\Control\Lsa` |
 | **Value name** | `RunAsPPL` |
 | **Value type** | `REG_DWORD` |
-| **Value data** | `1` (avec UEFI variable) ou `2` (sans UEFI variable — Win 11 22H2+ uniquement) |
+| **Value data** | `1` (with UEFI variable) or `2` (without UEFI variable — Win 11 22H2+ only) |
 
-5. **Cliquer OK** → fermer l'éditeur
-6. **Un redémarrage est nécessaire** pour que la protection prenne effet
+5. **Click OK** → close the editor
+6. **A reboot is required** for the protection to take effect
 
-> 💡 **Tip**: Vous pouvez aussi utiliser **Item-Level Targeting** dans les Preferences pour cibler un groupe de sécurité spécifique ou un OS spécifique, ce qui permet un déploiement progressif.
+> 💡 **Tip**: You can also use **Item-Level Targeting** in Preferences to target a specific security group or OS, enabling a progressive rollout.
 
-Ou via PowerShell en local / script de démarrage GPO :
+Or via PowerShell locally / GPO startup script:
 
 ```powershell
 # Enable LSA Protection (RunAsPPL)
-# 1 = avec UEFI variable (ne peut pas être désactivé sans accès physique)
-# 2 = sans UEFI variable (Win 11 22H2+ uniquement — peut être désactivé via registry)
+# 1 = with UEFI variable (cannot be disabled without physical access)
+# 2 = without UEFI variable (Win 11 22H2+ only — can be disabled via registry)
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" `
     -Name "RunAsPPL" -Value 1 -Type DWord
 ```
 
 #### Option 2 — via Group Policy Native Setting (Windows 11 22H2+ / Server 2025)
 
-Sur les OS récents, un setting GPO natif est disponible avec des options avancées (audit mode, UEFI lock) :
+On recent OS versions, a native GPO setting is available with advanced options (audit mode, UEFI lock):
 
-1. **Ouvrir la console GPMC** (`gpmc.msc`)
-2. **Créer une nouvelle GPO** (ou réutiliser la GPO LSA existante) : ex: `SEC - LSA Protection`
-3. **Éditer la GPO** → naviguer vers :
+1. **Open the GPMC console** (`gpmc.msc`)
+2. **Create a new GPO** (or reuse the existing LSA GPO): e.g. `SEC - LSA Protection`
+3. **Edit the GPO** → navigate to:
 
 ```
 Computer Configuration
@@ -689,24 +675,24 @@ Computer Configuration
         → Configure LSASS to run as a protected process
 ```
 
-4. **Activer le setting** → sélectionner **Enabled**
-5. **Choisir le mode** dans le menu déroulant :
+4. **Enable the setting** → select **Enabled**
+5. **Choose the mode** from the dropdown:
 
-| Mode | Valeur | Description |
+| Mode | Value | Description |
 |---|---|---|
-| **Enabled with UEFI Lock** | Strongest | La protection ne peut pas être désactivée à distance — nécessite un accès physique. Recommandé en production. |
-| **Enabled without UEFI Lock** | Medium | Protection active mais désactivable via registry. Utile pour le testing. |
-| **Audit Mode** | Test only | Ne bloque rien — journalise uniquement les DLLs qui seraient bloquées. Disponible uniquement sur Windows 11 22H2+ et Server 2025. |
+| **Enabled with UEFI Lock** | Strongest | Protection cannot be disabled remotely — requires physical access. Recommended for production. |
+| **Enabled without UEFI Lock** | Medium | Protection active but can be disabled via registry. Useful for testing. |
+| **Audit Mode** | Test only | Blocks nothing — only logs DLLs that would be blocked. Available only on Windows 11 22H2+ and Server 2025. |
 
-6. **Cliquer OK** → fermer l'éditeur
-7. **Un redémarrage est nécessaire** après l'application de la GPO
+6. **Click OK** → close the editor
+7. **A reboot is required** after the GPO is applied
 
-> 💡 **Tip**: Stratégie de déploiement recommandée :
-> 1. Déployer en **Audit Mode** pendant 2-4 semaines
-> 2. Vérifier les Event IDs **3065** et **3066** dans `Microsoft-Windows-CodeIntegrity/Operational`
-> 3. Résoudre les incompatibilités identifiées
-> 4. Passer en **Enabled without UEFI Lock**
-> 5. Après validation, passer en **Enabled with UEFI Lock**
+> 💡 **Tip**: Recommended deployment strategy:
+> 1. Deploy in **Audit Mode** for 2-4 weeks
+> 2. Check Event IDs **3065** and **3066** in `Microsoft-Windows-CodeIntegrity/Operational`
+> 3. Resolve identified incompatibilities
+> 4. Switch to **Enabled without UEFI Lock**
+> 5. After validation, switch to **Enabled with UEFI Lock**
 
 #### Option 3 — via Intune / MDM
 
@@ -755,7 +741,7 @@ Get-WinEvent -LogName "System" | Where-Object {
 | **Hardware requirements** | None | UEFI, VT-x, SLAT | UEFI, TPM, VT-x, SLAT | None |
 | **OS editions** | All | All | Enterprise / Education | All |
 | **Minimum OS** | Windows 10 / Server 2016 | Windows 10 / Server 2016 | Windows 10 / Server 2016 | Windows 8.1 / Server 2012 R2 |
-| **Supported on DCs** | ✅ Yes | ✅ Yes | ⚠️ Supporté mais non recommandé | ✅ Yes (Server 2012 R2+) |
+| **Supported on DCs** | ✅ Yes | ✅ Yes | ⚠️ Supported but not recommended | ✅ Yes (Server 2012 R2+) |
 | **Deployment complexity** | 🔴 High | 🟡 Medium | 🟡 Medium | 🟢 Low |
 | **Audit mode available** | ✅ Yes | ❌ No | ❌ No | ✅ Yes (Win 11 22H2+) |
 | **Block credential theft** | ❌ Not directly | ❌ Not directly | ✅ Primary purpose | ✅ Basic protection |
@@ -781,7 +767,7 @@ Phase 2: Credential Guard
   → Medium complexity, high value for workstations and member servers
   → Deploy on admin workstations first (PAWs)
   → Then extend to all Enterprise edition machines
-  → Ne PAS déployer sur les Domain Controllers (non recommandé par Microsoft)
+  → Do NOT deploy on Domain Controllers (not recommended by Microsoft)
 
 Phase 3: HVCI (Memory Integrity)
   → Medium complexity, protects kernel integrity
@@ -800,7 +786,7 @@ Phase 4: WDAC (Application Control)
 
 | Tier | LSA Protection | Credential Guard | HVCI | WDAC |
 |---|---|---|---|---|
-| **Tier 0** (DCs, AD infra) | ✅ Must have | ❌ Non recommandé sur les DCs | ✅ Strongly recommended | ✅ Recommended |
+| **Tier 0** (DCs, AD infra) | ✅ Must have | ❌ Not recommended on DCs | ✅ Strongly recommended | ✅ Recommended |
 | **Tier 1** (Servers) | ✅ Must have | ✅ Recommended | ✅ Recommended | 🟡 Evaluate per server role |
 | **Tier 2** (Workstations) | ✅ Recommended | ✅ Recommended (Enterprise) | ✅ Recommended | 🟡 Complex but ideal |
 | **PAWs** | ✅ Must have | ✅ Must have | ✅ Must have | ✅ Must have |
@@ -868,9 +854,9 @@ if ($dg) {
    - Code Integrity / WDAC / LSA: `Microsoft-Windows-CodeIntegrity/Operational` (3076, 3077 for WDAC ; 3065, 3066 for LSA)
    - Credential Guard: `System` log, source `Wininit` (Event IDs 13, 14, 15, 16)
 
-7. **Enabling Credential Guard on Domain Controllers** — Microsoft indique explicitement que Credential Guard **n'apporte pas de sécurité supplémentaire sur les DCs** (les credentials sont aussi dans NTDS.dit) et peut causer des problèmes de compatibilité. Ne l'activez pas sur les DCs.
+7. **Enabling Credential Guard on Domain Controllers** — Microsoft explicitly states that Credential Guard **does not provide additional security on DCs** (credentials are also in NTDS.dit) and can cause compatibility issues. Do not enable it on DCs.
 
-8. **Virtual machines without nested virtualization** — Credential Guard et HVCI nécessitent la virtualisation. Les VMs sur Hyper-V ont besoin du nested virtualization. Les VMs sur VMware nécessitent l'option `Virtualize Intel VT-x/EPT`. Les VMs Hyper-V doivent être de **Generation 2**.
+8. **Virtual machines without nested virtualization** — Credential Guard and HVCI require virtualization. VMs on Hyper-V need nested virtualization. VMs on VMware require the `Virtualize Intel VT-x/EPT` option. Hyper-V VMs must be **Generation 2**.
 
 ---
 
