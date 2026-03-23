@@ -1,4 +1,4 @@
-# Device Guard, HVCI, Credential Guard & LSA Protection — Comprehensive Guide
+# WDAC, HVCI, Credential Guard & LSA Protection — Comprehensive Guide
 
 🗓️ Published: 2026-03-23
 
@@ -103,7 +103,7 @@ WDAC protects against:
 | Area | Impact |
 |---|---|
 | **Application compatibility** | ⚠️ **High** — Any unsigned or non-whitelisted application will be blocked. Requires thorough application inventory before deployment. |
-| **Performance** | Low — Minimal overhead. HVCI may add a small CPU overhead on older hardware. |
+| **Performance** | Low — Minimal overhead on modern hardware. |
 | **User experience** | Applications that don't match the policy silently fail or show a block notification. |
 | **Administration** | Requires ongoing policy management as new applications are introduced. |
 | **Rollback** | Policies can be deployed in **Audit mode** first (no blocking, only logging). |

@@ -227,30 +227,99 @@ function Invoke-Assessment {
     $legacyGPOs = @()
     $wlapsGPOs = @()
 
+    # Map of Windows LAPS registry value names to friendly display names
+    $lapsRegNames = @{
+        'BackupDirectory'                   = 'Backup Directory'
+        'PasswordComplexity'                = 'Password Complexity'
+        'PasswordLength'                    = 'Password Length'
+        'PasswordAgeDays'                   = 'Password Age (days)'
+        'ADPasswordEncryptionEnabled'       = 'Encryption Enabled'
+        'ADPasswordEncryptionPrincipal'     = 'Encryption Principal'
+        'PostAuthenticationActions'          = 'Post-Auth Actions'
+        'PostAuthenticationResetDelay'       = 'Post-Auth Delay (hours)'
+        'AdministratorAccountName'           = 'Admin Account Name'
+        'ADEncryptedPasswordHistorySize'    = 'Password History Size'
+        'PasswordExpirationProtectionEnabled'= 'Expiration Protection'
+        'AutomaticAccountManagementEnabled' = 'Auto Account Mgmt'
+    }
+
     foreach ($gpo in $allGPOs) {
         try {
             $report = Get-GPOReport -Guid $gpo.Id -ReportType Xml -ErrorAction SilentlyContinue
-            if ($report) {
-                if ($report -match "AdmPwd" -and $report -match "Microsoft Services") {
-                    $legacyGPOs += [PSCustomObject]@{ Name = $gpo.DisplayName; Id = $gpo.Id; Modified = $gpo.ModificationTime }
+            if (-not $report) { continue }
+
+            # Detect Legacy LAPS GPO
+            if ($report -match "AdmPwd" -and $report -match "Microsoft Services") {
+                $legObj = [ordered]@{
+                    Name = $gpo.DisplayName; Id = $gpo.Id.ToString()
+                    Status = $gpo.GpoStatus.ToString(); Modified = $gpo.ModificationTime.ToString('yyyy-MM-dd HH:mm')
+                    Created = $gpo.CreationTime.ToString('yyyy-MM-dd HH:mm')
+                    LinkedOUs = ''
                 }
-                if (($report -match "CurrentVersion\\LAPS" -or $report -match "CurrentVersion/LAPS" -or
-                    ($report -match "LAPS" -and $report -match "BackupDirectory")) -and
-                    ($report -notmatch "Microsoft Services.*AdmPwd" -or $report -match "BackupDirectory")) {
-                    $wlapsGPOs += [PSCustomObject]@{ Name = $gpo.DisplayName; Id = $gpo.Id; Modified = $gpo.ModificationTime }
+                # Extract linked OUs from XML
+                try {
+                    $xml = [xml]$report
+                    $ns = @{ gpo = 'http://www.microsoft.com/GroupPolicy/Settings' }
+                    $links = $xml.GPO.LinksTo.SOMPath
+                    if ($links) { $legObj.LinkedOUs = ($links -join '; ') }
+                } catch { }
+                $legacyGPOs += [PSCustomObject]$legObj
+            }
+
+            # Detect Windows LAPS GPO and parse settings
+            if (($report -match "CurrentVersion\\LAPS" -or $report -match "CurrentVersion/LAPS" -or
+                ($report -match "LAPS" -and $report -match "BackupDirectory")) -and
+                ($report -notmatch "Microsoft Services.*AdmPwd" -or $report -match "BackupDirectory")) {
+
+                $wlObj = [ordered]@{
+                    Name = $gpo.DisplayName; Id = $gpo.Id.ToString()
+                    Status = $gpo.GpoStatus.ToString(); Modified = $gpo.ModificationTime.ToString('yyyy-MM-dd HH:mm')
+                    Created = $gpo.CreationTime.ToString('yyyy-MM-dd HH:mm')
+                    LinkedOUs = ''
                 }
+                # Extract linked OUs
+                try {
+                    $xml = [xml]$report
+                    $links = $xml.GPO.LinksTo.SOMPath
+                    if ($links) { $wlObj.LinkedOUs = ($links -join '; ') }
+                } catch { }
+                # Parse registry values from GPO report
+                try {
+                    $regKey = "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\LAPS"
+                    $regValues = Get-GPRegistryValue -Guid $gpo.Id -Key $regKey -ErrorAction SilentlyContinue
+                    foreach ($rv in $regValues) {
+                        $friendly = if ($lapsRegNames.ContainsKey($rv.ValueName)) { $lapsRegNames[$rv.ValueName] } else { $rv.ValueName }
+                        $wlObj[$friendly] = $rv.Value
+                    }
+                } catch { }
+                # Fill missing settings with empty string for consistent CSV columns
+                foreach ($fn in $lapsRegNames.Values) {
+                    if (-not $wlObj.Contains($fn)) { $wlObj[$fn] = '' }
+                }
+                $wlapsGPOs += [PSCustomObject]$wlObj
             }
         } catch { }
     }
 
     if ($legacyGPOs.Count -gt 0) {
         Write-Status "Legacy LAPS GPOs: $($legacyGPOs.Count)" "INFO"
-        foreach ($g in $legacyGPOs) { Write-Host "           -> $($g.Name) (Modified: $($g.Modified))" -ForegroundColor DarkGray }
+        foreach ($g in $legacyGPOs) {
+            Write-Host "           -> $($g.Name) (Modified: $($g.Modified))" -ForegroundColor DarkGray
+            if ($g.LinkedOUs) { Write-Host "              Linked to: $($g.LinkedOUs)" -ForegroundColor DarkGray }
+        }
     } else { Write-Status "No Legacy LAPS GPOs detected" "INFO" }
 
     if ($wlapsGPOs.Count -gt 0) {
         Write-Status "Windows LAPS GPOs: $($wlapsGPOs.Count)" "OK"
-        foreach ($g in $wlapsGPOs) { Write-Host "           -> $($g.Name) (Modified: $($g.Modified))" -ForegroundColor DarkGray }
+        foreach ($g in $wlapsGPOs) {
+            Write-Host "           -> $($g.Name) (Modified: $($g.Modified))" -ForegroundColor DarkGray
+            if ($g.LinkedOUs) { Write-Host "              Linked to: $($g.LinkedOUs)" -ForegroundColor DarkGray }
+            $enc = $g.'Encryption Enabled'
+            $dir = $g.'Backup Directory'
+            $len = $g.'Password Length'
+            $age = $g.'Password Age (days)'
+            if ($dir -ne '') { Write-Host "              BackupDir=$dir  Encryption=$enc  Length=$len  Age=$age days" -ForegroundColor DarkGray }
+        }
     } else { Write-Status "No Windows LAPS GPOs detected" "WARN" }
 
     # ── 4. OU Permissions ──
@@ -266,7 +335,8 @@ function Invoke-Assessment {
                 if ($rights) {
                     foreach ($r in $rights) {
                         $ousWithRights += [PSCustomObject]@{
-                            OU = $ou.DistinguishedName; Identity = $r.ExtendedRightHolders -join "; "
+                            OU = $ou.DistinguishedName
+                            Identity = $r.ExtendedRightHolders -join "; "
                         }
                     }
                 }
@@ -285,20 +355,62 @@ function Invoke-Assessment {
         Write-Status "LAPS module not available -- skipping detailed OU audit" "WARN"
     }
 
+    # Scan ACLs for SELF write (LAPS computer self-permission) and Legacy ACEs
+    $ouACLReport = @()
+    # Get schema GUIDs for both Legacy and Windows LAPS attributes
+    $guidLookup = @{}
+    foreach ($attrName in @("ms-Mcs-AdmPwd", "ms-Mcs-AdmPwdExpirationTime",
+                             "ms-LAPS-Password", "ms-LAPS-EncryptedPassword",
+                             "ms-LAPS-PasswordExpirationTime", "ms-LAPS-EncryptedPasswordHistory",
+                             "ms-LAPS-EncryptedDSRMPassword", "ms-LAPS-EncryptedDSRMPasswordHistory")) {
+        $obj = Get-ADObject -SearchBase $script:SchemaNC -Filter { name -eq $attrName } -Properties schemaIDGUID -ErrorAction SilentlyContinue
+        if ($obj) { $guidLookup[([Guid]$obj.schemaIDGUID).ToString()] = $attrName }
+    }
+
+    if ($guidLookup.Count -gt 0) {
+        Write-Host "  Scanning ACLs on $($OUs.Count) OUs for LAPS-related ACEs..." -ForegroundColor DarkGray
+        foreach ($ou in $OUs) {
+            try {
+                $acl = Get-Acl -Path "AD:\$($ou.DistinguishedName)" -ErrorAction SilentlyContinue
+                foreach ($ace in $acl.Access) {
+                    $objGuid = $ace.ObjectType.ToString()
+                    if ($guidLookup.ContainsKey($objGuid)) {
+                        $ouACLReport += [PSCustomObject]@{
+                            OU                  = $ou.DistinguishedName
+                            Identity            = $ace.IdentityReference.ToString()
+                            Permission          = $ace.ActiveDirectoryRights.ToString()
+                            AccessType          = $ace.AccessControlType.ToString()
+                            Attribute           = $guidLookup[$objGuid]
+                            IsLegacyAttr        = ($guidLookup[$objGuid] -match 'ms-Mcs-')
+                            IsInherited         = $ace.IsInherited
+                        }
+                    }
+                }
+            } catch { }
+        }
+        if ($ouACLReport.Count -gt 0) {
+            $legacyACECount = ($ouACLReport | Where-Object IsLegacyAttr).Count
+            $wlapsACECount  = ($ouACLReport | Where-Object { -not $_.IsLegacyAttr }).Count
+            Write-Status "LAPS ACEs found: $($ouACLReport.Count) total ($legacyACECount Legacy, $wlapsACECount Windows LAPS)" "INFO"
+        }
+    }
+
     # ── 5. Computer Inventory ──
     Write-Section "5. Computer Inventory and Password Status"
 
-    $properties = @("Name", "OperatingSystem", "OperatingSystemVersion", "Enabled", "DistinguishedName", "LastLogonDate")
+    $properties = @("Name", "OperatingSystem", "OperatingSystemVersion", "Enabled", "DistinguishedName", "LastLogonDate", "whenCreated", "Description")
     if ($script:HasLegacySchema) { $properties += "ms-Mcs-AdmPwd", "ms-Mcs-AdmPwdExpirationTime" }
-    if ($script:HasWLAPSSchema)  { $properties += "msLAPS-PasswordExpirationTime", "msLAPS-Password", "msLAPS-EncryptedPassword" }
+    if ($script:HasWLAPSSchema)  { $properties += "msLAPS-PasswordExpirationTime", "msLAPS-Password", "msLAPS-EncryptedPassword", "msLAPS-EncryptedPasswordHistory", "msLAPS-EncryptedDSRMPassword" }
 
     Write-Host "  Querying computers in $searchBase ..." -ForegroundColor DarkGray
     $computers = @(Get-ADComputer -Filter { OperatingSystem -like "*Windows*" } -SearchBase $searchBase -Properties $properties -ErrorAction SilentlyContinue)
     Write-Host "  Found $($computers.Count) computer accounts." -ForegroundColor DarkGray
 
+    $now = Get-Date
     $inventory = @()
     foreach ($pc in $computers) {
         $hasLegacy = $false; $hasWLAPS = $false; $hasWLAPSEnc = $false; $osOK = $false
+        $hasHistory = $false; $hasDSRM = $false
         $legExpiry = $null; $wlExpiry = $null
 
         if ($script:HasLegacySchema -and $pc.'ms-Mcs-AdmPwd') { $hasLegacy = $true }
@@ -307,6 +419,8 @@ function Invoke-Assessment {
         }
         if ($script:HasWLAPSSchema -and $pc.'msLAPS-Password') { $hasWLAPS = $true }
         if ($script:HasWLAPSSchema -and $pc.'msLAPS-EncryptedPassword') { $hasWLAPSEnc = $true }
+        if ($script:HasWLAPSSchema -and $pc.'msLAPS-EncryptedPasswordHistory') { $hasHistory = $true }
+        if ($script:HasWLAPSSchema -and $pc.'msLAPS-EncryptedDSRMPassword') { $hasDSRM = $true }
         if ($script:HasWLAPSSchema -and $pc.'msLAPS-PasswordExpirationTime') {
             try { $wlExpiry = [datetime]::FromFileTime($pc.'msLAPS-PasswordExpirationTime') } catch { }
         }
@@ -318,12 +432,35 @@ function Invoke-Assessment {
         elseif ($hasWLAPS) { $status = "Windows LAPS (Clear)" }
         elseif ($hasLegacy) { $status = "Legacy LAPS" }
 
+        # Compute effective expiry and age
+        $effectiveExpiry = if ($wlExpiry) { $wlExpiry } elseif ($legExpiry) { $legExpiry } else { $null }
+        $isExpired = if ($effectiveExpiry) { $effectiveExpiry -lt $now } else { $null }
+        $daysToExpiry = if ($effectiveExpiry) { [math]::Round(($effectiveExpiry - $now).TotalDays, 0) } else { $null }
+        $isStale = ($isExpired -eq $true -and $daysToExpiry -ne $null -and $daysToExpiry -lt -90)
+        $isDC = $pc.OperatingSystem -match "Server" -and $pc.DistinguishedName -match "OU=Domain Controllers"
+
         $inventory += [PSCustomObject]@{
-            Name = $pc.Name; Enabled = $pc.Enabled; OS = $pc.OperatingSystem
-            OSVersion = $pc.OperatingSystemVersion; OSEligible = $osOK; LAPSStatus = $status
-            HasLegacy = $hasLegacy; HasWindowsLAPS = ($hasWLAPS -or $hasWLAPSEnc)
-            LegacyExpiry = $legExpiry; WLAPSExpiry = $wlExpiry; LastLogon = $pc.LastLogonDate
-            OU = ($pc.DistinguishedName -replace '^CN=[^,]+,', '')
+            Name              = $pc.Name
+            Enabled           = $pc.Enabled
+            OS                = $pc.OperatingSystem
+            OSVersion         = $pc.OperatingSystemVersion
+            OSEligible        = $osOK
+            IsDC              = $isDC
+            Description       = $pc.Description
+            OU                = ($pc.DistinguishedName -replace '^CN=[^,]+,', '')
+            LAPSStatus        = $status
+            LegacyPassword    = $hasLegacy
+            WLAPSClearText    = $hasWLAPS
+            WLAPSEncrypted    = $hasWLAPSEnc
+            WLAPSHistory      = $hasHistory
+            DSRM              = $hasDSRM
+            LegacyExpiry      = if ($legExpiry) { $legExpiry.ToString('yyyy-MM-dd HH:mm') } else { '' }
+            WLAPSExpiry       = if ($wlExpiry) { $wlExpiry.ToString('yyyy-MM-dd HH:mm') } else { '' }
+            DaysToExpiry      = $daysToExpiry
+            IsExpired         = $isExpired
+            IsStale90d        = $isStale
+            LastLogon         = if ($pc.LastLogonDate) { $pc.LastLogonDate.ToString('yyyy-MM-dd') } else { '' }
+            AccountCreated    = if ($pc.whenCreated) { $pc.whenCreated.ToString('yyyy-MM-dd') } else { '' }
         }
     }
 
@@ -342,10 +479,14 @@ function Invoke-Assessment {
     Write-Status "Windows LAPS (clear): $wlClear" $(if ($wlClear -gt 0) { "WARN" } else { "OK" }) $(if ($wlClear -gt 0) { "Enable encryption!" })
     Write-Status "Windows LAPS (encrypted): $wlEnc" "OK"
 
-    $stale = $inventory | Where-Object { $_.HasLegacy -and $_.LegacyExpiry -and ($_.LegacyExpiry -lt (Get-Date).AddDays(-90)) }
-    if ($stale.Count -gt 0) {
+    $stale = ($inventory | Where-Object { $_.IsStale90d -eq $true }).Count
+    if ($stale -gt 0) {
         Write-Host ""
-        Write-Status "Stale Legacy passwords (90+ days expired): $($stale.Count)" "WARN"
+        Write-Status "Stale passwords (90+ days expired): $stale" "WARN"
+    }
+    $withDSRM = ($inventory | Where-Object { $_.DSRM -eq $true }).Count
+    if ($withDSRM -gt 0) {
+        Write-Status "DSRM passwords managed: $withDSRM" "OK"
     }
 
     $nonElig = $inventory | Where-Object { -not $_.OSEligible -and $_.Enabled }
@@ -390,24 +531,56 @@ function Invoke-Assessment {
         Write-Section "7. CSV Export"
         $dir = Join-Path (Get-Location) "LAPS-Assessment_$script:Timestamp"
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
+
+        # Summary.csv -- global stats in one file
+        $summaryData = [PSCustomObject][ordered]@{
+            Domain                  = $script:Domain.DNSRoot
+            DFL                     = $script:Domain.DomainMode
+            EncryptionSupported     = $script:DFLSupportsEncryption
+            LegacySchemaPresent     = $script:HasLegacySchema
+            WindowsLAPSSchemaPresent= $script:HasWLAPSSchema
+            LegacyGPOCount          = $legacyGPOs.Count
+            WindowsLAPSGPOCount     = $wlapsGPOs.Count
+            TotalComputers          = $inventory.Count
+            EnabledComputers        = $enabled
+            OSEligible              = $eligible
+            NoLAPS                  = $noLaps
+            LegacyLAPSOnly          = $legOnly
+            WindowsLAPSClearText    = $wlClear
+            WindowsLAPSEncrypted    = $wlEnc
+            StalePasswords90d       = ($inventory | Where-Object { $_.IsStale90d -eq $true }).Count
+            DSRMManaged             = ($inventory | Where-Object { $_.DSRM -eq $true }).Count
+            OUsWithExtendedRights   = $ousWithRights.Count
+            LegacyACEs              = if ($ouACLReport) { ($ouACLReport | Where-Object IsLegacyAttr).Count } else { 0 }
+            WindowsLAPSACEs         = if ($ouACLReport) { ($ouACLReport | Where-Object { -not $_.IsLegacyAttr }).Count } else { 0 }
+            AssessmentDate          = $now.ToString('yyyy-MM-dd HH:mm:ss')
+        }
+        $summaryData | Export-Csv -Path (Join-Path $dir "Summary.csv") -NoTypeInformation -Encoding UTF8
+        Write-Status "Summary.csv -- global assessment overview" "OK"
+
         if ($inventory.Count -gt 0) {
             $inventory | Export-Csv -Path (Join-Path $dir "Computers.csv") -NoTypeInformation -Encoding UTF8
-            Write-Status "Computers.csv -- $($inventory.Count) records" "OK"
+            Write-Status "Computers.csv -- $($inventory.Count) records, $((($inventory | Get-Member -MemberType NoteProperty).Count)) columns" "OK"
         }
         if ($legacyGPOs.Count -gt 0) {
             $legacyGPOs | Export-Csv -Path (Join-Path $dir "LegacyGPOs.csv") -NoTypeInformation -Encoding UTF8
-            Write-Status "LegacyGPOs.csv" "OK"
+            Write-Status "LegacyGPOs.csv -- $($legacyGPOs.Count) GPOs with links and status" "OK"
         }
         if ($wlapsGPOs.Count -gt 0) {
             $wlapsGPOs | Export-Csv -Path (Join-Path $dir "WindowsLAPSGPOs.csv") -NoTypeInformation -Encoding UTF8
-            Write-Status "WindowsLAPSGPOs.csv" "OK"
+            Write-Status "WindowsLAPSGPOs.csv -- $($wlapsGPOs.Count) GPOs with all LAPS settings" "OK"
         }
         if ($ousWithRights.Count -gt 0) {
-            $ousWithRights | Export-Csv -Path (Join-Path $dir "OUPermissions.csv") -NoTypeInformation -Encoding UTF8
-            Write-Status "OUPermissions.csv" "OK"
+            $ousWithRights | Export-Csv -Path (Join-Path $dir "OUExtendedRights.csv") -NoTypeInformation -Encoding UTF8
+            Write-Status "OUExtendedRights.csv -- LAPS extended rights holders per OU" "OK"
+        }
+        if ($ouACLReport -and $ouACLReport.Count -gt 0) {
+            $ouACLReport | Export-Csv -Path (Join-Path $dir "OUPermissionsACL.csv") -NoTypeInformation -Encoding UTF8
+            Write-Status "OUPermissionsACL.csv -- $($ouACLReport.Count) LAPS ACEs (Legacy + Windows LAPS)" "OK"
         }
         Write-Host ""
         Write-Status "Exported to: $dir" "OK"
+        Write-Host "           Files: Summary, Computers, GPOs, OU Permissions" -ForegroundColor DarkGray
     }
 
     Pause-Screen
