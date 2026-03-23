@@ -9,7 +9,32 @@ In this post we'll cover what Windows LAPS is, why you need it, how to deploy it
 
 ---
 
-## 📖 What Is Windows LAPS?
+## � Table of Contents
+
+- [📖 What Is Windows LAPS?](#-what-is-windows-laps)
+- [🎯 Why Use Windows LAPS?](#-why-use-windows-laps)
+- [🛠️ Prerequisites](#️-prerequisites)
+- [🚀 Deployment – Step by Step (Active Directory)](#-deployment--step-by-step-active-directory)
+  - [Step 1 — Update the AD Schema](#step-1--update-the-ad-schema)
+  - [Step 2 — Set Permissions on the OU](#step-2--set-permissions-on-the-ou)
+  - [Step 3 — Configure the LAPS Policy via GPO](#step-3--configure-the-laps-policy-via-gpo)
+  - [Step 4 — Verify Deployment](#step-4--verify-deployment)
+- [☁️ Deployment – Entra ID & Intune](#️-deployment--entra-id--intune)
+- [🔄 Migrating from Legacy LAPS to Windows LAPS](#-migrating-from-legacy-laps-to-windows-laps)
+  - [Step 1 — Verify Current Legacy LAPS Deployment](#step-1--verify-current-legacy-laps-deployment)
+  - [Step 2 — Update the AD Schema for Windows LAPS](#step-2--update-the-ad-schema-for-windows-laps)
+  - [Step 3 — Uninstall Legacy LAPS CSE on Pilot Machines](#step-3--uninstall-legacy-laps-cse-on-pilot-machines)
+  - [Step 4 — Pilot and Validate](#step-4--pilot-and-validate)
+  - [Step 5 — Switch to Windows LAPS Native Mode](#step-5--switch-to-windows-laps-native-mode)
+  - [Step 6 — Clean Up Legacy LAPS](#step-6--clean-up-legacy-laps)
+- [🔍 Useful Commands Reference](#-useful-commands-reference)
+- [⚠️ Common Pitfalls](#️-common-pitfalls)
+- [🧰 Automation Toolkit](#-automation-toolkit)
+- [📚 References](#-references)
+
+---
+
+## �📖 What Is Windows LAPS?
 
 Windows LAPS is a **native Windows feature** (built into the OS since April 2023 updates) that automatically manages and rotates the password of a local administrator account on domain-joined or Entra ID-joined devices.
 
