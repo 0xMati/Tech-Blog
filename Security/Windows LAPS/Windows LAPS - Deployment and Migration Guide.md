@@ -34,7 +34,7 @@ In this post we'll cover what Windows LAPS is, why you need it, how to deploy it
 
 ---
 
-## �📖 What Is Windows LAPS?
+## 📖 What Is Windows LAPS?
 
 Windows LAPS is a **native Windows feature** (built into the OS since April 2023 updates) that automatically manages and rotates the password of a local administrator account on domain-joined or Entra ID-joined devices.
 
@@ -102,23 +102,23 @@ The schema update adds the new `msLAPS-*` attributes. Run this from a machine wi
 
 ```powershell
 Import-Module LAPS
-Update-LapsADSchema
+Update-LapsADSchema -Verbose
 ```
 
 You can verify the new attributes exist:
 
 ```powershell
 Get-ADObject -SearchBase (Get-ADRootDSE).schemaNamingContext `
-    -Filter { name -like "msLAPS*" } -Properties name | Select-Object name
+    -Filter { name -like "ms-LAPS*" } -Properties name | Select-Object name
 ```
 
 Expected attributes:
-- `msLAPS-PasswordExpirationTime`
-- `msLAPS-Password`
-- `msLAPS-EncryptedPassword`
-- `msLAPS-EncryptedPasswordHistory`
-- `msLAPS-EncryptedDSRMPassword`
-- `msLAPS-EncryptedDSRMPasswordHistory`
+- `ms-LAPS-PasswordExpirationTime`
+- `ms-LAPS-Password`
+- `ms-LAPS-EncryptedPassword`
+- `ms-LAPS-EncryptedPasswordHistory`
+- `ms-LAPS-EncryptedDSRMPassword`
+- `ms-LAPS-EncryptedDSRMPasswordHistory`
 
 ---
 
@@ -127,7 +127,7 @@ Expected attributes:
 Grant the **computer accounts** (SELF) the right to write their own LAPS password attributes:
 
 ```powershell
-Set-LapsADComputerSelfPermission -Identity "OU=Workstations,DC=contoso,DC=com"
+Set-LapsADComputerSelfPermission -Identity "OU=Workstations,DC=contoso,DC=com" -verbose
 ```
 
 Then, grant read/reset permissions to your **admin group**:
@@ -135,17 +135,17 @@ Then, grant read/reset permissions to your **admin group**:
 ```powershell
 # Allow a group to read LAPS passwords
 Set-LapsADReadPasswordPermission -Identity "OU=Workstations,DC=contoso,DC=com" `
-    -AllowedPrincipals "CONTOSO\LAPS-Password-Readers"
+    -AllowedPrincipals "CONTOSO\LAPS-Password-Readers" -Verbose
 
 # Allow a group to force password rotation
 Set-LapsADResetPasswordPermission -Identity "OU=Workstations,DC=contoso,DC=com" `
-    -AllowedPrincipals "CONTOSO\LAPS-Password-Readers"
+    -AllowedPrincipals "CONTOSO\LAPS-Password-Readers" -Verbose
 ```
 
 > 💡 **Tip**: Use `Find-LapsADExtendedRights` to audit who currently has extended rights on an OU — this helps you spot unwanted permission inheritance.
 
 ```powershell
-Find-LapsADExtendedRights -Identity "OU=Workstations,DC=contoso,DC=com"
+Find-LapsADExtendedRights -Identity "OU=Workstations,DC=contoso,DC=com" -Verbose
 ```
 
 ---
@@ -158,16 +158,16 @@ Create a new GPO (or edit an existing one) and navigate to:
 
 Configure the following settings:
 
-| Setting | Recommended Value | Notes |
-|---|---|---|
-| **Configure password backup directory** | Active Directory | Or Azure Active Directory for cloud-only |
-| **Password Settings** | Complexity: Large letters + small letters + numbers + specials, Length: 20+, Age: 30 days | Adjust to your security baseline |
-| **Name of administrator account to manage** | *(leave blank for built-in admin, or specify a custom account name)* | If you renamed the built-in admin, specify the name |
-| **Enable password encryption** | Enabled | Requires 2016 DFL. Highly recommended |
-| **Configure authorized password decryptors** | `CONTOSO\LAPS-Password-Readers` | Group authorized to decrypt passwords |
-| **Enable password backup for DSRM accounts** | Enabled | Only applies to DCs |
-| **Post-authentication actions** | Reset password and logoff | After admin usage, rotate and kill sessions |
-| **Post-authentication reset delay** | 8 hours | Grace period after password retrieval |
+| Setting | Recommended Value | Description | Notes |
+|---|---|---|---|
+| **Configure password backup directory** | Active Directory | Defines where the LAPS password is stored (AD, Entra ID, or disabled). This is the master switch — if disabled, LAPS does nothing. | Or Azure Active Directory for cloud-only |
+| **Password Settings** | Complexity: Large letters + small letters + numbers + specials, Length: 20+, Age: 30 days | Controls password complexity, length, and rotation frequency. A longer, more complex password reduces brute-force risk. Age defines how often the password is automatically rotated. | Adjust to your security baseline |
+| **Name of administrator account to manage** | *(leave blank for built-in admin, or specify a custom account name)* | Specifies which local account LAPS manages. If left blank, LAPS targets the built-in Administrator (RID 500) regardless of its display name. | If you renamed the built-in admin, specify the name |
+| **Enable password encryption** | Enabled | Encrypts the password stored in AD using CNG/DPAPI-NG so that only authorized principals can decrypt it. Without this, the password is stored in clear text in the `msLAPS-Password` attribute. | Requires 2016 DFL. Highly recommended |
+| **Configure authorized password decryptors** | `CONTOSO\LAPS-Password-Readers` | Defines which AD principal (user or group) can decrypt the encrypted password. Only relevant when encryption is enabled. | Group authorized to decrypt passwords |
+| **Enable password backup for DSRM accounts** | Enabled | Allows LAPS to also manage and rotate the Directory Services Restore Mode (DSRM) password on Domain Controllers. Useful for securing DC recovery credentials. | Only applies to DCs |
+| **Post-authentication actions** | Reset password and logoff | Defines what happens after the LAPS password has been retrieved and used. Options: do nothing, reset password only, reset + logoff, or reset + reboot. Prevents stale admin sessions from lingering. | After admin usage, rotate and kill sessions |
+| **Post-authentication reset delay** | 8 hours | Grace period (in hours) after a password is retrieved before the post-authentication action kicks in. Gives the admin time to finish their work before the password is rotated and sessions are terminated. | Grace period after password retrieval |
 
 Link the GPO to the target OU(s).
 
@@ -225,19 +225,65 @@ The migration strategy relies on **Windows LAPS emulation mode**: once you **uni
 
 ### Migration Strategy Overview
 
+The migration follows 6 phases. Each phase is designed to be non-disruptive — you can pause, validate, and roll back at each step.
+
 ```
-Legacy LAPS only (Legacy CSE + Legacy GPO)
-      ↓
-Uninstall Legacy LAPS CSE from pilot machines
-      ↓
-Windows LAPS enters emulation mode (Legacy GPO still active)
-      ↓
-Validate on pilot group
-      ↓
-Deploy Windows LAPS GPO → switch to native mode
-      ↓
-Uninstall Legacy CSE everywhere + clean up Legacy GPO & attributes
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Phase 1: CURRENT STATE                                                │
+│  Legacy LAPS CSE (AdmPwd.dll MSI) installed on all machines            │
+│  Legacy LAPS GPO active → writes passwords to ms-Mcs-AdmPwd           │
+│  Everything works as before — no change yet                            │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Phase 2: PREPARE AD                                                   │
+│  Run Update-LapsADSchema → adds ms-LAPS-* attributes to the schema    │
+│  Set SELF write permissions on target OUs                              │
+│  No impact on machines — Legacy LAPS keeps running normally            │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Phase 3: UNINSTALL LEGACY CSE ON PILOT MACHINES                       │
+│  Remove the Legacy LAPS MSI (AdmPwd.dll) from a small group           │
+│  Windows LAPS (built into the OS) detects Legacy GPO → enters          │
+│  EMULATION MODE: reads Legacy GPO settings, writes to ms-Mcs-AdmPwd   │
+│  Same attribute, same permissions, same tools — zero disruption        │
+│  ⚠ If CSE is still installed, Windows LAPS will NOT activate!          │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Phase 4: VALIDATE PILOT                                               │
+│  Check LAPS event log on pilot machines (Microsoft-Windows-LAPS)       │
+│  Verify passwords are being rotated in ms-Mcs-AdmPwd                   │
+│  Confirm Get-LapsADPassword works on pilot machines                    │
+│  If something is wrong → reinstall Legacy CSE to roll back             │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Phase 5: SWITCH TO NATIVE MODE                                        │
+│  Create & link a Windows LAPS GPO (with encryption, post-auth, etc.)   │
+│  Grant read/reset permissions to admin group                           │
+│  Windows LAPS now uses its OWN GPO → stores passwords in               │
+│  msLAPS-EncryptedPassword (encrypted!) instead of ms-Mcs-AdmPwd       │
+│  Uninstall Legacy CSE on all remaining machines                        │
+│                                                                         │
+│  ℹ GPO priority: if BOTH Legacy and Windows LAPS GPOs are applied,     │
+│  Windows LAPS ignores the Legacy GPO entirely and uses only its own.   │
+│  No conflict — you can safely deploy the Windows LAPS GPO BEFORE       │
+│  removing the Legacy GPO.                                              │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Phase 6: CLEANUP                                                      │
+│  Unlink/remove the Legacy LAPS GPO                                     │
+│  Clear stale ms-Mcs-AdmPwd values on computer objects                  │
+│  (Legacy schema attributes stay — AD schema attributes can't           │
+│  be deleted, but values are wiped clean)                               │
+│  ✅ Migration complete — fully on Windows LAPS native                  │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+> 💡 **Rollback at any point**: During phases 3-4 (emulation mode), if anything goes wrong, simply reinstall the Legacy LAPS CSE MSI on the affected machines — Legacy LAPS takes back control immediately. During phase 5, if the Windows LAPS GPO causes issues, remove the GPO link and the machines will fall back to emulation mode.
 
 ---
 
@@ -248,15 +294,76 @@ Confirm Legacy LAPS is working and identify the OUs it manages:
 ```powershell
 # Check the Legacy LAPS attributes in AD
 Get-ADComputer -Filter * -SearchBase "OU=Workstations,DC=contoso,DC=com" `
-    -Properties ms-Mcs-AdmPwd, ms-Mcs-AdmPwdExpirationTime |
-    Select-Object Name, 'ms-Mcs-AdmPwd', 'ms-Mcs-AdmPwdExpirationTime'
+    -Properties ms-Mcs-AdmPwd, ms-Mcs-AdmPwdExpirationTime, DistinguishedName |
+    Select-Object Name,
+        @{ Name = 'OU'; Expression = { $_.DistinguishedName -replace '^CN=[^,]+,' } },
+        @{ Name = 'Password'; Expression = { if ($_.'ms-Mcs-AdmPwd') { '********' } else { '(none)' } } },
+        @{ Name = 'Expiration'; Expression = {
+            if ($_.'ms-Mcs-AdmPwdExpirationTime') {
+                [datetime]::FromFileTime($_.'ms-Mcs-AdmPwdExpirationTime').ToString('yyyy-MM-dd HH:mm')
+            } else { '(never)' }
+        }} |
+    Sort-Object OU, Name |
+    Format-Table -AutoSize
 ```
 
-Check which machines have the Legacy LAPS CSE installed:
+Check which machines have the Legacy LAPS CSE installed (the CSE is installed **locally** on each machine, not in SYSVOL):
 
 ```powershell
-Get-ChildItem "\\contoso.com\SYSVOL\contoso.com\Policies" -Recurse -Filter "AdmPwd.dll" -ErrorAction SilentlyContinue
+# Local check — run on a single machine
+Test-Path "$env:ProgramFiles\LAPS\CSE\AdmPwd.dll"
+
+# Remote check — query multiple machines via PSRemoting
+# ⚠ Requires: WinRM/PSRemoting enabled on target machines (Enable-PSRemoting -Force)
+# Note: -SearchBase searches recursively (sub-OUs included) by default.
+# Excludes Domain Controllers (they don't run the Legacy LAPS CSE)
+# Machines that are offline or unreachable will show CSEInstalled = '⚠ Unreachable'
+$dcList     = (Get-ADDomainController -Filter *).Name
+$adComputers = Get-ADComputer -Filter * -SearchBase "OU=Workstations,DC=contoso,DC=com" `
+    -Properties DistinguishedName |
+    Where-Object { $_.Name -notin $dcList }
+$computers  = $adComputers.Name
+
+# Build OU lookup table (Computer → OU)
+$ouLookup = @{}
+$adComputers | ForEach-Object {
+    $ouLookup[$_.Name] = $_.DistinguishedName -replace '^CN=[^,]+,'
+}
+
+$results = Invoke-Command -ComputerName $computers -ScriptBlock {
+    [PSCustomObject]@{
+        Computer          = $env:COMPUTERNAME
+        LegacyCSEInstalled = Test-Path "$env:ProgramFiles\LAPS\CSE\AdmPwd.dll"
+    }
+} -ErrorAction SilentlyContinue | Select-Object Computer, LegacyCSEInstalled
+
+# Show unreachable machines (offline, no PSRemoting, firewall, etc.)
+$reached     = $results.Computer
+$unreachable = $computers | Where-Object { $_ -notin $reached }
+$unreachable | ForEach-Object {
+    $results += [PSCustomObject]@{ Computer = $_; LegacyCSEInstalled = '⚠ Unreachable' }
+}
+
+$results |
+    Select-Object Computer,
+        @{ Name = 'OU'; Expression = { $ouLookup[$_.Computer] } },
+        LegacyCSEInstalled |
+    Sort-Object OU, Computer |
+    ForEach-Object {
+        $color = switch ($_.LegacyCSEInstalled) {
+            'True'            { '32' }  # Green  — CSE found
+            'False'           { '33' }  # Yellow — CSE not found
+            '⚠ Unreachable'  { '31' }  # Red    — machine unreachable
+            default           { '0'  }
+        }
+        Write-Host ("{0,-20} {1,-60} " -f $_.Computer, $_.OU) -NoNewline
+        Write-Host $_.LegacyCSEInstalled -ForegroundColor ([ConsoleColor]@{
+            '32' = 'Green'; '33' = 'Yellow'; '31' = 'Red'; '0' = 'White'
+        }[$color])
+    }
 ```
+
+> 💡 **Machines showing "⚠ Unreachable"?** They are either offline, have WinRM/PSRemoting disabled, or are blocked by a firewall. You can alternatively use your software inventory tool (SCCM, Intune, etc.) to report on installed programs matching `*Local Administrator Password Solution*`.
 
 ---
 
@@ -266,7 +373,7 @@ If not already done:
 
 ```powershell
 Import-Module LAPS
-Update-LapsADSchema
+Update-LapsADSchema -Verbose
 ```
 
 This adds the new `msLAPS-*` attributes alongside the existing `ms-Mcs-*` attributes. **No impact on Legacy LAPS**.
@@ -322,14 +429,14 @@ Get-LapsADPassword -Identity "PILOTPC01" -AsPlainText
 
 Once you're confident the pilot is working, update the GPO to use **native Windows LAPS mode** with full features:
 
-| Setting | New Value |
-|---|---|
-| **Configure password backup directory** | Active Directory |
-| **Enable password encryption** | **Enabled** |
-| **Configure authorized password decryptors** | `CONTOSO\LAPS-Password-Readers` |
-| **Password Settings** | Complexity: Large + small + numbers + specials, Length: 20+, Age: 30 days |
-| **Post-authentication actions** | Reset password and logoff |
-| **Post-authentication reset delay** | 8 hours |
+| Setting | New Value | Description |
+|---|---|---|
+| **Configure password backup directory** | Active Directory | Switches password storage to AD using the native Windows LAPS attributes (`msLAPS-EncryptedPassword`) instead of the Legacy `ms-Mcs-AdmPwd`. This is the key setting that exits emulation mode. |
+| **Enable password encryption** | **Enabled** | Encrypts the stored password with CNG/DPAPI-NG. Only the principal defined in "authorized password decryptors" can read it. Without this, passwords are stored in clear text — strongly recommended. |
+| **Configure authorized password decryptors** | `CONTOSO\LAPS-Password-Readers` | Specifies which AD group or user can decrypt the encrypted password. Must match the group that has `Set-LapsADReadPasswordPermission` on the OU. |
+| **Password Settings** | Complexity: Large + small + numbers + specials, Length: 20+, Age: 30 days | Defines the password complexity, length, and rotation frequency. Age = how often the password is automatically rotated. A 20+ character password with all character classes is a good baseline. |
+| **Post-authentication actions** | Reset password and logoff | What happens after the LAPS password is retrieved and used: reset only, reset + logoff, or reset + reboot. "Reset + logoff" ensures no stale admin session remains after password retrieval. |
+| **Post-authentication reset delay** | 8 hours | Grace period (in hours) after a password is retrieved before the post-authentication action triggers. Gives the admin time to finish their work before being logged off and the password rotated. |
 
 Set permissions on the OU:
 
@@ -375,7 +482,83 @@ Get-ADComputer -Filter * -SearchBase "OU=Workstations,DC=contoso,DC=com" `
     Set-ADComputer -Clear 'ms-Mcs-AdmPwd', 'ms-Mcs-AdmPwdExpirationTime'
 ```
 
-5. **Remove Legacy LAPS permissions** on OUs (the extended rights for `ms-Mcs-AdmPwd`).
+5. **Remove Legacy LAPS permissions** on OUs (the extended rights for `ms-Mcs-AdmPwd`):
+
+Legacy LAPS delegates two types of permissions via ACEs on the OU: **SELF write** (so computers can update their own password) and **read extended rights** (so admins can read the password). These are standard AD ACEs that must be removed manually.
+
+```powershell
+# Target OU (will also scan all sub-OUs recursively)
+$rootOU = "DC=contoso,DC=com"
+$dryRun = $true   # Set to $false to actually remove the ACEs
+
+# Get the schema GUIDs for Legacy LAPS attributes
+$schemaNC   = (Get-ADRootDSE).schemaNamingContext
+$guidAdmPwd = (Get-ADObject -SearchBase $schemaNC -Filter { name -eq "ms-Mcs-AdmPwd" } `
+    -Properties schemaIDGUID).schemaIDGUID
+$guidExpiry = (Get-ADObject -SearchBase $schemaNC -Filter { name -eq "ms-Mcs-AdmPwdExpirationTime" } `
+    -Properties schemaIDGUID).schemaIDGUID
+
+$guidAdmPwdGuid = [Guid]$guidAdmPwd
+$guidExpiryGuid = [Guid]$guidExpiry
+
+# Get all OUs under the root (including the root itself)
+$allOUs = @($rootOU)
+$allOUs += (Get-ADOrganizationalUnit -SearchBase $rootOU -Filter * -SearchScope Subtree).DistinguishedName
+
+$totalDirect = 0; $totalInherited = 0
+foreach ($ouDN in $allOUs) {
+    $acl = Get-Acl -Path "AD:\$ouDN"
+
+    $legacyACEs = $acl.Access | Where-Object {
+        $_.ObjectType -eq $guidAdmPwdGuid -or $_.ObjectType -eq $guidExpiryGuid
+    }
+
+    if ($legacyACEs.Count -eq 0) { continue }
+
+    # Separate direct (removable) ACEs from inherited (can only be removed at the source)
+    $directACEs    = $legacyACEs | Where-Object { -not $_.IsInherited }
+    $inheritedACEs = $legacyACEs | Where-Object { $_.IsInherited }
+
+    if ($directACEs.Count -gt 0) {
+        Write-Host "`n [$($directACEs.Count) DIRECT] $ouDN" -ForegroundColor Yellow
+        $directACEs |
+            Select-Object IdentityReference, AccessControlType, ActiveDirectoryRights,
+                @{ Name = 'Attribute'; Expression = {
+                    if ($_.ObjectType -eq $guidAdmPwdGuid) { 'ms-Mcs-AdmPwd' }
+                    elseif ($_.ObjectType -eq $guidExpiryGuid) { 'ms-Mcs-AdmPwdExpirationTime' }
+                    else { $_.ObjectType }
+                }} |
+            Format-Table -AutoSize
+
+        if (-not $dryRun) {
+            $directACEs | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
+            Set-Acl -Path "AD:\$ouDN" -AclObject $acl
+            Write-Host " Removed $($directACEs.Count) ACE(s)" -ForegroundColor Green
+        }
+        $totalDirect += $directACEs.Count
+    }
+
+    if ($inheritedACEs.Count -gt 0) {
+        Write-Host "`n [$($inheritedACEs.Count) INHERITED] $ouDN" -ForegroundColor DarkGray
+        $totalInherited += $inheritedACEs.Count
+    }
+}
+
+Write-Host "`n--- Summary ---" -ForegroundColor White
+Write-Host "  Direct ACEs (removable):   $totalDirect" -ForegroundColor Yellow
+Write-Host "  Inherited ACEs (from parent): $totalInherited" -ForegroundColor DarkGray
+if ($totalInherited -gt 0) {
+    Write-Host "  Inherited ACEs will disappear automatically once the direct ACEs on the parent OU are removed." -ForegroundColor DarkGray
+}
+
+if ($totalDirect -eq 0) {
+    Write-Host "`nNo direct Legacy LAPS ACEs found — nothing to remove." -ForegroundColor Green
+} elseif ($dryRun) {
+    Write-Host "`n[DRY RUN] $totalDirect direct ACE(s) to remove. Set `$dryRun = `$false to apply." -ForegroundColor Cyan
+} else {
+    Write-Host "`nDone — removed $totalDirect direct Legacy LAPS ACE(s)." -ForegroundColor Green
+}
+```
 
 ---
 
@@ -399,7 +582,7 @@ Get-ADComputer -Filter * -SearchBase "OU=Workstations,DC=contoso,DC=com" `
 - **Missing April 2023 update**: Windows LAPS won't work without the KB. Ensure all target machines are patched.
 - **Schema update forgotten**: The `Update-LapsADSchema` must be run before any policy can work against AD.
 - **DFL too low for encryption**: Password encryption requires **Windows Server 2016 domain functional level**. Without it, passwords are stored in clear text in the `msLAPS-Password` attribute.
-- **Conflicting GPOs**: If both Legacy LAPS GPO and Windows LAPS GPO are applied, Windows LAPS enters emulation mode. Make sure to clean up Legacy GPO after migration.
+- **Conflicting GPOs**: If both Legacy LAPS GPO and Windows LAPS GPO are applied on a machine **without the Legacy CSE**, there is **no conflict** — Windows LAPS ignores the Legacy GPO and uses only its own. However, you should still clean up the Legacy GPO after migration to avoid confusion. Note: on machines where the **Legacy CSE is still installed**, the CSE processes the Legacy GPO independently, and Windows LAPS won't activate at all.
 - **Post-authentication actions not configured**: Without this, a retrieved password stays valid indefinitely until the next scheduled rotation. Always configure post-authentication reset.
 - **Wrong OU permissions**: If `Set-LapsADComputerSelfPermission` was not run, computers cannot write their password back to AD and you'll see errors in the event log.
 
@@ -407,30 +590,36 @@ Get-ADComputer -Filter * -SearchBase "OU=Workstations,DC=contoso,DC=com" `
 
 ## 🧰 Automation Toolkit
 
-Three PowerShell tools are available in this repository to automate the LAPS lifecycle:
+An all-in-one interactive PowerShell tool is available in this repository: **`Invoke-LAPSToolkit.ps1`**
 
-| Tool | Purpose |
-|---|---|
-| **`Invoke-LAPSAssessment.ps1`** | Full audit of your environment: schema, GPOs, OU permissions, computer inventory, password status, OS eligibility, migration readiness |
-| **`Deploy-WindowsLAPS.ps1`** | Automated deployment: schema update, OU permissions, GPO creation with best-practice settings, validation |
-| **`Invoke-LAPSMigration.ps1`** | Guided migration from Legacy LAPS in 5 phases: PreCheck → SchemaAndEmulation → ValidatePilot → SwitchToNative → CleanupLegacy |
-
-### Quick start examples
+Just run it and navigate through the menu:
 
 ```powershell
-# 1. Assess current state
-.\Invoke-LAPSAssessment.ps1 -ExportCSV
-
-# 2a. Fresh deployment (no Legacy LAPS)
-.\Deploy-WindowsLAPS.ps1 -TargetOU "OU=Workstations,DC=contoso,DC=com" -ReadGroup "CONTOSO\LAPS-Readers"
-
-# 2b. Migration from Legacy LAPS
-.\Invoke-LAPSMigration.ps1 -TargetOU "OU=Workstations,DC=contoso,DC=com" -ReadGroup "CONTOSO\LAPS-Readers" -Phase PreCheck
-.\Invoke-LAPSMigration.ps1 -TargetOU "OU=Workstations,DC=contoso,DC=com" -ReadGroup "CONTOSO\LAPS-Readers" -Phase SchemaAndEmulation
-.\Invoke-LAPSMigration.ps1 -TargetOU "OU=Pilot,OU=Workstations,DC=contoso,DC=com" -ReadGroup "CONTOSO\LAPS-Readers" -Phase ValidatePilot
-.\Invoke-LAPSMigration.ps1 -TargetOU "OU=Workstations,DC=contoso,DC=com" -ReadGroup "CONTOSO\LAPS-Readers" -Phase SwitchToNative
-.\Invoke-LAPSMigration.ps1 -TargetOU "OU=Workstations,DC=contoso,DC=com" -Phase CleanupLegacy
+.\Invoke-LAPSToolkit.ps1
 ```
+
+```
+  ┌──────────────────────────────────────────────────────────┐
+  │  Main Menu                                               │
+  └──────────────────────────────────────────────────────────┘
+
+   [1] Assessment — Full audit of current LAPS state
+   [2] Deployment — Deploy Windows LAPS from scratch
+   [3] Migration  — Legacy LAPS → Windows LAPS (guided)
+   [4] Quick Tools — Password retrieval, rotation, diagnostics
+   [5] Exit
+```
+
+**Features:**
+
+| Module | What it does |
+|---|---|
+| **Assessment** | Schema analysis, DFL check, GPO detection, OU permissions audit, full computer inventory with LAPS status, CSV export |
+| **Deployment** | Interactive wizard: schema update, OU permissions (SELF + read/reset), GPO creation with best-practice settings, link & validation |
+| **Migration** | 5-phase guided migration: Pre-check → Schema & emulation mode → Pilot validation → Switch to native → Legacy cleanup |
+| **Quick Tools** | Retrieve passwords, force rotation (local/remote), check LAPS event logs, collect diagnostics, audit OU rights |
+
+The tool detects your current environment state automatically (schema, DFL, LAPS module availability) and displays it on the main screen.
 
 ---
 
