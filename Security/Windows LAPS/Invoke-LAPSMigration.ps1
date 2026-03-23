@@ -304,15 +304,16 @@ function Invoke-SchemaAndEmulation {
 
     Write-Host ""
     Write-Host "  ─── Emulation Mode ───" -ForegroundColor Yellow
-    Write-Step "Windows LAPS is now ready for emulation mode" "OK"
+    Write-Step "AD schema ready + SELF permissions set" "OK"
     Write-Host ""
     Write-Host "  How emulation mode works:" -ForegroundColor White
-    Write-Host "  - On patched machines, the Windows LAPS client takes over from the Legacy CSE" -ForegroundColor DarkGray
-    Write-Host "  - It reads the EXISTING Legacy LAPS GPO settings (AdmPwd)" -ForegroundColor DarkGray
+    Write-Host "  - The Legacy LAPS CSE (AdmPwd.dll) must be UNINSTALLED from pilot machines" -ForegroundColor DarkGray
+    Write-Host "  - Once uninstalled, Windows LAPS (built into the OS) takes over automatically" -ForegroundColor DarkGray
+    Write-Host "  - If no Windows LAPS GPO exists, it reads the Legacy LAPS GPO settings" -ForegroundColor DarkGray
     Write-Host "  - It writes passwords to the Legacy ms-Mcs-AdmPwd attribute" -ForegroundColor DarkGray
-    Write-Host "  - No Windows LAPS GPO is needed yet — Legacy GPO is used" -ForegroundColor DarkGray
+    Write-Host "  - IMPORTANT: If the Legacy CSE is still installed, Windows LAPS will NOT activate" -ForegroundColor Yellow
     Write-Host ""
-    Write-Step "Next: Run Phase 'ValidatePilot' to confirm emulation mode works" "INFO"
+    Write-Step "Next: Uninstall Legacy LAPS CSE on pilot machines, then run Phase 'ValidatePilot'" "INFO"
 }
 
 # ██████████████████████████████████████████████████████████████████

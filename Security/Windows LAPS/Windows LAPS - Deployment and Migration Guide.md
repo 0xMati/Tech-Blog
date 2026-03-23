@@ -194,20 +194,24 @@ For Entra ID-joined (or hybrid-joined) devices managed by Intune:
 
 ## 🔄 Migrating from Legacy LAPS to Windows LAPS
 
-If you already have **Legacy LAPS** (the MSI-based version using `ms-Mcs-AdmPwd`) deployed, the good news is: **Windows LAPS and Legacy LAPS can coexist** — but Legacy LAPS **must be in emulation mode** during transition.
+If you already have **Legacy LAPS** (the MSI-based version using `ms-Mcs-AdmPwd`) deployed, here's an important thing to understand: **the Legacy LAPS CSE and Windows LAPS cannot both be active on the same machine at the same time**. If Windows LAPS detects the Legacy CSE (`AdmPwd.dll`) is installed, it **will not manage the password** and defers to the Legacy CSE.
+
+The migration strategy relies on **Windows LAPS emulation mode**: once you **uninstall the Legacy LAPS CSE**, Windows LAPS takes over and — if only a Legacy LAPS GPO is present (no Windows LAPS GPO yet) — it enters **emulation mode**. In this mode, Windows LAPS reads the Legacy GPO settings and writes passwords to the Legacy `ms-Mcs-AdmPwd` attribute, effectively replacing the Legacy CSE with zero disruption.
 
 ### Migration Strategy Overview
 
 ```
-Legacy LAPS only
+Legacy LAPS only (Legacy CSE + Legacy GPO)
       ↓
-Enable Windows LAPS in Legacy emulation mode
+Uninstall Legacy LAPS CSE from pilot machines
+      ↓
+Windows LAPS enters emulation mode (Legacy GPO still active)
       ↓
 Validate on pilot group
       ↓
-Switch to Windows LAPS native mode
+Deploy Windows LAPS GPO → switch to native mode
       ↓
-Remove Legacy LAPS components
+Uninstall Legacy CSE everywhere + clean up Legacy GPO & attributes
 ```
 
 ---
@@ -244,19 +248,26 @@ This adds the new `msLAPS-*` attributes alongside the existing `ms-Mcs-*` attrib
 
 ---
 
-### Step 3 — Configure Windows LAPS in Legacy Emulation Mode
+### Step 3 — Uninstall Legacy LAPS CSE on Pilot Machines
 
-Create a new GPO targeting your **pilot OU** with the following settings:
+On your pilot machines, **uninstall the Legacy LAPS CSE** (the MSI). This is what triggers emulation mode:
 
-| Setting | Value |
-|---|---|
-| **Configure password backup directory** | Active Directory |
-| **Enable password encryption** | Disabled *(initially, to match Legacy LAPS behavior)* |
-| **Configure size of encrypted password history** | 0 |
+```powershell
+# Uninstall Legacy LAPS MSI on a pilot machine
+$laps = Get-CimInstance -ClassName Win32_Product | Where-Object { $_.Name -like "*Local Administrator Password Solution*" }
+if ($laps) {
+    Start-Process msiexec.exe -ArgumentList "/x $($laps.IdentifyingNumber) /qn" -Wait
+    Write-Host "Legacy LAPS CSE uninstalled."
+} else {
+    Write-Host "Legacy LAPS CSE not found."
+}
+```
 
-> ⚠️ **Important**: When Windows LAPS detects that Legacy LAPS is also installed and configured, it operates in **emulation mode** by default. In this mode, Windows LAPS processes the Legacy LAPS GPO settings and writes passwords to the Legacy `ms-Mcs-AdmPwd` attribute.
+Or use your software deployment tool (SCCM, Intune) to remove it from pilot machines.
 
-This allows you to validate Windows LAPS behavior without any disruption.
+> ⚠️ **Important**: Once the Legacy LAPS CSE is **uninstalled**, Windows LAPS (built into the OS since the April 2023 update) automatically takes over. Since no Windows LAPS GPO is configured yet, it enters **emulation mode**: it reads the existing Legacy LAPS GPO settings and writes passwords to the Legacy `ms-Mcs-AdmPwd` attribute. No configuration change is needed — just remove the CSE.
+
+> 💡 **Key point**: If the Legacy CSE is still installed, Windows LAPS will NOT activate. The CSE must be removed first.
 
 ---
 
