@@ -531,6 +531,8 @@ function Invoke-Deployment {
     }
     Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "PostAuthenticationActions" -Type DWord -Value 3 | Out-Null
     Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "PostAuthenticationResetDelay" -Type DWord -Value $postAuthH | Out-Null
+    Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "ADEncryptedPasswordHistorySize" -Type DWord -Value 0 | Out-Null
+    Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "PasswordExpirationProtectionEnabled" -Type DWord -Value 1 | Out-Null
     if ($adminAcct) {
         Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "AdministratorAccountName" -Type String -Value $adminAcct | Out-Null
     }
@@ -829,6 +831,8 @@ function Invoke-MigrationSwitchNative {
     if ($enc) { Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "ADPasswordEncryptionPrincipal" -Type String -Value $readGroup | Out-Null }
     Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "PostAuthenticationActions" -Type DWord -Value 3 | Out-Null
     Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "PostAuthenticationResetDelay" -Type DWord -Value $postAuth | Out-Null
+    Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "ADEncryptedPasswordHistorySize" -Type DWord -Value 0 | Out-Null
+    Set-GPRegistryValue -Name $gpoName -Key $reg -ValueName "PasswordExpirationProtectionEnabled" -Type DWord -Value 1 | Out-Null
 
     Write-Status "GPO configured (encryption=$($enc -eq 1))" "OK"
 
