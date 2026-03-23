@@ -1,13 +1,13 @@
-<#
+﻿<#
 .SYNOPSIS
-    Windows LAPS Toolkit — All-in-one Assessment, Deployment & Migration Tool
+    Windows LAPS Toolkit -- All-in-one Assessment, Deployment and Migration Tool
 
 .DESCRIPTION
     Interactive menu-driven tool that consolidates all Windows LAPS operations:
-      1. Assessment  — Full audit of LAPS state (schema, GPOs, permissions, computer inventory)
-      2. Deployment  — Automated Windows LAPS deployment (schema, permissions, GPO)
-      3. Migration   — Guided Legacy LAPS to Windows LAPS migration (5 phases)
-      4. Quick Tools — Password retrieval, forced rotation, diagnostics
+      1. Assessment  -- Full audit of LAPS state (schema, GPOs, permissions, computer inventory)
+      2. Deployment  -- Automated Windows LAPS deployment (schema, permissions, GPO)
+      3. Migration   -- Guided Legacy LAPS to Windows LAPS migration (5 phases)
+      4. Quick Tools -- Password retrieval, forced rotation, diagnostics
 
 .NOTES
     Version:    1.1
@@ -49,7 +49,7 @@ function Write-Banner {
    / /   /   |  / __ \/ ___/
   / /   / /| | / /_/ /\__ \       Windows LAPS Toolkit v1.1
  / /___/ ___ |/ ____/___/ /       All-in-one Assessment,
-/_____/_/  |_/_/    /____/        Deployment & Migration
+/_____/_/  |_/_/    /____/        Deployment and Migration
 
 "@
     Write-Host $banner -ForegroundColor Cyan
@@ -75,7 +75,7 @@ function Write-Status ([string]$Message, [string]$Status, [string]$Detail = "") 
         "SKIP"  { Write-Host "  [--]    " -ForegroundColor DarkGray -NoNewline }
     }
     Write-Host $Message -ForegroundColor White -NoNewline
-    if ($Detail) { Write-Host " — $Detail" -ForegroundColor DarkGray }
+    if ($Detail) { Write-Host " -- $Detail" -ForegroundColor DarkGray }
     else { Write-Host "" }
 }
 
@@ -209,7 +209,7 @@ function Invoke-Assessment {
     } elseif ($wlapsFound.Count -gt 0) {
         Write-Status "Windows LAPS schema attributes" "WARN" "Partial ($($wlapsFound.Count)/$($wlapsAttrs.Count))"
     } else {
-        Write-Status "Windows LAPS schema attributes" "WARN" "Not present — run Update-LapsADSchema -Verbose"
+        Write-Status "Windows LAPS schema attributes" "WARN" "Not present -- run Update-LapsADSchema -Verbose"
     }
 
     # ── 2. DFL ──
@@ -245,12 +245,12 @@ function Invoke-Assessment {
 
     if ($legacyGPOs.Count -gt 0) {
         Write-Status "Legacy LAPS GPOs: $($legacyGPOs.Count)" "INFO"
-        foreach ($g in $legacyGPOs) { Write-Host "           → $($g.Name) (Modified: $($g.Modified))" -ForegroundColor DarkGray }
+        foreach ($g in $legacyGPOs) { Write-Host "           -> $($g.Name) (Modified: $($g.Modified))" -ForegroundColor DarkGray }
     } else { Write-Status "No Legacy LAPS GPOs detected" "INFO" }
 
     if ($wlapsGPOs.Count -gt 0) {
         Write-Status "Windows LAPS GPOs: $($wlapsGPOs.Count)" "OK"
-        foreach ($g in $wlapsGPOs) { Write-Host "           → $($g.Name) (Modified: $($g.Modified))" -ForegroundColor DarkGray }
+        foreach ($g in $wlapsGPOs) { Write-Host "           -> $($g.Name) (Modified: $($g.Modified))" -ForegroundColor DarkGray }
     } else { Write-Status "No Windows LAPS GPOs detected" "WARN" }
 
     # ── 4. OU Permissions ──
@@ -275,18 +275,18 @@ function Invoke-Assessment {
         if ($ousWithRights.Count -gt 0) {
             Write-Status "OUs with LAPS extended rights: $($ousWithRights.Count)" "OK"
             $ousWithRights | Group-Object OU | ForEach-Object {
-                Write-Host "           → $($_.Name)" -ForegroundColor DarkGray
+                Write-Host "           -> $($_.Name)" -ForegroundColor DarkGray
                 foreach ($e in $_.Group) { Write-Host "              Holders: $($e.Identity)" -ForegroundColor DarkGray }
             }
         } else {
             Write-Status "No LAPS extended rights found" "WARN"
         }
     } else {
-        Write-Status "LAPS module not available — skipping detailed OU audit" "WARN"
+        Write-Status "LAPS module not available -- skipping detailed OU audit" "WARN"
     }
 
     # ── 5. Computer Inventory ──
-    Write-Section "5. Computer Inventory & Password Status"
+    Write-Section "5. Computer Inventory and Password Status"
 
     $properties = @("Name", "OperatingSystem", "OperatingSystemVersion", "Enabled", "DistinguishedName", "LastLogonDate")
     if ($script:HasLegacySchema) { $properties += "ms-Mcs-AdmPwd", "ms-Mcs-AdmPwdExpirationTime" }
@@ -353,12 +353,12 @@ function Invoke-Assessment {
         Write-Host ""
         Write-Status "Not eligible for Windows LAPS: $($nonElig.Count)" "WARN"
         $nonElig | Group-Object OS | Sort-Object Count -Descending | ForEach-Object {
-            Write-Host "           → $($_.Name): $($_.Count)" -ForegroundColor DarkGray
+            Write-Host "           -> $($_.Name): $($_.Count)" -ForegroundColor DarkGray
         }
     }
 
     # ── 6. Summary ──
-    Write-Section "6. Summary & Recommendations"
+    Write-Section "6. Summary and Recommendations"
     Write-Host ""
 
     $hasLegGPO = $legacyGPOs.Count -gt 0
@@ -366,23 +366,23 @@ function Invoke-Assessment {
 
     if (-not $script:HasLegacySchema -and -not $script:HasWLAPSSchema) {
         Write-Status "NO LAPS deployment detected" "ERROR"
-        Write-Host "  → Deploy Windows LAPS from scratch using option [2] in the main menu" -ForegroundColor Yellow
+        Write-Host "  -> Deploy Windows LAPS from scratch using option [2] in the main menu" -ForegroundColor Yellow
     } elseif ($script:HasLegacySchema -and -not $script:HasWLAPSSchema) {
-        Write-Status "LEGACY LAPS only — migration recommended" "WARN"
-        Write-Host "  → Use option [3] in the main menu for guided migration" -ForegroundColor Yellow
+        Write-Status "LEGACY LAPS only -- migration recommended" "WARN"
+        Write-Host "  -> Use option [3] in the main menu for guided migration" -ForegroundColor Yellow
     } elseif ($script:HasLegacySchema -and $hasLegGPO -and -not $hasWGPO) {
         Write-Status "Schema ready but still using Legacy GPO" "WARN"
-        Write-Host "  → Use option [3] to complete the migration" -ForegroundColor Yellow
+        Write-Host "  -> Use option [3] to complete the migration" -ForegroundColor Yellow
     } elseif ($hasLegGPO -and $hasWGPO) {
-        Write-Status "MIXED state — both Legacy and Windows LAPS active" "WARN"
-        Write-Host "  → Use option [3] to finish transition and clean up Legacy" -ForegroundColor Yellow
+        Write-Status "MIXED state -- both Legacy and Windows LAPS active" "WARN"
+        Write-Host "  -> Use option [3] to finish transition and clean up Legacy" -ForegroundColor Yellow
     } elseif ($hasWGPO -and -not $hasLegGPO) {
         Write-Status "Windows LAPS deployed" "OK"
-        if ($noLaps -gt 0) { Write-Host "  → $noLaps computers still without LAPS — check GPO scope" -ForegroundColor Yellow }
-        if ($wlClear -gt 0) { Write-Host "  → $wlClear computers with clear-text passwords — enable encryption" -ForegroundColor Yellow }
+        if ($noLaps -gt 0) { Write-Host "  -> $noLaps computers still without LAPS -- check GPO scope" -ForegroundColor Yellow }
+        if ($wlClear -gt 0) { Write-Host "  -> $wlClear computers with clear-text passwords -- enable encryption" -ForegroundColor Yellow }
     } else {
         Write-Status "Windows LAPS schema present but no GPO configured" "WARN"
-        Write-Host "  → Use option [2] to deploy" -ForegroundColor Yellow
+        Write-Host "  -> Use option [2] to deploy" -ForegroundColor Yellow
     }
 
     # ── 7. CSV Export ──
@@ -392,7 +392,7 @@ function Invoke-Assessment {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         if ($inventory.Count -gt 0) {
             $inventory | Export-Csv -Path (Join-Path $dir "Computers.csv") -NoTypeInformation -Encoding UTF8
-            Write-Status "Computers.csv — $($inventory.Count) records" "OK"
+            Write-Status "Computers.csv -- $($inventory.Count) records" "OK"
         }
         if ($legacyGPOs.Count -gt 0) {
             $legacyGPOs | Export-Csv -Path (Join-Path $dir "LegacyGPOs.csv") -NoTypeInformation -Encoding UTF8
@@ -441,7 +441,7 @@ function Invoke-Deployment {
     $doEncrypt    = $script:DFLSupportsEncryption
 
     if (-not $doEncrypt) {
-        Write-Status "DFL does not support encryption — passwords will be stored in clear text" "WARN"
+        Write-Status "DFL does not support encryption -- passwords will be stored in clear text" "WARN"
     }
 
     # Verify OU
@@ -503,18 +503,18 @@ function Invoke-Deployment {
             & $op.Cmd
             Write-Status $op.Desc "OK"
         } catch {
-            if ($_.Exception.Message -match "already") { Write-Status "$($op.Desc) — already set" "OK" }
+            if ($_.Exception.Message -match "already") { Write-Status "$($op.Desc) -- already set" "OK" }
             else { Write-Status "Failed: $($_.Exception.Message)" "ERROR"; Pause-Screen; return }
         }
     }
 
     # ── Step 3: GPO ──
-    Write-Section "Step 3: GPO Creation & Configuration"
+    Write-Section "Step 3: GPO Creation and Configuration"
     $existingGPO = Get-GPO -Name $gpoName -ErrorAction SilentlyContinue
     if ($existingGPO) {
-        Write-Status "GPO '$gpoName' already exists — updating" "WARN"
+        Write-Status "GPO '$gpoName' already exists -- updating" "WARN"
     } else {
-        New-GPO -Name $gpoName -Comment "Windows LAPS — deployed by Invoke-LAPSToolkit.ps1" | Out-Null
+        New-GPO -Name $gpoName -Comment "Windows LAPS -- deployed by Invoke-LAPSToolkit.ps1" | Out-Null
         Write-Status "GPO created: $gpoName" "OK"
     }
 
@@ -579,9 +579,9 @@ function Invoke-Deployment {
 function Invoke-Migration {
     while ($true) {
         Write-Banner
-        $choice = Show-Menu "Migration: Legacy LAPS → Windows LAPS" @(
+        $choice = Show-Menu "Migration: Legacy LAPS -> Windows LAPS" @(
             "Pre-migration assessment (readiness check)"
-            "Schema update & prepare emulation mode"
+            "Schema update and prepare emulation mode"
             "Validate pilot machines"
             "Switch to Windows LAPS native mode"
             "Clean up Legacy LAPS"
@@ -633,7 +633,7 @@ function Invoke-MigrationPreCheck {
     }
     if ($detected.Count -gt 0) {
         Write-Status "Legacy LAPS GPOs detected: $($detected.Count)" "OK"
-        foreach ($g in $detected) { Write-Host "           → $($g.DisplayName)" -ForegroundColor DarkGray }
+        foreach ($g in $detected) { Write-Host "           -> $($g.DisplayName)" -ForegroundColor DarkGray }
     } else {
         Write-Status "No Legacy LAPS GPOs detected" "WARN"
     }
@@ -660,11 +660,11 @@ function Invoke-MigrationPreCheck {
     Write-Host ""
     $ready = $script:HasLegacySchema -and ($withPwd.Count -gt 0 -or $detected.Count -gt 0) -and $script:LAPSModuleAvailable
     if ($ready) {
-        Write-Status "READY for migration" "OK" "→ Proceed to Phase 2"
+        Write-Status "READY for migration" "OK" "-> Proceed to Phase 2"
     } else {
         Write-Status "NOT READY" "WARN"
         if (-not $script:LAPSModuleAvailable) { Write-Host "    - LAPS module missing" -ForegroundColor Yellow }
-        if ($withPwd.Count -eq 0 -and $detected.Count -eq 0) { Write-Host "    - No Legacy LAPS found — deploy Windows LAPS directly" -ForegroundColor Yellow }
+        if ($withPwd.Count -eq 0 -and $detected.Count -eq 0) { Write-Host "    - No Legacy LAPS found -- deploy Windows LAPS directly" -ForegroundColor Yellow }
     }
 
     Write-Host ""
@@ -681,7 +681,7 @@ function Invoke-MigrationSchemaEmulation {
     $targetOU = Read-Param "Target OU (DN)" -Mandatory
 
     Write-Banner
-    Write-Section "Phase 2: Schema Update & Emulation Mode"
+    Write-Section "Phase 2: Schema Update and Emulation Mode"
 
     # Schema
     if ($script:HasWLAPSSchema) {
@@ -773,7 +773,7 @@ function Invoke-MigrationValidatePilot {
     if ($wlCount -gt 0 -and $noCount -eq 0) {
         Write-Status "All computers covered" "OK" "Ready for Phase 4"
     } elseif ($wlCount -gt 0) {
-        Write-Status "Mixed — some machines still without LAPS" "WARN"
+        Write-Status "Mixed -- some machines still without LAPS" "WARN"
     } else {
         Write-Status "No Windows LAPS passwords yet" "WARN" "Ensure Legacy CSE is uninstalled + gpupdate"
     }
@@ -808,7 +808,7 @@ function Invoke-MigrationSwitchNative {
         Write-Status "Setting $($op.Desc)..." "RUN"
         try { & $op.Cmd; Write-Status $op.Desc "OK" }
         catch {
-            if ($_.Exception.Message -match "already") { Write-Status "$($op.Desc) — already set" "OK" }
+            if ($_.Exception.Message -match "already") { Write-Status "$($op.Desc) -- already set" "OK" }
             else { Write-Status "Failed: $($_.Exception.Message)" "ERROR"; Pause-Screen; return }
         }
     }
@@ -816,9 +816,9 @@ function Invoke-MigrationSwitchNative {
     # GPO
     $existing = Get-GPO -Name $gpoName -ErrorAction SilentlyContinue
     if (-not $existing) {
-        New-GPO -Name $gpoName -Comment "Windows LAPS native — Invoke-LAPSToolkit.ps1" | Out-Null
+        New-GPO -Name $gpoName -Comment "Windows LAPS native -- Invoke-LAPSToolkit.ps1" | Out-Null
         Write-Status "GPO created: $gpoName" "OK"
-    } else { Write-Status "GPO '$gpoName' exists — updating" "INFO" }
+    } else { Write-Status "GPO '$gpoName' exists -- updating" "INFO" }
 
     $reg = "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\LAPS"
     $enc = if ($script:DFLSupportsEncryption) { 1 } else { 0 }
@@ -851,7 +851,7 @@ function Invoke-MigrationSwitchNative {
     Write-Host ""
     Write-Host "  Native mode activated!" -ForegroundColor Green
     Write-Host "  Passwords will now be stored in msLAPS-EncryptedPassword." -ForegroundColor DarkGray
-    Write-Host "  → Validate with Phase 3, then clean up with Phase 5." -ForegroundColor Yellow
+    Write-Host "  -> Validate with Phase 3, then clean up with Phase 5." -ForegroundColor Yellow
 
     Pause-Screen
 }
@@ -934,7 +934,7 @@ function Invoke-MigrationCleanup {
         $guidExpiry  = (Get-ADObject -SearchBase $schemaNC -Filter { name -eq "ms-Mcs-AdmPwdExpirationTime" } -Properties schemaIDGUID -ErrorAction SilentlyContinue).schemaIDGUID
 
         if (-not $guidAdmPwd) {
-            Write-Status "Legacy LAPS schema attributes not found — nothing to scan" "INFO"
+            Write-Status "Legacy LAPS schema attributes not found -- nothing to scan" "INFO"
         } else {
             $guidAdmPwdGuid = [Guid]$guidAdmPwd
             $guidExpiryGuid = [Guid]$guidExpiry
@@ -1213,7 +1213,7 @@ function Invoke-QuickTools {
                 $guidExpiry  = (Get-ADObject -SearchBase $schemaNC -Filter { name -eq "ms-Mcs-AdmPwdExpirationTime" } -Properties schemaIDGUID -ErrorAction SilentlyContinue).schemaIDGUID
 
                 if (-not $guidAdmPwd) {
-                    Write-Status "Legacy LAPS schema attributes not found — nothing to scan" "INFO"
+                    Write-Status "Legacy LAPS schema attributes not found -- nothing to scan" "INFO"
                     Pause-Screen; continue
                 }
 
@@ -1264,7 +1264,7 @@ function Invoke-QuickTools {
                 if ($totalDirect -eq 0) {
                     Write-Status "No direct Legacy LAPS ACEs found" "OK"
                 } else {
-                    Write-Status "$totalDirect direct ACE(s) found — use Migration > Phase 5 to remove them" "WARN"
+                    Write-Status "$totalDirect direct ACE(s) found -- use Migration > Phase 5 to remove them" "WARN"
                 }
                 Pause-Screen
             }
@@ -1294,10 +1294,10 @@ while ($true) {
     Write-Host "  LAPS   : $(if ($script:LAPSModuleAvailable) { 'Module loaded' } else { 'Module NOT available' })" -ForegroundColor $(if ($script:LAPSModuleAvailable) { "Green" } else { "Yellow" })
 
     $choice = Show-Menu "Main Menu" @(
-        "Assessment — Full audit of current LAPS state"
-        "Deployment — Deploy Windows LAPS from scratch"
-        "Migration  — Legacy LAPS → Windows LAPS (guided)"
-        "Quick Tools — Password retrieval, rotation, diagnostics"
+        "Assessment -- Full audit of current LAPS state"
+        "Deployment -- Deploy Windows LAPS from scratch"
+        "Migration  -- Legacy LAPS -> Windows LAPS (guided)"
+        "Quick Tools -- Password retrieval, rotation, diagnostics"
         "Exit"
     )
 

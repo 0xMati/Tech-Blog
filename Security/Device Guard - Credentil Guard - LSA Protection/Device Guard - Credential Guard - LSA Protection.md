@@ -1,0 +1,887 @@
+# Device Guard, HVCI, Credential Guard & LSA Protection — Comprehensive Guide
+
+🗓️ Published: 2026-03-23
+
+Hey everyone! In this article we're going to deep dive into four critical Windows security features that every AD admin and security engineer should know: **Device Guard (WDAC)**, **HVCI (Hypervisor-protected Code Integrity)**, **Credential Guard**, and **LSA Protection (RunAsPPL)**. We'll cover what they do, what they protect against, their impact on your environment, how to deploy them — and yes, whether you can (and should) run them on Domain Controllers.
+
+🔗 https://learn.microsoft.com/en-us/windows/security/
+
+---
+
+## 📋 Table of Contents
+
+- [🎯 Overview — What Are These Features?](#-overview--what-are-these-features)
+- [🛡️ Device Guard / Windows Defender Application Control (WDAC)](#️-device-guard--windows-defender-application-control-wdac)
+  - [What Is WDAC?](#what-is-wdac)
+  - [What Does It Protect Against?](#what-does-it-protect-against)
+  - [Requirements](#requirements)
+  - [Impact & Considerations](#impact--considerations)
+  - [Can I Deploy WDAC on Domain Controllers?](#can-i-deploy-wdac-on-domain-controllers)
+  - [How to Deploy WDAC](#how-to-deploy-wdac)
+- [🧱 HVCI — Hypervisor-protected Code Integrity](#-hvci--hypervisor-protected-code-integrity)
+  - [What Is HVCI?](#what-is-hvci)
+  - [HVCI vs WDAC — What's the Difference?](#hvci-vs-wdac--whats-the-difference)
+  - [What Does HVCI Protect Against?](#what-does-hvci-protect-against)
+  - [Requirements](#requirements-hvci)
+  - [Impact & Considerations](#impact--considerations-hvci)
+  - [Can I Deploy HVCI on Domain Controllers?](#can-i-deploy-hvci-on-domain-controllers)
+  - [How to Deploy HVCI](#how-to-deploy-hvci)
+  - [How to Verify HVCI Is Running](#how-to-verify-hvci-is-running)
+- [🔐 Credential Guard](#-credential-guard)
+  - [What Is Credential Guard?](#what-is-credential-guard)
+  - [What Does It Protect Against?](#what-does-it-protect-against-1)
+  - [Requirements](#requirements-1)
+  - [Impact & Considerations](#impact--considerations-1)
+  - [Can I Deploy Credential Guard on Domain Controllers?](#can-i-deploy-credential-guard-on-domain-controllers) ⚠️
+  - [How to Deploy Credential Guard](#how-to-deploy-credential-guard)
+  - [How to Verify Credential Guard Is Running](#how-to-verify-credential-guard-is-running)
+- [🔒 LSA Protection (RunAsPPL)](#-lsa-protection-runasppl)
+  - [What Is LSA Protection?](#what-is-lsa-protection)
+  - [What Does It Protect Against?](#what-does-it-protect-against-2)
+  - [Requirements](#requirements-2)
+  - [Impact & Considerations](#impact--considerations-2)
+  - [Can I Deploy LSA Protection on Domain Controllers?](#can-i-deploy-lsa-protection-on-domain-controllers)
+  - [How to Deploy LSA Protection](#how-to-deploy-lsa-protection)
+  - [How to Verify LSA Protection Is Active](#how-to-verify-lsa-protection-is-active)
+- [📊 Comparison Matrix](#-comparison-matrix)
+- [🏗️ Deployment Strategy & Recommendations](#️-deployment-strategy--recommendations)
+- [⚠️ Common Pitfalls](#️-common-pitfalls)
+- [📚 References](#-references)
+
+---
+
+## 🎯 Overview — What Are These Features?
+
+These four features are part of the **Windows Virtualization-Based Security (VBS)** ecosystem and defense-in-depth strategy. They each address a different layer of attack:
+
+| Feature | Protection Layer | Primary Goal |
+|---|---|---|
+| **Device Guard / WDAC** | Application execution (user mode) | Only trusted code runs on the machine |
+| **HVCI** | Kernel code integrity | Only trusted code runs in the kernel |
+| **Credential Guard** | Credentials in memory | Prevent credential theft (Pass-the-Hash, Pass-the-Ticket) |
+| **LSA Protection (RunAsPPL)** | LSA process integrity | Block unauthorized code from accessing the LSA process |
+
+> 💡 **Tip**: These features are complementary — they protect different attack surfaces and should ideally be deployed together as part of a layered security strategy.
+
+---
+
+## 🛡️ Device Guard / Windows Defender Application Control (WDAC)
+
+### What Is WDAC?
+
+**Windows Defender Application Control (WDAC)** — formerly known as **Device Guard** — is a security feature that controls which drivers and applications are allowed to run on a Windows device.
+
+The original "Device Guard" term encompassed two technologies:
+- **WDAC** (code integrity policies) — the application control engine (covered in this section)
+- **HVCI** (Hypervisor-protected Code Integrity) — uses VBS to protect the kernel code integrity process (covered in the [next section](#-hvci--hypervisor-protected-code-integrity))
+
+Microsoft now recommends using the term **WDAC** for application control policies and **HVCI** for the hypervisor-based kernel protection. They are **two distinct protections** that can be enabled independently.
+
+🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/introduction
+
+### What Does It Protect Against?
+
+WDAC protects against:
+
+- **Unauthorized applications** — Malware, ransomware, untrusted executables
+- **Script-based attacks** — PowerShell, VBScript, JScript abuse (when configured with script enforcement)
+- **Driver-based attacks** — Vulnerable or malicious kernel drivers (with HVCI)
+- **Living-off-the-land binaries (LOLBins)** — Abuse of built-in Windows tools
+- **DLL sideloading** — Loading malicious DLLs via trusted applications
+
+### Requirements
+
+| Requirement | Details |
+|---|---|
+| **OS** | Windows 10 / Windows 11 / Windows Server 2016+ |
+| **HVCI (optional)** | Requires VBS support (UEFI, Secure Boot, TPM 2.0, compatible hypervisor) |
+| **WDAC only** | No specific hardware requirements — works on any supported OS |
+| **Management** | GPO, Intune, SCCM, or manual deployment via CIPolicy |
+
+### Impact & Considerations
+
+| Area | Impact |
+|---|---|
+| **Application compatibility** | ⚠️ **High** — Any unsigned or non-whitelisted application will be blocked. Requires thorough application inventory before deployment. |
+| **Performance** | Low — Minimal overhead. HVCI may add a small CPU overhead on older hardware. |
+| **User experience** | Applications that don't match the policy silently fail or show a block notification. |
+| **Administration** | Requires ongoing policy management as new applications are introduced. |
+| **Rollback** | Policies can be deployed in **Audit mode** first (no blocking, only logging). |
+
+> 💡 **Tip**: Always start with **Audit mode** (`Enabled:Audit Mode`) to identify what would be blocked before switching to **Enforced mode**. Event log: `Microsoft-Windows-CodeIntegrity/Operational` — Event IDs **3076** (audit block) and **3077** (enforced block).
+
+### Can I Deploy WDAC on Domain Controllers?
+
+**Yes**, WDAC is supported on Domain Controllers. However, extra care is required:
+
+- Domain Controllers run a well-defined set of software — this makes them good candidates for application control
+- You must ensure that **all AD-related binaries**, third-party agents (antivirus, monitoring, backup), and Microsoft management tools are covered by the policy
+- Use the **Microsoft recommended block rules** and **Microsoft recommended driver block rules** as baselines
+- Test thoroughly in **Audit mode** before enforcement
+
+🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/applications-that-can-bypass-wdac
+
+### How to Deploy WDAC
+
+#### Step 1 — Create a Base Policy from a Reference Machine
+
+```powershell
+# Scan the reference machine and create a policy
+New-CIPolicy -Level Publisher -FilePath "C:\Policies\BasePolicy.xml" -UserPEs -Fallback Hash
+
+# Optionally add the Microsoft recommended block rules
+# Download from: https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/applications-that-can-bypass-wdac
+```
+
+#### Step 2 — Set the Policy to Audit Mode
+
+```powershell
+# Ensure the policy starts in Audit mode
+Set-RuleOption -FilePath "C:\Policies\BasePolicy.xml" -Option 3  # Enabled:Audit Mode
+```
+
+#### Step 3 — Convert the Policy to Binary
+
+```powershell
+# Convert XML to binary
+ConvertFrom-CIPolicy -XmlFilePath "C:\Policies\BasePolicy.xml" `
+    -BinaryFilePath "C:\Policies\{PolicyID}.cip"
+```
+
+#### Step 4 — Deploy via Group Policy
+
+1. **Copier le fichier de policy** sur un partage réseau accessible par les machines cibles (ex: `\\domain.local\SYSVOL\domain.local\Policies\WDAC\`) ou dans un dossier local
+2. **Ouvrir la console GPMC** (`gpmc.msc`)
+3. **Créer une nouvelle GPO** : clic droit sur l'OU cible → *Create a GPO in this domain, and Link it here...*
+   - Nommer la GPO de manière explicite, ex: `SEC - WDAC - Audit Mode` ou `SEC - WDAC - Enforce`
+4. **Éditer la GPO** → naviguer vers :
+
+```
+Computer Configuration
+  → Administrative Templates
+    → System
+      → Device Guard
+        → Deploy Windows Defender Application Control
+```
+
+5. **Activer le setting** → sélectionner **Enabled**
+6. **Spécifier le chemin** vers le fichier `.cip` ou `.p7b` :
+   - Ex: `\\domain.local\SYSVOL\domain.local\Policies\WDAC\BasePolicy.cip`
+   - Ou le chemin local si déployé autrement : `C:\Windows\System32\CodeIntegrity\CiPolicies\Active\{PolicyID}.cip`
+7. **Cliquer OK** et fermer l'éditeur
+
+> 💡 **Tip**: Pour un déploiement progressif :
+> - Créer un **groupe de sécurité AD** (ex: `GRP-WDAC-Pilot`) et filtrer la GPO avec **Security Filtering** sur ce groupe
+> - Commencer par quelques machines pilotes en **Audit mode**
+> - Analyser les Event IDs 3076 pendant 2-4 semaines
+> - Puis élargir progressivement le scope
+
+> ⚠️ **Important**: La GPO ne fait que pointer vers le fichier de policy — le contenu de la policy (audit vs enforce, règles d'autorisation) est défini dans le fichier XML/CIP lui-même. Modifier le mode nécessite de re-générer et redéployer le fichier `.cip`.
+
+#### Step 5 — Monitor Audit Events
+
+```powershell
+# Check for audit block events
+Get-WinEvent -LogName "Microsoft-Windows-CodeIntegrity/Operational" |
+    Where-Object { $_.Id -in @(3076, 3077) } |
+    Select-Object TimeCreated, Id, Message -First 20
+```
+
+#### Step 6 — Switch to Enforced Mode
+
+```powershell
+# Remove audit mode option to enforce the policy
+Set-RuleOption -FilePath "C:\Policies\BasePolicy.xml" -Option 3 -Delete
+
+# Re-convert and redeploy the policy
+ConvertFrom-CIPolicy -XmlFilePath "C:\Policies\BasePolicy.xml" `
+    -BinaryFilePath "C:\Policies\{PolicyID}.cip"
+
+# Remplacer le fichier .cip sur le partage réseau ou le chemin utilisé par la GPO
+# La GPO appliquera automatiquement la nouvelle policy au prochain gpupdate
+```
+
+---
+
+## 🧱 HVCI — Hypervisor-protected Code Integrity
+
+### What Is HVCI?
+
+**HVCI** (Hypervisor-protected Code Integrity), also known as **Memory Integrity**, uses **Virtualization-Based Security (VBS)** to protect the Windows kernel code integrity verification process. Instead of the kernel verifying its own code (which can be tampered with if the kernel is compromised), HVCI moves that verification into an isolated VBS container that the kernel cannot access.
+
+In simple terms:
+- **Without HVCI**: The kernel checks its own drivers and code → if the kernel is compromised, the attacker can load malicious drivers
+- **With HVCI**: A separate VBS-isolated process checks kernel code → even a compromised kernel cannot bypass the verification
+
+🔗 https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity
+
+### HVCI vs WDAC — What's the Difference?
+
+| Aspect | WDAC | HVCI |
+|---|---|---|
+| **Scope** | User-mode applications, scripts, DLLs | Kernel-mode drivers and code |
+| **Mechanism** | Code integrity policies (whitelist/blocklist) | VBS-isolated kernel code integrity verification |
+| **Requires VBS** | ❌ No | ✅ Yes |
+| **Protects against** | Malware, unauthorized apps, LOLBins | Vulnerable/malicious kernel drivers |
+| **Independent** | ✅ Can be used alone | ✅ Can be used alone |
+| **Best together** | ✅ WDAC + HVCI = full stack code integrity | ✅ HVCI + WDAC = full stack code integrity |
+
+> 💡 **Tip**: WDAC controls **what** is allowed to run. HVCI ensures the **kernel verification** of that code cannot be tampered with. They are complementary but independent.
+
+### What Does HVCI Protect Against?
+
+| Threat | Protection |
+|---|---|
+| **Vulnerable kernel drivers** | ✅ Blocks unsigned or known-vulnerable drivers from loading into the kernel |
+| **BYOVD (Bring Your Own Vulnerable Driver)** | ✅ Prevents attackers from loading legitimate but vulnerable signed drivers to gain kernel access |
+| **Kernel rootkits** | ✅ Makes it significantly harder to load unsigned kernel code |
+| **Kernel-mode code injection** | ✅ VBS isolation prevents tampering with code integrity checks |
+| **Bootkits** | ⚠️ Partial — Combined with Secure Boot, provides strong protection |
+
+> ⚠️ **Important**: HVCI is a key defense against the increasingly popular **BYOVD** attack technique, where attackers use legitimate but vulnerable signed drivers (e.g., old hardware drivers with known exploits) to gain kernel-level access. Microsoft maintains a **vulnerable driver blocklist** that works with HVCI.
+>
+> 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/microsoft-recommended-driver-block-rules
+
+### Requirements {#requirements-hvci}
+
+| Requirement | Details |
+|---|---|
+| **OS** | Windows 10 / Windows 11 / Windows Server 2016+ |
+| **Firmware** | UEFI firmware with Secure Boot |
+| **Virtualization** | Hardware virtualization (Intel VT-x / AMD-V) + SLAT (Intel EPT / AMD RVI) |
+| **TPM** | TPM 2.0 recommended (not strictly required) |
+| **Drivers** | All kernel drivers must be compatible with HVCI (signed, no executable non-paged pool, etc.) |
+
+> ⚠️ **Important**: Starting with **Windows 11**, HVCI (Memory Integrity) is **enabled by default** on new installations with compatible hardware.
+
+### Impact & Considerations {#impact--considerations-hvci}
+
+| Area | Impact |
+|---|---|
+| **Driver compatibility** | ⚠️ **Medium-High** — Older or poorly written kernel drivers may be incompatible with HVCI. They will fail to load. |
+| **Performance** | ⚠️ **Low-Medium** — VBS adds some CPU and memory overhead. Gaming and high-performance workloads may see 5-10% impact on older hardware. Negligible on modern hardware. |
+| **Legacy hardware** | ❌ Drivers for older peripherals (printers, scanners, industrial hardware) may not be HVCI-compatible. |
+| **Virtualization software** | ⚠️ Some older virtualization software (VirtualBox < 6.x, VMware older versions) may conflict with VBS/HVCI. |
+| **Rollback** | ✅ Can be disabled via GPO, registry, or Windows Security app (unless UEFI-locked). |
+
+> 💡 **Tip**: You can check driver HVCI compatibility before enabling it:
+> ```powershell
+> # List drivers not compatible with HVCI
+> Get-WindowsDriver -Online | Where-Object { $_.BootCritical -eq $false } |
+>     ForEach-Object {
+>         $driverInfo = Get-WindowsDriver -Online -Driver $_.Driver
+>         # Check for HVCI compatibility flags in the driver
+>     }
+>
+> # Or use the Device Guard Readiness Tool from Microsoft
+> # https://www.microsoft.com/en-us/download/details.aspx?id=53337
+> ```
+
+### Can I Deploy HVCI on Domain Controllers?
+
+**Yes**, HVCI is supported on Domain Controllers and provides strong kernel-level protection:
+
+- ✅ **Recommended** on Tier 0 assets — DCs are high-value targets for kernel exploits
+- ✅ Domain Controllers typically use only Microsoft-signed, HVCI-compatible drivers
+- ⚠️ Validate that any third-party drivers (storage HBA, NIC, monitoring agents with kernel components) are HVCI-compatible
+- ⚠️ Test on a non-production DC first — an incompatible driver could cause a BSOD or fail to load
+- 💡 Combine with the **Microsoft vulnerable driver blocklist** for maximum protection
+
+### How to Deploy HVCI
+
+#### Option 1 — via Group Policy
+
+1. **Ouvrir la console GPMC** (`gpmc.msc`)
+2. **Créer une nouvelle GPO** : clic droit sur l'OU cible → *Create a GPO in this domain, and Link it here...*
+   - Nommer la GPO : ex: `SEC - VBS and HVCI`
+3. **Éditer la GPO** → naviguer vers :
+
+```
+Computer Configuration
+  → Administrative Templates
+    → System
+      → Device Guard
+        → Turn On Virtualization Based Security
+```
+
+4. **Activer le setting** → sélectionner **Enabled**
+5. **Configurer les options** :
+
+| Option | Valeur recommandée | Description |
+|---|---|---|
+| **Select Platform Security Level** | `Secure Boot and DMA Protection` | Niveau de protection de la plateforme. "Secure Boot" seul est le minimum. "Secure Boot and DMA Protection" est plus sécurisé mais nécessite un hardware compatible IOMMU (Intel VT-d / AMD-Vi). |
+| **Virtualization Based Protection of Code Integrity** | `Enabled with UEFI lock` (prod) ou `Enabled without lock` (test) | Active HVCI. Le UEFI lock empêche la désactivation à distance — nécessite un accès physique pour le désactiver. |
+| **Require UEFI Memory Attributes Table** | `True` (si supporté) | Renforce la protection en exigeant que le firmware expose les attributs mémoire via UEFI MAT. |
+| **Credential Guard Configuration** | Laisser `Not Configured` ici si géré séparément | Credential Guard peut être activé dans la même GPO ou séparément (voir section Credential Guard). |
+
+6. **Cliquer OK** → fermer l'éditeur
+7. **Lier la GPO** à l'OU appropriée (commencer par un scope limité)
+
+> 💡 **Tip**: Utilisez **"Enabled without lock"** pendant les tests pour pouvoir facilement revenir en arrière. Passez en **"Enabled with UEFI lock"** uniquement quand vous êtes sûr que tous les drivers sont compatibles.
+
+> ⚠️ **Important**: Cette GPO active VBS **et** HVCI. Si vous souhaitez activer VBS sans HVCI (par exemple pour Credential Guard seul), laissez l'option "Virtualization Based Protection of Code Integrity" sur `Not Configured` ou `Disabled`.
+
+#### Option 2 — via Registry
+
+```powershell
+# Enable VBS (if not already enabled)
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard" `
+    -Name "EnableVirtualizationBasedSecurity" -Value 1 -Type DWord
+
+# Enable HVCI (1 = Enabled with UEFI lock, 2 = Enabled without lock)
+New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity" `
+    -Name "Enabled" -Value 1 -Type DWord -Force
+
+# Restart required
+Restart-Computer
+```
+
+#### Option 3 — via Windows Security App (Workstations)
+
+```
+Windows Security
+  → Device Security
+    → Core isolation details
+      → Memory integrity: On
+```
+
+#### Option 4 — via Intune / MDM
+
+```
+OMA-URI: ./Device/Vendor/MSFT/Policy/Config/DeviceGuard/EnableVirtualizationBasedSecurity
+Value: 1
+
+OMA-URI: ./Device/Vendor/MSFT/Policy/Config/DeviceGuard/HypervisorEnforcedCodeIntegrity
+Value: 1
+```
+
+### How to Verify HVCI Is Running
+
+```powershell
+# Method 1: System Information
+# Run msinfo32.exe → look for:
+#   "Virtualization-based security"     → Running
+#   "Virtualization-based security Services Running" → Hypervisor enforced Code Integrity
+
+# Method 2: PowerShell / WMI
+Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\Microsoft\Windows\DeviceGuard |
+    Select-Object -Property VirtualizationBasedSecurityStatus,
+        SecurityServicesConfigured, SecurityServicesRunning
+
+# SecurityServicesRunning:
+# 1 = Credential Guard
+# 2 = HVCI  ← this is what you're looking for
+# 3 = System Guard Secure Launch
+
+# Method 3: Windows Security App
+# Windows Security → Device Security → Core isolation
+# "Memory integrity" should show "On"
+
+# Method 4: Registry check
+Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity" `
+    -Name "Enabled" -ErrorAction SilentlyContinue |
+    Select-Object Enabled
+```
+
+---
+
+## 🔐 Credential Guard
+
+### What Is Credential Guard?
+
+**Credential Guard** uses **Virtualization-Based Security (VBS)** to isolate and protect secrets (NTLM hashes, Kerberos TGTs) so that only privileged system software can access them. Credentials are stored in an isolated container that the main OS kernel cannot access — even if the kernel is fully compromised.
+
+🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/
+
+### What Does It Protect Against?
+
+Credential Guard specifically mitigates:
+
+| Attack | Without Credential Guard | With Credential Guard |
+|---|---|---|
+| **Pass-the-Hash (PtH)** | ❌ Attacker dumps NTLM hashes from LSASS | ✅ Hashes are isolated in VBS — cannot be extracted |
+| **Pass-the-Ticket (PtT)** | ❌ Attacker steals Kerberos TGTs from memory | ✅ TGTs are managed by the isolated LSA — not accessible |
+| **Kerberoasting (indirect)** | ❌ Service tickets are in memory | ⚠️ Partial — TGTs are protected, but service tickets may still be accessible |
+| **Mimikatz / credential dumping** | ❌ Full credential extraction from LSASS | ✅ Mimikatz cannot read isolated credentials |
+| **NTLM relay (indirect)** | ❌ NTLM hashes available | ✅ Hashes are not accessible for relay |
+
+> 💡 **Tip**: Credential Guard protects **derived credentials** (NTLM hashes, Kerberos tickets). It does **not** protect against keyloggers capturing passwords at input time, or against phishing.
+
+### Requirements
+
+| Requirement | Details |
+|---|---|
+| **OS** | Windows 10 Enterprise/Education, Windows 11 Enterprise/Education, Windows Server 2016+ |
+| **Edition** | Enterprise or Education required (not available on Pro) |
+| **Firmware** | UEFI firmware with Secure Boot |
+| **TPM** | TPM 1.2 or 2.0 (TPM 2.0 recommended) |
+| **Virtualization** | Hardware virtualization (Intel VT-x / AMD-V) + SLAT (Intel EPT / AMD RVI) |
+| **Hyper-V** | Hyper-V role must be available (installed automatically when enabling VBS) |
+
+> ⚠️ **Important**: Starting with **Windows 11 22H2** and **Windows Server 2025**, Credential Guard is **enabled by default** (without UEFI lock) on devices that meet the requirements. On Windows Server 2025, les Domain Controllers sont **explicitement exclus** de l'activation par défaut.
+>
+> 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/configure
+
+### Impact & Considerations
+
+| Area | Impact |
+|---|---|
+| **NTLM v1** | ❌ **Blocked** — NTLMv1 authentication no longer works (good for security!) |
+| **Unconstrained delegation** | ❌ **Broken** — Credential Guard blocks TGT delegation. Use **constrained** or **resource-based constrained delegation** instead. |
+| **MS-CHAPv2 / CredSSP** | ❌ **Broken** — Legacy authentication protocols relying on NTLMv1 or credential delegation will fail. |
+| **Kerberos DES encryption** | ❌ **Blocked** — DES-based Kerberos is not supported. |
+| **Digest authentication** | ❌ **Blocked** — WDigest plaintext credentials are not cached. |
+| **DPAPI (machine)** | ⚠️ Machine DPAPI works but user DPAPI-protected data loaded at boot may have caveats. |
+| **Third-party SSPs** | ❌ **Blocked** — Custom Security Support Providers cannot load into LSASS. |
+| **Performance** | Low — VBS adds minimal overhead (~1-2% CPU). May be more noticeable on older hardware. |
+
+> ⚠️ **Critical**: Before enabling Credential Guard, **audit your environment for unconstrained delegation** and legacy protocols. Use tools like:
+> ```powershell
+> # Find computers with unconstrained delegation
+> Get-ADComputer -Filter { TrustedForDelegation -eq $true } -Properties TrustedForDelegation |
+>     Select-Object Name, DNSHostName, TrustedForDelegation
+>
+> # Find users with unconstrained delegation
+> Get-ADUser -Filter { TrustedForDelegation -eq $true } -Properties TrustedForDelegation |
+>     Select-Object Name, SamAccountName, TrustedForDelegation
+> ```
+
+### Can I Deploy Credential Guard on Domain Controllers?
+
+**Non recommandé par Microsoft.** La documentation officielle indique explicitement :
+
+> ⚠️ *"Enabling Credential Guard on domain controllers isn't recommended. Credential Guard doesn't provide any added security to domain controllers, and can cause application compatibility issues on domain controllers."*
+
+**Pourquoi ça ne protège pas les DCs ?**
+
+Credential Guard protège les **derived credentials** en mémoire (NTLM hashes, Kerberos TGTs dans LSASS). Or sur un Domain Controller, ces secrets sont aussi stockés dans la **base Active Directory (NTDS.dit)** et dans le **SAM**. Même avec Credential Guard, un attaquant ayant accès au DC peut extraire les credentials directement depuis la base AD.
+
+- ❌ Microsoft ne recommande **pas** Credential Guard sur les DCs
+- ❌ Les DCs sont **explicitement exclus** de l'activation par défaut sur Windows Server 2025
+- ⚠️ Peut causer des problèmes de compatibilité applicative sur les DCs
+- 💡 Pour protéger les DCs, privilégiez : **LSA Protection (RunAsPPL)**, **HVCI**, **WDAC**, et les bonnes pratiques de tiering
+
+🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/
+
+### How to Deploy Credential Guard
+
+#### Option 1 — via Group Policy
+
+1. **Ouvrir la console GPMC** (`gpmc.msc`)
+2. **Créer ou réutiliser une GPO VBS** : Si vous avez déjà une GPO pour HVCI (ex: `SEC - VBS and HVCI`), vous pouvez ajouter Credential Guard dans la même GPO. Sinon, créer une nouvelle GPO dédiée (ex: `SEC - Credential Guard`)
+3. **Éditer la GPO** → naviguer vers :
+
+```
+Computer Configuration
+  → Administrative Templates
+    → System
+      → Device Guard
+        → Turn On Virtualization Based Security
+```
+
+4. **Activer le setting** → sélectionner **Enabled** (si pas déjà fait)
+5. **Configurer les options Credential Guard** :
+
+| Option | Valeur recommandée | Description |
+|---|---|---|
+| **Select Platform Security Level** | `Secure Boot and DMA Protection` | Comme pour HVCI. |
+| **Credential Guard Configuration** | `Enabled with UEFI lock` (prod) ou `Enabled without lock` (test) | Active Credential Guard. Le UEFI lock protège contre la désactivation à distance. |
+| **Secure Launch Configuration** | `Enabled` (si supporté) | Active System Guard Secure Launch pour une protection supplémentaire au démarrage. |
+
+6. **Cliquer OK** → fermer l'éditeur
+7. **Filtrer le scope** :
+   - **Ne jamais lier cette GPO à l'OU des Domain Controllers** (non recommandé par Microsoft)
+   - Lier la GPO à l'OU des workstations / member servers
+   - Utiliser le **Security Filtering** pour cibler un groupe pilote d'abord (ex: `GRP-CredGuard-Pilot`)
+   - Ou utiliser un **WMI Filter** pour cibler uniquement les machines Enterprise : 
+     ```
+     SELECT * FROM Win32_OperatingSystem WHERE Caption LIKE "%Enterprise%"
+     ```
+
+> 💡 **Tip**: Utilisez **"Enabled without lock"** pendant les tests — avec le UEFI lock, il faut un accès physique (ou une intervention firmware) pour désactiver Credential Guard. En phase de test, vous voulez pouvoir faire marche arrière via GPO ou registry.
+
+> ⚠️ **Important**: Si vous activez Credential Guard **et** HVCI, les deux peuvent être configurés dans la **même GPO** sous le même setting "Turn On Virtualization Based Security". Pas besoin de 2 GPO séparées.
+
+#### Option 2 — via Registry
+
+```powershell
+# Enable VBS
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard" `
+    -Name "EnableVirtualizationBasedSecurity" -Value 1 -Type DWord
+
+# Enable Credential Guard
+# 1 = Enabled with UEFI lock (strongest, requires physical presence to disable)
+# 2 = Enabled without lock (can be disabled remotely — recommended for testing)
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" `
+    -Name "LsaCfgFlags" -Value 2 -Type DWord
+
+# Restart required
+Restart-Computer
+```
+
+#### Option 3 — via Intune / MDM
+
+Use the **Endpoint Security** > **Account Protection** profile, or a custom OMA-URI policy with **two settings** :
+
+```
+# Activer VBS
+OMA-URI: ./Device/Vendor/MSFT/Policy/Config/DeviceGuard/EnableVirtualizationBasedSecurity
+Type: Integer
+Value: 1
+
+# Activer Credential Guard
+OMA-URI: ./Device/Vendor/MSFT/Policy/Config/DeviceGuard/LsaCfgFlags
+Type: Integer
+Value: 1 (UEFI lock) ou 2 (sans lock)
+```
+
+🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/configure
+
+### How to Verify Credential Guard Is Running
+
+```powershell
+# Method 1: System Information
+# Run msinfo32.exe → System Summary
+# Look for "Virtualization-based security Services Running"
+# Should include: "Credential Guard"
+
+# Method 2: PowerShell / WMI
+(Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\Microsoft\Windows\DeviceGuard).SecurityServicesRunning
+# Returns an array of running services:
+# 1 = Credential Guard
+# 2 = HVCI
+# 3 = System Guard Secure Launch
+# 4 = SMM Firmware Measurement
+# If 1 is in the array → Credential Guard is running
+
+# Method 3: Check Event Log (WinInit events in System log)
+Get-WinEvent -LogName "System" | Where-Object {
+    $_.ProviderName -eq "Wininit" -and $_.Id -in @(13, 14, 15, 16)
+} | Select-Object TimeCreated, Id, Message -First 5
+# Event ID 13: "Credential Guard (LsaIso.exe) was started and will protect LSA credentials."
+# Event ID 14: "Credential Guard (LsaIso.exe) configuration: [0x1|0x2], 0"
+# Event ID 15 (Warning): Credential Guard configured but secure kernel not running
+# Event ID 16 (Warning): Credential Guard failed to launch
+```
+
+---
+
+## 🔒 LSA Protection (RunAsPPL)
+
+### What Is LSA Protection?
+
+**LSA Protection** — also known as **RunAsPPL** (Protected Process Light) — configures the **Local Security Authority (LSA)** process (`lsass.exe`) to run as a **Protected Process Light (PPL)**. This means that only digitally signed code (by Microsoft) can load into or interact with the LSASS process.
+
+🔗 https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/configuring-additional-lsa-protection
+
+### What Does It Protect Against?
+
+| Threat | Protection |
+|---|---|
+| **Mimikatz / credential dumping** | ✅ Blocks unsigned code from reading LSASS memory |
+| **DLL injection into LSASS** | ✅ Only Microsoft-signed DLLs can load into LSASS |
+| **Memory scraping** | ✅ Protected Process Light prevents standard process memory reads |
+| **Unsigned SSP/AP packages** | ✅ Custom Security Support Providers must be signed |
+
+> ⚠️ **Important**: LSA Protection is **not a silver bullet**. A sufficiently privileged attacker (e.g., with kernel-level access or a vulnerable signed driver) can potentially bypass PPL. Credential Guard provides stronger isolation using hardware-based virtualization. **Use both together** for defense in depth.
+
+#### LSA Protection vs Credential Guard
+
+| Feature | LSA Protection (PPL) | Credential Guard |
+|---|---|---|
+| **Protection mechanism** | OS-level process protection | Hardware-based VBS isolation |
+| **Requires VBS/hypervisor** | ❌ No | ✅ Yes |
+| **Blocks unsigned code in LSASS** | ✅ Yes | ✅ Yes |
+| **Protects credentials from kernel attacks** | ⚠️ Limited | ✅ Yes |
+| **Hardware requirements** | None | UEFI, TPM, VT-x, SLAT |
+| **OS editions** | All editions | Enterprise/Education only |
+| **Ease of deployment** | Simple (1 registry key) | More complex |
+
+### Requirements
+
+| Requirement | Details |
+|---|---|
+| **OS** | Windows 8.1+ / Windows Server 2012 R2+ |
+| **Hardware** | No specific hardware requirements |
+| **UEFI (recommended)** | UEFI with Secure Boot recommended to enable persistent PPL protection via firmware |
+| **Edition** | All editions (Pro, Enterprise, Education, Server) |
+
+### Impact & Considerations
+
+| Area | Impact |
+|---|---|
+| **Third-party LSASS plugins** | ❌ **Blocked** — Unsigned DLLs that hook into LSASS (some old AV, smart card middleware, password filters, custom SSPs) will be blocked. |
+| **Password filters** | ⚠️ Must be **Microsoft-signed** or they will fail to load. |
+| **Smart card drivers** | ⚠️ Some older smart card middleware may be blocked. |
+| **Performance** | Negligible — No measurable performance impact. |
+| **WDigest** | Plaintext credential caching is blocked (same as disabling WDigest via registry). |
+| **Audit mode** | Available on **Windows 11 22H2+** and **Windows Server 2025** — logs what would be blocked without actually blocking. |
+
+> 💡 **Tip**: On **Windows 11 22H2+**, LSA Protection audit mode est **activé par défaut**. L'audit log les plugins/drivers qui ne pourraient pas se charger sous LSA Protection. Check event log: `Microsoft-Windows-CodeIntegrity/Operational` — look for **Event ID 3065** (a code integrity check found a driver that didn't meet security requirements) and **Event ID 3066** (same, but the image was blocked).
+
+### Can I Deploy LSA Protection on Domain Controllers?
+
+**Yes, absolutely.** LSA Protection is strongly recommended on Domain Controllers:
+
+- ✅ **Fully supported** on Windows Server 2012 R2 and later
+- ✅ **Low risk** on DCs — Domain Controllers typically run only Microsoft-signed components
+- ✅ **Quick wins** — Simple registry change, minimal compatibility concerns on clean DC installations
+- ⚠️ Validate that no third-party password filters, custom SSPs, or unsigned plugins are used on the DC
+- 💡 This should be one of the **first hardening steps** on any DC (Tier 0 asset)
+
+### How to Deploy LSA Protection
+
+#### Option 1 — via GPO Registry Preferences (All OS versions)
+
+Pour les OS **antérieurs à Windows 11 22H2** (pas de setting GPO natif), on utilise les **GPO Preferences** pour pousser la clé de registre :
+
+1. **Ouvrir la console GPMC** (`gpmc.msc`)
+2. **Créer une nouvelle GPO** : clic droit sur l'OU cible → *Create a GPO in this domain, and Link it here...*
+   - Nommer la GPO : ex: `SEC - LSA Protection (RunAsPPL)`
+3. **Éditer la GPO** → naviguer vers :
+
+```
+Computer Configuration
+  → Preferences
+    → Windows Settings
+      → Registry
+```
+
+4. **Clic droit → New → Registry Item** et configurer :
+
+| Champ | Valeur |
+|---|---|
+| **Action** | `Update` |
+| **Hive** | `HKEY_LOCAL_MACHINE` |
+| **Key Path** | `SYSTEM\CurrentControlSet\Control\Lsa` |
+| **Value name** | `RunAsPPL` |
+| **Value type** | `REG_DWORD` |
+| **Value data** | `1` (avec UEFI variable) ou `2` (sans UEFI variable — Win 11 22H2+ uniquement) |
+
+5. **Cliquer OK** → fermer l'éditeur
+6. **Un redémarrage est nécessaire** pour que la protection prenne effet
+
+> 💡 **Tip**: Vous pouvez aussi utiliser **Item-Level Targeting** dans les Preferences pour cibler un groupe de sécurité spécifique ou un OS spécifique, ce qui permet un déploiement progressif.
+
+Ou via PowerShell en local / script de démarrage GPO :
+
+```powershell
+# Enable LSA Protection (RunAsPPL)
+# 1 = avec UEFI variable (ne peut pas être désactivé sans accès physique)
+# 2 = sans UEFI variable (Win 11 22H2+ uniquement — peut être désactivé via registry)
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" `
+    -Name "RunAsPPL" -Value 1 -Type DWord
+```
+
+#### Option 2 — via Group Policy Native Setting (Windows 11 22H2+ / Server 2025)
+
+Sur les OS récents, un setting GPO natif est disponible avec des options avancées (audit mode, UEFI lock) :
+
+1. **Ouvrir la console GPMC** (`gpmc.msc`)
+2. **Créer une nouvelle GPO** (ou réutiliser la GPO LSA existante) : ex: `SEC - LSA Protection`
+3. **Éditer la GPO** → naviguer vers :
+
+```
+Computer Configuration
+  → Administrative Templates
+    → System
+      → Local Security Authority
+        → Configure LSASS to run as a protected process
+```
+
+4. **Activer le setting** → sélectionner **Enabled**
+5. **Choisir le mode** dans le menu déroulant :
+
+| Mode | Valeur | Description |
+|---|---|---|
+| **Enabled with UEFI Lock** | Strongest | La protection ne peut pas être désactivée à distance — nécessite un accès physique. Recommandé en production. |
+| **Enabled without UEFI Lock** | Medium | Protection active mais désactivable via registry. Utile pour le testing. |
+| **Audit Mode** | Test only | Ne bloque rien — journalise uniquement les DLLs qui seraient bloquées. Disponible uniquement sur Windows 11 22H2+ et Server 2025. |
+
+6. **Cliquer OK** → fermer l'éditeur
+7. **Un redémarrage est nécessaire** après l'application de la GPO
+
+> 💡 **Tip**: Stratégie de déploiement recommandée :
+> 1. Déployer en **Audit Mode** pendant 2-4 semaines
+> 2. Vérifier les Event IDs **3065** et **3066** dans `Microsoft-Windows-CodeIntegrity/Operational`
+> 3. Résoudre les incompatibilités identifiées
+> 4. Passer en **Enabled without UEFI Lock**
+> 5. Après validation, passer en **Enabled with UEFI Lock**
+
+#### Option 3 — via Intune / MDM
+
+```
+OMA-URI: ./Device/Vendor/MSFT/Policy/Config/LocalSecurityAuthority/ConfigureLsaProtectedProcess
+Value: 1 (Enabled with UEFI lock) or 2 (Enabled without lock)
+```
+
+### How to Verify LSA Protection Is Active
+
+```powershell
+# Method 1: Check registry value
+Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "RunAsPPL" |
+    Select-Object RunAsPPL
+# Value 1 = Enabled
+
+# Method 2: Check LSASS process protection level
+(Get-Process lsass).Path
+# Look in Task Manager → Details tab → Add column "Protection" → should show "PsProtectedSignerLsa-Light"
+
+# Method 3: WMI/CIM query
+Get-CimInstance -ClassName Win32_Process -Filter "Name='lsass.exe'" |
+    Select-Object Name, ProcessId, @{N='Protection';E={
+        $_.GetOwner() | Out-Null
+        # If the process is PPL, attempting certain operations will be blocked
+        "Check Task Manager Details → Protection column"
+    }}
+
+# Method 4: Check event log for LSA protection status
+# Event ID 12 from WinInit in the System log
+Get-WinEvent -LogName "System" | Where-Object {
+    $_.ProviderName -eq "Wininit" -and $_.Id -eq 12
+} | Select-Object TimeCreated, Message -First 5
+# Event ID 12: "LSASS.exe was started as a protected process with level: 4"
+# Level 4 = PsProtectedSignerLsa-Light (PPL enabled)
+```
+
+---
+
+## 📊 Comparison Matrix
+
+| Feature | WDAC | HVCI | Credential Guard | LSA Protection (PPL) |
+|---|---|---|---|---|
+| **What it protects** | Application execution | Kernel code integrity | Credentials in memory | LSA process integrity |
+| **Protection type** | Whitelisting / code integrity | VBS-isolated kernel verification | VBS credential isolation | Protected Process Light |
+| **Hardware requirements** | None | UEFI, VT-x, SLAT | UEFI, TPM, VT-x, SLAT | None |
+| **OS editions** | All | All | Enterprise / Education | All |
+| **Minimum OS** | Windows 10 / Server 2016 | Windows 10 / Server 2016 | Windows 10 / Server 2016 | Windows 8.1 / Server 2012 R2 |
+| **Supported on DCs** | ✅ Yes | ✅ Yes | ⚠️ Supporté mais non recommandé | ✅ Yes (Server 2012 R2+) |
+| **Deployment complexity** | 🔴 High | 🟡 Medium | 🟡 Medium | 🟢 Low |
+| **Audit mode available** | ✅ Yes | ❌ No | ❌ No | ✅ Yes (Win 11 22H2+) |
+| **Block credential theft** | ❌ Not directly | ❌ Not directly | ✅ Primary purpose | ✅ Basic protection |
+| **Block malware execution** | ✅ Primary purpose | ✅ Kernel level | ❌ Not directly | ❌ Not directly |
+| **Block vulnerable drivers** | ⚠️ With driver policies | ✅ Primary purpose | ❌ Not directly | ❌ Not directly |
+| **Impact on legacy apps** | 🔴 High | 🟡 Medium (drivers) | 🟡 Medium | 🟢 Low |
+| **Rollback difficulty** | 🟢 Easy (audit mode) | 🟡 Medium (UEFI lock) | 🟡 Medium (UEFI lock) | 🟢 Easy |
+
+---
+
+## 🏗️ Deployment Strategy & Recommendations
+
+### Recommended Deployment Order
+
+For most organizations, the recommended deployment order is:
+
+```
+Phase 1: LSA Protection (RunAsPPL)
+  → Low risk, high value, easy to deploy
+  → Deploy on DCs first, then all servers, then workstations
+
+Phase 2: Credential Guard
+  → Medium complexity, high value for workstations and member servers
+  → Deploy on admin workstations first (PAWs)
+  → Then extend to all Enterprise edition machines
+  → Ne PAS déployer sur les Domain Controllers (non recommandé par Microsoft)
+
+Phase 3: HVCI (Memory Integrity)
+  → Medium complexity, protects kernel integrity
+  → Deploy on DCs and PAWs first
+  → Extend to all compatible machines
+  → Validate driver compatibility beforehand
+
+Phase 4: WDAC (Application Control)
+  → High complexity, very high value
+  → Start with DCs (well-defined application set)
+  → Extend to servers, then workstations
+  → Always use Audit mode first
+```
+
+### Tiering Model Alignment
+
+| Tier | LSA Protection | Credential Guard | HVCI | WDAC |
+|---|---|---|---|---|
+| **Tier 0** (DCs, AD infra) | ✅ Must have | ❌ Non recommandé sur les DCs | ✅ Strongly recommended | ✅ Recommended |
+| **Tier 1** (Servers) | ✅ Must have | ✅ Recommended | ✅ Recommended | 🟡 Evaluate per server role |
+| **Tier 2** (Workstations) | ✅ Recommended | ✅ Recommended (Enterprise) | ✅ Recommended | 🟡 Complex but ideal |
+| **PAWs** | ✅ Must have | ✅ Must have | ✅ Must have | ✅ Must have |
+
+### Pre-Deployment Checklist
+
+Before deploying any of these features:
+
+1. **Inventory applications** — Identify all software running on target machines
+2. **Audit delegation** — Find all unconstrained delegation objects in AD
+3. **Audit LSASS plugins** — Identify any third-party DLLs loaded into LSASS
+4. **Audit legacy protocols** — Check for NTLMv1, DES Kerberos, WDigest usage
+5. **Test in audit mode** — Use audit mode before enforcement
+6. **Plan rollback** — Know how to disable each feature in case of issues
+7. **Communicate** — Inform application owners and help desk
+
+```powershell
+# Quick pre-deployment audit script
+
+Write-Host "=== Unconstrained Delegation Objects ===" -ForegroundColor Cyan
+Get-ADComputer -Filter { TrustedForDelegation -eq $true } -Properties TrustedForDelegation |
+    Select-Object Name, DistinguishedName
+
+Get-ADUser -Filter { TrustedForDelegation -eq $true } -Properties TrustedForDelegation |
+    Select-Object Name, DistinguishedName
+
+Write-Host "`n=== LSASS Loaded Modules ===" -ForegroundColor Cyan
+Get-Process lsass | Select-Object -ExpandProperty Modules |
+    Where-Object { $_.Company -notlike "*Microsoft*" } |
+    Select-Object FileName, Company, Description
+
+Write-Host "`n=== LSA Protection Status ===" -ForegroundColor Cyan
+try {
+    $runAsPPL = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "RunAsPPL" -ErrorAction Stop).RunAsPPL
+    Write-Host "RunAsPPL: $runAsPPL" -ForegroundColor $(if ($runAsPPL -eq 1) { "Green" } else { "Red" })
+} catch {
+    Write-Host "RunAsPPL: Not configured" -ForegroundColor Yellow
+}
+
+Write-Host "`n=== Credential Guard Status ===" -ForegroundColor Cyan
+$dg = Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\Microsoft\Windows\DeviceGuard -ErrorAction SilentlyContinue
+if ($dg) {
+    Write-Host "VBS Status: $($dg.VirtualizationBasedSecurityStatus)"
+    Write-Host "Services Running: $($dg.SecurityServicesRunning -join ', ')"
+} else {
+    Write-Host "Device Guard WMI class not available" -ForegroundColor Yellow
+}
+```
+
+---
+
+## ⚠️ Common Pitfalls
+
+1. **Enabling Credential Guard with unconstrained delegation** — Applications relying on unconstrained Kerberos delegation will break. Audit delegation objects first.
+
+2. **Forgetting about third-party LSASS plugins** — Password filters, custom SSPs, smart card middleware, and some AV products inject DLLs into LSASS. These will be blocked by LSA Protection.
+
+3. **Enabling WDAC in enforce mode without proper testing** — This can lock users out of their machines. Always start with Audit mode and analyze logs extensively.
+
+4. **UEFI Lock with no rollback plan** — Enabling Credential Guard or LSA Protection with UEFI lock means you need **physical access** (or firmware tools) to disable it. Use "without lock" mode during initial rollout.
+
+5. **Ignoring NTLMv1 dependencies** — Credential Guard blocks NTLMv1. Old network printers, legacy applications, or misconfigured Linux/Samba clients may break.
+
+6. **Not monitoring event logs after deployment** — Always monitor the relevant event logs for at least 2 weeks after enabling any feature:
+   - Code Integrity / WDAC / LSA: `Microsoft-Windows-CodeIntegrity/Operational` (3076, 3077 for WDAC ; 3065, 3066 for LSA)
+   - Credential Guard: `System` log, source `Wininit` (Event IDs 13, 14, 15, 16)
+
+7. **Enabling Credential Guard on Domain Controllers** — Microsoft indique explicitement que Credential Guard **n'apporte pas de sécurité supplémentaire sur les DCs** (les credentials sont aussi dans NTDS.dit) et peut causer des problèmes de compatibilité. Ne l'activez pas sur les DCs.
+
+8. **Virtual machines without nested virtualization** — Credential Guard et HVCI nécessitent la virtualisation. Les VMs sur Hyper-V ont besoin du nested virtualization. Les VMs sur VMware nécessitent l'option `Virtualize Intel VT-x/EPT`. Les VMs Hyper-V doivent être de **Generation 2**.
+
+---
+
+## 📚 References
+
+- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/introduction — WDAC Overview
+- 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/ — Credential Guard
+- 🔗 https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/configuring-additional-lsa-protection — LSA Protection
+- 🔗 https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity — HVCI / VBS
+- 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/considerations-known-issues — Credential Guard Considerations & Known Issues
+- 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/configure — Configure Credential Guard (GPO, Intune, Registry)
+- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/wdac-wizard — WDAC Policy Wizard Tool
+- 🔗 https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/credentials-protection-and-management — Credentials Protection Overview
+- 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/microsoft-recommended-driver-block-rules — Microsoft Recommended Driver Block Rules (HVCI)
