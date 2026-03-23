@@ -414,8 +414,9 @@ Credential Guard specifically mitigates:
 |---|---|
 | **NTLM v1** | ❌ **Blocked** — NTLMv1 authentication no longer works (good for security!) |
 | **Unconstrained delegation** | ❌ **Broken** — Credential Guard blocks TGT delegation. Use **constrained** or **resource-based constrained delegation** instead. |
-| **MS-CHAPv2 / CredSSP** | ❌ **Broken** — Legacy authentication protocols relying on NTLMv1 or credential delegation will fail. |
+| **MS-CHAPv2 / CredSSP** | ⚠️ **SSO blocked** — Single sign-on for MS-CHAPv2 (PEAP-MSCHAPv2, EAP-MSCHAPv2) and CredSSP is blocked. Manual credential entry still works. Move to certificate-based auth (PEAP-TLS, EAP-TLS). |
 | **Kerberos DES encryption** | ❌ **Blocked** — DES-based Kerberos is not supported. |
+| **Kerberos TGT extraction** | ❌ **Blocked** — Applications that require extracting Kerberos TGTs (e.g. Java GSS API) will fail. |
 | **Digest authentication** | ❌ **Blocked** — WDigest plaintext credentials are not cached. |
 | **DPAPI (machine)** | ⚠️ Machine DPAPI works but user DPAPI-protected data loaded at boot may have caveats. |
 | **Third-party SSPs** | ❌ **Blocked** — Custom Security Support Providers cannot load into LSASS. |
@@ -444,6 +445,7 @@ Credential Guard protects **derived credentials** in memory (NTLM hashes, Kerber
 
 - ❌ Microsoft does **not** recommend Credential Guard on DCs
 - ❌ DCs are **explicitly excluded** from default enablement on Windows Server 2025
+- ❌ Credential Guard on **Exchange Server** is not supported and can lead to performance issues
 - ⚠️ Can cause application compatibility issues on DCs
 - 💡 To protect DCs, use instead: **LSA Protection (RunAsPPL)**, **HVCI**, **WDAC**, and tiering best practices
 
@@ -542,12 +544,15 @@ Value: 1 (UEFI lock) or 2 (without lock)
 
 # Method 3: Check Event Log (WinInit events in System log)
 Get-WinEvent -LogName "System" | Where-Object {
-    $_.ProviderName -eq "Wininit" -and $_.Id -in @(13, 14, 15, 16)
+    $_.ProviderName -eq "Wininit" -and $_.Id -in @(13, 14, 15, 16, 17)
 } | Select-Object TimeCreated, Id, Message -First 5
 # Event ID 13: "Credential Guard (LsaIso.exe) was started and will protect LSA credentials."
-# Event ID 14: "Credential Guard (LsaIso.exe) configuration: [0x1|0x2], 0"
+# Event ID 14: "Credential Guard (LsaIso.exe) configuration: [0x0|0x1|0x2], 0"
+#   First variable: 0x1 or 0x2 = configured to run. 0x0 = not configured.
+#   Second variable: 0 = protect mode, 1 = test mode.
 # Event ID 15 (Warning): Credential Guard configured but secure kernel not running
 # Event ID 16 (Warning): Credential Guard failed to launch
+# Event ID 17 (Error): Error reading Credential Guard UEFI configuration
 ```
 
 ---
@@ -571,18 +576,6 @@ Get-WinEvent -LogName "System" | Where-Object {
 
 > ⚠️ **Important**: LSA Protection is **not a silver bullet**. A sufficiently privileged attacker (e.g., with kernel-level access or a vulnerable signed driver) can potentially bypass PPL. Credential Guard provides stronger isolation using hardware-based virtualization. **Use both together** for defense in depth.
 
-#### LSA Protection vs Credential Guard
-
-| Feature | LSA Protection (PPL) | Credential Guard |
-|---|---|---|
-| **Protection mechanism** | OS-level process protection | Hardware-based VBS isolation |
-| **Requires VBS/hypervisor** | ❌ No | ✅ Yes |
-| **Blocks unsigned code in LSASS** | ✅ Yes | ✅ Yes |
-| **Protects credentials from kernel attacks** | ⚠️ Limited | ✅ Yes |
-| **Hardware requirements** | None | UEFI, TPM, VT-x, SLAT |
-| **OS editions** | All editions | Enterprise/Education only |
-| **Ease of deployment** | Simple (1 registry key) | More complex |
-
 ### Requirements
 
 | Requirement | Details |
@@ -603,7 +596,9 @@ Get-WinEvent -LogName "System" | Where-Object {
 | **WDigest** | Plaintext credential caching is blocked (same as disabling WDigest via registry). |
 | **Audit mode** | Available on **Windows 11 22H2+** and **Windows Server 2025** — logs what would be blocked without actually blocking. |
 
-> 💡 **Tip**: On **Windows 11 22H2+**, LSA Protection audit mode is **enabled by default**. The audit logs plugins/drivers that would fail to load under LSA Protection. Check event log: `Microsoft-Windows-CodeIntegrity/Operational` — look for **Event ID 3065** (a code integrity check found a driver that didn't meet security requirements) and **Event ID 3066** (same, but the image was blocked).
+> 💡 **Tip**: On **Windows 11 22H2+**, LSA Protection audit mode is **enabled by default**. The audit logs plugins/drivers that would fail to load under LSA Protection. Check event log: `Microsoft-Windows-CodeIntegrity/Operational`:
+> - **Audit mode** (Events **3065** and **3066**): Logged when a plug-in/driver doesn't meet signing requirements but is still allowed to load
+> - **Enforcement mode** (Events **3033** and **3063**): Logged when a plug-in/driver is actually blocked from loading into LSASS
 
 ### Can I Deploy LSA Protection on Domain Controllers?
 
@@ -689,9 +684,9 @@ Computer Configuration
 
 > 💡 **Tip**: Recommended deployment strategy:
 > 1. Deploy in **Audit Mode** for 2-4 weeks
-> 2. Check Event IDs **3065** and **3066** in `Microsoft-Windows-CodeIntegrity/Operational`
+> 2. Check Event IDs **3065** and **3066** in `Microsoft-Windows-CodeIntegrity/Operational` (audit mode)
 > 3. Resolve identified incompatibilities
-> 4. Switch to **Enabled without UEFI Lock**
+> 4. Switch to **Enabled without UEFI Lock** — enforcement events become **3033** and **3063**
 > 5. After validation, switch to **Enabled with UEFI Lock**
 
 #### Option 3 — via Intune / MDM
@@ -851,12 +846,14 @@ if ($dg) {
 5. **Ignoring NTLMv1 dependencies** — Credential Guard blocks NTLMv1. Old network printers, legacy applications, or misconfigured Linux/Samba clients may break.
 
 6. **Not monitoring event logs after deployment** — Always monitor the relevant event logs for at least 2 weeks after enabling any feature:
-   - Code Integrity / WDAC / LSA: `Microsoft-Windows-CodeIntegrity/Operational` (3076, 3077 for WDAC ; 3065, 3066 for LSA)
+   - Code Integrity / WDAC / LSA: `Microsoft-Windows-CodeIntegrity/Operational` (3076, 3077 for WDAC ; 3065, 3066 for LSA audit ; 3033, 3063 for LSA enforcement)
    - Credential Guard: `System` log, source `Wininit` (Event IDs 13, 14, 15, 16)
 
-7. **Enabling Credential Guard on Domain Controllers** — Microsoft explicitly states that Credential Guard **does not provide additional security on DCs** (credentials are also in NTDS.dit) and can cause compatibility issues. Do not enable it on DCs.
+7. **Enabling Credential Guard on Domain Controllers** — Microsoft explicitly states that Credential Guard **does not provide additional security on DCs** (credentials are also in NTDS.dit) and can cause compatibility issues. Do not enable it on DCs. Similarly, Credential Guard is **not supported on Exchange Server** and can lead to performance issues.
 
-8. **Virtual machines without nested virtualization** — Credential Guard and HVCI require virtualization. VMs on Hyper-V need nested virtualization. VMs on VMware require the `Virtualize Intel VT-x/EPT` option. Hyper-V VMs must be **Generation 2**.
+8. **Virtual machines without nested virtualization** — Credential Guard and HVCI require virtualization. VMs on Hyper-V need nested virtualization. VMs on VMware require the `Virtualize Intel VT-x/EPT` option. Hyper-V VMs must be **Generation 2** (Gen 1 VMs are not supported). The Hyper-V host must have an **IOMMU** (Intel VT-d / AMD-Vi).
+
+9. **Live Migration with Hyper-V on Windows Server 2025** — Credential Guard blocks CredSSP-based delegation, which is the default method for Hyper-V Live Migration on Server 2022 and earlier. After upgrading to Server 2025 (where Credential Guard is enabled by default), Live Migration may fail. Switch to **Kerberos Constrained Delegation** or **Resource-Based Kerberos Constrained Delegation** for Live Migration.
 
 ---
 
