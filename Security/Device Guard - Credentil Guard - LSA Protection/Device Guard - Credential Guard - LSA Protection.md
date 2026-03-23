@@ -129,7 +129,7 @@ WDAC protects against:
 New-CIPolicy -Level Publisher -FilePath "C:\Policies\BasePolicy.xml" -UserPEs -Fallback Hash
 
 # Optionally add the Microsoft recommended block rules
-# Download from: https://learn.microsoft.com/en-us/windows/security/application-security/application-control/wdac/design/applications-that-can-bypass-wdac
+# Download from: https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/applications-that-can-bypass-appcontrol
 ```
 
 #### Step 2 — Set the Policy to Audit Mode
