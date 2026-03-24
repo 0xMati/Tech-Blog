@@ -17,14 +17,14 @@
   - [5.2. Grant Permissions to the gMSA (Primary Node)](#52-grant-permissions-to-the-gmsa-primary-node)
   - [5.3. Update Secondary Nodes First](#53-update-secondary-nodes-first)
   - [5.4. Update the Primary Node Last](#54-update-the-primary-node-last)
-  - [5.5. Update SPNs](#55-update-spns)
+  - [5.5. Verify SPNs](#55-verify-spns)
   - [5.6. Start Services and Validate](#56-start-services-and-validate)
   - [5.7. Remove Old Service Account Permissions](#57-remove-old-service-account-permissions)
 - [6. Migration — ADFS with SQL Server](#6-migration--adfs-with-sql-server)
-  - [6.1. Grant SQL Permissions to the gMSA](#61-grant-sql-permissions-to-the-gmsa)
+  - [6.1. SQL Permissions for the gMSA](#61-sql-permissions-for-the-gmsa)
   - [6.2. Grant ADFS Permissions to the gMSA](#62-grant-adfs-permissions-to-the-gmsa)
   - [6.3. Update Each Node](#63-update-each-node)
-  - [6.4. Update SPNs](#64-update-spns)
+  - [6.4. Verify SPNs](#64-verify-spns)
   - [6.5. Start Services and Validate](#65-start-services-and-validate)
   - [6.6. Clean Up Old Account Permissions](#66-clean-up-old-account-permissions)
 - [7. Post-Migration Steps](#7-post-migration-steps)
@@ -98,6 +98,9 @@ Before starting the migration, ensure the following:
 - **Tools to install on all ADFS servers:**
   - [ADFSToolbox PowerShell module](https://www.powershellgallery.com/packages/ADFSToolbox/)
   - Active Directory PowerShell module (`RSAT > AD DS & AD LDS > AD for PowerShell`)
+  - [SQLCMD.exe](https://docs.microsoft.com/en-us/sql/tools/sqlcmd-utility) — required by `Update-AdfsServiceAccount` to execute SQL scripts
+  - [ODBC Driver 17 for SQL Server](https://docs.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) — prerequisite for SQLCMD
+  - [Visual C++ Redistributable (2015-2022)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) — prerequisite for ODBC Driver
 - For SQL topology: access to the SQL Server instance to grant permissions
 
 > ⚠️ **Plan a maintenance window.** The AD FS service will be restarted on each node during the migration — expect a brief authentication outage.
@@ -228,7 +231,7 @@ sequenceDiagram
     participant S1 as Secondary Node 1
     participant S2 as Secondary Node 2
 
-    rect rgb(20, 60, 120)
+    rect rgb(0, 20, 60)
     Note over AD,S2: Phase 1 — Preparation
     AD->>AD: Create gMSA + Security Group
     AD-->>P: Install-ADServiceAccount
@@ -239,7 +242,7 @@ sequenceDiagram
     S2->>S2: secpol.msc — Log on as service + Generate audits
     end
 
-    rect rgb(140, 80, 0)
+    rect rgb(70, 30, 0)
     Note over AD,S2: Phase 2 — Grant & Migrate
     P->>P: Add-AdfsServiceAccountRule (gMSA)
     P-->>S1: WID Sync
@@ -249,7 +252,7 @@ sequenceDiagram
     P->>P: Update-AdfsServiceAccount (Mode 2 — Final)
     end
 
-    rect rgb(15, 90, 40)
+    rect rgb(0, 40, 15)
     Note over AD,S2: Phase 3 — Validate & Cleanup
     P->>P: setspn -S (new gMSA)
     P->>P: Start-Service adfssrv
@@ -300,14 +303,20 @@ On **each secondary node**, run the `Update-AdfsServiceAccount` cmdlet:
 Update-AdfsServiceAccount
 ```
 
-When prompted, select **Operating Mode #1 — Federation Server** (not "Final Federation Server").
+> 💡 This is an **interactive script**. It will prompt you for:
+> 1. Confirmation to proceed (type capital **C** + Enter)
+> 2. **Operating Mode** — select **#1 — Federation Server**
+> 3. The **new service account name** in `DOMAIN\user` format (e.g., `CONTOSO\svc-ADFS-gMSA$`)
+> 4. For gMSA accounts (name ending with `$`), it skips password validation automatically
 
-The cmdlet will:
+The script will then:
 1. Stop the AD FS service
-2. Update the service account on the Windows service (`adfssrv`)
-3. Update the AD FS application pool identity
+2. Generate and execute SQL scripts to set database permissions (`sqlcmd.exe`)
+3. Change the Windows service identity (`adfssrv`) to the new account
+4. ACL the certificate private keys for the new account
+5. Set local user rights ("Log on as a service" + "Generate security audits")
 
-> ⚠️ Do **not** start the AD FS service on secondary nodes yet — wait until all nodes (including primary) have been updated.
+> ⚠️ In Mode 1, the script **does not start the AD FS service** — it explicitly tells you to wait until Mode 2 is complete on the final server before starting any service.
 
 ### 5.4. Update the Primary Node Last
 
@@ -320,24 +329,26 @@ Update-AdfsServiceAccount
 
 When prompted, select **Operating Mode #2 — Final Federation Server**.
 
-> This mode performs additional steps: it updates the ADFS configuration database to replace the old service account SID with the new gMSA SID. This is why it must be run **last**.
+In addition to everything Mode 1 does, Mode 2 also:
+- Executes `UpdateServiceSettings.sql` — replaces the **old SID** with the **new SID** in the ADFS configuration database
+- **Removes the SPN** from the old account (`setspn -D`)
+- **Registers the SPN** on the new account (`setspn -S`)
+- ACLs the **Certificate Sharing Container** in AD for the new account
 
-### 5.5. Update SPNs
+> This is why it must be run **last**.
 
-The `Update-AdfsServiceAccount` script may fail to update SPNs automatically. If so, manually manage them:
+### 5.5. Verify SPNs
+
+The script handles SPN migration automatically in Mode 2. However, it may fail (e.g., insufficient permissions). **Check the script's output carefully.** If SPN migration failed, the script logs a warning and you must fix it manually:
 
 ```powershell
-# Check current SPNs on the old service account
-setspn -L CONTOSO\svc-adfs-old
+# Verify SPNs are now on the gMSA
+setspn -L CONTOSO\svc-ADFS-gMSA$
 
-# Remove the SPN from the old account
+# If missing, manually fix:
 setspn -D HOST/adfs.contoso.com CONTOSO\svc-adfs-old
-
-# Add the SPN to the new gMSA
 setspn -S HOST/adfs.contoso.com CONTOSO\svc-ADFS-gMSA$
 ```
-
-> 💡 With gMSA accounts, SPN management is generally automatic for future changes, but the initial migration may require manual intervention.
 
 ### 5.6. Start Services and Validate
 
@@ -388,7 +399,7 @@ sequenceDiagram
     participant N1 as ADFS Node 1
     participant N2 as ADFS Node 2
 
-    rect rgb(20, 60, 120)
+    rect rgb(0, 20, 60)
     Note over AD,N2: Phase 1 — Preparation
     AD->>AD: Create gMSA + Security Group
     AD-->>N1: Install-ADServiceAccount
@@ -397,7 +408,7 @@ sequenceDiagram
     N2->>N2: secpol.msc — Log on as service + Generate audits
     end
 
-    rect rgb(140, 80, 0)
+    rect rgb(70, 30, 0)
     Note over AD,N2: Phase 2 — SQL + Grant & Migrate
     SQL->>SQL: CREATE LOGIN [gMSA] + db_owner on ADFS DBs
     N1->>N1: Add-AdfsServiceAccountRule (gMSA)
@@ -405,7 +416,7 @@ sequenceDiagram
     N2->>N2: Update-AdfsServiceAccount (Mode 2 — Final)
     end
 
-    rect rgb(15, 90, 40)
+    rect rgb(0, 40, 15)
     Note over AD,N2: Phase 3 — Validate & Cleanup
     N1->>N1: setspn -S (new gMSA)
     N1->>N1: Start-Service adfssrv
@@ -416,9 +427,11 @@ sequenceDiagram
     end
 ```
 
-### 6.1. Grant SQL Permissions to the gMSA
+### 6.1. SQL Permissions for the gMSA
 
-Connect to the SQL Server instance and run the following T-SQL:
+The `Update-AdfsServiceAccount` script (Mode 2) uses `Export-AdfsDeploymentSQLScript` to **automatically generate and execute** the SQL permission scripts via `sqlcmd.exe`. You do not need to manually run SQL scripts if `sqlcmd.exe` is installed.
+
+However, if `sqlcmd.exe` is not available or the script fails, you will need to **manually execute** the generated scripts (found in `%TEMP%\ADFSSQLScripts\`) or run the following T-SQL:
 
 ```sql
 -- Create a login for the gMSA
@@ -475,15 +488,16 @@ Select the appropriate operating mode when prompted:
 
 > ⚠️ The **last node** updated must use mode #2 to finalize the SID replacement in the configuration database.
 
-### 6.4. Update SPNs
+### 6.4. Verify SPNs
 
-Same as for WID — if SPNs were not updated automatically:
+Same as for WID — SPNs are handled by Mode 2 automatically. Verify and fix manually only if the script reported a failure:
 
 ```powershell
-# Remove the SPN from the old account
-setspn -D HOST/adfs.contoso.com CONTOSO\svc-adfs-old
+# Verify SPNs are on the gMSA
+setspn -L CONTOSO\svc-ADFS-gMSA$
 
-# Add the SPN to the new gMSA
+# If missing, manually fix:
+setspn -D HOST/adfs.contoso.com CONTOSO\svc-adfs-old
 setspn -S HOST/adfs.contoso.com CONTOSO\svc-ADFS-gMSA$
 ```
 
