@@ -228,7 +228,7 @@ sequenceDiagram
     participant S1 as Secondary Node 1
     participant S2 as Secondary Node 2
 
-    rect rgb(100, 160, 210)
+    rect rgb(50, 120, 180)
     Note over AD,S2: Phase 1 — Preparation
     AD->>AD: Create gMSA + Security Group
     AD-->>P: Install-ADServiceAccount
@@ -239,7 +239,7 @@ sequenceDiagram
     S2->>S2: secpol.msc — Log on as service + Generate audits
     end
 
-    rect rgb(220, 180, 80)
+    rect rgb(200, 140, 30)
     Note over AD,S2: Phase 2 — Grant & Migrate
     P->>P: Add-AdfsServiceAccountRule (gMSA)
     P-->>S1: WID Sync
@@ -249,7 +249,7 @@ sequenceDiagram
     P->>P: Update-AdfsServiceAccount (Mode 2 — Final)
     end
 
-    rect rgb(100, 190, 120)
+    rect rgb(40, 150, 70)
     Note over AD,S2: Phase 3 — Validate & Cleanup
     P->>P: setspn -S (new gMSA)
     P->>P: Start-Service adfssrv
@@ -388,7 +388,7 @@ sequenceDiagram
     participant N1 as ADFS Node 1
     participant N2 as ADFS Node 2
 
-    rect rgb(100, 160, 210)
+    rect rgb(50, 120, 180)
     Note over AD,N2: Phase 1 — Preparation
     AD->>AD: Create gMSA + Security Group
     AD-->>N1: Install-ADServiceAccount
@@ -397,7 +397,7 @@ sequenceDiagram
     N2->>N2: secpol.msc — Log on as service + Generate audits
     end
 
-    rect rgb(220, 180, 80)
+    rect rgb(200, 140, 30)
     Note over AD,N2: Phase 2 — SQL + Grant & Migrate
     SQL->>SQL: CREATE LOGIN [gMSA] + db_owner on ADFS DBs
     N1->>N1: Add-AdfsServiceAccountRule (gMSA)
@@ -405,7 +405,7 @@ sequenceDiagram
     N2->>N2: Update-AdfsServiceAccount (Mode 2 — Final)
     end
 
-    rect rgb(100, 190, 120)
+    rect rgb(40, 150, 70)
     Note over AD,N2: Phase 3 — Validate & Cleanup
     N1->>N1: setspn -S (new gMSA)
     N1->>N1: Start-Service adfssrv
