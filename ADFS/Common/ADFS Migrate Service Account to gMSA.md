@@ -33,6 +33,40 @@
 
 ---
 
+## 📊 Migration Overview
+
+```mermaid
+flowchart TD
+    A[🔑 Prepare gMSA Account] --> B[📦 Install ADFSToolbox on all nodes]
+    B --> C{Which topology?}
+    C -->|WID| D[WID Migration Path]
+    C -->|SQL| E[SQL Migration Path]
+
+    D --> D1[Add-AdfsServiceAccountRule\non Primary]
+    D1 --> D2[Update-AdfsServiceAccount\non Secondary nodes FIRST]
+    D2 --> D3[Update-AdfsServiceAccount\non Primary node LAST]
+    D3 --> D4[Update SPNs]
+    D4 --> D5[Start services & Validate]
+    D5 --> D6[Remove-AdfsServiceAccountRule\nfor old account]
+
+    E --> E1[Grant SQL permissions\nto gMSA]
+    E1 --> E2[Add-AdfsServiceAccountRule\non any node]
+    E2 --> E3[Update-AdfsServiceAccount\non each node — last one = Final]
+    E3 --> E4[Update SPNs]
+    E4 --> E5[Start services & Validate]
+    E5 --> E6[Clean up old account\nSQL + ADFS permissions]
+
+    D6 --> F[✅ Post-Migration Cleanup]
+    E6 --> F
+
+    style A fill:#4CAF50,color:#fff
+    style F fill:#4CAF50,color:#fff
+    style D fill:#2196F3,color:#fff
+    style E fill:#FF9800,color:#fff
+```
+
+---
+
 ## 1. Why Migrate to a gMSA?
 
 | Feature | Standard Service Account | gMSA |
@@ -187,6 +221,45 @@ In a WID farm, there is one **primary node** and one or more **secondary (read-o
 > 2. Update service account on **secondary nodes FIRST**
 > 3. Update service account on the **primary node LAST**
 
+```mermaid
+sequenceDiagram
+    participant AD as Active Directory
+    participant P as Primary Node
+    participant S1 as Secondary Node 1
+    participant S2 as Secondary Node 2
+
+    rect rgb(200, 230, 255)
+    Note over AD,S2: Phase 1 — Preparation
+    AD->>AD: Create gMSA + Security Group
+    AD-->>P: Install-ADServiceAccount
+    AD-->>S1: Install-ADServiceAccount
+    AD-->>S2: Install-ADServiceAccount
+    P->>P: secpol.msc — Log on as service + Generate audits
+    S1->>S1: secpol.msc — Log on as service + Generate audits
+    S2->>S2: secpol.msc — Log on as service + Generate audits
+    end
+
+    rect rgb(255, 243, 200)
+    Note over AD,S2: Phase 2 — Grant & Migrate
+    P->>P: Add-AdfsServiceAccountRule (gMSA)
+    P-->>S1: WID Sync
+    P-->>S2: WID Sync
+    S1->>S1: Update-AdfsServiceAccount (Mode 1)
+    S2->>S2: Update-AdfsServiceAccount (Mode 1)
+    P->>P: Update-AdfsServiceAccount (Mode 2 — Final)
+    end
+
+    rect rgb(200, 255, 200)
+    Note over AD,S2: Phase 3 — Validate & Cleanup
+    P->>P: setspn -S (new gMSA)
+    P->>P: Start-Service adfssrv
+    S1->>S1: Start-Service adfssrv
+    S2->>S2: Start-Service adfssrv
+    P->>P: Test-AdfsServerHealth ✅
+    P->>P: Remove-AdfsServiceAccountRule (old account)
+    end
+```
+
 ### 5.1. Identify the Primary Node
 
 Run the following on any AD FS node:
@@ -307,6 +380,41 @@ Remove-AdfsServiceAccountRule -ServiceAccount "CONTOSO\svc-adfs-old" -SecondaryS
 ## 6. Migration — ADFS with SQL Server
 
 When AD FS uses a SQL Server backend, there is no primary/secondary distinction — all nodes are equal. However, additional steps are required to grant the gMSA access to the SQL databases.
+
+```mermaid
+sequenceDiagram
+    participant AD as Active Directory
+    participant SQL as SQL Server
+    participant N1 as ADFS Node 1
+    participant N2 as ADFS Node 2
+
+    rect rgb(200, 230, 255)
+    Note over AD,N2: Phase 1 — Preparation
+    AD->>AD: Create gMSA + Security Group
+    AD-->>N1: Install-ADServiceAccount
+    AD-->>N2: Install-ADServiceAccount
+    N1->>N1: secpol.msc — Log on as service + Generate audits
+    N2->>N2: secpol.msc — Log on as service + Generate audits
+    end
+
+    rect rgb(255, 243, 200)
+    Note over AD,N2: Phase 2 — SQL + Grant & Migrate
+    SQL->>SQL: CREATE LOGIN [gMSA] + db_owner on ADFS DBs
+    N1->>N1: Add-AdfsServiceAccountRule (gMSA)
+    N1->>N1: Update-AdfsServiceAccount (Mode 1)
+    N2->>N2: Update-AdfsServiceAccount (Mode 2 — Final)
+    end
+
+    rect rgb(200, 255, 200)
+    Note over AD,N2: Phase 3 — Validate & Cleanup
+    N1->>N1: setspn -S (new gMSA)
+    N1->>N1: Start-Service adfssrv
+    N2->>N2: Start-Service adfssrv
+    N1->>N1: Test-AdfsServerHealth ✅
+    N1->>N1: Remove-AdfsServiceAccountRule (old account)
+    SQL->>SQL: DROP LOGIN / DROP USER (old account)
+    end
+```
 
 ### 6.1. Grant SQL Permissions to the gMSA
 
