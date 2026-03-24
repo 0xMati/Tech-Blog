@@ -500,6 +500,9 @@ Users go to [https://mysignins.microsoft.com/security-info](https://mysignins.mi
 2. Select **"Passkey in Microsoft Authenticator"** (or "Security Key" for physical keys)
 3. Follow the guided setup — biometric enrollment, key creation
 4. Done. The public key is now stored in Entra ID, the private key in the phone's Secure Enclave.
+5. **Repeat** to register backup credentials (second key, second phone, etc.)
+
+> 📌 **How many can you register?** Entra ID supports **up to 10 passkeys/FIDO2 credentials per user**. This quota is **shared** between physical keys and Authenticator passkeys. Best practice: register at least **2 credentials** (primary + backup) to avoid lockout. Note: only **one Authenticator passkey per device** — but an iPhone + an Android = 2 Authenticator passkeys, no problem.
 
 For users who don't yet have any MFA method (chicken-and-egg problem), issue a **Temporary Access Pass**:
 
