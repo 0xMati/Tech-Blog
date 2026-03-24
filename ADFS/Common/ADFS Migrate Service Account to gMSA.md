@@ -279,18 +279,22 @@ Role : PrimaryComputer
 
 ### 5.2. Grant Permissions to the gMSA (Primary Node)
 
-On the **primary AD FS node**, grant the new gMSA account the necessary permissions in the ADFS configuration database. This step is **mandatory on Windows Server 2016 and later**:
+On the **primary AD FS node**, grant the new gMSA account the necessary permissions in the ADFS configuration database. This step is **mandatory on Windows Server 2016 and later**.
+
+The command must be run **on the primary node** because it is the only node with write access to the WID database:
 
 ```powershell
-# Add permission rule for the gMSA (run on PRIMARY node)
-# Replace ADFS02 with your actual secondary server(s)
+# Run this on the PRIMARY node
 Add-AdfsServiceAccountRule -ServiceAccount "svc-ADFS-gMSA$" -SecondaryServers "ADFS02.contoso.com"
 ```
 
-> 💡 The `-SecondaryServers` parameter triggers a WID sync to propagate the change to all secondary nodes. If you have multiple secondary servers, separate them with commas:
+> 💡 **About the `-SecondaryServers` parameter:** this does **not** mean the command acts on the secondary servers. It tells the cmdlet to **force a WID sync** after writing to the primary's database, so that secondary nodes receive the updated permission rule immediately instead of waiting for the default 5-minute poll cycle.
+>
+> If you have multiple secondary servers:
 > ```powershell
 > Add-AdfsServiceAccountRule -ServiceAccount "svc-ADFS-gMSA$" -SecondaryServers "ADFS02.contoso.com", "ADFS03.contoso.com"
 > ```
+> If you omit `-SecondaryServers`, the change will still propagate — just on the next sync cycle.
 >
 > This cmdlet automatically creates a backup of your configuration. Note the backup path shown in the output — you will need it for rollback.
 
