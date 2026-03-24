@@ -258,7 +258,7 @@ sequenceDiagram
     P->>P: Start-Service adfssrv
     S1->>S1: Start-Service adfssrv
     S2->>S2: Start-Service adfssrv
-    P->>P: Test-AdfsServerHealth ✅
+    P->>P: Get-AdfsProperties ✅
     P->>P: Remove-AdfsServiceAccountRule (old account)
     end
 ```
@@ -310,8 +310,10 @@ Update-AdfsServiceAccount
 > 💡 This is an **interactive script**. It will prompt you for:
 > 1. Confirmation to proceed (type capital **C** + Enter)
 > 2. **Operating Mode** — select **#1 — Federation Server**
-> 3. The **new service account name** in `DOMAIN\user` format (e.g., `CONTOSO\svc-ADFS-gMSA$`)
-> 4. For gMSA accounts (name ending with `$`), it skips password validation automatically
+> 3. The **new service account name** — must be in `DOMAIN\account$` format, e.g., `CONTOSO\svc-ADFS-gMSA$`
+>    - ⚠️ The trailing **`$`** is mandatory — it tells the script this is a gMSA account
+>    - The script will then **skip the password prompt** automatically
+>    - Without the `$`, it will ask for a password and fail
 
 The script will then:
 1. Stop the AD FS service
@@ -372,8 +374,8 @@ Validate the farm:
 # Verify the service account on each node
 Get-WmiObject Win32_Service -Filter "Name='adfssrv'" | Select-Object Name, StartName
 
-# Check ADFS health
-Test-AdfsServerHealth
+# Check ADFS is operational (returns federation service properties)
+Get-AdfsProperties | Select-Object HostName
 
 # Check sync status on secondary nodes
 Get-AdfsSyncProperties
@@ -425,7 +427,7 @@ sequenceDiagram
     N1->>N1: setspn -S (new gMSA)
     N1->>N1: Start-Service adfssrv
     N2->>N2: Start-Service adfssrv
-    N1->>N1: Test-AdfsServerHealth ✅
+    N1->>N1: Get-AdfsProperties ✅
     N1->>N1: Remove-AdfsServiceAccountRule (old account)
     SQL->>SQL: DROP LOGIN / DROP USER (old account)
     end
@@ -521,9 +523,6 @@ Get-WmiObject Win32_Service -Filter "Name='adfssrv'" | Select-Object Name, Start
 
 # Verify ADFS is operational
 Get-AdfsProperties | Select-Object HostName
-
-# Full health check
-Test-AdfsServerHealth
 ```
 
 ### 6.6. Clean Up Old Account Permissions
