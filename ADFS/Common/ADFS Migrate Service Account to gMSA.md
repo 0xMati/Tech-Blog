@@ -1,6 +1,6 @@
 # ADFS — Migrate from a Standard Service Account to a Group Managed Service Account (gMSA)
 
-> This article covers how to migrate your AD FS farm from a traditional domain service account to a **Group Managed Service Account (gMSA)**, for both **WID (Windows Internal Database)** and **SQL Server** deployment topologies.
+> This article covers how to migrate your AD FS farm from a traditional domain service account to a **Group Managed Service Account (gMSA)**, for both **WID (Windows Internal Database)** and **SQL Server** deployment topologies using the official **Microsoft ADFSToolbox** module.
 
 🗓️ Published: 2026-03-24
 
@@ -11,18 +11,25 @@
 - [1. Why Migrate to a gMSA?](#1-why-migrate-to-a-gmsa)
 - [2. Prerequisites](#2-prerequisites)
 - [3. Prepare the gMSA Account](#3-prepare-the-gmsa-account)
-- [4. Migration — ADFS with WID](#4-migration--adfs-with-wid)
-  - [4.1. Identify the Primary Node](#41-identify-the-primary-node)
-  - [4.2. Change the Service Account on the Primary Node](#42-change-the-service-account-on-the-primary-node)
-  - [4.3. Update Secondary Nodes](#43-update-secondary-nodes)
-  - [4.4. Validate the WID Farm](#44-validate-the-wid-farm)
-- [5. Migration — ADFS with SQL Server](#5-migration--adfs-with-sql-server)
-  - [5.1. Grant SQL Permissions to the gMSA](#51-grant-sql-permissions-to-the-gmsa)
-  - [5.2. Change the Service Account](#52-change-the-service-account)
-  - [5.3. Validate the SQL Farm](#53-validate-the-sql-farm)
-- [6. Post-Migration Steps](#6-post-migration-steps)
-- [7. Rollback Plan](#7-rollback-plan)
-- [8. Common Errors and Troubleshooting](#8-common-errors-and-troubleshooting)
+- [4. Install the Microsoft ADFSToolbox Module](#4-install-the-microsoft-adfstoolbox-module)
+- [5. Migration — ADFS with WID](#5-migration--adfs-with-wid)
+  - [5.1. Identify the Primary Node](#51-identify-the-primary-node)
+  - [5.2. Grant Permissions to the gMSA (Primary Node)](#52-grant-permissions-to-the-gmsa-primary-node)
+  - [5.3. Update Secondary Nodes First](#53-update-secondary-nodes-first)
+  - [5.4. Update the Primary Node Last](#54-update-the-primary-node-last)
+  - [5.5. Update SPNs](#55-update-spns)
+  - [5.6. Start Services and Validate](#56-start-services-and-validate)
+  - [5.7. Remove Old Service Account Permissions](#57-remove-old-service-account-permissions)
+- [6. Migration — ADFS with SQL Server](#6-migration--adfs-with-sql-server)
+  - [6.1. Grant SQL Permissions to the gMSA](#61-grant-sql-permissions-to-the-gmsa)
+  - [6.2. Grant ADFS Permissions to the gMSA](#62-grant-adfs-permissions-to-the-gmsa)
+  - [6.3. Update Each Node](#63-update-each-node)
+  - [6.4. Update SPNs](#64-update-spns)
+  - [6.5. Start Services and Validate](#65-start-services-and-validate)
+  - [6.6. Clean Up Old Account Permissions](#66-clean-up-old-account-permissions)
+- [7. Post-Migration Steps](#7-post-migration-steps)
+- [8. Rollback Plan](#8-rollback-plan)
+- [9. Common Errors and Troubleshooting](#9-common-errors-and-troubleshooting)
 
 ---
 
@@ -37,6 +44,8 @@
 | Compliance / Security | ⚠️ Weaker | ✅ Stronger — no human-known password |
 
 > ✅ **Microsoft recommends using gMSA** for AD FS farms. It removes the operational burden of manual password rotation and reduces the attack surface.
+>
+> As highlighted in [this blog post by Sergey Tunnik](https://tunnik.name/changing-adfs-service-account/), a shared standard service account whose password is known by multiple teams is a significant operational risk — accidental password resets can take down the entire federation service.
 
 ---
 
@@ -44,6 +53,7 @@
 
 Before starting the migration, ensure the following:
 
+- **AD FS version**: Windows Server 2016 or later (Server 2012 R2 requires a different approach)
 - **Domain functional level**: Windows Server 2012 or higher
 - **KDS Root Key** must be created and effective (see step 3)
 - The account performing the migration must be:
@@ -51,6 +61,9 @@ Before starting the migration, ensure the following:
   - A **Domain Admin** (or have rights to create gMSA accounts)
   - An **AD FS administrator**
 - All AD FS nodes must be able to retrieve the gMSA password (they must be in the `PrincipalsAllowedToRetrieveManagedPassword` group/list)
+- **Tools to install on all ADFS servers:**
+  - [ADFSToolbox PowerShell module](https://www.powershellgallery.com/packages/ADFSToolbox/)
+  - Active Directory PowerShell module (`RSAT > AD DS & AD LDS > AD for PowerShell`)
 - For SQL topology: access to the SQL Server instance to grant permissions
 
 > ⚠️ **Plan a maintenance window.** The AD FS service will be restarted on each node during the migration — expect a brief authentication outage.
@@ -104,9 +117,10 @@ Add-ADGroupMember -Identity "grp-ADFS-Servers" `
 New-ADServiceAccount -Name "svc-ADFS-gMSA" `
     -DNSHostName "svc-ADFS-gMSA.contoso.com" `
     -PrincipalsAllowedToRetrieveManagedPassword "grp-ADFS-Servers" `
-    -KerberosEncryptionType AES128, AES256 `
-    -ServicePrincipalNames "http/adfs.contoso.com"
+    -KerberosEncryptionType AES128, AES256
 ```
+
+> 💡 Do **not** set the SPN here — SPNs will be handled in a later step after the migration.
 
 ### 3.4. Validate gMSA on Each ADFS Server
 
@@ -124,13 +138,56 @@ If it returns `False`, verify:
 - The server has been rebooted since group membership was changed
 - The KDS Root Key is effective
 
+### 3.5. Configure Local Security Policy for the gMSA
+
+On **each** AD FS server, the gMSA needs two local security rights. Open **Local Security Policy** (`secpol.msc`) and add `CONTOSO\svc-ADFS-gMSA$` to:
+
+- **Local Policies > User Rights Assignment > Generate security audits**
+- **Local Policies > User Rights Assignment > Log on as a service**
+
+> 💡 This can also be configured via Group Policy if all ADFS servers are in the same OU.
+
 ---
 
-## 4. Migration — ADFS with WID
+## 4. Install the Microsoft ADFSToolbox Module
 
-In a WID farm, there is one **primary node** and one or more **secondary (read-only) nodes**. The migration must start on the primary node.
+The official [Microsoft ADFSToolbox](https://github.com/Microsoft/adfsToolbox/tree/master/serviceAccountModule) provides the supported cmdlets for changing an AD FS service account. Install it on **all AD FS servers**:
 
-### 4.1. Identify the Primary Node
+```powershell
+# Ensure TLS 1.2 is used for PowerShell Gallery
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# Install the module
+Install-Module -Name ADFSToolbox -Force
+
+# Import the service account module
+Import-Module ADFSToolbox
+Import-Module "$((Get-Module ADFSToolbox -ListAvailable).ModuleBase)\serviceAccountModule\AdfsServiceAccountModule.psm1"
+```
+
+The module provides the following cmdlets:
+
+| Cmdlet | Purpose |
+|---|---|
+| `Add-AdfsServiceAccountRule` | Grants the new service account permissions in the ADFS config database (required on Server 2016+) |
+| `Update-AdfsServiceAccount` | Changes the ADFS service account on the local machine |
+| `Remove-AdfsServiceAccountRule` | Removes permissions for the old service account |
+| `Restore-AdfsSettingsFromBackup` | Restores settings from a backup generated during Add/Remove operations |
+
+> ⚠️ **Warning from Microsoft:** It is highly recommended to create a backup before attempting to change the service account. Executing cmdlets in the wrong order may result in a non-functioning AD FS farm. **Test in a non-production farm first.**
+
+---
+
+## 5. Migration — ADFS with WID
+
+In a WID farm, there is one **primary node** and one or more **secondary (read-only) nodes**.
+
+> 🔴 **Critical: The order of operations matters!**
+> 1. Grant permissions on the **primary** node
+> 2. Update service account on **secondary nodes FIRST**
+> 3. Update service account on the **primary node LAST**
+
+### 5.1. Identify the Primary Node
 
 Run the following on any AD FS node:
 
@@ -144,95 +201,114 @@ The primary node will show:
 Role : PrimaryComputer
 ```
 
-### 4.2. Change the Service Account on the Primary Node
+### 5.2. Grant Permissions to the gMSA (Primary Node)
 
-On the **primary AD FS node**, run the following PowerShell commands **as Administrator**:
-
-> ⚠️ Before proceeding, **export your current AD FS configuration** as a backup:
->
-> ```powershell
-> # Backup current ADFS configuration
-> Export-AdfsFarmConfiguration -Path "C:\ADFS-Backup\adfs-config-backup.xml"
-> ```
+On the **primary AD FS node**, grant the new gMSA account the necessary permissions in the ADFS configuration database. This step is **mandatory on Windows Server 2016 and later**:
 
 ```powershell
-# Stop the ADFS service
-Stop-Service adfssrv
-
-# Change the service account to gMSA
-# Note: the trailing $ is required for gMSA accounts
-Set-AdfsFarmInformation -ServiceAccountCredential (New-Object System.Management.Automation.PSCredential("CONTOSO\svc-ADFS-gMSA$", (New-Object System.Security.SecureString)))
+# Add permission rule for the gMSA (run on PRIMARY node)
+# Replace ADFS02 with your actual secondary server(s)
+Add-AdfsServiceAccountRule -ServiceAccount "svc-ADFS-gMSA$" -SecondaryServers "ADFS02.contoso.com"
 ```
 
-> 💡 Alternatively, you can use the **AD FS Management Console** approach:
->
+> 💡 The `-SecondaryServers` parameter triggers a WID sync to propagate the change to all secondary nodes. If you have multiple secondary servers, separate them with commas:
 > ```powershell
-> # This cmdlet handles everything in one step
-> Set-AdfsFarmInformation -ServiceAccountCredential $null -ServiceAccount "CONTOSO\svc-ADFS-gMSA$"
+> Add-AdfsServiceAccountRule -ServiceAccount "svc-ADFS-gMSA$" -SecondaryServers "ADFS02.contoso.com", "ADFS03.contoso.com"
 > ```
+>
+> This cmdlet automatically creates a backup of your configuration. Note the backup path shown in the output — you will need it for rollback.
 
-If your farm uses **SSL certificate bindings** tied to the old service account, update the permissions:
+### 5.3. Update Secondary Nodes First
+
+On **each secondary node**, run the `Update-AdfsServiceAccount` cmdlet:
 
 ```powershell
-# Grant the gMSA read access to the ADFS SSL certificate private key
-$cert = Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.Subject -like "*adfs*" }
-$keyPath = $cert.PrivateKey.CspKeyContainerInfo.UniqueKeyContainerName
-$fullPath = "$env:ProgramData\Microsoft\Crypto\RSA\MachineKeys\$keyPath"
-$acl = Get-Acl $fullPath
-$rule = New-Object System.Security.AccessControl.FileSystemAccessRule("CONTOSO\svc-ADFS-gMSA$", "Read", "Allow")
-$acl.AddAccessRule($rule)
-Set-Acl $fullPath $acl
+# Run on EACH SECONDARY node
+Update-AdfsServiceAccount
 ```
 
-Start the service:
+When prompted, select **Operating Mode #1 — Federation Server** (not "Final Federation Server").
+
+The cmdlet will:
+1. Stop the AD FS service
+2. Update the service account on the Windows service (`adfssrv`)
+3. Update the AD FS application pool identity
+
+> ⚠️ Do **not** start the AD FS service on secondary nodes yet — wait until all nodes (including primary) have been updated.
+
+### 5.4. Update the Primary Node Last
+
+Once **all secondary nodes** have been updated, run on the **primary node**:
 
 ```powershell
+# Run on the PRIMARY node LAST
+Update-AdfsServiceAccount
+```
+
+When prompted, select **Operating Mode #2 — Final Federation Server**.
+
+> This mode performs additional steps: it updates the ADFS configuration database to replace the old service account SID with the new gMSA SID. This is why it must be run **last**.
+
+### 5.5. Update SPNs
+
+The `Update-AdfsServiceAccount` script may fail to update SPNs automatically. If so, manually manage them:
+
+```powershell
+# Check current SPNs on the old service account
+setspn -L CONTOSO\svc-adfs-old
+
+# Remove the SPN from the old account
+setspn -D HOST/adfs.contoso.com CONTOSO\svc-adfs-old
+
+# Add the SPN to the new gMSA
+setspn -S HOST/adfs.contoso.com CONTOSO\svc-ADFS-gMSA$
+```
+
+> 💡 With gMSA accounts, SPN management is generally automatic for future changes, but the initial migration may require manual intervention.
+
+### 5.6. Start Services and Validate
+
+Start the AD FS service on the **primary node first**, then on each secondary node:
+
+```powershell
+# On the primary node
+Start-Service adfssrv
+
+# Then on each secondary node
 Start-Service adfssrv
 ```
 
-### 4.3. Update Secondary Nodes
-
-On **each secondary node**, run:
+Validate the farm:
 
 ```powershell
-# Stop the service
-Stop-Service adfssrv
-
-# Update the service account
-Set-AdfsFarmInformation -ServiceAccountCredential (New-Object System.Management.Automation.PSCredential("CONTOSO\svc-ADFS-gMSA$", (New-Object System.Security.SecureString)))
-
-# Grant certificate private key access (same as primary)
-# ... (repeat the certificate ACL commands from section 4.2)
-
-# Start the service
-Start-Service adfssrv
-```
-
-### 4.4. Validate the WID Farm
-
-```powershell
-# Verify the service account
+# Verify the service account on each node
 Get-WmiObject Win32_Service -Filter "Name='adfssrv'" | Select-Object Name, StartName
 
 # Check ADFS health
-Get-AdfsProperties | Select-Object HostName, ActiveEndpoints
+Test-AdfsServerHealth
 
 # Check sync status on secondary nodes
 Get-AdfsSyncProperties
-
-# Test a token issuance
-Test-AdfsServerHealth
 ```
 
 ✅ The `StartName` should display `CONTOSO\svc-ADFS-gMSA$`
 
+### 5.7. Remove Old Service Account Permissions
+
+Once everything is validated, remove the old service account's permissions from the ADFS configuration database. Run on the **primary node**:
+
+```powershell
+# Remove the old account's permission rule
+Remove-AdfsServiceAccountRule -ServiceAccount "CONTOSO\svc-adfs-old" -SecondaryServers "ADFS02.contoso.com"
+```
+
 ---
 
-## 5. Migration — ADFS with SQL Server
+## 6. Migration — ADFS with SQL Server
 
-When AD FS uses a SQL Server backend, additional steps are required to grant the gMSA access to the databases.
+When AD FS uses a SQL Server backend, there is no primary/secondary distinction — all nodes are equal. However, additional steps are required to grant the gMSA access to the SQL databases.
 
-### 5.1. Grant SQL Permissions to the gMSA
+### 6.1. Grant SQL Permissions to the gMSA
 
 Connect to the SQL Server instance and run the following T-SQL:
 
@@ -267,33 +343,51 @@ GO
 >
 > Verify your database names in SQL Server Management Studio before running the script.
 
-### 5.2. Change the Service Account
+### 6.2. Grant ADFS Permissions to the gMSA
 
-On **each AD FS node** (there is no primary/secondary distinction in SQL mode — all nodes are equal):
+On **one of the AD FS nodes**, grant the gMSA permissions in the ADFS configuration (required on Server 2016+):
 
 ```powershell
-# Stop the ADFS service
-Stop-Service adfssrv
+Add-AdfsServiceAccountRule -ServiceAccount "svc-ADFS-gMSA$"
+```
 
-# Change the service account
-Set-AdfsFarmInformation -ServiceAccountCredential (New-Object System.Management.Automation.PSCredential("CONTOSO\svc-ADFS-gMSA$", (New-Object System.Security.SecureString)))
+> 💡 In SQL mode, you do not need the `-SecondaryServers` parameter since there is no WID replication — all nodes access the same SQL database.
 
-# Grant certificate private key access
-$cert = Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.Subject -like "*adfs*" }
-$keyPath = $cert.PrivateKey.CspKeyContainerInfo.UniqueKeyContainerName
-$fullPath = "$env:ProgramData\Microsoft\Crypto\RSA\MachineKeys\$keyPath"
-$acl = Get-Acl $fullPath
-$rule = New-Object System.Security.AccessControl.FileSystemAccessRule("CONTOSO\svc-ADFS-gMSA$", "Read", "Allow")
-$acl.AddAccessRule($rule)
-Set-Acl $fullPath $acl
+### 6.3. Update Each Node
 
-# Start the service
+You can update nodes **one at a time** to maintain partial availability. On **each AD FS node**:
+
+```powershell
+Update-AdfsServiceAccount
+```
+
+Select the appropriate operating mode when prompted:
+- For all nodes except the last one: **#1 — Federation Server**
+- For the **last node**: **#2 — Final Federation Server**
+
+> ⚠️ The **last node** updated must use mode #2 to finalize the SID replacement in the configuration database.
+
+### 6.4. Update SPNs
+
+Same as for WID — if SPNs were not updated automatically:
+
+```powershell
+# Remove the SPN from the old account
+setspn -D HOST/adfs.contoso.com CONTOSO\svc-adfs-old
+
+# Add the SPN to the new gMSA
+setspn -S HOST/adfs.contoso.com CONTOSO\svc-ADFS-gMSA$
+```
+
+### 6.5. Start Services and Validate
+
+Start the AD FS service on each node:
+
+```powershell
 Start-Service adfssrv
 ```
 
-> 💡 In a SQL farm, you can update nodes **one at a time** to maintain availability — the remaining nodes continue to serve requests while one is being updated.
-
-### 5.3. Validate the SQL Farm
+Validate:
 
 ```powershell
 # Verify the service account on each node
@@ -306,27 +400,42 @@ Get-AdfsProperties | Select-Object HostName
 Test-AdfsServerHealth
 ```
 
+### 6.6. Clean Up Old Account Permissions
+
+Once validated, remove the old service account permissions:
+
+```powershell
+# From ADFS configuration
+Remove-AdfsServiceAccountRule -ServiceAccount "CONTOSO\svc-adfs-old"
+```
+
+And from SQL Server:
+
+```sql
+USE [AdfsConfigurationV4]
+GO
+DROP USER [CONTOSO\svc-adfs-old]
+GO
+USE [AdfsArtifactStore]
+GO
+DROP USER [CONTOSO\svc-adfs-old]
+GO
+USE [master]
+GO
+DROP LOGIN [CONTOSO\svc-adfs-old]
+GO
+```
+
 ---
 
-## 6. Post-Migration Steps
+## 7. Post-Migration Steps
 
 Once all nodes are successfully running with the gMSA:
 
-1. **Remove SQL permissions for the old service account** (SQL topology only):
+1. **Verify Device Registration Service (DRS)** — if DRS is configured, update its permissions:
 
-    ```sql
-    USE [AdfsConfigurationV4]
-    GO
-    DROP USER [CONTOSO\svc-adfs-old]
-    GO
-    USE [AdfsArtifactStore]
-    GO
-    DROP USER [CONTOSO\svc-adfs-old]
-    GO
-    USE [master]
-    GO
-    DROP LOGIN [CONTOSO\svc-adfs-old]
-    GO
+    ```powershell
+    Set-AdfsDeviceRegistration
     ```
 
 2. **Disable the old service account** in Active Directory (don't delete it immediately in case rollback is needed):
@@ -341,19 +450,33 @@ Once all nodes are successfully running with the gMSA:
 
 5. **Delete the old service account** after a validation period (e.g., 30 days).
 
+6. **Clean up tools** — uninstall ADFSToolbox if no longer needed.
+
 ---
 
-## 7. Rollback Plan
+## 8. Rollback Plan
 
-If something goes wrong, you can revert to the old service account:
+If something goes wrong during the migration, you have two options:
+
+### Option A: Use the ADFSToolbox Restore Cmdlet
+
+The `Add-AdfsServiceAccountRule` and `Remove-AdfsServiceAccountRule` commands automatically create backups. Use the backup to restore:
+
+```powershell
+# Restore from the backup created during the migration
+Restore-AdfsSettingsFromBackup -BackupPath "C:\Users\Administrator\Documents\serviceSettingsData-2026-03-24-xx-xx-xx.xml"
+```
+
+### Option B: Manual Revert
+
+On each node (secondary nodes first, primary last for WID):
 
 ```powershell
 # Stop the service
 Stop-Service adfssrv
 
-# Revert to the old service account
-$cred = Get-Credential -Message "Enter the old service account credentials (CONTOSO\svc-adfs-old)"
-Set-AdfsFarmInformation -ServiceAccountCredential $cred
+# Revert the Windows service to the old account
+sc.exe config adfssrv obj= "CONTOSO\svc-adfs-old" password= "P@ssword"
 
 # Start the service
 Start-Service adfssrv
@@ -361,23 +484,48 @@ Start-Service adfssrv
 
 For SQL topology, ensure the old account still has SQL permissions before reverting.
 
+### Option C: Database SID Fix (Last Resort)
+
+If the service starts but authentication fails with `MSIS5009` errors, the old service account SID may still be hardcoded in the ADFS database. Fix it with the following SQL query ([as documented by Sergey Tunnik](https://tunnik.name/changing-adfs-service-account/)):
+
+```sql
+USE AdfsConfiguration  -- or AdfsConfigurationV4
+
+-- Find the SIDs first
+-- Old SID: Get-ADUser svc-adfs-old -Properties SID | Select SID
+-- New SID: Get-ADServiceAccount svc-ADFS-gMSA -Properties SID | Select SID
+
+UPDATE IdentityServerPolicy.ServiceSettings
+SET ServiceSettingsData = REPLACE(
+    (SELECT ServiceSettingsData FROM IdentityServerPolicy.ServiceSettings),
+    '<old-SID>',
+    '<new-SID>'
+)
+```
+
+> ⚠️ This is an **unsupported** operation. Only use it as a last resort if the `Update-AdfsServiceAccount` tool did not properly update the SID.
+
 ---
 
-## 8. Common Errors and Troubleshooting
+## 9. Common Errors and Troubleshooting
 
 | Error | Cause | Solution |
 |---|---|---|
-| `Test-ADServiceAccount` returns `False` | Server not in gMSA's allowed principals | Add the computer account to `grp-ADFS-Servers` and **reboot** |
-| ADFS service fails to start (Event 364) | gMSA cannot read the SSL certificate private key | Grant Read permission on the certificate private key (see section 4.2) |
-| SQL connection error after migration | gMSA has no SQL login/permissions | Run the SQL permission script from section 5.1 |
-| `Set-AdfsFarmInformation` fails with access denied | Not running as local admin or missing AD FS admin role | Run PowerShell as Administrator and verify AD FS admin rights |
-| Secondary node not syncing (WID) | Service account mismatch between nodes | Ensure all nodes use the same gMSA — check with `Get-WmiObject Win32_Service` |
+| `Test-ADServiceAccount` returns `False` | Server not in gMSA's allowed principals | Add the computer account to `grp-ADFS-Servers` and **reboot** the server |
+| ADFS service fails to start (Event 364) | gMSA cannot read the SSL certificate private key | Grant Read permission on the certificate private key to the gMSA |
+| SQL connection error after migration | gMSA has no SQL login/permissions | Run the SQL permission script from section 6.1 |
+| `Update-AdfsServiceAccount` errors on SPN | SPN conflict or insufficient permissions | Manually manage SPNs with `setspn -D` / `setspn -S` (see section 5.5) |
+| MSIS5009: Impersonation authorization failed | Old SID still hardcoded in ADFS config DB | The "Final Federation Server" mode was not used on the last node. Use the database SID fix (section 8, Option C) |
+| Secondary node not syncing (WID) | Service account mismatch or sync delay | Force sync: `Set-AdfsSyncProperties -PollDuration 5` — or restart the service |
 | KDS Root Key not effective | Key was created less than 10 hours ago | Wait for replication or recreate with `-EffectiveTime` in lab only |
-| Event 1021: "Encountered error during federation passive request" | Certificate binding still referencing old account | Re-run the certificate private key ACL commands on the affected node |
+| Event 1021: "Encountered error during federation passive request" | Certificate binding or SID issue | Check certificate private key ACLs and verify SID in config DB |
+| gMSA missing "Log on as a service" right | Local security policy not configured | Add the gMSA to "Log on as a service" and "Generate security audits" in `secpol.msc` |
 
 ---
 
 > 📚 **References:**
-> - [Configure AD FS to use a gMSA — Microsoft Docs](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/deployment/configure-a-federation-server#configure-ad-fs-to-use-a-group-managed-service-account)
-> - [Group Managed Service Accounts Overview](https://learn.microsoft.com/en-us/windows-server/security/group-managed-service-accounts/group-managed-service-accounts-overview)
-> - [AD FS Troubleshooting](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/troubleshooting/ad-fs-tshoot-overview)
+> - [Microsoft ADFSToolbox — Service Account Module (GitHub)](https://github.com/Microsoft/adfsToolbox/tree/master/serviceAccountModule) — Official Microsoft module for changing AD FS service accounts
+> - [ADFS Change Service Account to gMSA — Greg Beifuss](https://gbeifuss.github.io/p/adfs-change-service-account-to-gmsa/) — Step-by-step walkthrough for WID topology
+> - [Changing AD FS Service Account — Sergey Tunnik](https://tunnik.name/changing-adfs-service-account/) — Explains the SID hardcoding issue in the ADFS config database
+> - [Configure AD FS to use a gMSA — Microsoft Docs](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/deployment/configure-a-federation-server)
+> - [Group Managed Service Accounts Overview — Microsoft Docs](https://learn.microsoft.com/en-us/windows-server/security/group-managed-service-accounts/group-managed-service-accounts-overview)
