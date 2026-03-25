@@ -952,7 +952,59 @@ Also: operational processes matter as much as policy design:
 Strong policies without recovery procedures eventually become “please disable CA” tickets.
 
 ---
+## 27. Recommended Conditional Access policies
+*A baseline matrix to build your policy set — adapt to your environment*
 
+> 💡 **Before you start:**
+> - Always create a **break-glass account** excluded from ALL policies
+> - Deploy new policies in **Report-only** mode first
+> - Define **Named Locations** (trusted IPs, countries) before referencing them
+
+### Tier 0 — Identity Foundation (deploy first)
+
+| # | Policy name | Scope | Grant / Session | Priority |
+|---|-------------|-------|-----------------|----------|
+| 1 | ✅ Require MFA for all users | All users | MFA | 🔴 Critical |
+| 2 | ✅ Block legacy authentication | All users | Block | 🔴 Critical |
+| 3 | ✅ Require MFA for admins (all admin roles) | Directory roles | MFA + Compliant device | 🔴 Critical |
+| 4 | ✅ Protect break-glass account (allow only from trusted location) | Break-glass account | MFA | 🔴 Critical |
+
+### Tier 1 — Device Trust & Compliance
+
+| # | Policy name | Scope | Grant / Session | Priority |
+|---|-------------|-------|-----------------|----------|
+| 5 | ✅ Require compliant device for Office 365 | All users → Office 365 | Compliant device | 🟠 High |
+| 6 | ✅ Require approved client app (mobile) | All users → Office 365 (iOS, Android) | Approved client app OR App protection policy | 🟠 High |
+| 7 | ✅ Block unmanaged devices (or limit to browser-only) | All users → Office 365 | Session: no persistent browser + limited web | 🟠 High |
+| 8 | ✅ Require compliant device for Azure Management | All users → Azure Management | Compliant device + MFA | 🟠 High |
+
+### Tier 2 — Risk-Based & Location
+
+| # | Policy name | Scope | Grant / Session | Priority |
+|---|-------------|-------|-----------------|----------|
+| 9 | ✅ Block high-risk sign-ins (Entra ID Protection) | All users | Block | 🟡 Medium |
+| 10 | ✅ Require password change on high-risk users | All users | MFA + Password change | 🟡 Medium |
+| 11 | ✅ Block sign-ins from disallowed countries | All users | Block | 🟡 Medium |
+| 12 | ✅ Require MFA for risky sign-ins (medium+) | All users | MFA | 🟡 Medium |
+| 13 | ⚠️ Restrict token lifetime (Sign-in frequency) | All users → Office 365 | Session: sign-in frequency 12h | 🟡 Medium |
+
+### Tier 3 — Advanced / Hardening
+
+| # | Policy name | Scope | Grant / Session | Priority |
+|---|-------------|-------|-----------------|----------|
+| 14 | ✅ Require phishing-resistant MFA for admins | Directory roles | Authentication strength: Phishing-resistant | 🟢 Recommended |
+| 15 | ✅ Block admin access outside trusted network | Directory roles (excl. break-glass) | Block if not Named Location | 🟢 Recommended |
+| 16 | ✅ Require Terms of Use for guests | Guest users | ToU + MFA | 🟢 Recommended |
+| 17 | ✅ Block device code flow & authentication transfer | All users | Block (Device code flow, Authentication transfer) | 🟢 Recommended |
+| 18 | ⚠️ Token Protection (Preview) | All users → Exchange, SharePoint | Session: Token protection | 🟢 Recommended |
+
+> 🔑 **Key reminders:**
+> - Policies **1–4** are non-negotiable — deploy them day one
+> - **Authentication Strength** (policy 14) replaces the old "Require MFA" grant when you need phishing-resistant methods specifically (FIDO2, Passkey, WHfB, CBA)
+> - Policy **17** blocks device code flow attacks (Storm-1811 / Teams vishing) — heavily recommended
+> - **Report-only** mode is your best friend — use section 25 above to toggle safely
+
+---
 # Conclusion — Conditional Access is a policy engine, not magic
 
 Conditional Access is powerful — but not magical.
