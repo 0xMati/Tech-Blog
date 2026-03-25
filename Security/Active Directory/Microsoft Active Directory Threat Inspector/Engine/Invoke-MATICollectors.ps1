@@ -53,6 +53,8 @@ function Invoke-MATICollectors {
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
         try {
+            # Dot-source the collector file to ensure the function is available in scope
+            . $filePath
             # Call the collector function, passing config for thresholds/properties
             $data = & $funcName -Config $config
             $EngineContext.DataCache[$collectorName] = $data
