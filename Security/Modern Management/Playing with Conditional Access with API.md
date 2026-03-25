@@ -114,17 +114,26 @@ Update-MgIdentityConditionalAccessPolicy `
 *Export all policies to JSON for versioning or rollback*
 
 ```powershell
-$backupPath = "C:\temp\CA-Backup"
+$backupPath = ".\CA-Backup"
 New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
 
-Get-MgIdentityConditionalAccessPolicy | ForEach-Object {
+$policies = Get-MgIdentityConditionalAccessPolicy -All
+Write-Host "Found $($policies.Count) policies to backup" -ForegroundColor Cyan
+
+foreach ($policy in $policies) {
 
     # Sanitize filename (Windows-safe)
-    $safeName = ($_.DisplayName -replace '[\\/:*?"<>|]', '_') + "_$($_.Id)"
+    $safeName = ($policy.DisplayName -replace '[\\/:*?"<>|]', '_') + "_$($policy.Id)"
+    $filePath = Join-Path $backupPath "$safeName.json"
 
-    $_ | ConvertTo-Json -Depth 20 |
-        Out-File "$backupPath\$safeName.json" -Encoding UTF8
+    # Convert to hashtable first for clean JSON serialization
+    $policy | ConvertTo-Json -Depth 20 |
+        Out-File $filePath -Encoding UTF8
+
+    Write-Host "  Saved: $($policy.DisplayName)" -ForegroundColor Green
 }
+
+Write-Host "Backup complete -> $((Resolve-Path $backupPath).Path)" -ForegroundColor Cyan
 ```
 
 ---
