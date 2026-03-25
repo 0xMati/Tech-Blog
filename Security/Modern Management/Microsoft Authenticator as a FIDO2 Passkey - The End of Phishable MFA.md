@@ -2,7 +2,7 @@
 
 **Your phone is now a security key. Let's talk about what that actually means.**
 
-Published: 2026-03-25 | 📖 ~20 min read | **Tags**: `FIDO2` `Passkeys` `Phishing-Resistant MFA` `Zero Trust` `Entra ID`
+Published: 2026-03-25 | `FIDO2` `Passkeys` `Phishing-Resistant MFA` `Zero Trust` `Entra ID`
 
 > 🎯 **TL;DR** — Classic MFA (push, SMS, OTP) is routinely bypassed by AiTM proxies and cookie theft. FIDO2 passkeys use **cryptographic origin binding** — mathematically impossible to phish. Microsoft Authenticator now acts as a **device-bound FIDO2 passkey**: same security as a YubiKey, zero extra hardware. Combine with Device Compliance + Token Protection for full coverage.
 
