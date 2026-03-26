@@ -55,7 +55,7 @@ function Invoke-MATIRules {
             $results = & $rule.Condition $dataCache $config
 
             if (-not $results) {
-                Write-Host " PASS" -ForegroundColor Green
+                Write-Host " NO FINDING" -ForegroundColor Green
                 continue
             }
 
@@ -100,9 +100,9 @@ function Invoke-MATIRules {
 
             $findingCount += $ruleFindings
             if ($ruleFindings -gt 0) {
-                Write-Host " $ruleFindings finding(s)" -ForegroundColor Red
+                Write-Host " FINDINGS: $ruleFindings" -ForegroundColor DarkYellow
             } else {
-                Write-Host " PASS (excluded)" -ForegroundColor Green
+                Write-Host " NO FINDING (excluded)" -ForegroundColor Green
             }
         }
         catch {

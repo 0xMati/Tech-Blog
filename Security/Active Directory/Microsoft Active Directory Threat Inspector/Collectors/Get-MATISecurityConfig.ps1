@@ -16,14 +16,15 @@ function Get-MATISecurityConfig {
     )
 
     $forest  = $Config['_ForestCache'] ?? (Get-ADForest -ErrorAction Stop)
-    $rootDSE = Get-ADRootDSE -ErrorAction Stop
+    $directoryServer = $Config['_DirectoryServer'] ?? $forest.RootDomain
+    $rootDSE = $Config['_RootDSECache'] ?? (Get-ADRootDSE -Server $directoryServer -ErrorAction Stop)
     $domCache = $Config['_DomainCache'] ?? @{}
 
     # ---- dsHeuristics ----
     $dsHeuristics = $null
     try {
         $dsService = Get-ADObject "CN=Directory Service,CN=Windows NT,CN=Services,$($rootDSE.configurationNamingContext)" `
-            -Properties dSHeuristics -ErrorAction Stop
+            -Server $directoryServer -Properties dSHeuristics -ErrorAction Stop
         $dsHeuristics = $dsService.dSHeuristics
     } catch {
         Write-Warning "    Cannot read dsHeuristics: $($_.Exception.Message)"
@@ -33,7 +34,7 @@ function Get-MATISecurityConfig {
     $denyUnauthBind = $null
     try {
         $dsOtherSettings = Get-ADObject "CN=Directory Service,CN=Windows NT,CN=Services,$($rootDSE.configurationNamingContext)" `
-            -Properties 'msDS-Other-Settings' -ErrorAction Stop
+            -Server $directoryServer -Properties 'msDS-Other-Settings' -ErrorAction Stop
         $otherSettings = @($dsOtherSettings.'msDS-Other-Settings')
         $entry = $otherSettings | Where-Object { $_ -like 'DenyUnauthenticatedBind=*' } | Select-Object -First 1
         if ($entry) {
@@ -306,11 +307,11 @@ function Get-MATISecurityConfig {
             $hasLegacyLaps = $false
             $hasWindowsLaps = $false
             try {
-                $null = Get-ADObject "CN=ms-Mcs-AdmPwd,$($rootDSE.schemaNamingContext)" -ErrorAction Stop
+                $null = Get-ADObject "CN=ms-Mcs-AdmPwd,$($rootDSE.schemaNamingContext)" -Server $directoryServer -ErrorAction Stop
                 $hasLegacyLaps = $true
             } catch { }
             try {
-                $null = Get-ADObject "CN=ms-LAPS-Password,$($rootDSE.schemaNamingContext)" -ErrorAction Stop
+                $null = Get-ADObject "CN=ms-LAPS-Password,$($rootDSE.schemaNamingContext)" -Server $directoryServer -ErrorAction Stop
                 $hasWindowsLaps = $true
             } catch { }
 
@@ -667,6 +668,7 @@ function Get-MATISecurityConfig {
         # Display Specifiers live under CN=DisplaySpecifiers,CN=Configuration,...
         $displaySpecDN = "CN=DisplaySpecifiers,$configDN"
         $specEntries = Get-ADObject -SearchBase $displaySpecDN -Filter * `
+            -Server $directoryServer `
             -Properties adminContextMenu, contextMenu, shellContextMenu, adminPropertyPages, `
                         shellPropertyPages, treatAsLeaf, extraColumns `
             -ErrorAction SilentlyContinue
@@ -774,7 +776,7 @@ function Get-MATISecurityConfig {
     $javaSchemaDetected = $false
     try {
         $javaClass = Get-ADObject -SearchBase $rootDSE.schemaNamingContext `
-            -Filter 'cn -eq "javaSerializedObject"' -ErrorAction SilentlyContinue
+            -Filter 'cn -eq "javaSerializedObject"' -Server $directoryServer -ErrorAction SilentlyContinue
         $javaSchemaDetected = ($null -ne $javaClass)
     } catch { }
 
@@ -851,7 +853,7 @@ function Get-MATISecurityConfig {
     try {
         # Check if 'computer' class can be created in unexpected containers
         $computerClass = Get-ADObject -SearchBase $rootDSE.schemaNamingContext `
-            -Filter 'cn -eq "computer"' -Properties possSuperiors, systemPossSuperiors -ErrorAction SilentlyContinue
+            -Filter 'cn -eq "computer"' -Server $directoryServer -Properties possSuperiors, systemPossSuperiors -ErrorAction SilentlyContinue
         if ($computerClass) {
             $allSuper = @($computerClass.possSuperiors) + @($computerClass.systemPossSuperiors)
             # Expected parents for computer objects

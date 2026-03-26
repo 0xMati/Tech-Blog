@@ -14,9 +14,11 @@ function Get-MATIDomainInfo {
     )
 
     $forest = $Config['_ForestCache'] ?? (Get-ADForest -ErrorAction Stop)
+    $rootDSE = $Config['_RootDSECache'] ?? (Get-ADRootDSE -Server ($Config['_DirectoryServer'] ?? $forest.RootDomain) -ErrorAction Stop)
+    $directoryServer = $Config['_DirectoryServer'] ?? $forest.RootDomain
     $domains = foreach ($domainDns in $forest.Domains) {
         try {
-            $dom = Get-ADDomain -Identity $domainDns -ErrorAction Stop
+            $dom = Get-ADDomain -Identity $domainDns -Server $domainDns -ErrorAction Stop
             [PSCustomObject]@{
                 Name                  = $dom.Name
                 DNSRoot               = $dom.DNSRoot
@@ -50,17 +52,17 @@ function Get-MATIDomainInfo {
         Sites               = $forest.Sites
         # Check if AD Recycle Bin is enabled
         RecycleBinEnabled   = (
-            Get-ADOptionalFeature -Filter 'Name -eq "Recycle Bin Feature"' -ErrorAction SilentlyContinue
+            Get-ADOptionalFeature -Filter 'Name -eq "Recycle Bin Feature"' -Server $directoryServer -ErrorAction SilentlyContinue
         ).EnabledScopes.Count -gt 0
         # Tombstone lifetime
         TombstoneLifetime   = (
             Get-ADObject "CN=Directory Service,CN=Windows NT,CN=Services,$(
-                (Get-ADRootDSE).configurationNamingContext
-            )" -Properties tombstoneLifetime -ErrorAction SilentlyContinue
+                $rootDSE.configurationNamingContext
+            )" -Server $directoryServer -Properties tombstoneLifetime -ErrorAction SilentlyContinue
         ).tombstoneLifetime
         # AD Schema version (objectVersion on Schema container)
         SchemaVersion       = (
-            Get-ADObject (Get-ADRootDSE).schemaNamingContext -Properties objectVersion -ErrorAction SilentlyContinue
+            Get-ADObject $rootDSE.schemaNamingContext -Server $directoryServer -Properties objectVersion -ErrorAction SilentlyContinue
         ).objectVersion
     }
 

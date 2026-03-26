@@ -15,7 +15,9 @@ function Initialize-MATIEngine {
         [Parameter(Mandatory)]
         [string]$RootPath,
 
-        [string]$ConfigPath
+        [string]$ConfigPath,
+
+        [string]$TargetForest
     )
 
     Write-Host "`n=== MATI v2 - Microsoft Active Directory Threat Inspector ===" -ForegroundColor Cyan
@@ -129,11 +131,28 @@ function Initialize-MATIEngine {
 
     # Basic AD read access + build forest/domain cache
     try {
-        $forestObj = Get-ADForest -ErrorAction Stop
+        $resolvedTargetForest = if ([string]::IsNullOrWhiteSpace($TargetForest)) {
+            $null
+        } else {
+            $TargetForest.Trim()
+        }
+
+        if ($resolvedTargetForest) {
+            $forestObj = Get-ADForest -Identity $resolvedTargetForest -ErrorAction Stop
+        } else {
+            $forestObj = Get-ADForest -ErrorAction Stop
+        }
+
+        $directoryServer = if ([string]::IsNullOrWhiteSpace($forestObj.RootDomain)) {
+            $forestObj.Name
+        } else {
+            $forestObj.RootDomain
+        }
+        $rootDseObj = Get-ADRootDSE -Server $directoryServer -ErrorAction Stop
         $domainCacheMap = @{}
         foreach ($domDns in $forestObj.Domains) {
             try {
-                $domainCacheMap[$domDns] = Get-ADDomain -Server $domDns -ErrorAction Stop
+                $domainCacheMap[$domDns] = Get-ADDomain -Identity $domDns -Server $domDns -ErrorAction Stop
             } catch {
                 Write-Warning "  [!] Could not query domain '$domDns': $($_.Exception.Message)"
             }
@@ -141,11 +160,15 @@ function Initialize-MATIEngine {
         # Inject caches into Config so all collectors can reuse them
         $Config['_ForestCache'] = $forestObj
         $Config['_DomainCache'] = $domainCacheMap
+        $Config['_RootDSECache'] = $rootDseObj
+        $Config['_DirectoryServer'] = $directoryServer
+        $Config['_TargetForest'] = $forestObj.Name
     }
     catch {
-        throw "Cannot read Active Directory. Ensure the current user has read access. Error: $($_.Exception.Message)"
+        $targetLabel = if ([string]::IsNullOrWhiteSpace($TargetForest)) { 'current forest' } else { $TargetForest }
+        throw "Cannot read Active Directory for '$targetLabel'. Ensure the target forest is reachable and the current user has read access. Error: $($_.Exception.Message)"
     }
-    Write-Host "  [+] AD read access confirmed (forest + $($domainCacheMap.Count) domain(s) cached)" -ForegroundColor Green
+    Write-Host "  [+] AD read access confirmed for forest '$($forestObj.Name)' ($($domainCacheMap.Count) domain(s) cached)" -ForegroundColor Green
 
     # ------------------------------------------------------------------
     # 6. Prepare output paths

@@ -61,7 +61,7 @@ function Invoke-MATICollectors {
 
             $sw.Stop()
             $count = if ($data -is [array]) { $data.Count } elseif ($data) { 1 } else { 0 }
-            Write-Host " OK ($count objects, $($sw.ElapsedMilliseconds)ms)" -ForegroundColor Green
+            Write-Host " COLLECTED ($count objects, $($sw.ElapsedMilliseconds)ms)" -ForegroundColor Green
         }
         catch {
             $sw.Stop()

@@ -73,6 +73,9 @@ cd '.\Microsoft Active Directory Threat Inspector'
 # Run the full assessment
 .\Invoke-MATI.ps1
 
+# Target a specific forest instead of the current logon context
+.\Invoke-MATI.ps1 -TargetForest corp.contoso.com
+
 # Run only specific categories
 .\Invoke-MATI.ps1 -CategoriesOnly Config, Kerberos
 
@@ -84,6 +87,8 @@ cd '.\Microsoft Active Directory Threat Inspector'
 ```
 
 Reports are saved to `Outputs\Output_<timestamp>\` with `HTML`, `CSV`, and `JSON` subdirectories.
+
+When running interactively from the menu, MATI now prompts for the forest DNS name to analyze. Press Enter to keep the current logon forest or the previously selected target.
 
 ---
 

@@ -14,13 +14,14 @@ function Get-MATIDCInfo {
     )
 
     $forest = $Config['_ForestCache'] ?? (Get-ADForest -ErrorAction Stop)
-    $rootDSE = Get-ADRootDSE -ErrorAction Stop
+    $directoryServer = $Config['_DirectoryServer'] ?? $forest.RootDomain
+    $rootDSE = $Config['_RootDSECache'] ?? (Get-ADRootDSE -Server $directoryServer -ErrorAction Stop)
 
     # Pre-load all AD subnets for site coverage check
     $adSubnets = @{}
     try {
         $subnets = Get-ADObject -SearchBase "CN=Subnets,CN=Sites,$($rootDSE.configurationNamingContext)" `
-            -Filter { objectClass -eq 'subnet' } -Properties siteObject, cn -ErrorAction SilentlyContinue
+            -Filter { objectClass -eq 'subnet' } -Server $directoryServer -Properties siteObject, cn -ErrorAction SilentlyContinue
         foreach ($s in $subnets) {
             $siteName = if ($s.siteObject) { ($s.siteObject -split ',')[0] -replace '^CN=' } else { 'Unlinked' }
             if (-not $adSubnets.ContainsKey($siteName)) { $adSubnets[$siteName] = @() }

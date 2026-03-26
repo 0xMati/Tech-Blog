@@ -15,6 +15,9 @@ param(
     # Path to an alternative configuration file
     [string]$ConfigPath,
 
+    # DNS name of the forest to analyze
+    [string]$TargetForest,
+
     # Run only specific categories (comma-separated)
     [string[]]$CategoriesOnly,
 
@@ -29,9 +32,29 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$selectedTargetForest = if ([string]::IsNullOrWhiteSpace($TargetForest)) { $null } else { $TargetForest.Trim() }
 
 # Resolve root path
 $RootPath = $PSScriptRoot
+
+function Read-MATITargetForest {
+    param(
+        [string]$CurrentTargetForest
+    )
+
+    $defaultLabel = if ([string]::IsNullOrWhiteSpace($CurrentTargetForest)) {
+        'current logon forest'
+    } else {
+        $CurrentTargetForest
+    }
+
+    $inputForest = Read-Host "    Forest DNS name to analyze [Enter = $defaultLabel]"
+    if ([string]::IsNullOrWhiteSpace($inputForest)) {
+        return $CurrentTargetForest
+    }
+
+    return $inputForest.Trim()
+}
 
 # ==================================================================
 # 0. Banner
@@ -153,7 +176,7 @@ function Invoke-MATIThreatDetection {
 
     # Initialize engine
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $ctx = Initialize-MATIEngine -RootPath $RootPath -ConfigPath $ConfigPath
+    $ctx = Initialize-MATIEngine -RootPath $RootPath -ConfigPath $ConfigPath -TargetForest $selectedTargetForest
 
     # Apply runtime filters
     if ($CategoriesOnly) {
@@ -196,6 +219,7 @@ function Invoke-MATIThreatDetection {
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "  Score     : $($score.Score) / $($score.BaseScore)  (Grade: $($score.Grade))" -ForegroundColor White
     Write-Host "  Findings  : $($score.TotalFindings)" -ForegroundColor White
+    Write-Host "  Forest    : $($ctx.Config['_TargetForest'])" -ForegroundColor White
     Write-Host "  Duration  : $([math]::Round($sw.Elapsed.TotalSeconds, 1))s" -ForegroundColor White
     Write-Host "  Output    : $($ctx.OutputRoot)" -ForegroundColor White
     Write-Host "================================================================`n" -ForegroundColor Cyan
@@ -235,6 +259,7 @@ switch ($menuChoice.Trim().ToUpper()) {
         return
     }
     '1' {
+        $selectedTargetForest = Read-MATITargetForest -CurrentTargetForest $selectedTargetForest
         Invoke-MATIThreatDetection
         # Loop back to main menu
     }

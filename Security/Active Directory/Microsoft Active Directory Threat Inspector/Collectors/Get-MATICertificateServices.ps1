@@ -14,14 +14,16 @@ function Get-MATICertificateServices {
         [hashtable]$Config
     )
 
-    $rootDSE  = Get-ADRootDSE -ErrorAction Stop
+    $forest = $Config['_ForestCache'] ?? (Get-ADForest -ErrorAction Stop)
+    $directoryServer = $Config['_DirectoryServer'] ?? $forest.RootDomain
+    $rootDSE  = $Config['_RootDSECache'] ?? (Get-ADRootDSE -Server $directoryServer -ErrorAction Stop)
     $configDN = $rootDSE.configurationNamingContext
     $pkiDN    = "CN=Public Key Services,CN=Services,$configDN"
 
     # Check if ADCS is deployed
     $isDeployed = $false
     try {
-        $null = Get-ADObject -Identity $pkiDN -ErrorAction Stop
+        $null = Get-ADObject -Identity $pkiDN -Server $directoryServer -ErrorAction Stop
         $isDeployed = $true
     } catch {
         Write-Verbose "    ADCS Public Key Services container not found."
@@ -37,6 +39,7 @@ function Get-MATICertificateServices {
     try {
         $esDN = "CN=Enrollment Services,$pkiDN"
         $cas = Get-ADObject -SearchBase $esDN -Filter { objectClass -eq 'pKIEnrollmentService' } `
+            -Server $directoryServer `
             -Properties dNSHostName, cACertificate, certificateTemplates, 'msPKI-Enrollment-Servers' `
             -ErrorAction Stop
 
@@ -83,10 +86,10 @@ function Get-MATICertificateServices {
     try {
         $templatesDN = "CN=Certificate Templates,$pkiDN"
         $tmplObjects = Get-ADObject -SearchBase $templatesDN -Filter { objectClass -eq 'pKICertificateTemplate' } `
+            -Server $directoryServer `
             -Properties * -ErrorAction Stop
 
         # Well-known SIDs
-        $forest = $Config['_ForestCache'] ?? (Get-ADForest -ErrorAction Stop)
         $privilegedSIDs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         foreach ($domainDns in $forest.Domains) {
             try {

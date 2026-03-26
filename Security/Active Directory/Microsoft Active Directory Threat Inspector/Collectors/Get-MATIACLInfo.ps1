@@ -16,7 +16,7 @@ function Get-MATIACLInfo {
     )
 
     $forest  = $Config['_ForestCache'] ?? (Get-ADForest -ErrorAction Stop)
-    $rootDSE = Get-ADRootDSE -ErrorAction Stop
+    $rootDSE = $Config['_RootDSECache'] ?? (Get-ADRootDSE -Server ($Config['_DirectoryServer'] ?? $forest.RootDomain) -ErrorAction Stop)
     $domCache = $Config['_DomainCache'] ?? @{}
 
     # Helper: read ACL via a temporary AD PSDrive targeting the correct domain DC
