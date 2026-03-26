@@ -50,6 +50,7 @@ Reports are generated in three formats:
 | Requirement | Detail |
 |---|---|
 | **PowerShell 7+** | Required (`pwsh`). PowerShell 5.1 is **not supported** |
+| **Elevated PowerShell session** | Recommended. Launch PowerShell with `Run as Administrator` for full collector coverage |
 | **ActiveDirectory module** | `RSAT: Active Directory Domain Services` — must be installed and importable |
 | **AD read access** | The running account needs standard read access to the domain (no admin required for most rules) |
 | **WinRM to DCs** | Required only for the `LegacyProtocolAudit` collector (Kerberos/NTLM event-log analysis). The account needs permission to read `Security` event logs on DCs |
@@ -89,6 +90,10 @@ cd '.\Microsoft Active Directory Threat Inspector'
 Reports are saved to `Outputs\Output_<timestamp>\` with `HTML`, `CSV`, and `JSON` subdirectories.
 
 When running interactively from the menu, MATI now prompts for the forest DNS name to analyze. Press Enter to keep the current logon forest or the previously selected target.
+
+Each Threat Detection run also saves a PowerShell transcript named `MATI.transcript.txt` in the execution output folder.
+
+At startup, MATI also displays the execution context of the operator and launch host: user domain, `sAMAccountName`, UPN, computer name, FQDN, and machine domain. The same context is included in the JSON metadata export.
 
 ---
 

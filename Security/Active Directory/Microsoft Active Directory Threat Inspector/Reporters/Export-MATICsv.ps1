@@ -16,6 +16,7 @@ function Export-MATICsv {
     $timestamp = $EngineContext.Timestamp
     $findings  = $EngineContext.Findings
     $dataCache = $EngineContext.DataCache
+    $filePrefix = if ($EngineContext.Config['_ReportFilePrefix']) { $EngineContext.Config['_ReportFilePrefix'] } else { 'MATI_' }
 
     # ------------------------------------------------------------------
     # 1. Global findings CSV
@@ -37,7 +38,7 @@ function Export-MATICsv {
         }
     }
 
-    $findingsPath = Join-Path $csvDir "MATI_Findings_$timestamp.csv"
+    $findingsPath = Join-Path $csvDir "${filePrefix}Findings_$timestamp.csv"
     if ($findingsForCsv) {
         $findingsForCsv | Export-Csv -Path $findingsPath -NoTypeInformation -Encoding UTF8
     }
@@ -82,7 +83,7 @@ function Export-MATICsv {
             foreach ($subKey in $data.Keys) {
                 $subData = @($data[$subKey] | Where-Object { $null -ne $_ })
                 if ($subData.Count -gt 0 -and $subData[0] -is [PSCustomObject]) {
-                    $subPath = Join-Path $csvDir "MATI_${collectorName}_${subKey}.csv"
+                    $subPath = Join-Path $csvDir "${filePrefix}${collectorName}_${subKey}.csv"
                     try {
                         $subData | ConvertTo-CsvSafe | Export-Csv -Path $subPath -NoTypeInformation -Encoding UTF8
                     } catch {
@@ -94,7 +95,7 @@ function Export-MATICsv {
         elseif ($data -is [array]) {
             $validData = @($data | Where-Object { $null -ne $_ })
             if ($validData.Count -gt 0) {
-                $dataPath = Join-Path $csvDir "MATI_${collectorName}.csv"
+                $dataPath = Join-Path $csvDir "${filePrefix}${collectorName}.csv"
                 try {
                     $validData | ConvertTo-CsvSafe | Export-Csv -Path $dataPath -NoTypeInformation -Encoding UTF8
                 } catch {
@@ -109,7 +110,7 @@ function Export-MATICsv {
     # ------------------------------------------------------------------
     $audit = $dataCache['LegacyProtocolAudit']
     if ($audit) {
-        $prefix = "MATI_ProtocolAudit"
+        $prefix = "${filePrefix}ProtocolAudit"
 
         # Kerberos breakdown summary
         $krb = $audit.Kerberos

@@ -17,6 +17,7 @@ function Export-MATIHtml {
     $config    = $EngineContext.Config
     $findings  = $EngineContext.Findings
     $score     = $EngineContext.Score
+    $filePrefix = if ($config['_ReportFilePrefix']) { $config['_ReportFilePrefix'] } else { 'MATI_' }
 
     # ------------------------------------------------------------------
     # Load HTML template
@@ -593,7 +594,7 @@ function Export-MATIHtml {
     # ------------------------------------------------------------------
     # Write HTML file
     # ------------------------------------------------------------------
-    $htmlPath = Join-Path $htmlDir "MATI_Report_$timestamp.html"
+    $htmlPath = Join-Path $htmlDir "${filePrefix}Report_$timestamp.html"
     $html | Out-File -FilePath $htmlPath -Encoding UTF8
 
     # Offer to open the report in the default browser

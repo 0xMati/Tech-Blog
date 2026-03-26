@@ -158,11 +158,17 @@ function Initialize-MATIEngine {
             }
         }
         # Inject caches into Config so all collectors can reuse them
+        $forestFileLabel = ($forestObj.Name -replace '[<>:"/\\|?*]', '_').Trim()
+        if ([string]::IsNullOrWhiteSpace($forestFileLabel)) {
+            $forestFileLabel = 'UnknownForest'
+        }
+
         $Config['_ForestCache'] = $forestObj
         $Config['_DomainCache'] = $domainCacheMap
         $Config['_RootDSECache'] = $rootDseObj
         $Config['_DirectoryServer'] = $directoryServer
         $Config['_TargetForest'] = $forestObj.Name
+        $Config['_ReportFilePrefix'] = "MATI_${forestFileLabel}_"
     }
     catch {
         $targetLabel = if ([string]::IsNullOrWhiteSpace($TargetForest)) { 'current forest' } else { $TargetForest }

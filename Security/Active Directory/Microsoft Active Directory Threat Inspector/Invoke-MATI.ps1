@@ -33,9 +33,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $selectedTargetForest = if ([string]::IsNullOrWhiteSpace($TargetForest)) { $null } else { $TargetForest.Trim() }
+$script:MATIExecutionContext = $null
+$script:MATICurrentLogonForest = $null
 
 # Resolve root path
 $RootPath = $PSScriptRoot
+
+function Get-MATICurrentLogonForestName {
+    try {
+        return [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Name
+    }
+    catch {
+        return $null
+    }
+}
 
 function Read-MATITargetForest {
     param(
@@ -43,17 +54,147 @@ function Read-MATITargetForest {
     )
 
     $defaultLabel = if ([string]::IsNullOrWhiteSpace($CurrentTargetForest)) {
-        'current logon forest'
+        if ([string]::IsNullOrWhiteSpace($script:MATICurrentLogonForest)) {
+            'current logon forest'
+        } else {
+            $script:MATICurrentLogonForest
+        }
     } else {
         $CurrentTargetForest
     }
 
-    $inputForest = Read-Host "    Forest DNS name to analyze [Enter = $defaultLabel]"
+    $inputForest = Read-Host "    Forest DNS name to analyze [Press Enter for default: $defaultLabel]"
     if ([string]::IsNullOrWhiteSpace($inputForest)) {
         return $CurrentTargetForest
     }
 
     return $inputForest.Trim()
+}
+
+function Get-MATIExecutionContext {
+    param(
+        [System.Security.Principal.WindowsIdentity]$Identity
+    )
+
+    if (-not $Identity) {
+        $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    }
+
+    $accountName = $Identity.Name
+    $samAccountName = if ($accountName -match '\\') { ($accountName -split '\\', 2)[1] } else { $env:USERNAME }
+    $domainNetBIOS = if ($accountName -match '\\') { ($accountName -split '\\', 2)[0] } else { $env:USERDOMAIN }
+    $userPrincipalName = $null
+    $userDomainDns = $env:USERDNSDOMAIN
+    $userDistinguishedName = $null
+    $userSid = if ($Identity.User) { $Identity.User.Value } else { $null }
+
+    if ($userSid) {
+        try {
+            $adsiUser = [ADSI]("LDAP://<SID=$userSid>")
+            if ($adsiUser.Properties['samAccountName'].Count -gt 0) {
+                $samAccountName = [string]$adsiUser.Properties['samAccountName'][0]
+            }
+            if ($adsiUser.Properties['userPrincipalName'].Count -gt 0) {
+                $userPrincipalName = [string]$adsiUser.Properties['userPrincipalName'][0]
+            }
+            if ($adsiUser.Properties['distinguishedName'].Count -gt 0) {
+                $userDistinguishedName = [string]$adsiUser.Properties['distinguishedName'][0]
+            }
+        }
+        catch { }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($userDomainDns) -and $userDistinguishedName) {
+        $userDomainDns = (($userDistinguishedName -split ',') | Where-Object { $_ -like 'DC=*' } | ForEach-Object {
+            $_.Substring(3)
+        }) -join '.'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($userPrincipalName)) {
+        if (-not [string]::IsNullOrWhiteSpace($userDomainDns) -and -not [string]::IsNullOrWhiteSpace($samAccountName)) {
+            $userPrincipalName = "$samAccountName@$userDomainDns"
+        } else {
+            $userPrincipalName = $accountName
+        }
+    }
+
+    $computerName = $env:COMPUTERNAME
+    $machineDomain = $null
+    $fqdn = $computerName
+    try {
+        $ipProps = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties()
+        if (-not [string]::IsNullOrWhiteSpace($ipProps.DomainName)) {
+            $machineDomain = $ipProps.DomainName
+            $fqdn = "$computerName.$machineDomain"
+        }
+    }
+    catch { }
+
+    if ([string]::IsNullOrWhiteSpace($machineDomain)) {
+        try {
+            $machineDomain = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).Domain
+        }
+        catch { }
+    }
+
+    if ($fqdn -eq $computerName) {
+        try {
+            $fqdn = [System.Net.Dns]::GetHostEntry($computerName).HostName
+        }
+        catch { }
+    }
+
+    $operatingSystem = [System.Environment]::OSVersion.VersionString
+    try {
+        $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        if ($osInfo.Caption) {
+            $operatingSystem = $osInfo.Caption
+        }
+    }
+    catch { }
+
+    return @{
+        User = [PSCustomObject]@{
+            DomainNetBIOS     = $domainNetBIOS
+            DomainDns         = $userDomainDns
+            SamAccountName    = $samAccountName
+            UserPrincipalName = $userPrincipalName
+            SID               = $userSid
+        }
+        Machine = [PSCustomObject]@{
+            ComputerName     = $computerName
+            FQDN             = $fqdn
+            Domain           = $machineDomain
+            OperatingSystem  = $operatingSystem
+            PowerShell       = $PSVersionTable.PSVersion.ToString()
+        }
+    }
+}
+
+function Write-MATIExecutionContext {
+    param(
+        [hashtable]$MATIContext,
+        [string]$Header = '  [~] Execution context...'
+    )
+
+    if (-not $MATIContext) {
+        return
+    }
+
+    Write-Host $Header -ForegroundColor Yellow
+
+    if ($MATIContext.User) {
+        Write-Host "    User domain   : $($MATIContext.User.DomainNetBIOS) / $($MATIContext.User.DomainDns)" -ForegroundColor White
+        Write-Host "    SamAccountName: $($MATIContext.User.SamAccountName)" -ForegroundColor White
+        Write-Host "    UPN           : $($MATIContext.User.UserPrincipalName)" -ForegroundColor White
+    }
+
+    if ($MATIContext.Machine) {
+        Write-Host "    Computer name : $($MATIContext.Machine.ComputerName)" -ForegroundColor White
+        Write-Host "    FQDN          : $($MATIContext.Machine.FQDN)" -ForegroundColor White
+        Write-Host "    Machine domain: $($MATIContext.Machine.Domain)" -ForegroundColor White
+        Write-Host "    OS            : $($MATIContext.Machine.OperatingSystem)" -ForegroundColor White
+    }
 }
 
 # ==================================================================
@@ -78,6 +219,7 @@ $matiVersion = if (Test-Path $configFile) { (Import-PowerShellDataFile $configFi
 Write-Host $banner -ForegroundColor Cyan
 Write-Host "    v$matiVersion | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor DarkGray
 Write-Host "    $('-' * 50)" -ForegroundColor DarkGray
+$script:MATICurrentLogonForest = Get-MATICurrentLogonForestName
 
 # ==================================================================
 # 0.01 PowerShell version check
@@ -93,14 +235,43 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
 Write-Host ""
 
 # ==================================================================
-# 0.02 Permission prerequisite check
+# 0.02 PowerShell elevation check
+# ==================================================================
+Write-Host "  [~] Checking PowerShell elevation..." -ForegroundColor Yellow
+$isLocalAdmin = $false
+try {
+    $currentIdentity  = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $currentPrincipal = [System.Security.Principal.WindowsPrincipal]::new($currentIdentity)
+    $isLocalAdmin = $currentPrincipal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if ($isLocalAdmin) {
+        Write-Host "    [OK] PowerShell session is running as Administrator" -ForegroundColor Green
+    } else {
+        Write-Host "    [!!] PowerShell session is NOT running as Administrator" -ForegroundColor Yellow
+        Write-Host "         Some local and remote checks may return partial results." -ForegroundColor Yellow
+
+        $continueChoice = Read-Host "    Continue anyway without elevation? [Y/N]"
+        if ($continueChoice.Trim().ToUpper() -ne 'Y') {
+            Write-Host "    Exiting MATI. Please re-run PowerShell with 'Run as Administrator'." -ForegroundColor Cyan
+            return
+        }
+
+        Write-Host "    [!] Continuing without elevation - results may be incomplete." -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "    [!] Could not verify PowerShell elevation: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "    [!] Continuing - local privilege-dependent checks may fail." -ForegroundColor Yellow
+}
+Write-Host ""
+
+# ==================================================================
+# 0.03 Permission prerequisite check
 # ==================================================================
 Write-Host "  [~] Checking permissions..." -ForegroundColor Yellow
 try {
     $currentIdentity  = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $currentPrincipal = [System.Security.Principal.WindowsPrincipal]::new($currentIdentity)
     $tokenGroupSids = $currentIdentity.Groups | ForEach-Object { $_.Value }
-    $isLocalAdmin = $currentPrincipal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     $isDomainAdmin     = $tokenGroupSids | Where-Object { $_ -match '-512$' }
     $isEnterpriseAdmin = $tokenGroupSids | Where-Object { $_ -match '-519$' }
     $forest        = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
@@ -148,7 +319,18 @@ try {
 Write-Host ""
 
 # ==================================================================
-# 0.03 Define Threat Detection function
+# 0.04 Execution context
+# ==================================================================
+try {
+    $script:MATIExecutionContext = Get-MATIExecutionContext -Identity $currentIdentity
+    Write-MATIExecutionContext -MATIContext $script:MATIExecutionContext -Header '  [~] Capturing execution context...'
+} catch {
+    Write-Host "  [!] Could not capture execution context: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+Write-Host ""
+
+# ==================================================================
+# 0.05 Define Threat Detection function
 # ==================================================================
 function Invoke-MATIThreatDetection {
     $global:MATIMode = 'ThreatDetection'
@@ -177,52 +359,79 @@ function Invoke-MATIThreatDetection {
     # Initialize engine
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $ctx = Initialize-MATIEngine -RootPath $RootPath -ConfigPath $ConfigPath -TargetForest $selectedTargetForest
+    $ctx.ExecutionContext = if ($script:MATIExecutionContext) { $script:MATIExecutionContext } else { Get-MATIExecutionContext }
+    $ctx.Config['_ExecutionContext'] = $ctx.ExecutionContext
 
-    # Apply runtime filters
-    if ($CategoriesOnly) {
-        $ctx.Rules = [System.Collections.Generic.List[hashtable]]@(
-            $ctx.Rules | Where-Object { $_['_Category'] -in $CategoriesOnly }
-        )
-        Write-Host "  [~] Filtered to categories: $($CategoriesOnly -join ', ')" -ForegroundColor Yellow
+    $transcriptPath = Join-Path $ctx.OutputRoot 'MATI.transcript.txt'
+    $transcriptStarted = $false
+
+    try {
+        try {
+            Start-Transcript -Path $transcriptPath -Force -IncludeInvocationHeader -ErrorAction Stop | Out-Null
+            $transcriptStarted = $true
+            Write-Host "  [+] Transcript started: $transcriptPath" -ForegroundColor Green
+            Write-MATIExecutionContext -MATIContext $ctx.ExecutionContext -Header '  [~] Execution context recorded in transcript...'
+        } catch {
+            Write-Warning "  [!] Could not start transcript: $($_.Exception.Message)"
+        }
+
+        # Apply runtime filters
+        if ($CategoriesOnly) {
+            $ctx.Rules = [System.Collections.Generic.List[hashtable]]@(
+                $ctx.Rules | Where-Object { $_['_Category'] -in $CategoriesOnly }
+            )
+            Write-Host "  [~] Filtered to categories: $($CategoriesOnly -join ', ')" -ForegroundColor Yellow
+        }
+        if ($RulesOnly) {
+            $ctx.Rules = [System.Collections.Generic.List[hashtable]]@(
+                $ctx.Rules | Where-Object { $_.Id -in $RulesOnly }
+            )
+            Write-Host "  [~] Filtered to rules: $($RulesOnly -join ', ')" -ForegroundColor Yellow
+        }
+
+        # Run collectors
+        Invoke-MATICollectors -EngineContext $ctx
+
+        # Execute rules
+        Invoke-MATIRules -EngineContext $ctx
+
+        # Calculate score
+        $score = Get-MATIScore -EngineContext $ctx
+
+        # Generate reports
+        if (-not $NoReport) {
+            ConvertTo-MATIReport -EngineContext $ctx
+        }
+
+        # Save score history
+        if (-not $NoHistory) {
+            Save-MATIScoreHistory -EngineContext $ctx
+            Write-Host "  [+] Score history updated.`n" -ForegroundColor Green
+        }
+
+        # Final summary
+        $sw.Stop()
+        Write-Host "================================================================" -ForegroundColor Cyan
+        Write-Host "  MATI Assessment Complete" -ForegroundColor Cyan
+        Write-Host "================================================================" -ForegroundColor Cyan
+        Write-Host "  Score     : $($score.Score) / $($score.BaseScore)  (Grade: $($score.Grade))" -ForegroundColor White
+        Write-Host "  Findings  : $($score.TotalFindings)" -ForegroundColor White
+        Write-Host "  Forest    : $($ctx.Config['_TargetForest'])" -ForegroundColor White
+        Write-Host "  Duration  : $([math]::Round($sw.Elapsed.TotalSeconds, 1))s" -ForegroundColor White
+        Write-Host "  Output    : $($ctx.OutputRoot)" -ForegroundColor White
+        Write-Host "  Transcript: $transcriptPath" -ForegroundColor White
+        Write-Host "================================================================`n" -ForegroundColor Cyan
     }
-    if ($RulesOnly) {
-        $ctx.Rules = [System.Collections.Generic.List[hashtable]]@(
-            $ctx.Rules | Where-Object { $_.Id -in $RulesOnly }
-        )
-        Write-Host "  [~] Filtered to rules: $($RulesOnly -join ', ')" -ForegroundColor Yellow
+    finally {
+        if ($transcriptStarted) {
+            try {
+                Stop-Transcript | Out-Null
+                Write-Host "  [+] Transcript saved: $transcriptPath`n" -ForegroundColor Green
+            } catch {
+                Write-Warning "  [!] Could not stop transcript cleanly: $($_.Exception.Message)"
+            }
+        }
     }
-
-    # Run collectors
-    Invoke-MATICollectors -EngineContext $ctx
-
-    # Execute rules
-    Invoke-MATIRules -EngineContext $ctx
-
-    # Calculate score
-    $score = Get-MATIScore -EngineContext $ctx
-
-    # Generate reports
-    if (-not $NoReport) {
-        ConvertTo-MATIReport -EngineContext $ctx
-    }
-
-    # Save score history
-    if (-not $NoHistory) {
-        Save-MATIScoreHistory -EngineContext $ctx
-        Write-Host "  [+] Score history updated.`n" -ForegroundColor Green
-    }
-
-    # Final summary
-    $sw.Stop()
-    Write-Host "================================================================" -ForegroundColor Cyan
-    Write-Host "  MATI Assessment Complete" -ForegroundColor Cyan
-    Write-Host "================================================================" -ForegroundColor Cyan
-    Write-Host "  Score     : $($score.Score) / $($score.BaseScore)  (Grade: $($score.Grade))" -ForegroundColor White
-    Write-Host "  Findings  : $($score.TotalFindings)" -ForegroundColor White
-    Write-Host "  Forest    : $($ctx.Config['_TargetForest'])" -ForegroundColor White
-    Write-Host "  Duration  : $([math]::Round($sw.Elapsed.TotalSeconds, 1))s" -ForegroundColor White
-    Write-Host "  Output    : $($ctx.OutputRoot)" -ForegroundColor White
-    Write-Host "================================================================`n" -ForegroundColor Cyan
 }
 
 # ==================================================================
