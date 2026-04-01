@@ -11,6 +11,22 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
+function Write-Banner {
+    param(
+        [string]$Title,
+        [string]$Subtitle
+    )
+
+    $line = ('=' * 78)
+    Write-Host ''
+    Write-Host $line -ForegroundColor DarkCyan
+    Write-Host ('  {0}' -f $Title) -ForegroundColor Cyan
+    if (-not [string]::IsNullOrWhiteSpace($Subtitle)) {
+        Write-Host ('  {0}' -f $Subtitle) -ForegroundColor DarkGray
+    }
+    Write-Host $line -ForegroundColor DarkCyan
+}
+
 function Write-Section {
     param(
         [string]$Title,
@@ -19,6 +35,162 @@ function Write-Section {
 
     Write-Host ""
     Write-Host $Title -ForegroundColor $Color
+}
+
+function Write-Step {
+    param(
+        [int]$Number,
+        [string]$Title,
+        [string]$Hint
+    )
+
+    Write-Host ''
+    Write-Host ('[{0}/4] {1}' -f $Number, $Title) -ForegroundColor Yellow
+    if (-not [string]::IsNullOrWhiteSpace($Hint)) {
+        Write-Host ('      {0}' -f $Hint) -ForegroundColor DarkGray
+    }
+}
+
+function Write-StatusLine {
+    param(
+        [string]$Label,
+        [string]$Value,
+        [ConsoleColor]$Color = 'Gray'
+    )
+
+    Write-Host ('  - {0}: ' -f $Label) -NoNewline -ForegroundColor DarkGray
+    Write-Host $Value -ForegroundColor $Color
+}
+
+function Write-TaskMessage {
+    param(
+        [string]$Message,
+        [ConsoleColor]$Color = 'Gray'
+    )
+
+    Write-Host ('    > {0}' -f $Message) -ForegroundColor $Color
+}
+
+function Get-ExecutionContext {
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $userName = $identity.Name
+    $computerName = $env:COMPUTERNAME
+    $fqdn = $computerName
+    $osCaption = [System.Environment]::OSVersion.VersionString
+
+    try {
+        $ipProps = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties()
+        if (-not [string]::IsNullOrWhiteSpace($ipProps.DomainName)) {
+            $fqdn = '{0}.{1}' -f $computerName, $ipProps.DomainName
+        }
+    } catch {
+    }
+
+    try {
+        $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        if ($osInfo.Caption) {
+            $osCaption = $osInfo.Caption
+        }
+    } catch {
+    }
+
+    return [PSCustomObject]@{
+        User = $userName
+        ComputerName = $computerName
+        FQDN = $fqdn
+        OS = $osCaption
+        PowerShell = $PSVersionTable.PSVersion.ToString()
+        StartedAt = Get-Date
+    }
+}
+
+function Get-DirectorySnapshot {
+    param(
+        [string]$DomainDn
+    )
+
+    $snapshot = [ordered]@{
+        Users = 'n/a'
+        Computers = 'n/a'
+        Groups = 'n/a'
+    }
+
+    try {
+        $snapshot.Users = [string]((Get-ADUser -Filter * -SearchBase $DomainDn -ResultSetSize $null -ErrorAction Stop | Measure-Object).Count)
+    } catch {
+    }
+
+    try {
+        $snapshot.Computers = [string]((Get-ADComputer -Filter * -SearchBase $DomainDn -ResultSetSize $null -ErrorAction Stop | Measure-Object).Count)
+    } catch {
+    }
+
+    try {
+        $snapshot.Groups = [string]((Get-ADGroup -Filter * -SearchBase $DomainDn -ResultSetSize $null -ErrorAction Stop | Measure-Object).Count)
+    } catch {
+    }
+
+    return [PSCustomObject]$snapshot
+}
+
+function Write-ContextBlock {
+    param(
+        [string]$Title,
+        [hashtable]$Items
+    )
+
+    Write-Host ''
+    Write-Host ('  {0}' -f $Title) -ForegroundColor Yellow
+    foreach ($key in $Items.Keys) {
+        Write-StatusLine -Label $key -Value ([string]$Items[$key]) -Color White
+    }
+}
+
+function Write-MetricDashboard {
+    param(
+        [object[]]$Items,
+        [int]$Columns = 3,
+        [int]$Width = 24
+    )
+
+    if (-not $Items -or $Items.Count -eq 0) {
+        return
+    }
+
+    for ($index = 0; $index -lt $Items.Count; $index += $Columns) {
+        $chunk = @($Items[$index..([Math]::Min($index + $Columns - 1, $Items.Count - 1))])
+
+        foreach ($item in $chunk) {
+            Write-Host ('+{0}+' -f ('-' * $Width)) -NoNewline -ForegroundColor DarkCyan
+            Write-Host '  ' -NoNewline
+        }
+        Write-Host ''
+
+        foreach ($item in $chunk) {
+            $label = [string]$item.Label
+            if ($label.Length -gt $Width) { $label = $label.Substring(0, $Width) }
+            Write-Host ('|{0}|' -f $label.PadRight($Width)) -NoNewline -ForegroundColor DarkGray
+            Write-Host '  ' -NoNewline
+        }
+        Write-Host ''
+
+        foreach ($item in $chunk) {
+            $value = [string]$item.Value
+            if ($value.Length -gt $Width) { $value = $value.Substring(0, $Width) }
+            Write-Host '|' -NoNewline -ForegroundColor DarkCyan
+            Write-Host ($value.PadRight($Width)) -NoNewline -ForegroundColor $item.Color
+            Write-Host '|' -NoNewline -ForegroundColor DarkCyan
+            Write-Host '  ' -NoNewline
+        }
+        Write-Host ''
+
+        foreach ($item in $chunk) {
+            Write-Host ('+{0}+' -f ('-' * $Width)) -NoNewline -ForegroundColor DarkCyan
+            Write-Host '  ' -NoNewline
+        }
+        Write-Host ''
+        Write-Host ''
+    }
 }
 
 function HtmlEncode {
@@ -165,9 +337,11 @@ function Get-KdcDefaultAudit {
 
     $rows = New-Object System.Collections.Generic.List[object]
     foreach ($dc in $Dcs) {
+        Write-TaskMessage -Message ("Querying KDC default on {0}" -f $dc) -Color DarkGray
         try {
             $rawResult = Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ErrorAction Stop
             $status = Get-KdcDefaultStatus -Value $rawResult.RawValue
+            Write-TaskMessage -Message ("{0} -> {1}" -f $rawResult.Computer, $status) -Color $(if ($status -like 'Compliant*') { 'Green' } else { 'Yellow' })
             $rows.Add([PSCustomObject]@{
                 Computer = $rawResult.Computer
                 RawValue = if ($null -ne $rawResult.RawValue) { '0x{0:X}' -f [int]$rawResult.RawValue } else { '(absent)' }
@@ -176,6 +350,7 @@ function Get-KdcDefaultAudit {
                 RegistryPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc\DefaultDomainSupportedEncTypes'
             }) | Out-Null
         } catch {
+            Write-TaskMessage -Message ("{0} -> failed to query registry" -f $dc) -Color Red
             $rows.Add([PSCustomObject]@{
                 Computer = $dc
                 RawValue = '(n/a)'
@@ -194,7 +369,9 @@ function Get-AccountKerberosAudit {
 
     $userProps = @('msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'userAccountControl', 'pwdLastSet', 'lastLogonDate', 'distinguishedName')
 
+    Write-TaskMessage -Message 'Enumerating AD users...' -Color DarkGray
     $users = @(Get-ADUser -Filter * -Properties $userProps -ErrorAction Stop)
+    Write-TaskMessage -Message ("Users loaded: {0}" -f $users.Count) -Color Green
     foreach ($user in $users) {
         $encValue = if ($null -ne $user.'msDS-SupportedEncryptionTypes') { [int]$user.'msDS-SupportedEncryptionTypes' } else { $null }
         $rows.Add([PSCustomObject]@{
@@ -214,7 +391,9 @@ function Get-AccountKerberosAudit {
     }
 
     $computerProps = @('msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'userAccountControl', 'pwdLastSet', 'lastLogonDate', 'distinguishedName', 'dNSHostName')
+    Write-TaskMessage -Message 'Enumerating AD computers...' -Color DarkGray
     $computers = @(Get-ADComputer -Filter * -Properties $computerProps -ErrorAction Stop)
+    Write-TaskMessage -Message ("Computers loaded: {0}" -f $computers.Count) -Color Green
     foreach ($computer in $computers) {
         $encValue = if ($null -ne $computer.'msDS-SupportedEncryptionTypes') { [int]$computer.'msDS-SupportedEncryptionTypes' } else { $null }
         $rows.Add([PSCustomObject]@{
@@ -234,7 +413,9 @@ function Get-AccountKerberosAudit {
     }
 
     try {
+        Write-TaskMessage -Message 'Enumerating managed service accounts...' -Color DarkGray
         $serviceAccounts = @(Get-ADServiceAccount -Filter * -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop)
+        Write-TaskMessage -Message ("Managed service accounts loaded: {0}" -f $serviceAccounts.Count) -Color Green
         foreach ($serviceAccount in $serviceAccounts) {
             $encValue = if ($null -ne $serviceAccount.'msDS-SupportedEncryptionTypes') { [int]$serviceAccount.'msDS-SupportedEncryptionTypes' } else { $null }
             $rows.Add([PSCustomObject]@{
@@ -253,7 +434,7 @@ function Get-AccountKerberosAudit {
             }) | Out-Null
         }
     } catch {
-        Write-Host "[WARN] Get-ADServiceAccount failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-TaskMessage -Message ("Managed service account enumeration failed: {0}" -f $_.Exception.Message) -Color Yellow
     }
 
     return $rows
@@ -266,8 +447,8 @@ function Get-KerberosEventAudit {
         [int]$MaxEvents
     )
 
-    $rawEvents = New-Object System.Collections.Generic.List[object]
-    $errors = New-Object System.Collections.Generic.List[string]
+    $rawEvents = @()
+    $errors = @()
 
     $remoteScript = {
         param([int]$HoursBack, [int]$MaxEventsPerDc)
@@ -325,16 +506,20 @@ function Get-KerberosEventAudit {
     }
 
     foreach ($dc in $Dcs) {
+        Write-TaskMessage -Message ("Collecting 4768/4769 from {0}" -f $dc) -Color DarkGray
         try {
-            @(Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ArgumentList $LookbackHours, $MaxEvents -ErrorAction Stop) | ForEach-Object {
-                $rawEvents.Add($_) | Out-Null
+            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ArgumentList $LookbackHours, $MaxEvents -ErrorAction Stop)
+            if ($dcEvents.Count -gt 0) {
+                $rawEvents += $dcEvents
             }
+            Write-TaskMessage -Message ("{0} -> {1} event(s) collected" -f $dc, $dcEvents.Count) -Color Green
         } catch {
-            $errors.Add("Failed to collect 4768/4769 from ${dc}: $($_.Exception.Message)") | Out-Null
+            $errors += "Failed to collect 4768/4769 from ${dc}: $($_.Exception.Message)"
+            Write-TaskMessage -Message ("{0} -> collection failed" -f $dc) -Color Yellow
         }
     }
 
-    foreach ($item in $rawEvents) {
+    foreach ($item in @($rawEvents)) {
         Add-Member -InputObject $item -MemberType NoteProperty -Name EncType -Value (Get-EncTypeLabel -Value $item.EncHex) -Force
         Add-Member -InputObject $item -MemberType NoteProperty -Name ClientSupportsAES -Value ([bool]($item.ClientAdvertizedEncryption -match 'AES')) -Force
         Add-Member -InputObject $item -MemberType NoteProperty -Name ServiceHasAESKeys -Value ([bool]($item.ServiceAvailableKeys -match 'AES')) -Force
@@ -344,8 +529,8 @@ function Get-KerberosEventAudit {
     }
 
     return [PSCustomObject]@{
-        RawEvents = $rawEvents
-        Errors = $errors
+        RawEvents = @($rawEvents)
+        Errors = @($errors)
     }
 }
 
@@ -489,11 +674,17 @@ function New-HtmlReport {
         $badgeClass = Get-StatusBadgeClass -Status $kpi.Status
         $summaryRows += "<tr><td>$(HtmlEncode $kpi.Name)</td><td style='font-weight:700;'>$(HtmlEncode ([string]$kpi.Value))</td><td>$(HtmlEncode ([string]$kpi.Target))</td><td><span class='badge $badgeClass'>$(HtmlEncode $kpi.Status)</span></td></tr>`n"
     }
+    if ([string]::IsNullOrWhiteSpace($summaryRows)) {
+        $summaryRows = "<tr><td colspan='4' class='empty'>No KPI data available.</td></tr>"
+    }
 
     $kdcRows = ''
     foreach ($row in $Results.KdcDefaults) {
         $badgeClass = Get-StatusBadgeClass -Status $row.Status
         $kdcRows += "<tr><td>$(HtmlEncode $row.Computer)</td><td>$(HtmlEncode $row.RawValue)</td><td>$(HtmlEncode $row.Decoded)</td><td><span class='badge $badgeClass'>$(HtmlEncode $row.Status)</span></td></tr>`n"
+    }
+    if ([string]::IsNullOrWhiteSpace($kdcRows)) {
+        $kdcRows = "<tr><td colspan='4' class='empty'>No KDC data collected.</td></tr>"
     }
 
     $priorityRows = ''
@@ -501,16 +692,25 @@ function New-HtmlReport {
         $badgeClass = Get-StatusBadgeClass -Status $row.Status
         $priorityRows += "<tr><td>$(HtmlEncode $row.Name)</td><td>$(HtmlEncode $row.Category)</td><td>$($row.Enabled)</td><td>$($row.HasSPN)</td><td>$(HtmlEncode $row.EncHex)</td><td>$(HtmlEncode $row.Flags)</td><td><span class='badge $badgeClass'>$(HtmlEncode $row.Status)</span></td></tr>`n"
     }
+    if ([string]::IsNullOrWhiteSpace($priorityRows)) {
+        $priorityRows = "<tr><td colspan='7' class='empty'>No priority accounts identified.</td></tr>"
+    }
 
     $accountStatusRows = ''
     foreach ($row in $Results.AccountStatusSummary) {
         $badgeClass = Get-StatusBadgeClass -Status $row.Status
         $accountStatusRows += "<tr><td>$(HtmlEncode $row.Category)</td><td><span class='badge $badgeClass'>$(HtmlEncode $row.Status)</span></td><td style='font-weight:700;'>$($row.Count)</td></tr>`n"
     }
+    if ([string]::IsNullOrWhiteSpace($accountStatusRows)) {
+        $accountStatusRows = "<tr><td colspan='3' class='empty'>No account summary available.</td></tr>"
+    }
 
     $breakdownRows = ''
     foreach ($row in $Results.TicketBreakdownByType) {
         $breakdownRows += "<tr><td>$(HtmlEncode $row.TicketType)</td><td>$(HtmlEncode $row.EncType)</td><td style='font-weight:700;'>$($row.Events)</td></tr>`n"
+    }
+    if ([string]::IsNullOrWhiteSpace($breakdownRows)) {
+        $breakdownRows = "<tr><td colspan='3' class='empty'>No Kerberos ticket events were collected for the selected window.</td></tr>"
     }
 
     $globalRows = ''
@@ -518,16 +718,25 @@ function New-HtmlReport {
         $badgeClass = if ($row.EncType -eq 'RC4-HMAC') { 'fail' } elseif ($row.EncType -like 'AES*') { 'pass' } else { 'info' }
         $globalRows += "<tr><td>$(HtmlEncode $row.EncType)</td><td style='font-weight:700;'>$($row.Events)</td><td>$($row.Percent)%</td><td><span class='badge $badgeClass'>$(HtmlEncode $row.EncType)</span></td></tr>`n"
     }
+    if ([string]::IsNullOrWhiteSpace($globalRows)) {
+        $globalRows = "<tr><td colspan='4' class='empty'>No global ticket distribution available.</td></tr>"
+    }
 
     $rc4AccountRows = ''
     foreach ($row in $Results.Rc4RequestorAccounts) {
         $rc4AccountRows += "<tr><td>$(HtmlEncode $row.Account)</td><td style='font-weight:700;'>$($row.Events)</td><td>$(HtmlEncode $row.EncHex)</td><td>$(HtmlEncode $row.Status)</td></tr>`n"
+    }
+    if ([string]::IsNullOrWhiteSpace($rc4AccountRows)) {
+        $rc4AccountRows = "<tr><td colspan='4' class='empty'>No RC4 requestor accounts identified.</td></tr>"
     }
 
     $rc4ServiceRows = ''
     foreach ($row in $Results.Rc4TargetServices) {
         $avoidable = if ($row.AvoidableRc4Events -gt 0) { "<span class='badge fail'>$($row.AvoidableRc4Events)</span>" } else { "<span class='badge pass'>0</span>" }
         $rc4ServiceRows += "<tr><td>$(HtmlEncode $row.Service)</td><td>$(HtmlEncode $row.SamAccountName)</td><td style='font-weight:700;'>$($row.Events)</td><td>$avoidable</td><td>$(HtmlEncode $row.EncHex)</td><td>$(HtmlEncode $row.Status)</td></tr>`n"
+    }
+    if ([string]::IsNullOrWhiteSpace($rc4ServiceRows)) {
+        $rc4ServiceRows = "<tr><td colspan='6' class='empty'>No RC4 target services identified.</td></tr>"
     }
 
     $warningRows = ''
@@ -544,26 +753,29 @@ function New-HtmlReport {
     foreach ($artifact in $Results.Artifacts) {
         $artifactRows += "<tr><td>$(HtmlEncode $artifact.Type)</td><td class='mono'>$(HtmlEncode $artifact.Path)</td></tr>`n"
     }
+    if ([string]::IsNullOrWhiteSpace($artifactRows)) {
+        $artifactRows = "<tr><td colspan='2' class='empty'>No report artifacts recorded.</td></tr>"
+    }
 
     $html = @"
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Kerberos Encryption Audit Report</title>
 <style>
-:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922;--cyan:#39c5cf}
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;padding:2rem}.container{max-width:1440px;margin:0 auto}
-h1{color:var(--accent);font-size:2rem;margin-bottom:.5rem}h2{color:var(--accent);font-size:1.35rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}.subtitle{color:#8b949e;font-size:.92rem;margin-bottom:2rem}
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}.advisory{background:#0a2540;border:1px solid var(--cyan);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1.5rem}.advisory strong{color:var(--cyan)}
-table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:#21262d;color:var(--accent);padding:10px 12px;text-align:left;font-weight:600}td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}tr:hover{background:#1c2128}
-.badge{padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600;display:inline-block}.badge.pass{background:#0d2818;color:var(--green)}.badge.warn{background:#2d2000;color:var(--yellow)}.badge.fail{background:#2d0000;color:var(--red)}.badge.info{background:#0a2540;color:var(--cyan)}
-.mono{font-family:'Cascadia Code','Consolas',monospace;font-size:.8rem}.note{color:#8b949e;font-style:italic;font-size:.85rem;margin:.5rem 0}
-.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.5rem}.summary-metric{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.2rem 1rem;text-align:center}.summary-metric .metric-value{font-size:2.1rem;font-weight:700;line-height:1.1}.summary-metric .metric-label{color:#8b949e;font-size:.78rem;margin-top:.3rem;text-transform:uppercase;letter-spacing:.5px}
-.section-nav{position:sticky;top:0;background:var(--bg);padding:.5rem 0;z-index:100;border-bottom:1px solid var(--border);margin-bottom:1.5rem}.section-nav a{color:var(--accent);text-decoration:none;margin-right:1.2rem;font-size:.85rem}
-.steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}.step-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.2rem;display:flex;gap:1rem;align-items:flex-start}.step-number{background:var(--accent);color:var(--bg);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0}.step-text{font-size:.85rem;line-height:1.5}.step-text strong{color:var(--accent)}
-.error-alert{background:#2d0000;border:1px solid var(--red);border-radius:10px;padding:1rem 1.5rem;margin-bottom:1.5rem}.warning-alert{background:#2d2000;border:1px solid var(--yellow);border-radius:10px;padding:1rem 1.5rem;margin-bottom:1.5rem}
+:root{--bg:#09111f;--bg-soft:#0f1b2d;--card:#111c30;--card-2:#16233a;--border:#28405f;--text:#dce7f7;--muted:#93a7c4;--accent:#68c3ff;--accent-2:#8ef0c9;--green:#49d17d;--red:#ff6b6b;--yellow:#f0c45c;--cyan:#52d6ff}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',-apple-system,sans-serif;background:radial-gradient(circle at top,#173055 0%,var(--bg) 45%,#08101c 100%);color:var(--text);line-height:1.6;padding:2rem}.container{max-width:1440px;margin:0 auto}
+h1{color:#f4fbff;font-size:2.2rem;margin-bottom:.5rem;letter-spacing:-.02em}h2{color:var(--accent);font-size:1.35rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}.subtitle{color:var(--muted);font-size:.92rem;margin-bottom:0}
+.hero{background:linear-gradient(135deg,rgba(104,195,255,.2),rgba(142,240,201,.1));border:1px solid rgba(104,195,255,.28);border-radius:18px;padding:1.6rem 1.8rem;margin-bottom:1.5rem;box-shadow:0 18px 50px rgba(0,0,0,.25)}.hero p{color:var(--muted);max-width:900px}.hero strong{color:var(--accent-2)}
+.card{background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--border);border-radius:14px;padding:1.5rem;margin-bottom:1.5rem;box-shadow:0 12px 30px rgba(0,0,0,.18)}.advisory{background:rgba(82,214,255,.08);border:1px solid rgba(82,214,255,.28);border-radius:14px;padding:1rem 1.2rem;margin-bottom:1.5rem}.advisory strong{color:var(--cyan)}
+table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:rgba(255,255,255,.04);color:var(--accent);padding:10px 12px;text-align:left;font-weight:600}td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}tr:hover{background:rgba(255,255,255,.025)}
+.badge{padding:3px 9px;border-radius:999px;font-size:.75rem;font-weight:700;display:inline-block}.badge.pass{background:rgba(73,209,125,.14);color:var(--green)}.badge.warn{background:rgba(240,196,92,.14);color:var(--yellow)}.badge.fail{background:rgba(255,107,107,.14);color:var(--red)}.badge.info{background:rgba(82,214,255,.14);color:var(--cyan)}
+.mono{font-family:'Cascadia Code','Consolas',monospace;font-size:.8rem}.note{color:var(--muted);font-style:italic;font-size:.85rem;margin:.5rem 0}.empty{color:var(--muted);text-align:center;padding:1rem}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.5rem}.summary-metric{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid var(--border);border-radius:14px;padding:1.2rem 1rem;text-align:center;backdrop-filter:blur(8px)}.summary-metric .metric-value{font-size:2.2rem;font-weight:800;line-height:1.1}.summary-metric .metric-label{color:var(--muted);font-size:.78rem;margin-top:.3rem;text-transform:uppercase;letter-spacing:.6px}
+.section-nav{position:sticky;top:0;background:rgba(9,17,31,.84);backdrop-filter:blur(10px);padding:.8rem 0;z-index:100;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:1.5rem}.section-nav a{color:var(--accent);text-decoration:none;margin-right:.8rem;font-size:.85rem;padding:.45rem .7rem;border:1px solid rgba(104,195,255,.15);border-radius:999px;background:rgba(255,255,255,.02)}
+.steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}.step-card{background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--border);border-radius:14px;padding:1.2rem;display:flex;gap:1rem;align-items:flex-start}.step-number{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#08101c;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;flex-shrink:0}.step-text{font-size:.85rem;line-height:1.5}.step-text strong{color:var(--accent)}
+.error-alert{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.28);border-radius:14px;padding:1rem 1.5rem;margin-bottom:1.5rem}.warning-alert{background:rgba(240,196,92,.08);border:1px solid rgba(240,196,92,.28);border-radius:14px;padding:1rem 1.5rem;margin-bottom:1.5rem}
 </style></head><body><div class="container">
-<h1>Kerberos Encryption Audit Report</h1>
-<p class="subtitle">Domain: $(HtmlEncode $Results.DomainName) | Generated: $timestamp | Window: last $($Results.Hours) hour(s)</p>
+<div class="hero"><h1>Kerberos Encryption Audit Report</h1><p class="subtitle">Domain: $(HtmlEncode $Results.DomainName) | Generated: $timestamp | Window: last $($Results.Hours) hour(s)</p><p style="margin-top:.85rem;"><strong>Focus:</strong> correlate KDC defaults, directory encryption posture, and live Kerberos ticket behavior to spot RC4 that still matters.</p></div>
 <nav class="section-nav"><a href="#summary">Summary</a><a href="#kdc">KDC Default</a><a href="#accounts">Accounts</a><a href="#tickets">Tickets</a><a href="#rc4">RC4 Hotspots</a><a href="#artifacts">Artifacts</a>$(if($warningCount -gt 0){'<a href="#warnings" style="color:var(--yellow);">Warnings</a>'})$(if($errorCount -gt 0){'<a href="#errors" style="color:var(--red);">Errors</a>'})<a href="#nextsteps">Next Steps</a></nav>
 
 <div id="summary"><h2>Summary</h2>
@@ -613,6 +825,7 @@ if (-not (Test-Path -Path $OutputDir)) {
 
 try {
     $domain = Get-ADDomain -ErrorAction Stop
+    $forest = Get-ADForest -ErrorAction Stop
     $rootDse = Get-ADRootDSE -ErrorAction Stop
 } catch {
     throw "Active Directory discovery failed: $($_.Exception.Message)"
@@ -622,9 +835,13 @@ if (-not $DomainControllers -or $DomainControllers.Count -eq 0) {
     $DomainControllers = @(Get-ADDomainController -Filter * | Sort-Object HostName | Select-Object -ExpandProperty HostName)
 }
 
+$runtimeContext = Get-ExecutionContext
+$directorySnapshot = Get-DirectorySnapshot -DomainDn $domain.DistinguishedName
+
 $results = @{
     DomainName = $domain.DNSRoot
     DomainDistinguishedName = $domain.DistinguishedName
+    ForestName = $forest.Name
     ConfigurationNamingContext = [string]$rootDse.configurationNamingContext
     Hours = $Hours
     DomainControllers = $DomainControllers
@@ -643,16 +860,42 @@ $results = @{
     AvoidableRc4Tgs = 0
 }
 
-Write-Section -Title '=== Kerberos Encryption Audit ==='
-Write-Host ("Domain: {0}" -f $results.DomainName) -ForegroundColor DarkGray
-Write-Host ("Output: {0}" -f $OutputDir) -ForegroundColor DarkGray
+Clear-Host
+Write-Banner -Title 'Kerberos Encryption Audit' -Subtitle 'Correlating KDC defaults, AD account crypto posture, and live ticket behavior'
+Write-ContextBlock -Title 'Execution context' -Items ([ordered]@{
+    'Started at' = $runtimeContext.StartedAt.ToString('yyyy-MM-dd HH:mm:ss')
+    'User' = $runtimeContext.User
+    'Computer' = $runtimeContext.ComputerName
+    'FQDN' = $runtimeContext.FQDN
+    'Operating system' = $runtimeContext.OS
+    'PowerShell' = $runtimeContext.PowerShell
+})
+Write-ContextBlock -Title 'Directory context' -Items ([ordered]@{
+    'Forest' = $forest.Name
+    'Domain' = $results.DomainName
+    'NetBIOS name' = $domain.NetBIOSName
+    'Domain mode' = [string]$domain.DomainMode
+    'Forest mode' = [string]$forest.ForestMode
+    'Domain DN' = $domain.DistinguishedName
+})
+Write-ContextBlock -Title 'Launch snapshot' -Items ([ordered]@{
+    'Users' = $directorySnapshot.Users
+    'Computers' = $directorySnapshot.Computers
+    'Groups' = $directorySnapshot.Groups
+    'Lookback window' = ("{0} hour(s)" -f $Hours)
+    'Output folder' = $OutputDir
+    'CSV export' = $(if ($ExportCsv) { 'Enabled' } else { 'Disabled' })
+    'Auto-open report' = $(if ($OpenReport) { 'Enabled' } else { 'Disabled' })
+    'Target DCs' = [string]$DomainControllers.Count
+})
+Write-StatusLine -Label 'Domain controllers' -Value ($DomainControllers -join ', ') -Color Gray
 
-Write-Section -Title '=== Step 1/4 - KDC default audit ===' -Color Yellow
+Write-Step -Number 1 -Title 'KDC default audit' -Hint 'Checking DefaultDomainSupportedEncTypes on each domain controller'
 $kdcDefaults = Get-KdcDefaultAudit -Dcs $DomainControllers
 $kdcDefaults | ForEach-Object { $results.KdcDefaults.Add($_) | Out-Null }
-Write-Host ("DCs audited: {0}" -f $results.KdcDefaults.Count) -ForegroundColor Green
+Write-StatusLine -Label 'DCs audited' -Value ([string]$results.KdcDefaults.Count) -Color Green
 
-Write-Section -Title '=== Step 2/4 - Account encryption capability audit ===' -Color Yellow
+Write-Step -Number 2 -Title 'Account encryption capability audit' -Hint 'Inventorying users, computers, and managed service accounts'
 try {
     $accountRows = @(Get-AccountKerberosAudit)
 } catch {
@@ -679,13 +922,20 @@ $priorityAccounts = $accountRows |
     Sort-Object Status, Category, Name
 
 $priorityAccounts | ForEach-Object { $results.PriorityAccounts.Add($_) | Out-Null }
-Write-Host ("Priority accounts: {0}" -f $results.PriorityAccounts.Count) -ForegroundColor $(if ($results.PriorityAccounts.Count -gt 0) { 'Yellow' } else { 'Green' })
+Write-StatusLine -Label 'Accounts analyzed' -Value ([string]$accountRows.Count) -Color Green
+Write-StatusLine -Label 'Priority accounts' -Value ([string]$results.PriorityAccounts.Count) -Color $(if ($results.PriorityAccounts.Count -gt 0) { 'Yellow' } else { 'Green' })
 
-Write-Section -Title '=== Step 3/4 - Kerberos event log audit ===' -Color Yellow
+Write-Step -Number 3 -Title 'Kerberos event log audit' -Hint 'Collecting 4768 and 4769 from DC Security logs'
 $eventAudit = Get-KerberosEventAudit -Dcs $DomainControllers -LookbackHours $Hours -MaxEvents $MaxEventsPerDc
 $eventAudit.Errors | ForEach-Object { $results.Errors.Add($_) | Out-Null }
 
-$events = @($eventAudit.RawEvents)
+$events = if ($eventAudit -and $null -ne $eventAudit.RawEvents) { @($eventAudit.RawEvents) } else { @() }
+$events = @($events | Where-Object { $null -ne $_ })
+
+if ($events.Count -eq 0) {
+    $results.Warnings.Add('No 4768/4769 events were collected for the selected time window. This can happen with low activity, insufficient Security log retention, or remoting/read permissions on DCs.') | Out-Null
+}
+
 $rc4Events = @($events | Where-Object { $_.EncType -eq 'RC4-HMAC' })
 $results.TotalRc4Events = $rc4Events.Count
 $results.AvoidableRc4Tgs = (@($rc4Events | Where-Object { $_.TicketType -eq 'TGS' -and $_.RC4ChosenWhileAESAvailable })).Count
@@ -746,10 +996,11 @@ foreach ($group in $rc4ServiceGroups) {
     }) | Out-Null
 }
 
-Write-Host ("Total events parsed: {0}" -f $events.Count) -ForegroundColor Green
-Write-Host ("RC4 events: {0}" -f $results.TotalRc4Events) -ForegroundColor $(if ($results.TotalRc4Events -gt 0) { 'Yellow' } else { 'Green' })
+Write-StatusLine -Label 'Total events parsed' -Value ([string]$events.Count) -Color Green
+Write-StatusLine -Label 'RC4 events' -Value ([string]$results.TotalRc4Events) -Color $(if ($results.TotalRc4Events -gt 0) { 'Yellow' } else { 'Green' })
+Write-StatusLine -Label 'Collection warnings/errors' -Value ([string]$results.Errors.Count) -Color $(if ($results.Errors.Count -gt 0) { 'Yellow' } else { 'Green' })
 
-Write-Section -Title '=== Step 4/4 - Build report ===' -Color Yellow
+Write-Step -Number 4 -Title 'Build report' -Hint 'Generating JSON and HTML output artifacts'
 
 $kdcCompliant = (@($results.KdcDefaults | Where-Object { $_.Status -like 'Compliant*' })).Count
 $spnFailed = (@($priorityAccounts | Where-Object { $_.HasSPN -and $_.Status -like 'Failed*' })).Count
@@ -792,9 +1043,25 @@ if ($ExportCsv) {
 $results | ConvertTo-Json -Depth 8 | Set-Content -Path $jsonPath -Encoding UTF8
 New-HtmlReport -Results $results -OutputPath $htmlPath
 
-Write-Host ("HTML report: {0}" -f $htmlPath) -ForegroundColor Cyan
-Write-Host ("JSON report: {0}" -f $jsonPath) -ForegroundColor Cyan
+Write-Section -Title '=== Run complete ===' -Color Green
+Write-Section -Title '=== Mini-dashboard ===' -Color Cyan
+Write-MetricDashboard -Items @(
+    [PSCustomObject]@{ Label = 'Domain'; Value = $results.DomainName; Color = 'Cyan' },
+    [PSCustomObject]@{ Label = 'DCs audited'; Value = [string]$results.KdcDefaults.Count; Color = 'Green' },
+    [PSCustomObject]@{ Label = 'Accounts analyzed'; Value = [string]$accountRows.Count; Color = 'Green' },
+    [PSCustomObject]@{ Label = 'Priority accounts'; Value = [string]$results.PriorityAccounts.Count; Color = $(if ($results.PriorityAccounts.Count -gt 0) { 'Yellow' } else { 'Green' }) },
+    [PSCustomObject]@{ Label = 'Events parsed'; Value = [string]$events.Count; Color = $(if ($events.Count -gt 0) { 'Green' } else { 'Yellow' }) },
+    [PSCustomObject]@{ Label = 'RC4 events'; Value = [string]$results.TotalRc4Events; Color = $(if ($results.TotalRc4Events -gt 0) { 'Yellow' } else { 'Green' }) },
+    [PSCustomObject]@{ Label = 'Avoidable RC4 TGS'; Value = [string]$results.AvoidableRc4Tgs; Color = $(if ($results.AvoidableRc4Tgs -gt 0) { 'Yellow' } else { 'Green' }) },
+    [PSCustomObject]@{ Label = 'Warnings'; Value = [string]$results.Warnings.Count; Color = $(if ($results.Warnings.Count -gt 0) { 'Yellow' } else { 'Green' }) },
+    [PSCustomObject]@{ Label = 'Errors'; Value = [string]$results.Errors.Count; Color = $(if ($results.Errors.Count -gt 0) { 'Yellow' } else { 'Green' }) }
+) -Columns 3 -Width 24
+Write-StatusLine -Label 'HTML report' -Value $htmlPath -Color Cyan
+Write-StatusLine -Label 'JSON report' -Value $jsonPath -Color Cyan
+Write-StatusLine -Label 'Warnings' -Value ([string]$results.Warnings.Count) -Color $(if ($results.Warnings.Count -gt 0) { 'Yellow' } else { 'Green' })
+Write-StatusLine -Label 'Errors' -Value ([string]$results.Errors.Count) -Color $(if ($results.Errors.Count -gt 0) { 'Yellow' } else { 'Green' })
 
 if ($OpenReport) {
+    Write-TaskMessage -Message 'Opening HTML report in the default browser...' -Color Cyan
     Start-Process $htmlPath
 }

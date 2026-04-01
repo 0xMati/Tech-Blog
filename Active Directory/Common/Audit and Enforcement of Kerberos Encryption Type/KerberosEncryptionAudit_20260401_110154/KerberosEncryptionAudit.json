@@ -1,0 +1,594 @@
+﻿{
+    "Hours":  24,
+    "KdcDefaults":  [
+                        {
+                            "Computer":  "MM-DC1",
+                            "RawValue":  "(absent)",
+                            "Decoded":  "(absent/0)",
+                            "Status":  "Warning (AES default, not enforced)",
+                            "RegistryPath":  "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Kdc\\DefaultDomainSupportedEncTypes"
+                        },
+                        {
+                            "Computer":  "MM-DC2",
+                            "RawValue":  "(absent)",
+                            "Decoded":  "(absent/0)",
+                            "Status":  "Warning (AES default, not enforced)",
+                            "RegistryPath":  "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Kdc\\DefaultDomainSupportedEncTypes"
+                        },
+                        {
+                            "Computer":  "MM-DC3",
+                            "RawValue":  "(absent)",
+                            "Decoded":  "(absent/0)",
+                            "Status":  "Warning (AES default, not enforced)",
+                            "RegistryPath":  "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Kdc\\DefaultDomainSupportedEncTypes"
+                        }
+                    ],
+    "AccountStatusSummary":  [
+                                 {
+                                     "Category":  "Computer",
+                                     "Status":  "Warning (AES present + RC4 allowed)",
+                                     "Count":  14
+                                 },
+                                 {
+                                     "Category":  "Computer",
+                                     "Status":  "Warning (Unset/0)",
+                                     "Count":  2
+                                 },
+                                 {
+                                     "Category":  "gMSA",
+                                     "Status":  "Compliant (AES present)",
+                                     "Count":  1
+                                 },
+                                 {
+                                     "Category":  "gMSA",
+                                     "Status":  "Warning (AES present + RC4 allowed)",
+                                     "Count":  7
+                                 },
+                                 {
+                                     "Category":  "User/Service",
+                                     "Status":  "Compliant (AES present)",
+                                     "Count":  3
+                                 },
+                                 {
+                                     "Category":  "User/Service",
+                                     "Status":  "Failed (No AES)",
+                                     "Count":  1
+                                 },
+                                 {
+                                     "Category":  "User/Service",
+                                     "Status":  "Failed (RC4-only/No AES)",
+                                     "Count":  1
+                                 },
+                                 {
+                                     "Category":  "User/Service",
+                                     "Status":  "Warning (Unset/0)",
+                                     "Count":  38
+                                 }
+                             ],
+    "Rc4TargetServices":  [
+                              {
+                                  "Service":  "svc.mimsync1",
+                                  "SamAccountName":  "svc.mimsync1",
+                                  "Events":  4,
+                                  "AvoidableRc4Events":  4,
+                                  "EncHex":  "(absent/0)",
+                                  "Status":  "Warning (Unset/0)",
+                                  "DistinguishedName":  "CN=SVC MIMSYNC1,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com"
+                              },
+                              {
+                                  "Service":  "svc.sp2016",
+                                  "SamAccountName":  "svc.sp2016",
+                                  "Events":  2,
+                                  "AvoidableRc4Events":  2,
+                                  "EncHex":  "(absent/0)",
+                                  "Status":  "Warning (Unset/0)",
+                                  "DistinguishedName":  "CN=SVC SP2016,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com"
+                              }
+                          ],
+    "Warnings":  [
+
+                 ],
+    "TicketBreakdownByType":  [
+                                  {
+                                      "TicketType":  "TGS",
+                                      "EncType":  "AES256-CTS-HMAC-SHA1-96",
+                                      "Events":  2935
+                                  },
+                                  {
+                                      "TicketType":  "TGS",
+                                      "EncType":  "RC4-HMAC",
+                                      "Events":  6
+                                  },
+                                  {
+                                      "TicketType":  "TGS",
+                                      "EncType":  "UNKNOWN (no ticket/failed ticket)",
+                                      "Events":  94
+                                  },
+                                  {
+                                      "TicketType":  "TGT",
+                                      "EncType":  "AES256-CTS-HMAC-SHA1-96",
+                                      "Events":  1132
+                                  },
+                                  {
+                                      "TicketType":  "TGT",
+                                      "EncType":  "UNKNOWN (no ticket/failed ticket)",
+                                      "Events":  1
+                                  }
+                              ],
+    "TotalRc4Events":  6,
+    "Artifacts":  [
+                      {
+                          "Type":  "HTML report",
+                          "Path":  "C:\\temp\\Outputs\\KerberosEncryptionAudit_20260401_110154\\KerberosEncryptionAudit.html"
+                      },
+                      {
+                          "Type":  "JSON report",
+                          "Path":  "C:\\temp\\Outputs\\KerberosEncryptionAudit_20260401_110154\\KerberosEncryptionAudit.json"
+                      }
+                  ],
+    "ConfigurationNamingContext":  "CN=Configuration,DC=mathiasmotron,DC=com",
+    "Rc4RequestorAccounts":  [
+                                 {
+                                     "Account":  "svc.sp2016@MATHIASMOTRON.COM",
+                                     "Events":  2,
+                                     "EncHex":  "(absent/0)",
+                                     "Status":  "Warning (Unset/0)",
+                                     "DistinguishedName":  "CN=SVC SP2016,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com"
+                                 },
+                                 {
+                                     "Account":  "MM-DC3$@MATHIASMOTRON.COM",
+                                     "Events":  2,
+                                     "EncHex":  "(unresolved)",
+                                     "Status":  "Info",
+                                     "DistinguishedName":  ""
+                                 },
+                                 {
+                                     "Account":  "MM-DC2$@MATHIASMOTRON.COM",
+                                     "Events":  2,
+                                     "EncHex":  "(unresolved)",
+                                     "Status":  "Info",
+                                     "DistinguishedName":  ""
+                                 }
+                             ],
+    "DomainControllers":  [
+                              "MM-DC1.mathiasmotron.com",
+                              "MM-DC2.mathiasmotron.com",
+                              "MM-DC3.mathiasmotron.com"
+                          ],
+    "AvoidableRc4Tgs":  6,
+    "Kpis":  [
+                 {
+                     "Name":  "DCs with AES-only KDC default",
+                     "Value":  "0/3",
+                     "Target":  "All DCs",
+                     "Status":  "Warning"
+                 },
+                 {
+                     "Name":  "SPN accounts failed (RC4 or no AES)",
+                     "Value":  2,
+                     "Target":  "0",
+                     "Status":  "Critical"
+                 },
+                 {
+                     "Name":  "SPN accounts unset",
+                     "Value":  18,
+                     "Target":  "0",
+                     "Status":  "Warning"
+                 },
+                 {
+                     "Name":  "RC4 events",
+                     "Value":  6,
+                     "Target":  "0",
+                     "Status":  "Critical"
+                 },
+                 {
+                     "Name":  "Avoidable RC4 TGS",
+                     "Value":  6,
+                     "Target":  "0",
+                     "Status":  "Critical"
+                 }
+             ],
+    "DomainDistinguishedName":  "DC=mathiasmotron,DC=com",
+    "ForestName":  "mathiasmotron.com",
+    "TicketBreakdownGlobal":  [
+                                  {
+                                      "EncType":  "AES256-CTS-HMAC-SHA1-96",
+                                      "Events":  4067,
+                                      "Percent":  97.58
+                                  },
+                                  {
+                                      "EncType":  "UNKNOWN (no ticket/failed ticket)",
+                                      "Events":  95,
+                                      "Percent":  2.28
+                                  },
+                                  {
+                                      "EncType":  "RC4-HMAC",
+                                      "Events":  6,
+                                      "Percent":  0.14
+                                  }
+                              ],
+    "DomainName":  "mathiasmotron.com",
+    "Errors":  [
+
+               ],
+    "PriorityAccounts":  [
+                             {
+                                 "Name":  "krbtgt",
+                                 "Category":  "User/Service",
+                                 "Enabled":  false,
+                                 "HasSPN":  true,
+                                 "EncValue":  327680,
+                                 "EncHex":  "0x50000",
+                                 "Flags":  "0x50000",
+                                 "Status":  "Failed (No AES)",
+                                 "DistinguishedName":  "CN=krbtgt,CN=Users,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1751540465354)\/",
+                                 "LastLogonDate":  null,
+                                 "SPNs":  "kadmin/changepw"
+                             },
+                             {
+                                 "Name":  "svc.fake",
+                                 "Category":  "User/Service",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  4,
+                                 "EncHex":  "0x4",
+                                 "Flags":  "0x4 [RC4-HMAC]",
+                                 "Status":  "Failed (RC4-only/No AES)",
+                                 "DistinguishedName":  "CN=SVC Fake,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1667080778427)\/",
+                                 "LastLogonDate":  null,
+                                 "SPNs":  "http/fakespn.mathiasmotron.com; http/fakespn"
+                             },
+                             {
+                                 "Name":  "MM-ADFS1$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-ADFS1,OU=ADFS,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1773988617333)\/",
+                                 "LastLogonDate":  "\/Date(1774562614924)\/",
+                                 "SPNs":  "WSMAN/MM-ADFS1; WSMAN/MM-ADFS1.mathiasmotron.com; TERMSRV/MM-ADFS1; TERMSRV/MM-ADFS1.mathiasmotron.com; RestrictedKrbHost/MM-ADFS1; HOST/MM-ADFS1; RestrictedKrbHost/MM-ADFS1.mathiasmotron.com; HOST/MM-ADFS1.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-APP$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-APP,OU=APPS,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1775027473743)\/",
+                                 "LastLogonDate":  "\/Date(1774269800361)\/",
+                                 "SPNs":  "Dfsr-12F9A27C-BF97-4787-9364-D31B6C55EB04/MM-APP.mathiasmotron.com; HTTP/kerberosweb.mathiasmotron.com; HTTP/kerberosweb; WSMAN/MM-APP; WSMAN/MM-APP.mathiasmotron.com; TERMSRV/MM-APP; TERMSRV/MM-APP.mathiasmotron.com; RestrictedKrbHost/MM-APP; HOST/MM-APP; RestrictedKrbHost/MM-APP.mathiasmotron.com; HOST/MM-APP.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-DC1$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-DC1,OU=Domain Controllers,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1772497867140)\/",
+                                 "LastLogonDate":  "\/Date(1774428325239)\/",
+                                 "SPNs":  "WSMAN/MM-DC1; WSMAN/MM-DC1.mathiasmotron.com; DNS/MM-DC1.mathiasmotron.com; RPC/e2d108d3-61b7-4da9-aa35-4eaea4f198d7._msdcs.mathiasmotron.com; HOST/MM-DC1/MATHIASMOTRON; HOST/MM-DC1.mathiasmotron.com/MATHIASMOTRON; GC/MM-DC1.mathiasmotron.com/mathiasmotron.com; exchangeAB/MM-DC1.mathiasmotron.com; HOST/MM-DC1.mathiasmotron.com/mathiasmotron.com; exchangeAB/MM-DC1; ldap/MM-DC1/MATHIASMOTRON; ldap/e2d108d3-61b7-4da9-aa35-4eaea4f198d7._msdcs.mathiasmotron.com; ldap/MM-DC1.mathiasmotron.com/MATHIASMOTRON; ldap/MM-DC1; ldap/MM-DC1.mathiasmotron.com; ldap/MM-DC1.mathiasmotron.com/ForestDnsZones.mathiasmotron.com; ldap/MM-DC1.mathiasmotron.com/DomainDnsZones.mathiasmotron.com; ldap/MM-DC1.mathiasmotron.com/mathiasmotron.com; E3514235-4B06-11D1-AB04-00C04FC2DCD2/e2d108d3-61b7-4da9-aa35-4eaea4f198d7/mathiasmotron.com; Dfsr-12F9A27C-BF97-4787-9364-D31B6C55EB04/MM-DC1.mathiasmotron.com; TERMSRV/MM-DC1; TERMSRV/MM-DC1.mathiasmotron.com; RestrictedKrbHost/MM-DC1; HOST/MM-DC1; RestrictedKrbHost/MM-DC1.mathiasmotron.com; HOST/MM-DC1.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-DC2$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-DC2,OU=Domain Controllers,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1772867967768)\/",
+                                 "LastLogonDate":  "\/Date(1774692982232)\/",
+                                 "SPNs":  "RPC/2d7ddbbe-3287-41c7-b041-82313060fe43._msdcs.mathiasmotron.com; GC/MM-DC2.mathiasmotron.com/mathiasmotron.com; ldap/MM-DC2/MATHIASMOTRON; ldap/2d7ddbbe-3287-41c7-b041-82313060fe43._msdcs.mathiasmotron.com; ldap/MM-DC2.mathiasmotron.com/MATHIASMOTRON; ldap/MM-DC2; ldap/MM-DC2.mathiasmotron.com; ldap/MM-DC2.mathiasmotron.com/ForestDnsZones.mathiasmotron.com; ldap/MM-DC2.mathiasmotron.com/DomainDnsZones.mathiasmotron.com; ldap/MM-DC2.mathiasmotron.com/mathiasmotron.com; E3514235-4B06-11D1-AB04-00C04FC2DCD2/2d7ddbbe-3287-41c7-b041-82313060fe43/mathiasmotron.com; exchangeAB/MM-DC2; HOST/MM-DC2.mathiasmotron.com/mathiasmotron.com; exchangeAB/MM-DC2.mathiasmotron.com; HOST/MM-DC2.mathiasmotron.com/MATHIASMOTRON; HOST/MM-DC2/MATHIASMOTRON; DNS/MM-DC2.mathiasmotron.com; Dfsr-12F9A27C-BF97-4787-9364-D31B6C55EB04/MM-DC2.mathiasmotron.com; WSMAN/MM-DC2; WSMAN/MM-DC2.mathiasmotron.com; TERMSRV/MM-DC2; TERMSRV/MM-DC2.mathiasmotron.com; RestrictedKrbHost/MM-DC2; HOST/MM-DC2; RestrictedKrbHost/MM-DC2.mathiasmotron.com; HOST/MM-DC2.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-DC3$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-DC3,OU=Domain Controllers,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1772781806252)\/",
+                                 "LastLogonDate":  "\/Date(1774530486539)\/",
+                                 "SPNs":  "DNS/MM-DC3.mathiasmotron.com; RPC/8d806ffa-3a4e-4b9d-a647-c4e841eaafbe._msdcs.mathiasmotron.com; HOST/MM-DC3/MATHIASMOTRON; HOST/MM-DC3.mathiasmotron.com/MATHIASMOTRON; GC/MM-DC3.mathiasmotron.com/mathiasmotron.com; exchangeAB/MM-DC3.mathiasmotron.com; HOST/MM-DC3.mathiasmotron.com/mathiasmotron.com; exchangeAB/MM-DC3; ldap/MM-DC3/MATHIASMOTRON; ldap/8d806ffa-3a4e-4b9d-a647-c4e841eaafbe._msdcs.mathiasmotron.com; ldap/MM-DC3.mathiasmotron.com/MATHIASMOTRON; ldap/MM-DC3; ldap/MM-DC3.mathiasmotron.com; ldap/MM-DC3.mathiasmotron.com/ForestDnsZones.mathiasmotron.com; ldap/MM-DC3.mathiasmotron.com/DomainDnsZones.mathiasmotron.com; ldap/MM-DC3.mathiasmotron.com/mathiasmotron.com; E3514235-4B06-11D1-AB04-00C04FC2DCD2/8d806ffa-3a4e-4b9d-a647-c4e841eaafbe/mathiasmotron.com; Dfsr-12F9A27C-BF97-4787-9364-D31B6C55EB04/MM-DC3.mathiasmotron.com; WSMAN/MM-DC3; WSMAN/MM-DC3.mathiasmotron.com; TERMSRV/MM-DC3; TERMSRV/MM-DC3.mathiasmotron.com; RestrictedKrbHost/MM-DC3; HOST/MM-DC3; RestrictedKrbHost/MM-DC3.mathiasmotron.com; HOST/MM-DC3.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-MGMT$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-MGMT,OU=MISC,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1774351345323)\/",
+                                 "LastLogonDate":  "\/Date(1774988688210)\/",
+                                 "SPNs":  "MSServerClusterMgmtAPI/MM-MGMT; MSServerClusterMgmtAPI/MM-MGMT.mathiasmotron.com; Dfsr-12F9A27C-BF97-4787-9364-D31B6C55EB04/MM-MGMT.mathiasmotron.com; WSMAN/MM-MGMT; WSMAN/MM-MGMT.mathiasmotron.com; TERMSRV/MM-MGMT; TERMSRV/MM-MGMT.mathiasmotron.com; RestrictedKrbHost/MM-MGMT; HOST/MM-MGMT; RestrictedKrbHost/MM-MGMT.mathiasmotron.com; HOST/MM-MGMT.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-MIM1$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-MIM1,OU=MIM,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1773052474111)\/",
+                                 "LastLogonDate":  "\/Date(1774269826663)\/",
+                                 "SPNs":  "ldap/MM-MIM1.mathiasmotron.com:5999; ldap/MM-MIM1:5999; E3514235-4B06-11D1-AB04-00C04FC2DCD2-ADAM/MM-MIM1.mathiasmotron.com:5999; E3514235-4B06-11D1-AB04-00C04FC2DCD2-ADAM/MM-MIM1:5999; TERMSRV/MM-MIM1; TERMSRV/MM-MIM1.mathiasmotron.com; WSMAN/MM-MIM1; WSMAN/MM-MIM1.mathiasmotron.com; RestrictedKrbHost/MM-MIM1; HOST/MM-MIM1; RestrictedKrbHost/MM-MIM1.mathiasmotron.com; HOST/MM-MIM1.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-MIM4$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-MIM4,OU=MIM,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1773052469192)\/",
+                                 "LastLogonDate":  "\/Date(1774269865116)\/",
+                                 "SPNs":  "WSMAN/MM-MIM4; WSMAN/MM-MIM4.mathiasmotron.com; TERMSRV/MM-MIM4; TERMSRV/MM-MIM4.mathiasmotron.com; RestrictedKrbHost/MM-MIM4; HOST/MM-MIM4; RestrictedKrbHost/MM-MIM4.mathiasmotron.com; HOST/MM-MIM4.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-MIM5$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-MIM5,OU=MIM,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1773052479349)\/",
+                                 "LastLogonDate":  "\/Date(1774269813238)\/",
+                                 "SPNs":  "WSMAN/MM-MIM5; WSMAN/MM-MIM5.mathiasmotron.com; TERMSRV/MM-MIM5; TERMSRV/MM-MIM5.mathiasmotron.com; RestrictedKrbHost/MM-MIM5; HOST/MM-MIM5; RestrictedKrbHost/MM-MIM5.mathiasmotron.com; HOST/MM-MIM5.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-PENTEST$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-PENTEST,CN=Computers,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1761340364565)\/",
+                                 "LastLogonDate":  "\/Date(1762945679964)\/",
+                                 "SPNs":  "TERMSRV/MM-PENTEST; TERMSRV/MM-PENTEST.mathiasmotron.com; RestrictedKrbHost/MM-PENTEST; HOST/MM-PENTEST; RestrictedKrbHost/MM-PENTEST.mathiasmotron.com; HOST/MM-PENTEST.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-WAP1$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-WAP1,OU=ADFS,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1774643486075)\/",
+                                 "LastLogonDate":  "\/Date(1774650418592)\/",
+                                 "SPNs":  "WSMAN/MM-WAP1; WSMAN/MM-WAP1.mathiasmotron.com; TERMSRV/MM-WAP1; TERMSRV/MM-WAP1.mathiasmotron.com; RestrictedKrbHost/MM-WAP1; HOST/MM-WAP1; RestrictedKrbHost/MM-WAP1.mathiasmotron.com; HOST/MM-WAP1.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-WIN10-1$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-Win10-1,OU=WORKSTATIONS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1773052480470)\/",
+                                 "LastLogonDate":  "\/Date(1774269823382)\/",
+                                 "SPNs":  "TERMSRV/MM-WIN10-1; TERMSRV/MM-Win10-1.mathiasmotron.com; RestrictedKrbHost/MM-Win10-1; HOST/MM-Win10-1; RestrictedKrbHost/MM-Win10-1.mathiasmotron.com; HOST/MM-Win10-1.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "MM-WIN10-2$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=MM-Win10-2,OU=WORKSTATIONS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1773052524895)\/",
+                                 "LastLogonDate":  "\/Date(1774269880730)\/",
+                                 "SPNs":  "TERMSRV/MM-WIN10-2; TERMSRV/MM-Win10-2.mathiasmotron.com; RestrictedKrbHost/MM-Win10-2; HOST/MM-Win10-2; RestrictedKrbHost/MM-Win10-2.mathiasmotron.com; HOST/MM-Win10-2.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "TEMP2025$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=TEMP2025,CN=Computers,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1774891737956)\/",
+                                 "LastLogonDate":  "\/Date(1774891738354)\/",
+                                 "SPNs":  "TERMSRV/TEMP2025; TERMSRV/TEMP2025.mathiasmotron.com; RestrictedKrbHost/TEMP2025; HOST/TEMP2025; RestrictedKrbHost/TEMP2025.mathiasmotron.com; HOST/TEMP2025.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "AADCgMSA1$",
+                                 "Category":  "gMSA",
+                                 "Enabled":  true,
+                                 "HasSPN":  false,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=AADCgMSA1,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  null,
+                                 "LastLogonDate":  null,
+                                 "SPNs":  ""
+                             },
+                             {
+                                 "Name":  "CloudSyncgMSA$",
+                                 "Category":  "gMSA",
+                                 "Enabled":  true,
+                                 "HasSPN":  false,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=CloudSyncgMSA,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  null,
+                                 "LastLogonDate":  null,
+                                 "SPNs":  ""
+                             },
+                             {
+                                 "Name":  "SVC.TSKGMSA$",
+                                 "Category":  "gMSA",
+                                 "Enabled":  true,
+                                 "HasSPN":  false,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=SVC.TSKGMSA,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  null,
+                                 "LastLogonDate":  null,
+                                 "SPNs":  ""
+                             },
+                             {
+                                 "Name":  "SVC_ADMIN$",
+                                 "Category":  "gMSA",
+                                 "Enabled":  true,
+                                 "HasSPN":  false,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=SVC_ADMIN$,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  null,
+                                 "LastLogonDate":  null,
+                                 "SPNs":  ""
+                             },
+                             {
+                                 "Name":  "SVC_CloudSync$",
+                                 "Category":  "gMSA",
+                                 "Enabled":  true,
+                                 "HasSPN":  false,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=SVC_CloudSync,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  null,
+                                 "LastLogonDate":  null,
+                                 "SPNs":  ""
+                             },
+                             {
+                                 "Name":  "SVC_GMSA_ADFS$",
+                                 "Category":  "gMSA",
+                                 "Enabled":  true,
+                                 "HasSPN":  false,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=SVC_GMSA_ADFS,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  null,
+                                 "LastLogonDate":  null,
+                                 "SPNs":  ""
+                             },
+                             {
+                                 "Name":  "SVC_MDIACTION$",
+                                 "Category":  "gMSA",
+                                 "Enabled":  true,
+                                 "HasSPN":  false,
+                                 "EncValue":  28,
+                                 "EncHex":  "0x1C",
+                                 "Flags":  "0x1C [RC4-HMAC, AES128, AES256]",
+                                 "Status":  "Warning (AES present + RC4 allowed)",
+                                 "DistinguishedName":  "CN=SVC_MDIACTION,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  null,
+                                 "LastLogonDate":  null,
+                                 "SPNs":  ""
+                             },
+                             {
+                                 "Name":  "AZUREADSSOACC$",
+                                 "Category":  "Computer",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  null,
+                                 "EncHex":  "(absent/0)",
+                                 "Flags":  "(absent/0)",
+                                 "Status":  "Warning (Unset/0)",
+                                 "DistinguishedName":  "CN=AZUREADSSOACC,OU=MISC,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1747727836892)\/",
+                                 "LastLogonDate":  "\/Date(1747727835283)\/",
+                                 "SPNs":  "HTTP/www.tm.a.prd.aadg.akadns.net; HTTP/www.tm.a.prd.aadg.trafficmanager.net; HTTP/aadg.windows.net.nsatc.net; HTTP/autologon.prda.aadg.msidentity.com; HTTP/autologon.microsoftazuread-sso.com; RestrictedKrbHost/www.tm.a.prd.aadg.akadns.net; RestrictedKrbHost/www.tm.a.prd.aadg.trafficmanager.net; RestrictedKrbHost/aadg.windows.net.nsatc.net; RestrictedKrbHost/autologon.prda.aadg.msidentity.com; RestrictedKrbHost/autologon.microsoftazuread-sso.com"
+                             },
+                             {
+                                 "Name":  "keytab",
+                                 "Category":  "User/Service",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  null,
+                                 "EncHex":  "(absent/0)",
+                                 "Flags":  "(absent/0)",
+                                 "Status":  "Warning (Unset/0)",
+                                 "DistinguishedName":  "CN=Keytab,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1719490794319)\/",
+                                 "LastLogonDate":  "\/Date(1719395264287)\/",
+                                 "SPNs":  "HTTP/keytab2.mathiasmotron.com; HTTP/keytab1.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "svc.mimsync1",
+                                 "Category":  "User/Service",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  null,
+                                 "EncHex":  "(absent/0)",
+                                 "Flags":  "(absent/0)",
+                                 "Status":  "Warning (Unset/0)",
+                                 "DistinguishedName":  "CN=SVC MIMSYNC1,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1746520162467)\/",
+                                 "LastLogonDate":  "\/Date(1774892219216)\/",
+                                 "SPNs":  "PCNSCLNT/MM-MIM1.mathiasmotron.com"
+                             },
+                             {
+                                 "Name":  "svc.sp2016",
+                                 "Category":  "User/Service",
+                                 "Enabled":  true,
+                                 "HasSPN":  true,
+                                 "EncValue":  null,
+                                 "EncHex":  "(absent/0)",
+                                 "Flags":  "(absent/0)",
+                                 "Status":  "Warning (Unset/0)",
+                                 "DistinguishedName":  "CN=SVC SP2016,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+                                 "PasswordLastSet":  "\/Date(1544777417738)\/",
+                                 "LastLogonDate":  "\/Date(1774395189766)\/",
+                                 "SPNs":  "HTTP/mim.mathiasmotron.com; HTTP/mim"
+                             }
+                         ]
+}
