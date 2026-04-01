@@ -74,7 +74,7 @@ function Invoke-MATITieringMenu {
         Write-Host "    │  [4]  Phase 4 — Create Auth Policies & Silos              │" -ForegroundColor Green
         Write-Host "    │  [5]  Phase 5 — Create PAW Hardening GPOs                 │" -ForegroundColor Green
         Write-Host "    │  [6]  Phase 6 — Create GPO Hardening Per Tier             │" -ForegroundColor Green
-        Write-Host "    │  [7]  Phase 7 — Tier 0 Object Protection                  │" -ForegroundColor Green
+        Write-Host "    │  [7]  Phase 7 — Implement Tier 0 Object Protection        │" -ForegroundColor Green
         Write-Host "    │  [8]  Phase 8 — Monitoring & Detection                    │" -ForegroundColor Green
         Write-Host "    │  [9]  Phase 9 — Health Check & Ongoing Ops                │" -ForegroundColor Green
         Write-Host "    │  [R]  Review current tiering deployment status              │" -ForegroundColor DarkGray

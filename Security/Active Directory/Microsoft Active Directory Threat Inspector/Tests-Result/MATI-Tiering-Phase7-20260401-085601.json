@@ -1,0 +1,614 @@
+{
+  "AuditedObjects": [
+    {
+      "Name": "Domain Root",
+      "Path": "DC=mathiasmotron,DC=com",
+      "Category": "Directory",
+      "Notes": "Default naming context root."
+    },
+    {
+      "Name": "AdminSDHolder",
+      "Path": "CN=AdminSDHolder,CN=System,DC=mathiasmotron,DC=com",
+      "Category": "Privileged Protection",
+      "Notes": "Protected ACL template for privileged objects."
+    },
+    {
+      "Name": "Configuration",
+      "Path": "CN=Configuration,DC=mathiasmotron,DC=com",
+      "Category": "Directory",
+      "Notes": "Configuration partition."
+    },
+    {
+      "Name": "Schema",
+      "Path": "CN=Schema,CN=Configuration,DC=mathiasmotron,DC=com",
+      "Category": "Directory",
+      "Notes": "Schema partition."
+    },
+    {
+      "Name": "System",
+      "Path": "CN=System,DC=mathiasmotron,DC=com",
+      "Category": "Directory",
+      "Notes": "System container hosting privileged metadata."
+    },
+    {
+      "Name": "Tier 0 Root OU",
+      "Path": "OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Category": "Tier 0 OU",
+      "Notes": "Exact Tier 0 OU from Phase 1 state."
+    },
+    {
+      "Name": "Tier 0 Accounts OU",
+      "Path": "OU=Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Category": "Tier 0 OU",
+      "Notes": "Tier 0 child OU created by the tiering model."
+    },
+    {
+      "Name": "Tier 0 Groups OU",
+      "Path": "OU=Groups,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Category": "Tier 0 OU",
+      "Notes": "Tier 0 child OU created by the tiering model."
+    },
+    {
+      "Name": "Tier 0 Service Accounts OU",
+      "Path": "OU=Service Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Category": "Tier 0 OU",
+      "Notes": "Tier 0 child OU created by the tiering model."
+    },
+    {
+      "Name": "Tier 0 Servers OU",
+      "Path": "OU=Servers,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Category": "Tier 0 OU",
+      "Notes": "Tier 0 child OU created by the tiering model."
+    },
+    {
+      "Name": "Tier 0 PAW OU",
+      "Path": "OU=PAW,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Category": "Tier 0 OU",
+      "Notes": "Tier 0 child OU created by the tiering model."
+    }
+  ],
+  "Errors": [
+    "GPO audit failed: Cannot validate argument on parameter 'Name'. Value cannot be null.\r\nParameter name: gpoName"
+  ],
+  "KrbtgtStatus": {
+    "PasswordLastSet": "2025-07-03T11:01:05.354844+00:00",
+    "AgeDays": 271,
+    "Severity": "Warning",
+    "Enabled": false,
+    "RotationRecommended": true,
+    "Guidance": "Perform a double rotation with replication time between resets. This phase only offers the first reset."
+  },
+  "Tier0OUDN": "OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+  "ServiceAccountAudit": [
+    {
+      "Name": "krbtgt",
+      "AccountType": "User-SPN",
+      "Enabled": false,
+      "PasswordState": "271 days",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "kadmin/changepw",
+      "DistinguishedName": "CN=krbtgt,CN=Users,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "svc.mimsync1",
+      "AccountType": "User-SPN",
+      "Enabled": true,
+      "PasswordState": "Never expires",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "PCNSCLNT/MM-MIM1.mathiasmotron.com",
+      "DistinguishedName": "CN=SVC MIMSYNC1,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "Risk": "High"
+    },
+    {
+      "Name": "svc.sp2016",
+      "AccountType": "User-SPN",
+      "Enabled": true,
+      "PasswordState": "Never expires",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "HTTP/mim.mathiasmotron.com; HTTP/mim",
+      "DistinguishedName": "CN=SVC SP2016,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "Risk": "High"
+    },
+    {
+      "Name": "svc.mimservice1",
+      "AccountType": "User-SPN",
+      "Enabled": true,
+      "PasswordState": "Never expires",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "FIMService/mimsvc.mathiasmotron.com; FIMService/mimsvc",
+      "DistinguishedName": "CN=SVC MIMService1,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "Risk": "High"
+    },
+    {
+      "Name": "svc.sp2019",
+      "AccountType": "User-SPN",
+      "Enabled": false,
+      "PasswordState": "Never expires",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "HTTP/mim2.mathiasmotron.com; HTTP/mim2",
+      "DistinguishedName": "CN=SVC SP2019,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "svc.mimservice2",
+      "AccountType": "User-SPN",
+      "Enabled": false,
+      "PasswordState": "Never expires",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "FIMService/mm-mim2.mathiasmotron.com; FIMService/mm-mim2",
+      "DistinguishedName": "CN=SVC MIMService2,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "svc.fake",
+      "AccountType": "User-SPN",
+      "Enabled": true,
+      "PasswordState": "Never expires",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "http/fakespn.mathiasmotron.com; http/fakespn",
+      "DistinguishedName": "CN=SVC Fake,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "Risk": "High"
+    },
+    {
+      "Name": "keytab",
+      "AccountType": "User-SPN",
+      "Enabled": true,
+      "PasswordState": "Never expires",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "HTTP/keytab2.mathiasmotron.com; HTTP/keytab1.mathiasmotron.com",
+      "DistinguishedName": "CN=Keytab,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "Risk": "High"
+    },
+    {
+      "Name": "SVC_GMSA_ADFS$",
+      "AccountType": "gMSA",
+      "Enabled": true,
+      "PasswordState": "Managed by AD",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "",
+      "DistinguishedName": "CN=SVC_GMSA_ADFS,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "AADCgMSA1$",
+      "AccountType": "gMSA",
+      "Enabled": true,
+      "PasswordState": "Managed by AD",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "",
+      "DistinguishedName": "CN=AADCgMSA1,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "SVC_MDIACTION$",
+      "AccountType": "gMSA",
+      "Enabled": true,
+      "PasswordState": "Managed by AD",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "",
+      "DistinguishedName": "CN=SVC_MDIACTION,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "SVC_CloudSync$",
+      "AccountType": "gMSA",
+      "Enabled": true,
+      "PasswordState": "Managed by AD",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "",
+      "DistinguishedName": "CN=SVC_CloudSync,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "SVC.TSKGMSA$",
+      "AccountType": "gMSA",
+      "Enabled": true,
+      "PasswordState": "Managed by AD",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "",
+      "DistinguishedName": "CN=SVC.TSKGMSA,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "SVC_ADMIN$",
+      "AccountType": "gMSA",
+      "Enabled": true,
+      "PasswordState": "Managed by AD",
+      "PrivilegedGroups": "Administrators",
+      "Tier0Scoped": false,
+      "SPNs": "",
+      "DistinguishedName": "CN=SVC_ADMIN$,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "Risk": "Critical"
+    },
+    {
+      "Name": "CloudSyncgMSA$",
+      "AccountType": "gMSA",
+      "Enabled": true,
+      "PasswordState": "Managed by AD",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "",
+      "DistinguishedName": "CN=CloudSyncgMSA,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    },
+    {
+      "Name": "SVC_ADFS$",
+      "AccountType": "gMSA",
+      "Enabled": true,
+      "PasswordState": "Managed by AD",
+      "PrivilegedGroups": "",
+      "Tier0Scoped": false,
+      "SPNs": "HOST/ADFS.MATHIASMOTRON.COM",
+      "DistinguishedName": "CN=SVC_ADFS,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "Risk": "Low"
+    }
+  ],
+  "KrbtgtRotated": false,
+  "Warnings": [
+    "krbtgt password age is 271 days. Microsoft guidance requires a controlled double rotation, not a single reset.",
+    "Unable to resolve privileged group 'Administrators' during service account audit: Exception calling \"ContainsKey\" with \"1\" argument(s): \"Value cannot be null. (Parameter 'key')\""
+  ],
+  "ACLFindings": [
+    {
+      "Object": "Domain Root",
+      "Category": "Directory",
+      "Path": "DC=mathiasmotron,DC=com",
+      "Identity": "MATHIASMOTRON\\SVC_CloudSync$",
+      "Rights": "CreateChild, DeleteChild, GenericWrite",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "System",
+      "Category": "Directory",
+      "Path": "CN=System,DC=mathiasmotron,DC=com",
+      "Identity": "MATHIASMOTRON\\SVC_CloudSync$",
+      "Rights": "CreateChild, DeleteChild, GenericWrite",
+      "Inherited": true,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Root OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Root OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Root OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Root OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Root OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "BUILTIN\\Print Operators",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Root OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "MATHIASMOTRON\\SVC_CloudSync$",
+      "Rights": "CreateChild, DeleteChild, GenericWrite",
+      "Inherited": true,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "BUILTIN\\Print Operators",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "MATHIASMOTRON\\SVC_CloudSync$",
+      "Rights": "CreateChild, DeleteChild, GenericWrite",
+      "Inherited": true,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Groups OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Groups,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Groups OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Groups,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Groups OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Groups,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Groups OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Groups,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Groups OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Groups,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "BUILTIN\\Print Operators",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Groups OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Groups,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "MATHIASMOTRON\\SVC_CloudSync$",
+      "Rights": "CreateChild, DeleteChild, GenericWrite",
+      "Inherited": true,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Service Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Service Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Service Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Service Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Service Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Service Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Service Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Service Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Service Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Service Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "BUILTIN\\Print Operators",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Service Accounts OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Service Accounts,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "MATHIASMOTRON\\SVC_CloudSync$",
+      "Rights": "CreateChild, DeleteChild, GenericWrite",
+      "Inherited": true,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Servers OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Servers,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Servers OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Servers,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Servers OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Servers,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Servers OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Servers,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Servers OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Servers,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "BUILTIN\\Print Operators",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 Servers OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=Servers,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "MATHIASMOTRON\\SVC_CloudSync$",
+      "Rights": "CreateChild, DeleteChild, GenericWrite",
+      "Inherited": true,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 PAW OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=PAW,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 PAW OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=PAW,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 PAW OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=PAW,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 PAW OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=PAW,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "S-1-5-32-548",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 PAW OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=PAW,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "BUILTIN\\Print Operators",
+      "Rights": "CreateChild, DeleteChild",
+      "Inherited": false,
+      "Severity": "High"
+    },
+    {
+      "Object": "Tier 0 PAW OU",
+      "Category": "Tier 0 OU",
+      "Path": "OU=PAW,OU=Tier 0,OU=Tiering Model,DC=mathiasmotron,DC=com",
+      "Identity": "MATHIASMOTRON\\SVC_CloudSync$",
+      "Rights": "CreateChild, DeleteChild, GenericWrite",
+      "Inherited": true,
+      "Severity": "High"
+    }
+  ],
+  "AuditedGPOs": [],
+  "ContainerOU": "Tiering Model",
+  "BaseDN": "OU=Tiering Model,DC=mathiasmotron,DC=com",
+  "GPOFindings": [],
+  "Phase1StatePath": "C:\\Microsoft Active Directory Threat Inspector\\Outputs\\Tiering\\MATI-Tiering-Phase1-Latest.json"
+}

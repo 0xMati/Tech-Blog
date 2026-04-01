@@ -35,7 +35,7 @@ The script scans all AD objects under a given search base, reads their ACLs, and
 |---------|----|----|
 | LDAP queries | Recursive (1 query per level) | Single query with `-SearchScope Subtree` |
 | Error handling | None | `try/catch` on every ACL operation |
-| Trusted domains | Not supported | `-IncludeTrustedDomains` switch |
+| Trusted domains | Not supported | `-IncludeTrustedDomains` switch with reachability check |
 | WhatIf / Confirm | Manual implementation | Native `SupportsShouldProcess` |
 | Progress | None | `Write-Progress` bar |
 | Report | None | Grouped orphan list + summary table + domain SID reference |
@@ -64,22 +64,25 @@ The script scans all AD objects under a given search base, reads their ACLs, and
 **1. Initialization**
 The script retrieves the forest root DN and the current domain SID, then starts a transcript log.
 
-**2. Single LDAP query**
+**2. Trust reachability check (with `-IncludeTrustedDomains`)**
+Before scanning anything, the script enumerates all trusts and tests each one for reachability. It first tries `Get-ADDomain` (works for bidirectional and inbound trusts), and falls back to `nltest /dsgetdc:` which uses the DC locator — the same mechanism AD relies on for SID resolution across trusts. This makes it work reliably even for outbound-only trusts. A table shows which trusts are reachable and which aren't. If any trust is unreachable, the script warns about potential false positives and asks for confirmation before continuing.
+
+**3. Single LDAP query**
 All objects under the search base are collected in one shot using `Get-ADObject -SearchScope Subtree`. No recursive function calls — this is significantly faster on large directories.
 
-**3. ACL scanning**
+**4. ACL scanning**
 For each object, the script reads its ACL via `Get-ACL "AD:$dn"` and checks each ACE:
 
 - **Without `-IncludeTrustedDomains`**: only SIDs starting with the current domain SID prefix are flagged (e.g. `S-1-5-21-2462332226-*`)
 - **With `-IncludeTrustedDomains`**: any ACE whose `IdentityReference` is still a `SecurityIdentifier` object (not resolved to an `NTAccount`) is flagged — **excluding well-known SIDs** like `S-1-5-32-*` (BUILTIN), `S-1-5-18` (SYSTEM), etc.
 
-**4. Removal (if `-Remove`)**
+**5. Removal (if `-Remove`)**
 Uses `RemoveAccessRuleSpecific()` to remove the exact ACE, then writes back with `Set-ACL`. Native `-WhatIf` and `-Confirm` are fully supported.
 
-**5. Reporting**
+**6. Reporting**
 At the end, the script displays:
-- A **detailed list** of orphaned SIDs grouped by SID, with affected objects
-- A **summary table** (objects scanned, ACEs found/removed, errors)
+- A **detailed list** of orphaned SIDs, **split by origin** — current domain SIDs and trusted domain SIDs are displayed in separate color-coded sections, each grouped by SID with affected objects
+- A **summary table** with total orphaned ACEs and **sub-counters** for current domain vs. trusted domain ACEs, plus objects modified and errors
 - A **domain SID reference table** showing current domain, forest domains, and trusted domain SIDs — so you can immediately identify where each orphaned SID came from
 
 ---
@@ -127,10 +130,12 @@ When using `-IncludeTrustedDomains`, the detection relies on **Windows SID resol
 - If a trust is **down or unreachable** at scan time → valid accounts may appear as orphaned ⚠️ (false positives)
 - If a trust was **completely removed** → all SIDs from that domain are correctly flagged ✅
 
+**Built-in safeguard:** The script includes a **trust reachability check** that runs before the scan. It tests each trust and shows a status table (Reachable / Unreachable). If any trust is unreachable, it warns you and asks for confirmation before proceeding — so you won't accidentally clean up valid ACEs from a temporarily down trust.
+
 **Recommended workflow:**
-1. Run with `-List` first to review findings
-2. Check the **domain SID reference table** at the end — verify all trusts are visible
-3. Cross-reference orphaned SIDs with the trust SIDs to understand their origin
+1. Run with `-List -IncludeTrustedDomains` first — the trust check will tell you immediately if anything is down
+2. Review the **trust reachability table** — ensure all trusts show "Reachable"
+3. Check the **domain SID reference table** at the end and cross-reference orphaned SIDs with trust SIDs
 4. Run with `-Remove -WhatIf` to validate
 5. Run with `-Remove` when you're confident
 
@@ -138,15 +143,40 @@ When using `-IncludeTrustedDomains`, the detection relies on **Windows SID resol
 
 ### 📋 Example Output
 
+**Trust reachability check (with `-IncludeTrustedDomains`):**
 ```
-+---ORPHANED SIDs FOUND---------------------------------------------------+
-| SID                                                ACEs   Object
-+------------------------------------------------------------------------+
+Checking trust reachability...
+
++-----------------------------------------------------------------------------------------------------------+
+| TRUST                        SID                                              DIRECTION      STATUS      |
++-----------------------------------------------------------------------------------------------------------+
+| ext.local                    S-1-5-21-2769473801-1208458500-301403692          BiDirectional  Reachable   |
+| child.contoso.com            S-1-5-21-3274687931-2194606015-4130333083        BiDirectional  Reachable   |
+| red.local                    S-1-5-21-167705663-2234365120-980853887           Outbound       Reachable   |
++-----------------------------------------------------------------------------------------------------------+
+
+All trusts are reachable.
+```
+
+**Orphaned SIDs report:**
+```
++---ORPHANED SIDs: CURRENT DOMAIN (12 ACEs)-----------------------------+
 
   SID: S-1-5-21-2462332226-1795882094-2017209951-679602  (6 ACEs on 3 objects)
     -> CN=e9031b51-...,CN=ADFS,CN=Microsoft,CN=Program Data,DC=contoso,DC=com (2 ACEs)
     -> CN=e366991e-...,CN=ADFS,CN=Microsoft,CN=Program Data,DC=contoso,DC=com (2 ACEs)
     -> CN=CryptoPolicy,CN=ADFS,...,DC=contoso,DC=com (2 ACEs)
+
+  SID: S-1-5-21-2462332226-1795882094-2017209951-500123  (6 ACEs on 2 objects)
+    -> OU=Servers,DC=contoso,DC=com (4 ACEs)
+    -> OU=Workstations,DC=contoso,DC=com (2 ACEs)
+
++------------------------------------------------------------------------+
+
++---ORPHANED SIDs: TRUSTED DOMAINS (4 ACEs)-----------------------------+
+
+  SID: S-1-5-21-2769473801-1208458500-301403692-1104  (4 ACEs on 1 objects)
+    -> OU=SharedResources,DC=contoso,DC=com (4 ACEs)
 
 +------------------------------------------------------------------------+
 
@@ -154,7 +184,9 @@ When using `-IncludeTrustedDomains`, the detection relies on **Windows SID resol
 |           SUMMARY REPORT             |
 +======================================+
 | Objects scanned   :             692 |
-| Orphaned ACEs     :              12 |
+| Orphaned ACEs     :              16 |
+|   Current domain  :              12 |
+|   Trusted domains :               4 |
 | ACEs removed      :               0 |
 | Objects modified  :               0 |
 | Errors            :               1 |

@@ -1,4 +1,4 @@
-<#
+ <#
     .SYNOPSIS
     Removes or lists orphaned SIDs from Active Directory objects.
 
@@ -121,6 +121,90 @@ else {
     Write-Host "Mode: current domain SIDs only (SID prefix $DomainSID)" -ForegroundColor Cyan
 }
 
+# ── Trust reachability check (when -IncludeTrustedDomains) ──────────────────
+if ($IncludeTrustedDomains) {
+    Write-Host "`nChecking trust reachability..." -ForegroundColor Cyan
+
+    try {
+        $trusts = Get-ADTrust -Filter * -Properties securityIdentifier -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Unable to enumerate trusts: $_"
+        $trusts = @()
+    }
+
+    if ($trusts) {
+        $trustResults = @()
+        foreach ($trust in $trusts) {
+            $tName = $trust.Name
+            $tSID  = if ($trust.securityIdentifier) { $trust.securityIdentifier.ToString() } else { "(no SID)" }
+            $tDir  = $trust.Direction.ToString()
+
+            # Test reachability: try Get-ADDomain first, fallback to nltest /dsgetdc
+            # Get-ADDomain may fail on outbound-only trusts (no permission to query remote AD)
+            # nltest /dsgetdc uses the DC locator — same mechanism AD uses for SID resolution
+            $reachable = $false
+            try {
+                $null = Get-ADDomain -Identity $tName -ErrorAction Stop
+                $reachable = $true
+            }
+            catch {
+                try {
+                    $nlResult = nltest /dsgetdc:$tName 2>&1
+                    if ($LASTEXITCODE -eq 0) { $reachable = $true }
+                }
+                catch { }
+            }
+
+            $trustResults += [PSCustomObject]@{
+                Name      = $tName
+                SID       = $tSID
+                Direction = $tDir
+                Reachable = $reachable
+            }
+        }
+
+        # Display trust reachability table
+        $colT = 28; $colS = 48; $colD = 14; $colR = 12
+        $sepT = "+" + ("-" * ($colT + $colS + $colD + $colR + 5)) + "+"
+        Write-Host "`n$sepT" -ForegroundColor Gray
+        Write-Host ("| {0,-$colT} {1,-$colS} {2,-$colD} {3,-$colR}|" -f "TRUST", "SID", "DIRECTION", "STATUS") -ForegroundColor Gray
+        Write-Host $sepT -ForegroundColor Gray
+
+        foreach ($t in $trustResults) {
+            $statusText  = if ($t.Reachable) { "Reachable" } else { "Unreachable" }
+            $statusColor = if ($t.Reachable) { "Green" } else { "Red" }
+            Write-Host ("| {0,-$colT} {1,-$colS} {2,-$colD} " -f $t.Name, $t.SID, $t.Direction) -ForegroundColor White -NoNewline
+            Write-Host ("{0,-$colR}|" -f $statusText) -ForegroundColor $statusColor
+        }
+        Write-Host $sepT -ForegroundColor Gray
+
+        $unreachable = @($trustResults | Where-Object { -not $_.Reachable })
+        if ($unreachable.Count -gt 0) {
+            Write-Host ""
+            Write-Host "WARNING: $($unreachable.Count) trust(s) unreachable!" -ForegroundColor Red
+            Write-Host "SIDs from unreachable trusts may appear as false positives." -ForegroundColor Yellow
+            Write-Host "Unreachable:" -ForegroundColor Yellow
+            foreach ($u in $unreachable) {
+                Write-Host "  - $($u.Name) ($($u.SID))" -ForegroundColor Yellow
+            }
+            Write-Host ""
+            $confirm = Read-Host "Continue anyway? (Y/N)"
+            if ($confirm -notmatch '^[Yy]') {
+                Write-Host "Aborted by user." -ForegroundColor Red
+                Stop-Transcript
+                return
+            }
+        }
+        else {
+            Write-Host "`nAll trusts are reachable." -ForegroundColor Green
+        }
+    }
+    else {
+        Write-Host "No trusts found." -ForegroundColor Yellow
+    }
+}
+
 # ── Collect all objects in a single LDAP query ──────────────────────────────
 Write-Host "`nRetrieving AD objects from '$TargetDN' ..." -ForegroundColor Cyan
 
@@ -223,10 +307,12 @@ foreach ($obj in $ADObjects) {
 
             if ($sid -notin $orphansOnThisObject) {
                 $orphansOnThisObject += $sid
+                $sidOrigin = if ($sid -like "$DomainSID*") { "Current Domain" } else { "Trusted Domain" }
                 $OrphanedResults.Add([PSCustomObject]@{
                     SID    = $sid
                     Object = $dn
                     ACEs   = 0
+                    Origin = $sidOrigin
                 })
             }
             # Increment ACE count for this SID/Object pair
@@ -266,20 +352,30 @@ Write-Progress -Activity "Scanning ACLs" -Completed
 
 # ── Orphaned SIDs detail ────────────────────────────────────────────────────
 if ($OrphanedResults.Count -gt 0) {
-    Write-Host "`n+---ORPHANED SIDs FOUND---------------------------------------------------+" -ForegroundColor Yellow
-    Write-Host ("| {0,-50} {1,-6} {2}" -f "SID", "ACEs", "Object") -ForegroundColor Yellow
-    Write-Host "+------------------------------------------------------------------------+" -ForegroundColor Yellow
+    $currentDomainResults = $OrphanedResults | Where-Object { $_.Origin -eq "Current Domain" }
+    $trustedDomainResults = $OrphanedResults | Where-Object { $_.Origin -eq "Trusted Domain" }
 
-    $groupedBySID = $OrphanedResults | Group-Object -Property SID | Sort-Object -Property @{Expression={$_.Group | Measure-Object -Property ACEs -Sum | Select-Object -ExpandProperty Sum}; Descending=$true}
-    foreach ($group in $groupedBySID) {
-        $totalACEs = ($group.Group | Measure-Object -Property ACEs -Sum).Sum
-        Write-Host ("  SID: {0}  ({1} ACEs on {2} objects)" -f $group.Name, $totalACEs, $group.Count) -ForegroundColor Cyan
-        foreach ($entry in $group.Group) {
-            Write-Host ("    -> {0} ({1} ACEs)" -f $entry.Object, $entry.ACEs) -ForegroundColor Gray
+    foreach ($section in @(
+        @{ Label = "CURRENT DOMAIN"; Color = "Yellow"; Data = $currentDomainResults },
+        @{ Label = "TRUSTED DOMAINS"; Color = "Magenta"; Data = $trustedDomainResults }
+    )) {
+        if ($section.Data -and @($section.Data).Count -gt 0) {
+            $sectionACEs = ($section.Data | Measure-Object -Property ACEs -Sum).Sum
+            Write-Host ("`n+---ORPHANED SIDs: {0} ({1} ACEs)---" -f $section.Label, $sectionACEs).PadRight(73, '-') -NoNewline
+            Write-Host "+" -ForegroundColor $section.Color
+
+            $groupedBySID = $section.Data | Group-Object -Property SID | Sort-Object -Property @{Expression={$_.Group | Measure-Object -Property ACEs -Sum | Select-Object -ExpandProperty Sum}; Descending=$true}
+            foreach ($group in $groupedBySID) {
+                $totalACEs = ($group.Group | Measure-Object -Property ACEs -Sum).Sum
+                Write-Host ("  SID: {0}  ({1} ACEs on {2} objects)" -f $group.Name, $totalACEs, $group.Count) -ForegroundColor Cyan
+                foreach ($entry in $group.Group) {
+                    Write-Host ("    -> {0} ({1} ACEs)" -f $entry.Object, $entry.ACEs) -ForegroundColor Gray
+                }
+                Write-Host ""
+            }
+            Write-Host "+------------------------------------------------------------------------+" -ForegroundColor $section.Color
         }
-        Write-Host ""
     }
-    Write-Host "+------------------------------------------------------------------------+" -ForegroundColor Yellow
 }
 else {
     Write-Host "`nNo orphaned SIDs found." -ForegroundColor Green
@@ -290,7 +386,13 @@ Write-Host "`n+======================================+" -ForegroundColor Cyan
 Write-Host   "|           SUMMARY REPORT             |" -ForegroundColor Cyan
 Write-Host   "+======================================+" -ForegroundColor Cyan
 Write-Host   "| Objects scanned   : $($ObjectsScanned.ToString().PadLeft(15)) |" -ForegroundColor Cyan
+$currentDomainACEs = if ($OrphanedResults.Count -gt 0) { ($OrphanedResults | Where-Object { $_.Origin -eq 'Current Domain' } | Measure-Object -Property ACEs -Sum).Sum } else { 0 }
+$trustedDomainACEs = if ($OrphanedResults.Count -gt 0) { ($OrphanedResults | Where-Object { $_.Origin -eq 'Trusted Domain' } | Measure-Object -Property ACEs -Sum).Sum } else { 0 }
+if (-not $currentDomainACEs) { $currentDomainACEs = 0 }
+if (-not $trustedDomainACEs) { $trustedDomainACEs = 0 }
 Write-Host   "| Orphaned ACEs     : $($OrphanedACEsFound.ToString().PadLeft(15)) |" -ForegroundColor $(if ($OrphanedACEsFound -gt 0) { 'Yellow' } else { 'Green' })
+Write-Host   "|   Current domain  : $($currentDomainACEs.ToString().PadLeft(15)) |" -ForegroundColor $(if ($currentDomainACEs -gt 0) { 'Yellow' } else { 'Green' })
+Write-Host   "|   Trusted domains : $($trustedDomainACEs.ToString().PadLeft(15)) |" -ForegroundColor $(if ($trustedDomainACEs -gt 0) { 'Magenta' } else { 'Green' })
 Write-Host   "| ACEs removed      : $($OrphanedACEsRemoved.ToString().PadLeft(15)) |" -ForegroundColor $(if ($OrphanedACEsRemoved -gt 0) { 'Red' } else { 'Green' })
 Write-Host   "| Objects modified  : $($ObjectsModified.ToString().PadLeft(15)) |" -ForegroundColor $(if ($ObjectsModified -gt 0) { 'Red' } else { 'Green' })
 Write-Host   "| Errors            : $($ObjectsWithError.ToString().PadLeft(15)) |" -ForegroundColor $(if ($ObjectsWithError -gt 0) { 'Red' } else { 'Green' })

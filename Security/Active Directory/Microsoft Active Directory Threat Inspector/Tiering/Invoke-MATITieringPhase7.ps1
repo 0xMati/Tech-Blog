@@ -1,5 +1,5 @@
 # Tiering\Invoke-MATITieringPhase7.ps1
-# Phase 7 — Tier 0 Object Protection
+# Phase 7 — Implement Tier 0 Object Protection
 # Audits ACLs on critical Tier 0 AD objects, Tier 0-linked GPO ownership and
 # permissions, krbtgt password age, and service account exposure.
 
@@ -136,6 +136,9 @@ function Invoke-MATITieringPhase7 {
             $group = Get-ADGroup -Identity $GroupIdentity -ErrorAction Stop
             $members = Get-ADGroupMember -Identity $group -Recursive -ErrorAction Stop
             foreach ($member in $members) {
+                if ([string]::IsNullOrWhiteSpace([string]$member.DistinguishedName)) {
+                    continue
+                }
                 if (-not $PrivilegeMap.ContainsKey($member.DistinguishedName)) {
                     $PrivilegeMap[$member.DistinguishedName] = [System.Collections.Generic.List[string]]::new()
                 }
@@ -146,6 +149,33 @@ function Invoke-MATITieringPhase7 {
         } catch {
             $results.Warnings.Add("Unable to resolve privileged group '$GroupIdentity' during service account audit: $($_.Exception.Message)")
         }
+    }
+
+    function Resolve-GpoFromLink {
+        param(
+            [Parameter(Mandatory)] $Link
+        )
+
+        $linkName = if ($null -ne $Link.DisplayName) { [string]$Link.DisplayName } else { $null }
+        if (-not [string]::IsNullOrWhiteSpace($linkName)) {
+            return Get-GPO -Name $linkName -ErrorAction Stop
+        }
+
+        foreach ($propertyName in @('GpoId', 'Id', 'Guid')) {
+            $property = $Link.PSObject.Properties[$propertyName]
+            if ($null -eq $property) { continue }
+
+            $rawValue = [string]$property.Value
+            if ([string]::IsNullOrWhiteSpace($rawValue)) { continue }
+
+            $normalizedValue = $rawValue.Trim('{}')
+            $guidValue = [guid]::Empty
+            if ([guid]::TryParse($normalizedValue, [ref]$guidValue)) {
+                return Get-GPO -Guid $guidValue -ErrorAction Stop
+            }
+        }
+
+        return $null
     }
 
     function Get-ServiceAccountRisk {
@@ -174,7 +204,7 @@ function Invoke-MATITieringPhase7 {
     }
 
     Write-Host "`n  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "   Phase 7 — Tier 0 Object Protection" -ForegroundColor Cyan
+    Write-Host "   Phase 7 — Implement Tier 0 Object Protection" -ForegroundColor Cyan
     Write-Host "  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host "   Audits critical Tier 0 objects, Tier 0-linked GPOs, krbtgt, and service account exposure." -ForegroundColor DarkGray
     Write-Host "   Consumes the exact OU state exported by Phase 1 instead of reconstructing the hierarchy." -ForegroundColor DarkGray
@@ -258,7 +288,11 @@ function Invoke-MATITieringPhase7 {
         $trustedGpoPermissionPatterns = 'Domain Admins|Enterprise Admins|NT AUTHORITY\\SYSTEM|^SYSTEM$'
 
         foreach ($link in $tier0GpoLinks) {
-            $gpo = Get-GPO -Name $link.DisplayName -ErrorAction Stop
+            $gpo = Resolve-GpoFromLink -Link $link
+            if ($null -eq $gpo) {
+                $results.Warnings.Add('A Tier 0-linked GPO could not be resolved from Get-GPInheritance output. The link entry was skipped.')
+                continue
+            }
 
             $results.AuditedGPOs.Add([PSCustomObject]@{
                 GPOName   = $gpo.DisplayName
@@ -388,7 +422,7 @@ function Invoke-MATITieringPhase7 {
             Add-PrivilegeMembers -GroupIdentity $groupInfo.Name -Label $groupInfo.Label -PrivilegeMap $privilegeMap
         }
 
-        $serviceUsers = @(Get-ADUser -LDAPFilter '(servicePrincipalName=*)' -Properties ServicePrincipalName, PasswordLastSet, PasswordNeverExpires, Enabled, DistinguishedName, SamAccountName, AdminCount -ErrorAction Stop)
+        $serviceUsers = @(Get-ADUser -LDAPFilter '(servicePrincipalName=*)' -Properties ServicePrincipalName, PasswordLastSet, PasswordNeverExpires, Enabled, DistinguishedName, SamAccountName, AdminCount -ErrorAction Stop | Where-Object { $_.SamAccountName -ne 'krbtgt' })
         $managedServiceAccounts = @()
         try {
             $managedServiceAccounts = @(Get-ADServiceAccount -Filter * -Properties ServicePrincipalName, Enabled, DistinguishedName, SamAccountName, ObjectClass -ErrorAction Stop)

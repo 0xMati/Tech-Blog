@@ -28,7 +28,7 @@ Now imagine an attacker lands on that server. They run a certain well-known tool
 From there:
 - **Lateral movement** — they use your hash to authenticate to other servers (*"Thanks for the Domain Admin creds, mate!"*)
 - **Privilege escalation** — if you RDP'd with a Tier 0 account to a Tier 1 server, congrats, your Tier 0 is now compromised from a lower-trust zone
-- **Post-disconnection risk** — you disconnected 3 hours ago? Doesn't matter. Your creds are still there, waiting to be harvested
+- **Post-disconnection risk** — this one's subtle. On modern Windows (8.1+/2012 R2+), WDigest is disabled by default so plaintext passwords are no longer cached, and credentials are cleaned up on **logoff**. But here's the thing: **disconnect ≠ logoff**. When you click the red X or lose network, the session stays active — and your NTLM hashes and Kerberos TGT remain in LSASS until the session is fully logged off or times out. Most admins *disconnect*, they don't *logoff*. That session can sit there for hours or days with your creds still loaded.
 
 This is not theoretical. This is **the #1 way attackers move laterally in Active Directory environments**. And the fix is surprisingly simple — just stop sending credentials to remote hosts.
 
@@ -61,6 +61,7 @@ mstsc.exe /restrictedAdmin
 - ❌ **No multi-hop RDP** — you can't RDP from that session to another server with your identity
 - ❌ **Requires local Administrators group** — not just Remote Desktop Users. This can conflict with least-privilege if you're not careful
 - ⚠️ **Machine account PtH** — an attacker on that host could use the machine's credentials to authenticate *as the machine* to other systems. Less damage than a DA hash, but worth knowing
+- 🚨 **Enables Pass-the-Hash → RDP** — this is the dark side of Restricted Admin that nobody talks about enough. Because it uses network logon (type 3) with no password required, an attacker who has stolen a local admin's NTLM hash can **use it to RDP directly into the server** without ever knowing the plaintext password. Tools like `xfreerdp /restricted-admin` or Impacket make this trivial. Restricted Admin is a double-edged sword: it protects *your* creds, but opens a new door for attackers who already have hashes. **This is why Restricted Admin must be explicitly enabled** on the remote host (it's off by default) — and why you should audit which servers have it enabled.
 
 ---
 
@@ -107,11 +108,13 @@ mstsc.exe /remoteGuard
 | **Credentials exposed after disconnect** | ⚠️ Yes (cached in LSASS) | ❌ No | ❌ No |
 | **Pass-the-Hash protection** | ❌ No | ✅ Yes | ✅ Yes |
 | **Risk during active session** | Credential theft | Ticket requests via channel | Local attacks only |
+| **Attacker can impersonate user during session** | ✅ Yes (has full creds) | ⚠️ Yes (via Kerberos channel) | ❌ No (user identity absent) |
 | **Authentication protocol** | Any (NTLM/Kerberos) | **Kerberos only** | Any (NTLM/Kerberos) |
 | **Required group membership** | Remote Desktop Users | Remote Desktop Users | **Administrators** |
 | **Minimum OS** | Any | Win 10 1607 / Server 2016 | Win 8.1 / Server 2012 R2 |
 | **Works via RD Gateway** | ✅ Yes | ❌ No | ✅ Yes |
 | **Domain join required** | No | Yes (Kerberos) | No |
+| **PtH → RDP possible** | ❌ No (needs password) | ❌ No (Kerberos only) | ⚠️ Yes (hash is enough) |
 
 ---
 
@@ -260,6 +263,18 @@ Every security feature comes with trade-offs. Here's what will bite you if you d
 - 👑 **Requires local Administrators group** — not Remote Desktop Users. In a least-privilege world, this is awkward. You'll need to manage this via LAPS or dedicated admin groups.
 - 🤖 **Machine account authentication** — network access from the session uses `SERVERNAME$`. Most file shares don't grant access to machine accounts, so expect *"Access Denied"* everywhere.
 - 💔 **No SSO** — this is the #1 complaint. If your workflow involves opening RSAT, connecting to SQL, or mapping drives from the remote session... Restricted Admin will make you miserable.
+- 🚨 **PtH → RDP attack vector** — Restricted Admin must be explicitly enabled on the server via the `DisableRestrictedAdmin` registry value. When enabled, an attacker with a stolen NTLM hash can Pass-the-Hash directly into an RDP session (using tools like xfreerdp or Impacket) — no plaintext password needed. **Only enable it on servers that actually need it**, and monitor access via Event IDs (see below).
+
+**Enabling/Disabling Restricted Admin on the remote host:**
+```
+Path:  HKLM\SYSTEM\CurrentControlSet\Control\Lsa
+Name:  DisableRestrictedAdmin
+Type:  DWORD
+Value: 0 = Restricted Admin ENABLED
+       1 = Restricted Admin DISABLED (default)
+```
+
+> 💡 Yes, the naming is confusing — `DisableRestrictedAdmin = 0` means it's *enabled*. Classic Microsoft. The "Allow delegation of nonexportable credentials" GPO sets this automatically, so if you deployed that GPO on all servers (as recommended), Restricted Admin is already enabled everywhere. Be aware of this!
 
 **Both modes:**
 - The remote host **must** have the *"Allow delegation of nonexportable credentials"* policy enabled. Forget this and nothing works.
@@ -287,6 +302,56 @@ Here's a battle-tested GPO setup that works well in production:
 - **Protected Users group** — for Tier 0 accounts. Blocks NTLM, forces Kerberos, disables credential caching. Brutal but effective.
 - **Credential Guard (VBS)** — on PAWs, to protect LSASS with virtualization-based security. Even if an attacker gets admin on your PAW, they still can't dump creds.
 - **Network-level tiering** — use firewall rules to prevent Tier 0 credentials from ever touching lower-tier systems. Because the best defense against credential theft on a Tier 1 server is... never putting Tier 0 creds there in the first place.
+
+---
+
+### 📊 Event IDs: Detect Which RDP Mode Is Being Used
+
+Deploying RCG and Restricted Admin is great. Knowing whether people are *actually using them* is even better. Here are the key Event IDs to monitor:
+
+**On the remote host (Security log):**
+
+| Event ID | Log | What It Tells You |
+|----------|-----|--------------------|
+| **4624** | Security | Successful logon. Check the **Logon Type** field: |
+| | | • Type **10** (RemoteInteractive) = Standard RDP — credentials were sent. Bad! 🚨 |
+| | | • Type **3** (Network) with RDP = Restricted Admin mode |
+| | | • Type **10** with no TGT in `klist` = Remote Credential Guard |
+| **4625** | Security | Failed logon — useful to detect PtH→RDP brute force attempts |
+| **4634 / 4647** | Security | Logoff events — track session durations |
+
+**How to distinguish RCG from standard RDP (both show Type 10):**
+
+The logon event alone won't tell you — both appear as Type 10 / RemoteInteractive. To confirm RCG is active:
+- Run `klist` on the remote session: no TGT = RCG ✅, TGT present = standard RDP ❌
+- Check the **Authentication Package** field in Event 4624: RCG uses `Negotiate` but the session won't have cached credentials in LSASS
+- Use **Restricted Admin detection**: Logon Type 3 from an RDP session is a dead giveaway — that's Restricted Admin for sure
+
+**Recommended SIEM rules:**
+- 🚨 Alert on **Logon Type 10 from Tier 0 accounts on non-PAW sources** — someone is doing standard RDP with privileged creds
+- 🚨 Alert on **Logon Type 3 + RDP from unexpected sources** — Restricted Admin from a non-helpdesk machine
+- 📊 Dashboard: ratio of Type 10 vs Type 3 RDP logons over time — track your migration progress away from standard RDP
+
+---
+
+### 🔐 Credential Guard (VBS) vs Remote Credential Guard — Don't Confuse Them!
+
+This is one of the most common mix-ups in the Windows security world. The names are similar, but they solve **completely different problems**:
+
+| | Credential Guard (VBS) | Remote Credential Guard |
+|---|---|---|
+| **What it protects** | LSASS on the **local machine** | Credentials during **remote RDP sessions** |
+| **How it works** | Runs LSASS secrets inside a **Virtualization-Based Security** (VBS) isolated container. Even a local admin can't dump them. | Keeps credentials on the **RDP client**. The remote host never sees them. |
+| **Protects against** | Local credential theft (Mimikatz on your PAW) | Remote credential theft (Mimikatz on the server you RDP into) |
+| **Scope** | The machine it's installed on | RDP sessions initiated from the machine |
+| **Requirements** | UEFI Secure Boot, TPM 2.0, Hyper-V, Win 10 Enterprise/Education | Win 10 1607+, domain-joined, Kerberos |
+| **Deployment** | GPO or Intune ("Turn on Virtualization Based Security") | GPO ("Restrict delegation of credentials to remote servers") |
+
+**The short version:**
+- **Credential Guard** = *"Even if you hack my PAW, you can't steal my creds from LSASS"*
+- **Remote Credential Guard** = *"Even if you hack the server I'm RDP'd into, you can't steal my creds because they're not there"*
+
+**Best practice:** deploy **both**. Credential Guard on your PAWs to protect local LSASS, and Remote Credential Guard for all outbound RDP sessions. They're complementary, not redundant. Belt and suspenders. 🎯
 
 ---
 
