@@ -151,31 +151,92 @@ function Invoke-MATITieringPhase7 {
         }
     }
 
-    function Resolve-GpoFromLink {
-        param(
-            [Parameter(Mandatory)] $Link
-        )
+    function Resolve-IdentityReferenceValue {
+        param([string]$IdentityValue)
 
-        $linkName = if ($null -ne $Link.DisplayName) { [string]$Link.DisplayName } else { $null }
-        if (-not [string]::IsNullOrWhiteSpace($linkName)) {
-            return Get-GPO -Name $linkName -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($IdentityValue)) {
+            return $IdentityValue
         }
 
-        foreach ($propertyName in @('GpoId', 'Id', 'Guid')) {
-            $property = $Link.PSObject.Properties[$propertyName]
-            if ($null -eq $property) { continue }
-
-            $rawValue = [string]$property.Value
-            if ([string]::IsNullOrWhiteSpace($rawValue)) { continue }
-
-            $normalizedValue = $rawValue.Trim('{}')
-            $guidValue = [guid]::Empty
-            if ([guid]::TryParse($normalizedValue, [ref]$guidValue)) {
-                return Get-GPO -Guid $guidValue -ErrorAction Stop
+        if ($IdentityValue -match '^S-\d-') {
+            try {
+                $sid = [System.Security.Principal.SecurityIdentifier]::new($IdentityValue)
+                return $sid.Translate([System.Security.Principal.NTAccount]).Value
+            } catch {
+                return $IdentityValue
             }
         }
 
-        return $null
+        return $IdentityValue
+    }
+
+    function Add-AclFinding {
+        param(
+            [Parameter(Mandatory)] [hashtable]$Index,
+            [Parameter(Mandatory)] [string]$Object,
+            [Parameter(Mandatory)] [string]$Category,
+            [Parameter(Mandatory)] [string]$Path,
+            [Parameter(Mandatory)] [string]$Identity,
+            [Parameter(Mandatory)] [string]$Rights,
+            [Parameter(Mandatory)] [bool]$Inherited,
+            [Parameter(Mandatory)] [string]$Severity
+        )
+
+        $key = "$Object|$Category|$Path|$Identity|$Rights|$Inherited|$Severity"
+        if ($Index.ContainsKey($key)) {
+            $Index[$key].Occurrences++
+            return
+        }
+
+        $finding = [PSCustomObject]@{
+            Object      = $Object
+            Category    = $Category
+            Path        = $Path
+            Identity    = $Identity
+            Rights      = $Rights
+            Inherited   = $Inherited
+            Severity    = $Severity
+            Occurrences = 1
+        }
+
+        $Index[$key] = $finding
+        $results.ACLFindings.Add($finding)
+    }
+
+    function Get-DirectGpoLinksFromOu {
+        param(
+            [Parameter(Mandatory)] [string]$OrganizationalUnitDn
+        )
+
+        $ouObject = Get-ADObject -Identity $OrganizationalUnitDn -Properties gPLink -ErrorAction Stop
+        $gpoLinks = [System.Collections.Generic.List[object]]::new()
+        $rawGpLink = [string]$ouObject.gPLink
+
+        if ([string]::IsNullOrWhiteSpace($rawGpLink)) {
+            return $gpoLinks
+        }
+
+        $matches = [regex]::Matches($rawGpLink, '\[(?<path>LDAP://[^;\]]+);(?<flags>\d+)\]')
+        $order = 1
+        foreach ($match in $matches) {
+            $pathValue = [string]$match.Groups['path'].Value
+            $flags = [int]$match.Groups['flags'].Value
+            $guidMatch = [regex]::Match($pathValue, '\{(?<guid>[0-9A-Fa-f-]+)\}')
+            if (-not $guidMatch.Success) {
+                continue
+            }
+
+            $guidValue = [guid]$guidMatch.Groups['guid'].Value
+            $gpoLinks.Add([PSCustomObject]@{
+                GpoId    = $guidValue
+                Enabled  = [bool](($flags -band 1) -eq 0)
+                Enforced = [bool](($flags -band 2) -ne 0)
+                Order    = $order
+            })
+            $order++
+        }
+
+        return $gpoLinks
     }
 
     function Get-ServiceAccountRisk {
@@ -232,6 +293,7 @@ function Invoke-MATITieringPhase7 {
 
     $trustedAclPatterns = 'S-1-5-18|NT AUTHORITY\\SYSTEM|^SYSTEM$|BUILTIN\\Administrators|Domain Admins|Enterprise Admins|Schema Admins|Enterprise Domain Controllers|Key Admins|Enterprise Key Admins'
     $dangerousRightsPattern = 'GenericAll|WriteDacl|WriteOwner|GenericWrite|CreateChild|DeleteChild'
+    $aclFindingIndex = @{}
 
     Write-Host "  Step 1/4 — ACL Audit on Critical Tier 0 Objects" -ForegroundColor Yellow
     Write-Host ""
@@ -251,16 +313,9 @@ function Invoke-MATITieringPhase7 {
             foreach ($ace in $dangerousAces) {
                 $rights = $ace.ActiveDirectoryRights.ToString()
                 $severity = if ($rights -match 'GenericAll|WriteDacl|WriteOwner') { 'Critical' } else { 'High' }
-                Write-Host "      [!] ${severity}: $($ace.IdentityReference) has $rights on $($obj.Name)" -ForegroundColor $(if ($severity -eq 'Critical') { 'Red' } else { 'Yellow' })
-                $results.ACLFindings.Add([PSCustomObject]@{
-                    Object    = $obj.Name
-                    Category  = $obj.Category
-                    Path      = $obj.Path
-                    Identity  = $ace.IdentityReference.Value
-                    Rights    = $rights
-                    Inherited = $ace.IsInherited
-                    Severity  = $severity
-                })
+                $resolvedIdentity = Resolve-IdentityReferenceValue -IdentityValue $ace.IdentityReference.Value
+                Write-Host "      [!] ${severity}: $resolvedIdentity has $rights on $($obj.Name)" -ForegroundColor $(if ($severity -eq 'Critical') { 'Red' } else { 'Yellow' })
+                Add-AclFinding -Index $aclFindingIndex -Object $obj.Name -Category $obj.Category -Path $obj.Path -Identity $resolvedIdentity -Rights $rights -Inherited ([bool]$ace.IsInherited) -Severity $severity
             }
 
             if (-not $dangerousAces) {
@@ -277,8 +332,7 @@ function Invoke-MATITieringPhase7 {
     Write-Host ""
 
     try {
-        $tier0Inheritance = Get-GPInheritance -Target $tier0OUDN -ErrorAction Stop
-        $tier0GpoLinks = @($tier0Inheritance.GpoLinks)
+        $tier0GpoLinks = @(Get-DirectGpoLinksFromOu -OrganizationalUnitDn $tier0OUDN)
 
         if (-not $tier0GpoLinks -or $tier0GpoLinks.Count -eq 0) {
             Write-Host "    [!] No GPOs are directly linked to the Tier 0 OU." -ForegroundColor Yellow
@@ -288,9 +342,10 @@ function Invoke-MATITieringPhase7 {
         $trustedGpoPermissionPatterns = 'Domain Admins|Enterprise Admins|NT AUTHORITY\\SYSTEM|^SYSTEM$'
 
         foreach ($link in $tier0GpoLinks) {
-            $gpo = Resolve-GpoFromLink -Link $link
-            if ($null -eq $gpo) {
-                $results.Warnings.Add('A Tier 0-linked GPO could not be resolved from Get-GPInheritance output. The link entry was skipped.')
+            try {
+                $gpo = Get-GPO -Guid $link.GpoId -ErrorAction Stop
+            } catch {
+                $results.Warnings.Add("A Tier 0-linked GPO with GUID '$($link.GpoId)' could not be resolved. The link entry was skipped.")
                 continue
             }
 

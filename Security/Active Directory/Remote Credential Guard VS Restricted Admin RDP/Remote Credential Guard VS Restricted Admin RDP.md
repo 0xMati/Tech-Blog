@@ -61,7 +61,49 @@ mstsc.exe /restrictedAdmin
 - ❌ **No multi-hop RDP** — you can't RDP from that session to another server with your identity
 - ❌ **Requires local Administrators group** — not just Remote Desktop Users. This can conflict with least-privilege if you're not careful
 - ⚠️ **Machine account PtH** — an attacker on that host could use the machine's credentials to authenticate *as the machine* to other systems. Less damage than a DA hash, but worth knowing
-- 🚨 **Enables Pass-the-Hash → RDP** — this is the dark side of Restricted Admin that nobody talks about enough. Because it uses network logon (type 3) with no password required, an attacker who has stolen a local admin's NTLM hash can **use it to RDP directly into the server** without ever knowing the plaintext password. Tools like `xfreerdp /restricted-admin` or Impacket make this trivial. Restricted Admin is a double-edged sword: it protects *your* creds, but opens a new door for attackers who already have hashes. **This is why Restricted Admin must be explicitly enabled** on the remote host (it's off by default) — and why you should audit which servers have it enabled.
+- 🚨 **Enables Pass-the-Hash → RDP** — this is the dark side of Restricted Admin that nobody talks about enough, and it deserves a deep explanation.
+
+**Why does this happen?**
+In standard RDP, the client authenticates via CredSSP/NLA — which requires the **plaintext password** (or at least a derived credential that can only be produced from the password). An NTLM hash alone is **not enough** to complete a standard RDP logon.
+
+But Restricted Admin changes the authentication to a **network logon (type 3)** — the same mechanism used for SMB (`\\server\share`), WMI, or PSRemoting. And type 3 logons accept raw NTLM hashes. That's how Pass-the-Hash works.
+
+**The attack — step by step:**
+
+1. Attacker compromises **Server A** (via phishing, exploit, whatever)
+2. Dumps LSASS → gets the NTLM hash of an account that's in the local **Administrators** group on Server B
+3. If Restricted Admin is **disabled** on Server B (default) → attacker can do PtH via SMB (`psexec`, `wmiexec`) but **cannot** get an RDP session. They're limited to command-line access.
+4. If Restricted Admin is **enabled** on Server B → attacker runs:
+   ```
+   xfreerdp /v:ServerB /u:Administrator /pth:<NTLM_HASH> /restricted-admin
+   ```
+5. They get a **full graphical RDP session** as local admin on Server B — without ever knowing the password
+
+**This works with both local AND domain accounts:**
+
+| Stolen hash | Impact |
+|-------------|--------|
+| **Local admin** (`.\Administrator`) | PtH→RDP on that specific server only (unless the same password is reused — then every server with that password is exposed) |
+| **Domain admin** (`DOMAIN\AdminUser`) | PtH→RDP on **every server** where that account is in the local Administrators group — potentially hundreds of machines |
+| **Helpdesk account** (`DOMAIN\HelpDesk`) | PtH→RDP on **every workstation** where that account is admin — the most common real-world scenario |
+
+**Why attackers love this:**
+- A graphical RDP session is **stealthier** than psexec (which creates a service, triggers Event 7045) or WMI
+- They can use GUI tools, browse files visually, interact with applications
+- Many EDR solutions monitor for suspicious process execution (psexec, wmiexec) but are less aggressive on RDP sessions
+- The session appears as a normal admin logon — harder to spot in logs
+
+**Essential mitigations:**
+
+| Mitigation | What it does | Priority |
+|------------|------------|----------|
+| **Windows LAPS** | Unique local admin password per machine → a hash stolen from Server A doesn't work on Server B | 🔴 Critical |
+| **Protected Users group** | Blocks NTLM authentication entirely for members → PtH is impossible for these accounts | 🔴 Critical for Tier 0 |
+| **Credential Guard (VBS)** | Protects LSASS on the machine where the hash would be stolen → attacker can't dump hashes in the first place | 🟠 High |
+| **Tiered admin accounts** | Separate accounts per tier → a Tier 1 admin hash can't access Tier 0 servers | 🟠 High |
+| **Monitoring Event 4624 Type 3 + RDP** | Detects PtH→RDP attempts → alert your SOC (see Event IDs section below) | 🟡 Detection |
+
+**This is why Restricted Admin must be explicitly enabled** on the remote host (it's off by default) — and why you should audit which servers have it enabled. The `DisableRestrictedAdmin` registry value controls this (see Gotchas section below).
 
 ---
 

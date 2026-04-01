@@ -44,7 +44,8 @@ function Export-TieringPhase7Html {
             'High' { "<span class='badge warn'>High</span>" }
             default { "<span class='badge info'>$($a.Severity)</span>" }
         }
-        $aclRows += "<tr><td>$(HtmlEncode $a.Object)</td><td>$(HtmlEncode $a.Category)</td><td>$(HtmlEncode $a.Identity)</td><td class='mono'>$(HtmlEncode $a.Rights)</td><td>$($a.Inherited)</td><td>$sevBadge</td></tr>`n"
+        $occurrences = if ($null -ne $a.Occurrences) { $a.Occurrences } else { 1 }
+        $aclRows += "<tr><td>$(HtmlEncode $a.Object)</td><td>$(HtmlEncode $a.Category)</td><td>$(HtmlEncode $a.Identity)</td><td class='mono'>$(HtmlEncode $a.Rights)</td><td>$($a.Inherited)</td><td>$occurrences</td><td>$sevBadge</td></tr>`n"
     }
 
     $gpoScopeRows = ''
@@ -138,7 +139,7 @@ $(if($errCount -gt 0){'<a href="#errors" style="color:var(--red);">Errors</a>'})
 <table><thead><tr><th>Object</th><th>Category</th><th>Path</th><th>Notes</th></tr></thead><tbody>$scopeRows</tbody></table></div></div>
 
 <div id="acl"><h2 class="section-header"><span class="section-icon">&#x1F50D;</span> ACL Audit</h2>
-$(if($aclCount -gt 0){"<div class='card'><table><thead><tr><th>Object</th><th>Category</th><th>Identity</th><th>Rights</th><th>Inherited</th><th>Severity</th></tr></thead><tbody>$aclRows</tbody></table></div>"}else{"<p class='note'>No dangerous non-standard ACEs found on the audited Tier 0 objects.</p>"})
+$(if($aclCount -gt 0){"<div class='card'><table><thead><tr><th>Object</th><th>Category</th><th>Identity</th><th>Rights</th><th>Inherited</th><th>Count</th><th>Severity</th></tr></thead><tbody>$aclRows</tbody></table></div>"}else{"<p class='note'>No dangerous non-standard ACEs found on the audited Tier 0 objects.</p>"})
 </div>
 
 <div id="gposcope"><h2 class="section-header"><span class="section-icon">&#x1F517;</span> Tier 0-Linked GPOs</h2>
