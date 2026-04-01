@@ -22,14 +22,81 @@ Miss any one of those, and you can end up with a false sense of security. The di
 
 ## Ticket encryption vs session key 🧠
 
-These two concepts are frequently mixed together, and that leads to bad assumptions during remediation.
+This distinction matters a lot, because many Kerberos discussions casually say “the ticket is RC4” when they really mean “some part of the Kerberos exchange is still using RC4.” Those are related ideas, but they are not exactly the same thing.
 
-- A Kerberos ticket is encrypted with the long-term key of the ticket recipient.
-  - TGTs are encrypted with the `krbtgt` key.
-  - Service tickets are encrypted with the key of the service or computer account.
-- The session key is a temporary key carried inside the ticket and used by the client and service during the Kerberos exchange.
+At a high level, Kerberos relies on two different cryptographic objects during authentication:
 
-In the real world, if the target account only has RC4 material available, you often end up with RC4 for both the ticket and the session path. If AES is available and preferred, you should see AES in the ticket events and in the effective Kerberos flow. This is one of those classic Kerberos moments where a tiny detail in key material has very visible downstream consequences.
+1. The ticket itself
+2. The session key carried inside that ticket
+
+### The ticket
+
+The ticket is the blob issued by the KDC for a specific recipient.
+
+- A TGT is intended for the KDC itself later in the flow, so it is encrypted with the long-term key of `krbtgt`.
+- A service ticket is intended for the target service, so it is encrypted with the long-term key of the service account or computer account behind the SPN.
+
+That point is critical: the ticket encryption type depends on the long-term key material of the recipient. For a TGS ticket, that means the service-side identity matters directly.
+
+### The session key
+
+The session key is different. It is a temporary symmetric key placed inside the ticket so the client and the service can securely talk to each other during the Kerberos exchange.
+
+It is not just an implementation detail. It is the actual working key used by the client and service once the ticket is presented.
+
+### Why people mix them up
+
+They are tightly linked in practice, so it is easy to blur them together:
+
+- the ticket has its own encryption type
+- the session key has its own negotiated outcome
+- both are influenced by what the KDC believes the client and target account support
+
+That is why the subject gets confusing fast. A change in account key material can alter the ticket encryption outcome, the session key outcome, or both depending on the scenario.
+
+### Why this matters for this article
+
+This article is about deciding whether you are truly ready to move away from RC4. That requires understanding what exactly your evidence is proving.
+
+If you see RC4 in Kerberos ticket events:
+
+- it usually means the KDC still had a reason to issue a ticket using RC4
+- for TGS traffic, that often points straight at the service-side account and its available keys
+- it is therefore not just a cosmetic event-log detail, it is often a sign that remediation is incomplete
+
+And this is the important connection to the rest of the article: when we audit `msDS-SupportedEncryptionTypes`, `DefaultDomainSupportedEncTypes`, and live 4768/4769 traffic, we are trying to explain why the KDC made that cryptographic choice.
+
+### The practical consequence
+
+If the target service account only has RC4-usable key material, you will often see RC4 survive where you expected AES. That is exactly why changing an attribute alone is not enough. The secret has to be rotated so usable AES keys actually exist.
+
+Once AES key material exists and the environment is configured correctly, you should expect to see AES dominate both the ticket evidence and the effective session path.
+
+That is why this section is not just theory. It explains why a service account with stale keys can keep your environment on RC4 even when the DCs are patched and the directory settings look modern.
+
+### A concrete example
+
+Take a simple case:
+
+1. A client asks the KDC for a service ticket to access `HTTP/app.mathiasmotron.com`.
+2. The KDC resolves that SPN to a service account.
+3. That account has either explicit RC4-only configuration, or stale key material that still leaves RC4 as the practical option.
+4. The KDC issues a TGS ticket that ends up using RC4.
+5. You later see that outcome in 4769 and wonder why RC4 is still alive even though the domain was patched.
+
+That is the exact kind of situation this article is trying to explain.
+
+If you only look at the patch level of the DCs, you miss the service-side dependency.
+If you only look at the account attribute, you may miss the fact that the secret was never rotated.
+If you only look at the event log, you see the symptom but not the reason.
+
+Put those three together, and the story becomes readable:
+
+- the KDC had to make a choice
+- the target account's usable key material constrained that choice
+- the event log recorded the result
+
+That is why the article keeps insisting on combining configuration evidence and live ticket evidence. Without both, you are only seeing half of the protocol story.
 
 ## What KB5021131 changed ⚙️
 

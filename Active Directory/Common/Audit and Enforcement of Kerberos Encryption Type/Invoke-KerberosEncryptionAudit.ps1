@@ -543,6 +543,8 @@ function Resolve-AdPrincipalSummary {
 
     $principal = $null
     $category = $null
+    $normalizedIdentity = $Identity
+    $localPart = if ($Identity -like '*@*') { ($Identity -split '@', 2)[0] } else { $Identity }
 
     if ($Identity -like '*@*') {
         try {
@@ -555,19 +557,45 @@ function Resolve-AdPrincipalSummary {
 
     if (-not $principal) {
         try {
-            $principal = Get-ADUser -Identity $Identity -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop
+            $principal = Get-ADUser -Identity $normalizedIdentity -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop
             $category = 'User/Service'
         } catch {
             try {
-                $principal = Get-ADComputer -Identity $Identity -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop
+                $principal = Get-ADComputer -Identity $normalizedIdentity -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop
                 $category = 'Computer'
             } catch {
                 try {
-                    $principal = Get-ADServiceAccount -Identity $Identity -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop
+                    $principal = Get-ADServiceAccount -Identity $normalizedIdentity -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop
                     $category = Get-ObjectCategory -ObjectClass ([string]$principal.ObjectClass)
                 } catch {
                     $principal = $null
                 }
+            }
+        }
+    }
+
+    if (-not $principal -and -not [string]::IsNullOrWhiteSpace($localPart) -and $localPart -ne $Identity) {
+        foreach ($resolver in @(
+            { Get-ADUser -Identity $localPart -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
+            { Get-ADComputer -Identity $localPart -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
+            { Get-ADServiceAccount -Identity $localPart -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop }
+        )) {
+            try {
+                $principal = & $resolver
+                if ($principal) {
+                    break
+                }
+            } catch {
+            }
+        }
+
+        if ($principal) {
+            if ($principal.ObjectClass -eq 'computer') {
+                $category = 'Computer'
+            } elseif ($principal.ObjectClass -in @('msDS-GroupManagedServiceAccount', 'msDS-ManagedServiceAccount')) {
+                $category = Get-ObjectCategory -ObjectClass ([string]$principal.ObjectClass)
+            } else {
+                $category = 'User/Service'
             }
         }
     }
@@ -668,6 +696,30 @@ function New-HtmlReport {
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $errorCount = $Results.Errors.Count
     $warningCount = $Results.Warnings.Count
+    $kdcWarningCount = @($Results.KdcDefaults | Where-Object { $_.Status -like 'Warning*' -or $_.Status -like 'Failed*' }).Count
+    $topRc4Targets = @($Results.Rc4TargetServices | Sort-Object Events -Descending | Select-Object -First 3)
+    $topPriority = @($Results.PriorityAccounts | Where-Object { $_.Status -like 'Failed*' -or $_.Status -like 'Warning*' } | Select-Object -First 3)
+    $rc4Explanation = if ($Results.TotalRc4Events -gt 0) {
+        "This section answers two different questions: who was involved in RC4 ticket activity, and which service identities still received RC4 service tickets. The left table is about requestors observed in RC4 events. The right table is about target services for RC4 TGS issuance, which is usually the more actionable remediation view."
+    } else {
+        "No RC4 events were observed in the selected window, so these tables are empty by design. If that is unexpected, widen the lookback window or check Security log retention on the domain controllers."
+    }
+
+    $findingItems = @()
+    if ($kdcWarningCount -gt 0) {
+        $findingItems += "<div class='finding danger'><strong>KDC baseline:</strong> $kdcWarningCount domain controller(s) still rely on implicit or mixed encryption defaults.</div>"
+    }
+    if ($Results.AvoidableRc4Tgs -gt 0) {
+        $serviceList = if ($topRc4Targets.Count -gt 0) { ($topRc4Targets | ForEach-Object { HtmlEncode $_.Service }) -join ', ' } else { 'see RC4 hotspots' }
+        $findingItems += "<div class='finding danger'><strong>Avoidable RC4:</strong> $($Results.AvoidableRc4Tgs) RC4 TGS event(s) look avoidable. Top target(s): $serviceList.</div>"
+    }
+    if ($topPriority.Count -gt 0) {
+        $priorityList = ($topPriority | ForEach-Object { HtmlEncode $_.Name }) -join ', '
+        $findingItems += "<div class='finding warn'><strong>Priority accounts:</strong> Highest-interest identities right now: $priorityList.</div>"
+    }
+    if ($findingItems.Count -eq 0) {
+        $findingItems += "<div class='finding good'><strong>Signal:</strong> No immediate high-signal findings were derived from the current dataset.</div>"
+    }
 
     $summaryRows = ''
     foreach ($kpi in $Results.Kpis) {
@@ -766,6 +818,7 @@ function New-HtmlReport {
 *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',-apple-system,sans-serif;background:radial-gradient(circle at top,#173055 0%,var(--bg) 45%,#08101c 100%);color:var(--text);line-height:1.6;padding:2rem}.container{max-width:1440px;margin:0 auto}
 h1{color:#f4fbff;font-size:2.2rem;margin-bottom:.5rem;letter-spacing:-.02em}h2{color:var(--accent);font-size:1.35rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}.subtitle{color:var(--muted);font-size:.92rem;margin-bottom:0}
 .hero{background:linear-gradient(135deg,rgba(104,195,255,.2),rgba(142,240,201,.1));border:1px solid rgba(104,195,255,.28);border-radius:18px;padding:1.6rem 1.8rem;margin-bottom:1.5rem;box-shadow:0 18px 50px rgba(0,0,0,.25)}.hero p{color:var(--muted);max-width:900px}.hero strong{color:var(--accent-2)}
+.findings{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem}.finding{border-radius:14px;padding:1rem 1.1rem;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text)}.finding strong{display:block;margin-bottom:.35rem}.finding.danger{border-color:rgba(255,107,107,.35);background:rgba(255,107,107,.08)}.finding.warn{border-color:rgba(240,196,92,.35);background:rgba(240,196,92,.08)}.finding.good{border-color:rgba(73,209,125,.35);background:rgba(73,209,125,.08)}
 .card{background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--border);border-radius:14px;padding:1.5rem;margin-bottom:1.5rem;box-shadow:0 12px 30px rgba(0,0,0,.18)}.advisory{background:rgba(82,214,255,.08);border:1px solid rgba(82,214,255,.28);border-radius:14px;padding:1rem 1.2rem;margin-bottom:1.5rem}.advisory strong{color:var(--cyan)}
 table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:rgba(255,255,255,.04);color:var(--accent);padding:10px 12px;text-align:left;font-weight:600}td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}tr:hover{background:rgba(255,255,255,.025)}
 .badge{padding:3px 9px;border-radius:999px;font-size:.75rem;font-weight:700;display:inline-block}.badge.pass{background:rgba(73,209,125,.14);color:var(--green)}.badge.warn{background:rgba(240,196,92,.14);color:var(--yellow)}.badge.fail{background:rgba(255,107,107,.14);color:var(--red)}.badge.info{background:rgba(82,214,255,.14);color:var(--cyan)}
@@ -784,10 +837,11 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:rgba(25
 <div class="summary-metric" style="border-top:3px solid var(--yellow)"><div class="metric-value" style="color:var(--yellow)">$($Results.PriorityAccounts.Count)</div><div class="metric-label">Priority Accounts</div></div>
 <div class="summary-metric" style="border-top:3px solid $(if($Results.TotalRc4Events -gt 0){'var(--red)'}else{'var(--green)'})"><div class="metric-value" style="color:$(if($Results.TotalRc4Events -gt 0){'var(--red)'}else{'var(--green)'})">$($Results.TotalRc4Events)</div><div class="metric-label">RC4 Events</div></div>
 <div class="summary-metric" style="border-top:3px solid $(if($Results.AvoidableRc4Tgs -gt 0){'var(--red)'}else{'var(--green)'})"><div class="metric-value" style="color:$(if($Results.AvoidableRc4Tgs -gt 0){'var(--red)'}else{'var(--green)'})">$($Results.AvoidableRc4Tgs)</div><div class="metric-label">Avoidable RC4 TGS</div></div>
-<div class="summary-metric" style="border-top:3px solid $(if($warningCount -gt 0){'var(--yellow)'}else{'var(--green)'})"><div class="metric-value" style="color:$(if($warningCount -gt 0){'var(--yellow)'}else{'var(--green)'})">$warningCount</div><div class="metric-label">Warnings</div></div>
-<div class="summary-metric" style="border-top:3px solid $(if($errorCount -gt 0){'var(--red)'}else{'var(--green)'})"><div class="metric-value" style="color:$(if($errorCount -gt 0){'var(--red)'}else{'var(--green)'})">$errorCount</div><div class="metric-label">Errors</div></div>
+<div class="summary-metric" style="border-top:3px solid $(if($warningCount -gt 0){'var(--yellow)'}else{'var(--green)'})"><div class="metric-value" style="color:$(if($warningCount -gt 0){'var(--yellow)'}else{'var(--green)'})">$warningCount</div><div class="metric-label">Runtime Warnings</div></div>
+<div class="summary-metric" style="border-top:3px solid $(if($errorCount -gt 0){'var(--red)'}else{'var(--green)'})"><div class="metric-value" style="color:$(if($errorCount -gt 0){'var(--red)'}else{'var(--green)'})">$errorCount</div><div class="metric-label">Runtime Errors</div></div>
 </div>
 <div class="advisory"><strong>Purpose:</strong> this unified audit checks the KDC default, inventories account encryption capability, inspects 4768 and 4769 ticket encryption on domain controllers, and highlights the RC4 usage you need to remove before enforcing AES-only settings.</div>
+<div class="findings">$($findingItems -join "`n")</div>
 <div class="card"><table><thead><tr><th>KPI</th><th>Value</th><th>Target</th><th>Status</th></tr></thead><tbody>$summaryRows</tbody></table></div></div>
 
 <div id="kdc"><h2>KDC Default</h2><div class="card"><table><thead><tr><th>Domain Controller</th><th>Raw</th><th>Decoded</th><th>Status</th></tr></thead><tbody>$kdcRows</tbody></table></div></div>
@@ -796,7 +850,7 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:rgba(25
 
 <div id="tickets"><h2>Ticket Encryption</h2><div class="card"><table><thead><tr><th>Ticket Type</th><th>Encryption</th><th>Events</th></tr></thead><tbody>$breakdownRows</tbody></table></div><div class="card"><table><thead><tr><th>Encryption</th><th>Events</th><th>Percent</th><th>Signal</th></tr></thead><tbody>$globalRows</tbody></table></div></div>
 
-<div id="rc4"><h2>RC4 Hotspots</h2><div class="card"><p class="note">Requestor accounts show who asked for RC4 tickets. Target services show where RC4 TGS is still being issued.</p><table><thead><tr><th>Account</th><th>Events</th><th>Enc</th><th>Status</th></tr></thead><tbody>$rc4AccountRows</tbody></table></div><div class="card"><table><thead><tr><th>Service</th><th>Resolved SamAccountName</th><th>Events</th><th>Avoidable RC4 TGS</th><th>Enc</th><th>Status</th></tr></thead><tbody>$rc4ServiceRows</tbody></table></div></div>
+<div id="rc4"><h2>RC4 Hotspots</h2><div class="advisory"><strong>How to read this:</strong> $(HtmlEncode $rc4Explanation)</div><div class="card"><h3 style="margin-bottom:.65rem;color:var(--accent-2);font-size:1rem;">Who was seen in RC4 events?</h3><p class="note">These are the identities observed as requestors in RC4-related events. This helps identify who was involved, but not necessarily which service account is the root cause.</p><table><thead><tr><th>Requestor identity</th><th>RC4 events</th><th>AD encryption setting</th><th>AD posture</th></tr></thead><tbody>$rc4AccountRows</tbody></table></div><div class="card"><h3 style="margin-bottom:.65rem;color:var(--accent-2);font-size:1rem;">Which services still received RC4 TGS tickets?</h3><p class="note">This is usually the most actionable table. It shows the target services that actually received RC4 service tickets, the resolved AD account behind them, and whether those RC4 tickets look avoidable.</p><table><thead><tr><th>Target service / SPN</th><th>Resolved AD account</th><th>RC4 TGS events</th><th>Avoidable RC4 TGS</th><th>AD encryption setting</th><th>AD posture</th></tr></thead><tbody>$rc4ServiceRows</tbody></table></div></div>
 
 <div id="artifacts"><h2>Artifacts</h2><div class="card"><table><thead><tr><th>Type</th><th>Path</th></tr></thead><tbody>$artifactRows</tbody></table></div></div>
 
@@ -916,8 +970,10 @@ $statusSummary | ForEach-Object { $results.AccountStatusSummary.Add($_) | Out-Nu
 
 $priorityAccounts = $accountRows |
     Where-Object {
-        ($_.HasSPN -and $_.Status -ne 'Compliant (AES present)') -or
-        ($_.Category -in @('gMSA', 'sMSA') -and $_.Status -ne 'Compliant (AES present)')
+        $_.Name -ne 'krbtgt' -and (
+            ($_.HasSPN -and $_.Status -ne 'Compliant (AES present)') -or
+            ($_.Category -in @('gMSA', 'sMSA') -and $_.Status -ne 'Compliant (AES present)')
+        )
     } |
     Sort-Object Status, Category, Name
 
