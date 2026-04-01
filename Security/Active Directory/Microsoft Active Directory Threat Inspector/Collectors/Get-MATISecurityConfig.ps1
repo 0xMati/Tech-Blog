@@ -19,6 +19,28 @@ function Get-MATISecurityConfig {
     $directoryServer = $Config['_DirectoryServer'] ?? $forest.RootDomain
     $rootDSE = $Config['_RootDSECache'] ?? (Get-ADRootDSE -Server $directoryServer -ErrorAction Stop)
     $domCache = $Config['_DomainCache'] ?? @{}
+    $domainControllerDNsByDomain = @{}
+    $supportsBackupRestoreTime = $false
+
+    try {
+        $null = Get-ADObject "CN=msDS-LastBackupRestoreTime,$($rootDSE.schemaNamingContext)" -Server $directoryServer -ErrorAction Stop
+        $supportsBackupRestoreTime = $true
+    } catch { }
+
+    foreach ($domainDns in $forest.Domains) {
+        $dcSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        try {
+            $domainDCs = @(Get-ADDomainController -Filter * -Server $domainDns -ErrorAction Stop)
+            foreach ($dc in $domainDCs) {
+                if ($dc.ComputerObjectDN) {
+                    $null = $dcSet.Add($dc.ComputerObjectDN)
+                }
+            }
+        } catch {
+            Write-Verbose "    Could not pre-load Domain Controller DNs for ${domainDns}: $($_.Exception.Message)"
+        }
+        $domainControllerDNsByDomain[$domainDns] = $dcSet
+    }
 
     # ---- dsHeuristics ----
     $dsHeuristics = $null
@@ -232,12 +254,16 @@ function Get-MATISecurityConfig {
                 $spoolerStatus = 'Unknown'
                 $webClientStatus = 'Unknown'
                 try {
-                    $svc = Get-Service -Name 'Spooler' -ComputerName $dc.HostName -ErrorAction Stop
-                    $spoolerStatus = $svc.Status.ToString()
+                    $svc = Get-CimInstance -ClassName Win32_Service -ComputerName $dc.HostName -Filter "Name='Spooler'" -ErrorAction Stop
+                    if ($svc.State) {
+                        $spoolerStatus = "$($svc.State)"
+                    }
                 } catch { }
                 try {
-                    $svc = Get-Service -Name 'WebClient' -ComputerName $dc.HostName -ErrorAction Stop
-                    $webClientStatus = $svc.Status.ToString()
+                    $svc = Get-CimInstance -ClassName Win32_Service -ComputerName $dc.HostName -Filter "Name='WebClient'" -ErrorAction Stop
+                    if ($svc.State) {
+                        $webClientStatus = "$($svc.State)"
+                    }
                 } catch { }
 
                 $dcServices += [PSCustomObject]@{
@@ -320,14 +346,23 @@ function Get-MATISecurityConfig {
             $lapsLegacyCount = 0
             $lapsWindowsCount = 0
             $noLapsComputers = [System.Collections.Generic.List[PSCustomObject]]::new()
+            $computerProperties = @('OperatingSystem')
+
+            if ($hasLegacyLaps) {
+                $computerProperties += @('ms-Mcs-AdmPwd', 'ms-Mcs-AdmPwdExpirationTime')
+            }
+
+            if ($hasWindowsLaps) {
+                $computerProperties += @('msLAPS-Password', 'msLAPS-PasswordExpirationTime')
+            }
 
             $computers = Get-ADComputer -Filter { Enabled -eq $true } -Server $domainDns `
-                -Properties 'ms-Mcs-AdmPwd', 'ms-Mcs-AdmPwdExpirationTime', 'msLAPS-Password', 'msLAPS-PasswordExpirationTime', OperatingSystem `
+                -Properties $computerProperties `
                 -ErrorAction Stop
 
             foreach ($comp in $computers) {
                 # Skip DCs
-                if ($comp.DistinguishedName -match 'OU=Domain Controllers') { continue }
+                if ($domainControllerDNsByDomain[$domainDns].Contains($comp.DistinguishedName)) { continue }
                 # Skip servers without workstation OS (optional)
                 $totalComputers++
 
@@ -518,10 +553,9 @@ function Get-MATISecurityConfig {
     foreach ($domainDns in $forest.Domains) {
         try {
             $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
-            $msas = Get-ADObject -Filter { objectClass -eq 'msDS-ManagedServiceAccount' } `
-                -SearchBase "CN=Managed Service Accounts,$domainDN" -Server $domainDns `
-                -Properties SamAccountName, Enabled, PasswordLastSet, WhenCreated, Description `
-                -ErrorAction SilentlyContinue
+            $msas = Get-ADServiceAccount -Filter * -SearchBase "CN=Managed Service Accounts,$domainDN" -Server $domainDns `
+                -Properties PasswordLastSet, WhenCreated, Description, ObjectClass `
+                -ErrorAction SilentlyContinue | Where-Object { $_.ObjectClass -eq 'msDS-ManagedServiceAccount' }
             foreach ($msa in $msas) {
                 $pwdAge = if ($msa.PasswordLastSet) { ((Get-Date) - $msa.PasswordLastSet).Days } else { 9999 }
                 $msaAccounts += [PSCustomObject]@{
@@ -592,9 +626,14 @@ function Get-MATISecurityConfig {
 
     # ---- Group nesting loops (cycle detection) ----
     $groupLoops = @()
+    $groupCounts = @()
     foreach ($domainDns in $forest.Domains) {
         try {
             $allGroups = Get-ADGroup -Filter * -Server $domainDns -Properties MemberOf -ErrorAction Stop
+            $groupCounts += [PSCustomObject]@{
+                Domain = $domainDns
+                Count  = @($allGroups).Count
+            }
             # Build adjacency: group DN -> set of parent group DNs
             $memberOfMap = @{}
             foreach ($g in $allGroups) {
@@ -729,10 +768,15 @@ function Get-MATISecurityConfig {
                 'Domain Computers'   = "$domSID-515"
                 'Domain Controllers' = "$domSID-516"
                 'Cert Publishers'    = "$domSID-517"
-                'Schema Admins'      = "$domSID-518"
-                'Enterprise Admins'  = "$domSID-519"
                 'Group Policy CO'    = "$domSID-520"
             }
+
+            # These forest-wide groups only exist in the forest root domain.
+            if ($domainDns -eq $forest.RootDomain) {
+                $criticalGroups['Schema Admins'] = "$domSID-518"
+                $criticalGroups['Enterprise Admins'] = "$domSID-519"
+            }
+
             foreach ($name in $criticalGroups.Keys) {
                 try {
                     $null = Get-ADGroup -Identity $criticalGroups[$name] -Server $domainDns -ErrorAction Stop
@@ -786,12 +830,11 @@ function Get-MATISecurityConfig {
         try {
             $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
             $lastBackup = $null
-            try {
+
+            if ($supportsBackupRestoreTime) {
                 $domHead = Get-ADObject -Identity $domainDN -Server $domainDns `
                     -Properties 'msDS-LastBackupRestoreTime' -ErrorAction Stop
                 $lastBackup = $domHead.'msDS-LastBackupRestoreTime'
-            } catch {
-                # Attribute may not exist in schema — silently ignore
             }
 
             $backupMetadata.Add([PSCustomObject]@{
@@ -895,6 +938,7 @@ function Get-MATISecurityConfig {
         ClusterAccounts      = @($clusterAccounts)
         TrustAccounts        = @($trustAccounts)
         GroupLoops           = @($groupLoops)
+        GroupCounts          = @($groupCounts)
         DangerousDisplaySpecifiers = @($dangerousDisplaySpecifiers)
         CriticalObjectsStatus = @($criticalObjectsStatus)
         AuthPolicies         = @($authPolicies)

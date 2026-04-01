@@ -22,6 +22,15 @@ function Export-MATICsv {
     # 1. Global findings CSV
     # ------------------------------------------------------------------
     $findingsForCsv = $findings | ForEach-Object {
+        $detailsText = ($_.Details.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
+        $detailsJson = if ($_.Details -and $_.Details.Count -gt 0) {
+            try {
+                $_.Details | ConvertTo-Json -Compress -Depth 10
+            } catch {
+                ''
+            }
+        } else { '' }
+
         [PSCustomObject]@{
             Id          = $_.Id
             Category    = $_.Category
@@ -33,7 +42,8 @@ function Export-MATICsv {
             Domain      = $_.Domain
             RuleFile    = $_.RuleFile
             Weight      = $_.Weight
-            Details     = ($_.Details.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
+            Details     = $detailsText
+            DetailsJson = $detailsJson
             Timestamp   = $_.Timestamp
         }
     }

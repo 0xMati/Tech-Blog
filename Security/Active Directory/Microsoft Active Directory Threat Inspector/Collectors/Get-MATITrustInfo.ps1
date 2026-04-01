@@ -30,7 +30,7 @@ function Get-MATITrustInfo {
                     AES256Enabled               = ($null -ne $encTypes) -and (($encTypes -band 0x10) -ne 0)
                     RC4Enabled                  = ($null -ne $encTypes) -and (($encTypes -band 0x04) -ne 0)
                     IsTransitive                = ($trust.TrustAttributes -band 0x00000001) -ne 0
-                    SIDFilteringEnabled         = -not (($trust.TrustAttributes -band 0x00000004) -ne 0)  # TRUST_ATTRIBUTE_QUARANTINED_DOMAIN
+                    SIDFilteringEnabled         = (($trust.TrustAttributes -band 0x00000004) -ne 0)  # TRUST_ATTRIBUTE_QUARANTINED_DOMAIN
                     SelectiveAuth               = ($trust.TrustAttributes -band 0x00000010) -ne 0          # TRUST_ATTRIBUTE_CROSS_ORGANIZATION
                     ForestTransitive            = ($trust.TrustAttributes -band 0x00000008) -ne 0          # TRUST_ATTRIBUTE_FOREST_TRANSITIVE
                     IntraForest                 = $trust.IntraForest

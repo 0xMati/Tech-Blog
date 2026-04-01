@@ -5,10 +5,11 @@
 
 @{
     Id          = 'MATI-ADMIN-014'
+    Category    = 'Governance'
     Title       = 'Privileged group has permanent direct members'
     Severity    = 'Medium'
-    Description = "A privileged group (Domain Admins, Administrators, Account Operators, Server Operators, Backup Operators, or Print Operators) has permanent direct members. Best practice recommends that privileged group memberships be time-limited (Just-In-Time access) using PAM features (Forest FFL 2016+, MemberTimeToLive), PIM/PAM solutions, or strict operational procedures. Permanent membership in these groups increases the attack surface and the window of opportunity for credential theft, lateral movement, and privilege escalation."
-    Remediation = "Reduce the number of permanent members in privileged groups to the strict minimum. For Domain Admins, aim for a maximum of 2-3 break-glass accounts. For operator groups (Account Operators, Server Operators, Backup Operators, Print Operators), aim for zero members and use RBAC or JIT instead. Deploy a Privileged Access Management (PAM) solution or leverage native AD time-limited group memberships (requires FFL 2016+)."
+    Description = "A privileged group (Domain Admins, Administrators, Account Operators, Server Operators, Backup Operators, or Print Operators) has permanent direct members. Best practice recommends that privileged group memberships be time-limited (Just-In-Time access) using PAM features (Forest FFL 2016+, MemberTimeToLive), PIM/PAM solutions, or strict operational procedures. Permanent membership in these groups increases the attack surface and the window of opportunity for credential theft, lateral movement, and privilege escalation. A limited number of dedicated break-glass accounts can be a valid exception when they are tightly controlled, monitored, excluded from daily administration, and protected with strong compensating controls."
+    Remediation = "Reduce the number of permanent members in privileged groups to the strict minimum. For Domain Admins, a very small number of dedicated break-glass accounts can be acceptable when they are offline-documented, highly protected, monitored, and reserved for emergency use only. For operator groups (Account Operators, Server Operators, Backup Operators, Print Operators), aim for zero members and use RBAC or JIT instead. Deploy a Privileged Access Management (PAM) solution or leverage native AD time-limited group memberships (requires FFL 2016+)."
     Collectors  = @('PrivilegedAccounts')
     References  = @(
         'https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/implementing-least-privilege-administrative-models'

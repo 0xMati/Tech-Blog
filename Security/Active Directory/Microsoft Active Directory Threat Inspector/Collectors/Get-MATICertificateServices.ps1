@@ -107,6 +107,7 @@ function Get-MATICertificateServices {
 
             # msPKI-Enrollment-Flag
             $enrollmentFlag = $tmpl.'msPKI-Enrollment-Flag'
+            $noSecurityExtension = ($enrollmentFlag -band 0x80000) -ne 0
 
             # Check if template enables client authentication (EKU)
             $ekuOIDs = @($tmpl.'pKIExtendedKeyUsage')
@@ -175,6 +176,7 @@ function Get-MATICertificateServices {
                 Name                     = $tmpl.Name
                 DisplayName              = $tmpl.DisplayName
                 DistinguishedName        = $tmpl.DistinguishedName
+                Domain                   = 'Forest'
                 EnrolleeSuppliesSubject  = $enrolleeSuppliesSubject
                 IsAuthTemplate           = $isAuthTemplate
                 IsAnyPurpose             = $isAnyPurpose
@@ -186,6 +188,8 @@ function Get-MATICertificateServices {
                 IsPublished              = ($publishedOnCAs.Count -gt 0)
                 ManagerApproval          = ($enrollmentFlag -band 2) -ne 0  # CT_FLAG_PEND_ALL_REQUESTS
                 AuthorizedSignatures     = $tmpl.'msPKI-RA-Signature'
+                EnrollmentFlags          = $enrollmentFlag
+                NoSecurityExtension      = $noSecurityExtension
             }
         }
     } catch {

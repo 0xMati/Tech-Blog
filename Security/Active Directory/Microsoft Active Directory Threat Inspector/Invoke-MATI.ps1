@@ -342,6 +342,7 @@ function Invoke-MATIThreatDetection {
     $engineFiles = @(
         'Models\Finding.ps1'
         'Engine\Initialize-MATIEngine.ps1'
+        'Engine\Get-MATISummarySnapshot.ps1'
         'Engine\Invoke-MATICollectors.ps1'
         'Engine\Invoke-MATIRules.ps1'
         'Engine\ConvertTo-MATIReport.ps1'
@@ -434,6 +435,52 @@ function Invoke-MATIThreatDetection {
     }
 }
 
+function Invoke-MATITieringMode {
+    $global:MATIMode = 'TieringModel'
+    Write-Host ""
+    Write-Host "    [>] Launching Tiering Model implementation..." -ForegroundColor Green
+    Write-Host ""
+
+    $tieringOutputRoot = Join-Path $RootPath 'Outputs\Tiering'
+    if (-not (Test-Path $tieringOutputRoot)) {
+        New-Item -ItemType Directory -Path $tieringOutputRoot -Force | Out-Null
+    }
+
+    $transcriptPath = Join-Path $tieringOutputRoot ("MATI.Tiering.transcript.{0}.txt" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    $transcriptStarted = $false
+
+    try {
+        try {
+            Start-Transcript -Path $transcriptPath -Force -IncludeInvocationHeader -ErrorAction Stop | Out-Null
+            $transcriptStarted = $true
+            Write-Host "  [+] Tiering transcript started: $transcriptPath" -ForegroundColor Green
+            if ($script:MATIExecutionContext) {
+                Write-MATIExecutionContext -MATIContext $script:MATIExecutionContext -Header '  [~] Execution context recorded in transcript...'
+            }
+        } catch {
+            Write-Warning "  [!] Could not start tiering transcript: $($_.Exception.Message)"
+        }
+
+        $tieringMenuPath = Join-Path $RootPath 'Tiering\Invoke-MATITieringMenu.ps1'
+        if (Test-Path $tieringMenuPath) {
+            . $tieringMenuPath
+            Invoke-MATITieringMenu -RootPath $RootPath -Config @{ ConfigFile = $configFile }
+        } else {
+            Write-Host "    [ERROR] Tiering module not found: $tieringMenuPath" -ForegroundColor Red
+        }
+    }
+    finally {
+        if ($transcriptStarted) {
+            try {
+                Stop-Transcript | Out-Null
+                Write-Host "  [+] Tiering transcript saved: $transcriptPath`n" -ForegroundColor Green
+            } catch {
+                Write-Warning "  [!] Could not stop tiering transcript cleanly: $($_.Exception.Message)"
+            }
+        }
+    }
+}
+
 # ==================================================================
 # 0.05 Main Menu
 # ==================================================================
@@ -452,14 +499,7 @@ Write-Host ""
 $menuChoice = Read-Host "    Select an option [1/2/Q]"
 switch ($menuChoice.Trim().ToUpper()) {
     '2' {
-        # Load and launch Tiering Menu
-        $tieringMenuPath = Join-Path $RootPath 'Tiering\Invoke-MATITieringMenu.ps1'
-        if (Test-Path $tieringMenuPath) {
-            . $tieringMenuPath
-            Invoke-MATITieringMenu -RootPath $RootPath -Config @{ ConfigFile = $configFile }
-        } else {
-            Write-Host "    [ERROR] Tiering module not found: $tieringMenuPath" -ForegroundColor Red
-        }
+        Invoke-MATITieringMode
         # Loop back to main menu
     }
     'Q' {

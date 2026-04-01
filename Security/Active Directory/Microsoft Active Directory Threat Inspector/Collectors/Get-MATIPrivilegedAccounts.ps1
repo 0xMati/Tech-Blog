@@ -13,6 +13,34 @@ function Get-MATIPrivilegedAccounts {
         [hashtable]$Config
     )
 
+    function Get-MATIMemberSnapshot {
+        param(
+            $Member,
+            [string]$FallbackDomain
+        )
+
+        $distinguishedName = $Member.DistinguishedName
+        $memberDomain = $FallbackDomain
+        if ($distinguishedName -match '(DC=[^,]+(?:,DC=[^,]+)*)$') {
+            $memberDomain = (($Matches[1] -replace 'DC=', '') -replace ',', '.').ToLower()
+        }
+
+        $memberSid = $null
+        if ($Member.PSObject.Properties['SID'] -and $Member.SID) {
+            $memberSid = $Member.SID.Value
+        }
+
+        [PSCustomObject]@{
+            Name                = $Member.Name
+            SamAccountName      = $Member.SamAccountName
+            DistinguishedName   = $distinguishedName
+            ObjectClass         = $Member.objectClass
+            SID                 = $memberSid
+            Domain              = $memberDomain
+            IsForeignSecurityPrincipal = ($Member.objectClass -eq 'foreignSecurityPrincipal')
+        }
+    }
+
     $forest = $Config['_ForestCache'] ?? (Get-ADForest -ErrorAction Stop)
     $userProps = $Config.Collectors.UserProperties
 
@@ -78,15 +106,18 @@ function Get-MATIPrivilegedAccounts {
 
             # Collect direct members for group info (separate protected call)
             $directMembers = @()
+            $directMemberDetails = @()
             try {
-                $directMembers = @(
-                    (Get-ADGroupMember -Identity $group.DistinguishedName -Server $domainDns -ErrorAction Stop) |
-                    ForEach-Object { $_.DistinguishedName }
-                )
+                $resolvedDirectMembers = @(Get-ADGroupMember -Identity $group.DistinguishedName -Server $domainDns -ErrorAction Stop)
+                $directMembers = @($resolvedDirectMembers | ForEach-Object { $_.DistinguishedName })
+                $directMemberDetails = @($resolvedDirectMembers | ForEach-Object { Get-MATIMemberSnapshot -Member $_ -FallbackDomain $domainDns })
             }
             catch {
                 $directMembers = @()
+                $directMemberDetails = @()
             }
+
+            $memberDetails = @($members | ForEach-Object { Get-MATIMemberSnapshot -Member $_ -FallbackDomain $domainDns })
 
             $allGroups.Add([PSCustomObject]@{
                 GroupName         = $group.Name
@@ -96,6 +127,8 @@ function Get-MATIPrivilegedAccounts {
                 MemberCount       = $members.Count
                 Description       = $group.Description
                 DirectMembers     = $directMembers
+                DirectMemberDetails = $directMemberDetails
+                MemberDetails     = $memberDetails
             })
 
             # Collect user accounts (deduplicated across groups)
@@ -138,6 +171,7 @@ function Get-MATIPrivilegedAccounts {
                             TrustedForDelegation  = $user.TrustedForDelegation
                             UserAccountControl    = $user.UserAccountControl
                             mail                  = $user.mail
+                            ScriptPath            = $user.scriptPath
                         })
                     }
                     catch {

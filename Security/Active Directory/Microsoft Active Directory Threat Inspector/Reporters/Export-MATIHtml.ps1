@@ -18,6 +18,7 @@ function Export-MATIHtml {
     $findings  = $EngineContext.Findings
     $score     = $EngineContext.Score
     $filePrefix = if ($config['_ReportFilePrefix']) { $config['_ReportFilePrefix'] } else { 'MATI_' }
+    $dataCache = $EngineContext.DataCache
 
     # ------------------------------------------------------------------
     # Load HTML template
@@ -39,6 +40,290 @@ function Export-MATIHtml {
         Medium        = ($findings | Where-Object Severity -eq 'Medium').Count
         Low           = ($findings | Where-Object Severity -eq 'Low').Count
         Informational = ($findings | Where-Object Severity -eq 'Informational').Count
+    }
+
+    # ------------------------------------------------------------------
+    # Build environment summary cards from shared snapshot logic
+    # ------------------------------------------------------------------
+    $domainInfo = $dataCache['DomainInfo']
+    $passwordPolicy = $dataCache['PasswordPolicy']
+    $securityConfig = $dataCache['SecurityConfig']
+    $dcData = @($dataCache['DCInfo'])
+    $summary = Get-MATISummarySnapshot -EngineContext $EngineContext
+
+    $environmentSummary = @"
+<div id="env-summary" class="env-summary">
+    <h2 class="section-header"><span class="section-icon">&#x1F4CA;</span> Environment Snapshot</h2>
+
+    <div class="summary-grid">
+        <div class="summary-metric" style="border-top: 3px solid var(--accent-blue);">
+            <div class="metric-icon">&#x1F3E2;</div>
+            <div class="metric-value" style="color:var(--accent-blue);">$($summary.Environment.Domains)</div>
+            <div class="metric-label">Domains</div>
+        </div>
+        <div class="summary-metric" style="border-top: 3px solid var(--accent-blue);">
+            <div class="metric-icon">&#x1F5A5;</div>
+            <div class="metric-value" style="color:var(--accent-blue);">$($summary.Environment.Computers)</div>
+            <div class="metric-label">Computers</div>
+        </div>
+        <div class="summary-metric" style="border-top: 3px solid var(--accent-blue);">
+            <div class="metric-icon">&#x1F464;</div>
+            <div class="metric-value" style="color:var(--accent-blue);">$($summary.Environment.Users)</div>
+            <div class="metric-label">Users</div>
+        </div>
+        <div class="summary-metric" style="border-top: 3px solid var(--accent-blue);">
+            <div class="metric-icon">&#x1F465;</div>
+            <div class="metric-value" style="color:var(--accent-blue);">$($summary.Environment.Groups)</div>
+            <div class="metric-label">Groups</div>
+        </div>
+        <div class="summary-metric" style="border-top: 3px solid $(if ($summary.Environment.DomainAdmins.Dot -eq 'red') { 'var(--red)' } elseif ($summary.Environment.DomainAdmins.Dot -eq 'yellow') { 'var(--yellow)' } else { 'var(--green)' });">
+            <div class="metric-icon">&#x1F6E1;</div>
+            <div class="metric-value" style="color:$(if ($summary.Environment.DomainAdmins.Dot -eq 'red') { 'var(--red)' } elseif ($summary.Environment.DomainAdmins.Dot -eq 'yellow') { 'var(--yellow)' } else { 'var(--green)' });">$($summary.Environment.DomainAdmins.Count)</div>
+            <div class="metric-label">Domain Admins</div>
+        </div>
+        <div class="summary-metric" style="border-top: 3px solid $(if ($summary.Environment.EnterpriseAdmins.Dot -eq 'red') { 'var(--red)' } elseif ($summary.Environment.EnterpriseAdmins.Dot -eq 'yellow') { 'var(--yellow)' } else { 'var(--green)' });">
+            <div class="metric-icon">&#x1F451;</div>
+            <div class="metric-value" style="color:$(if ($summary.Environment.EnterpriseAdmins.Dot -eq 'red') { 'var(--red)' } elseif ($summary.Environment.EnterpriseAdmins.Dot -eq 'yellow') { 'var(--yellow)' } else { 'var(--green)' });">$($summary.Environment.EnterpriseAdmins.Count)</div>
+            <div class="metric-label">Enterprise Admins</div>
+        </div>
+        <div class="summary-metric" style="border-top: 3px solid $(if ($summary.Environment.Trusts.Dot -eq 'red') { 'var(--red)' } elseif ($summary.Environment.Trusts.Dot -eq 'yellow') { 'var(--yellow)' } else { 'var(--green)' });">
+            <div class="metric-icon">&#x1F517;</div>
+            <div class="metric-value" style="color:$(if ($summary.Environment.Trusts.Dot -eq 'red') { 'var(--red)' } elseif ($summary.Environment.Trusts.Dot -eq 'yellow') { 'var(--yellow)' } else { 'var(--green)' });">$($summary.Environment.Trusts.Count)</div>
+            <div class="metric-label">Trusts</div>
+        </div>
+    </div>
+
+    <div class="grid-3">
+        <div class="card summary-category">
+            <h3>&#x1F464; Identity &amp; Access</h3>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F6E1;</span> Domain Admins</div>
+                <div class="row-value"><span class="dot $($summary.IdentityAccess.DomainAdmins.Dot)"></span> $($summary.IdentityAccess.DomainAdmins.Count) account(s)</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F451;</span> Enterprise Admins</div>
+                <div class="row-value"><span class="dot $($summary.IdentityAccess.EnterpriseAdmins.Dot)"></span> $($summary.IdentityAccess.EnterpriseAdmins.Count) account(s)</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x2699;</span> Svc Accounts in DA</div>
+                <div class="row-value"><span class="dot $($summary.IdentityAccess.ServiceAccountsInDA.Dot)"></span> $($summary.IdentityAccess.ServiceAccountsInDA.Count) found</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F527;</span> gMSA</div>
+                <div class="row-value"><span class="dot $($summary.IdentityAccess.GMSA.Dot)"></span> $($summary.IdentityAccess.GMSA.Count) account(s)</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F9F0;</span> sMSA</div>
+                <div class="row-value"><span class="dot $($summary.IdentityAccess.MSA.Dot)"></span> $($summary.IdentityAccess.MSA.Count) account(s)</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x26A0;</span> AdminCount Orphans</div>
+                <div class="row-value"><span class="dot $($summary.IdentityAccess.AdminCountOrphans.Dot)"></span> $($summary.IdentityAccess.AdminCountOrphans.Count) account(s)</div>
+            </div>
+        </div>
+
+        <div class="card summary-category">
+            <h3>&#x1F3D7; Infrastructure</h3>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F310;</span> Sites</div>
+                <div class="row-value" style="color:var(--accent-blue);">$($summary.Infrastructure.Sites)</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F5A5;</span> Domain Controllers</div>
+                <div class="row-value" style="color:var(--accent-blue);">$($summary.Infrastructure.DomainControllers)</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F4C2;</span> Organizational Units</div>
+                <div class="row-value" style="color:var(--accent-blue);">$($summary.Infrastructure.OrganizationalUnits)</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F4DC;</span> Group Policies</div>
+                <div class="row-value" style="color:var(--accent-blue);">$($summary.Infrastructure.GroupPolicies)</div>
+            </div>
+        </div>
+
+        <div class="card summary-category">
+            <h3>&#x1F517; Trusts</h3>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F91D;</span> Trust Relationships</div>
+                <div class="row-value"><span class="dot $($summary.Trusts.TrustRelationships.Dot)"></span> $($summary.Trusts.TrustRelationships.Count) total</div>
+            </div>
+            <div class="summary-row">
+                <div class="row-label"><span class="icon">&#x1F6A8;</span> Unsafe Trusts (no SID filter)</div>
+                <div class="row-value"><span class="dot $($summary.Trusts.UnsafeTrusts.Dot)"></span> $($summary.Trusts.UnsafeTrusts.Count)</div>
+            </div>
+        </div>
+    </div>
+</div>
+"@
+
+    # ------------------------------------------------------------------
+    # Build domain policy / forest / DC inventory blocks
+    # ------------------------------------------------------------------
+    $domainPoliciesBlock = ''
+    $forestDomainsBlock = ''
+    $dcInventoryBlock = ''
+
+    if ($domainInfo -and $domainInfo.Domains) {
+        $policyByDomain = @{}
+        foreach ($policy in @($passwordPolicy.DefaultPolicies)) {
+            $policyByDomain[$policy.Domain] = $policy
+        }
+
+        $maqByDomain = @{}
+        foreach ($entry in @($securityConfig.MachineAccountQuotas)) {
+            $maqByDomain[$entry.Domain] = $entry.MachineAccountQuota
+        }
+
+        $domainConfigRows = ''
+        foreach ($dom in @($domainInfo.Domains | Sort-Object DNSRoot)) {
+            $domainKey = if ($dom.DNSRoot) { $dom.DNSRoot } else { $dom.Name }
+            $defaultPolicy = $policyByDomain[$domainKey]
+            $maq = if ($maqByDomain.ContainsKey($domainKey)) { $maqByDomain[$domainKey] } else { 'N/A' }
+            $minPwdLength = if ($defaultPolicy) { $defaultPolicy.MinPasswordLength } else { 'N/A' }
+            $lockoutThreshold = if ($defaultPolicy) { $defaultPolicy.LockoutThreshold } else { 'N/A' }
+            $domainMode = if ($dom.DomainMode) { $dom.DomainMode } else { 'Unknown' }
+            $pwdColor = if ($minPwdLength -ne 'N/A' -and [int]$minPwdLength -lt 12) { 'var(--red)' } elseif ($minPwdLength -ne 'N/A' -and [int]$minPwdLength -lt 14) { 'var(--yellow)' } else { 'var(--green)' }
+            $lockColor = if ($lockoutThreshold -ne 'N/A' -and [int]$lockoutThreshold -eq 0) { 'var(--red)' } else { 'var(--green)' }
+            $maqColor = if ($maq -ne 'N/A' -and [int]$maq -gt 0) { 'var(--red)' } else { 'var(--green)' }
+
+            $domainConfigRows += "<tr><td>$([System.Web.HttpUtility]::HtmlEncode($domainKey))</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$dom.NetBIOSName))</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$domainMode))</td><td><span style='color:$pwdColor;font-weight:600;'>$minPwdLength</span></td><td><span style='color:$lockColor;font-weight:600;'>$lockoutThreshold</span></td><td><span style='color:$maqColor;font-weight:600;'>$maq</span></td></tr>`n"
+        }
+
+        $forestRoot = if ($domainInfo.Forest) { [System.Web.HttpUtility]::HtmlEncode([string]$domainInfo.Forest.RootDomain) } else { 'Unknown' }
+        $forestName = if ($domainInfo.Forest) { [System.Web.HttpUtility]::HtmlEncode([string]$domainInfo.Forest.Name) } else { $forestRoot }
+        $forestDomainCount = if ($domainInfo.Forest -and $domainInfo.Forest.Domains) { @($domainInfo.Forest.Domains).Count } else { $domainCount }
+        $forestSiteCount = if ($domainInfo.Forest -and $domainInfo.Forest.Sites) { @($domainInfo.Forest.Sites).Count } else { 0 }
+        $forestGcCount = if ($domainInfo.Forest -and $domainInfo.Forest.GlobalCatalogs) { @($domainInfo.Forest.GlobalCatalogs).Count } else { 0 }
+
+        $domainPoliciesBlock = ''
+
+        $forestDomainsBlock = @"
+<div id="forest">
+    <h2 class="section-header"><span class="section-icon">&#x1F3E2;</span> Forest &amp; Domains</h2>
+    <p class="section-intro">Forest topology overview with domain functional levels and security policies.</p>
+
+    <div class="metric-grid">
+        <div class="metric-card" style="border-top: 3px solid var(--accent-blue);"><div class="mc-icon">&#x1F30D;</div><div class="mc-value" style="color:var(--accent-blue);">$forestName</div><div class="mc-label">Forest Root</div></div>
+        <div class="metric-card" style="border-top: 3px solid var(--accent-blue);"><div class="mc-icon">&#x1F3E2;</div><div class="mc-value" style="color:var(--accent-blue);">$forestDomainCount</div><div class="mc-label">Domains</div></div>
+        <div class="metric-card" style="border-top: 3px solid var(--accent-blue);"><div class="mc-icon">&#x1F4CD;</div><div class="mc-value" style="color:var(--accent-blue);">$forestSiteCount</div><div class="mc-label">Sites</div></div>
+        <div class="metric-card" style="border-top: 3px solid var(--accent-blue);"><div class="mc-icon">&#x1F4D7;</div><div class="mc-value" style="color:var(--accent-blue);">$forestGcCount</div><div class="mc-label">Global Catalogs</div></div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">&#x1F512; Domain Configuration</h3>
+        <table class="dc-table">
+            <thead><tr><th>Domain</th><th>NetBIOS</th><th>Functional Level</th><th>Min Pwd Length</th><th>Lockout Threshold</th><th>MachineAccountQuota</th></tr></thead>
+            <tbody>$domainConfigRows</tbody>
+        </table>
+    </div>
+</div>
+"@
+    }
+
+    $dcConnectivity = @($EngineContext.DCConnectivity)
+    if ($dcData.Count -gt 0 -or $dcConnectivity.Count -gt 0) {
+        $dcIndex = [ordered]@{}
+
+        foreach ($dc in @($dcData)) {
+            $key = if ($dc.Name) { [string]$dc.Name } elseif ($dc.HostName) { [string]$dc.HostName } else { [guid]::NewGuid().Guid }
+            $dcIndex[$key] = [ordered]@{
+                Name = [string]$dc.Name
+                HostName = [string]$dc.HostName
+                Domain = [string]$dc.Domain
+                Site = [string]$dc.Site
+                OperatingSystem = [string]$dc.OperatingSystem
+                IsReadOnly = [bool]$dc.IsReadOnly
+                IsGlobalCatalog = if ($null -ne $dc.IsGlobalCatalog) { [bool]$dc.IsGlobalCatalog } else { $null }
+                IPv4Address = [string]$dc.IPv4Address
+                OperationMasterRoles = @($dc.OperationMasterRoles)
+                Status = $null
+                LatencyMs = $null
+            }
+        }
+
+        foreach ($dc in $dcConnectivity) {
+            $matchKey = $null
+            foreach ($candidate in @($dc.Name, $dc.HostName)) {
+                if ($candidate -and $dcIndex.Contains($candidate)) {
+                    $matchKey = $candidate
+                    break
+                }
+            }
+            if (-not $matchKey) {
+                $matchKey = if ($dc.Name) { [string]$dc.Name } elseif ($dc.HostName) { [string]$dc.HostName } else { [guid]::NewGuid().Guid }
+                $dcIndex[$matchKey] = [ordered]@{
+                    Name = [string]$dc.Name
+                    HostName = [string]$dc.HostName
+                    Domain = [string]$dc.Domain
+                    Site = [string]$dc.Site
+                    OperatingSystem = [string]$dc.OperatingSystem
+                    IsReadOnly = [bool]$dc.IsReadOnly
+                    IsGlobalCatalog = [bool]$dc.IsGlobalCatalog
+                    IPv4Address = [string]$dc.IPv4Address
+                    OperationMasterRoles = @()
+                    Status = $null
+                    LatencyMs = $null
+                }
+            }
+
+            $dcIndex[$matchKey].HostName = if ($dcIndex[$matchKey].HostName) { $dcIndex[$matchKey].HostName } else { [string]$dc.HostName }
+            $dcIndex[$matchKey].Domain = if ($dcIndex[$matchKey].Domain) { $dcIndex[$matchKey].Domain } else { [string]$dc.Domain }
+            $dcIndex[$matchKey].Site = if ($dcIndex[$matchKey].Site) { $dcIndex[$matchKey].Site } else { [string]$dc.Site }
+            $dcIndex[$matchKey].OperatingSystem = if ($dcIndex[$matchKey].OperatingSystem) { $dcIndex[$matchKey].OperatingSystem } else { [string]$dc.OperatingSystem }
+            $dcIndex[$matchKey].IPv4Address = if ($dcIndex[$matchKey].IPv4Address) { $dcIndex[$matchKey].IPv4Address } else { [string]$dc.IPv4Address }
+            if ($null -eq $dcIndex[$matchKey].IsGlobalCatalog) { $dcIndex[$matchKey].IsGlobalCatalog = [bool]$dc.IsGlobalCatalog }
+            $dcIndex[$matchKey].Status = [string]$dc.Status
+            $dcIndex[$matchKey].LatencyMs = $dc.LatencyMs
+        }
+
+        $dcInventoryRows = ''
+        $dcConnectivityRows = ''
+        foreach ($dc in @($dcIndex.Values | Sort-Object Domain, Name)) {
+            $roles = if ($dc.OperationMasterRoles -and @($dc.OperationMasterRoles).Count -gt 0) { [System.Web.HttpUtility]::HtmlEncode((@($dc.OperationMasterRoles) -join ', ')) } else { '-' }
+            $type = if ($dc.IsReadOnly) { '<span class="badge">RODC</span>' } else { 'RWDC' }
+            $statusClass = switch ($dc.Status) {
+                'OK' { 'ok' }
+                'Unreachable' { 'unreachable' }
+                '' { 'warning' }
+                $null { 'warning' }
+                default { 'warning' }
+            }
+            $statusText = if ($dc.Status) { [string]$dc.Status } else { 'Not Tested' }
+            $latency = if ($null -ne $dc.LatencyMs) { "$($dc.LatencyMs) ms" } else { '—' }
+            $name = if ($dc.Name) { [System.Web.HttpUtility]::HtmlEncode($dc.Name) } else { '-' }
+            $domain = if ($dc.Domain) { [System.Web.HttpUtility]::HtmlEncode($dc.Domain) } else { '-' }
+            $site = if ($dc.Site) { [System.Web.HttpUtility]::HtmlEncode($dc.Site) } else { '-' }
+            $os = if ($dc.OperatingSystem) { [System.Web.HttpUtility]::HtmlEncode($dc.OperatingSystem) } else { '-' }
+            $hostName = if ($dc.HostName) { [System.Web.HttpUtility]::HtmlEncode($dc.HostName) } else { '—' }
+            $ip = if ($dc.IPv4Address) { [System.Web.HttpUtility]::HtmlEncode($dc.IPv4Address) } else { '—' }
+            $gc = if ($null -eq $dc.IsGlobalCatalog) { 'Unknown' } elseif ($dc.IsGlobalCatalog) { 'Yes' } else { 'No' }
+
+            $dcInventoryRows += "<tr><td>$name</td><td>$domain</td><td>$site</td><td>$os</td><td>$type</td><td>$roles</td></tr>`n"
+            $dcConnectivityRows += "<tr><td><strong>$name</strong></td><td>$hostName</td><td>$domain</td><td>$ip</td><td>$gc</td><td><span class=`"dc-status $statusClass`">$statusText</span></td><td>$latency</td></tr>`n"
+        }
+
+        $dcInventoryBlock = @"
+<div id="dc">
+    <h2 class="section-header"><span class="section-icon">&#x1F5A5;</span> Domain Controllers ($($dcIndex.Count))</h2>
+    <p class="section-intro">All domain controllers with FSMO roles, site assignments and operating system details.</p>
+
+    <div class="card">
+        <table class="dc-table">
+            <thead><tr><th>Name</th><th>Domain</th><th>Site</th><th>OS</th><th>Type</th><th>FSMO Roles</th></tr></thead>
+            <tbody>$dcInventoryRows</tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">&#x1F6A6; Connectivity Status</h3>
+        <table class="dc-table">
+            <thead><tr><th>Name</th><th>FQDN</th><th>Domain</th><th>IP</th><th>GC</th><th>Status</th><th>Latency</th></tr></thead>
+            <tbody>$dcConnectivityRows</tbody>
+        </table>
+    </div>
+</div>
+"@
     }
 
     # ------------------------------------------------------------------
@@ -68,6 +353,7 @@ function Export-MATIHtml {
     $categoryOrder = @(
         'Config'
         'Hardening'
+        'Governance'
         'GPO'
         'Kerberos'
         'PasswordPolicy'
@@ -146,46 +432,6 @@ function Export-MATIHtml {
     # Build DC connectivity table
     # ------------------------------------------------------------------
     $dcBlock = ''
-    if ($EngineContext.DCConnectivity -and $EngineContext.DCConnectivity.Count -gt 0) {
-        $reachable   = ($EngineContext.DCConnectivity | Where-Object Status -eq 'OK').Count
-        $total       = $EngineContext.DCConnectivity.Count
-        $unreachable = $total - $reachable
-
-        $dcBlock += "<div id=`"dc`" class=`"dc-section`">`n"
-        $dcBlock += "<h2 class=`"section-header`"><span class=`"section-icon`">&#x1F5A5;</span> Domain Controllers <span class=`"badge`">$total contacted &mdash; $reachable reachable &mdash; $unreachable unreachable</span></h2>`n"
-        $dcBlock += "<p class=`"section-intro`">Connectivity status for all discovered domain controllers.</p>`n"
-        $dcBlock += "<table class=`"dc-table`">`n"
-        $dcBlock += "<thead><tr><th>Name</th><th>FQDN</th><th>Domain</th><th>IP</th><th>Site</th><th>OS</th><th>GC</th><th>RODC</th><th>Status</th><th>Latency</th></tr></thead>`n"
-        $dcBlock += "<tbody>`n"
-
-        foreach ($dc in ($EngineContext.DCConnectivity | Sort-Object Domain, Name)) {
-            $statusClass = switch ($dc.Status) {
-                'OK'          { 'ok' }
-                'Unreachable' { 'unreachable' }
-                default       { 'warning' }
-            }
-            $latStr = if ($null -ne $dc.LatencyMs) { "$($dc.LatencyMs) ms" } else { '—' }
-            $gcStr  = if ($dc.IsGlobalCatalog) { 'Yes' } else { 'No' }
-            $roStr  = if ($dc.IsReadOnly) { 'Yes' } else { 'No' }
-            $osStr  = [System.Web.HttpUtility]::HtmlEncode($dc.OperatingSystem)
-
-            $dcBlock += "<tr>"
-            $dcBlock += "<td><strong>$($dc.Name)</strong></td>"
-            $dcBlock += "<td>$($dc.HostName)</td>"
-            $dcBlock += "<td>$($dc.Domain)</td>"
-            $dcBlock += "<td>$($dc.IPv4Address)</td>"
-            $dcBlock += "<td>$($dc.Site)</td>"
-            $dcBlock += "<td>$osStr</td>"
-            $dcBlock += "<td>$gcStr</td>"
-            $dcBlock += "<td>$roStr</td>"
-            $dcBlock += "<td><span class=`"dc-status $statusClass`">$($dc.Status)</span></td>"
-            $dcBlock += "<td>$latStr</td>"
-            $dcBlock += "</tr>`n"
-        }
-
-        $dcBlock += "</tbody></table>`n"
-        $dcBlock += "</div>`n"
-    }
 
     # ------------------------------------------------------------------
     # Build Protocol Audit section (donut charts + top-N tables)
@@ -586,6 +832,10 @@ function Export-MATIHtml {
     $html = $html.Replace('{{INFO_COUNT}}',       [string]$severityCounts.Informational)
     $html = $html.Replace('{{RULES_EVALUATED}}',  [string]$EngineContext.Rules.Count)
     $html = $html.Replace('{{SEVERITY_BAR}}',     [string]$severityBar)
+    $html = $html.Replace('{{ENVIRONMENT_SUMMARY}}', [string]$environmentSummary)
+    $html = $html.Replace('{{DOMAIN_POLICIES}}', [string]$domainPoliciesBlock)
+    $html = $html.Replace('{{FOREST_DOMAINS}}', [string]$forestDomainsBlock)
+    $html = $html.Replace('{{DC_INVENTORY}}', [string]$dcInventoryBlock)
     $html = $html.Replace('{{DC_CONNECTIVITY}}',  [string]$dcBlock)
     $html = $html.Replace('{{PROTOCOL_AUDIT}}',   [string]$protoBlock)
     $html = $html.Replace('{{CATEGORY_BLOCKS}}',  [string]$categoryBlocks)
@@ -596,10 +846,4 @@ function Export-MATIHtml {
     # ------------------------------------------------------------------
     $htmlPath = Join-Path $htmlDir "${filePrefix}Report_$timestamp.html"
     $html | Out-File -FilePath $htmlPath -Encoding UTF8
-
-    # Offer to open the report in the default browser
-    $openChoice = Read-Host "  Open HTML report in browser? (Y/N)"
-    if ($openChoice -match '^[Yy]') {
-        Start-Process $htmlPath
-    }
 }

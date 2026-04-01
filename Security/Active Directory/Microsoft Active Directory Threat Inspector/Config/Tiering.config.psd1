@@ -42,7 +42,7 @@
         SubOUs = @{
             Tier0 = @('Accounts', 'Groups', 'Service Accounts', 'Servers', 'PAW')
             Tier1 = @('Accounts', 'Groups', 'Service Accounts', 'Servers', 'PAW')
-            Tier2 = @('Accounts', 'Groups', 'Service Accounts', 'Workstations')
+            Tier2 = @('Accounts', 'Groups', 'Service Accounts', 'PAW', 'Workstations')
         }
 
         # Sub-OUs under other containers
@@ -70,6 +70,7 @@
             @{ Suffix = 'PAW-Computers';     Scope = 'Global';      Description = 'Tier 1 PAW workstations' }
         )
         Tier2Extra = @(
+            @{ Suffix = 'PAW-Computers';     Scope = 'Global';      Description = 'Tier 2 PAW workstations' }
             @{ Suffix = 'Workstations';      Scope = 'Global';      Description = 'Tier 2 workstations' }
         )
 
@@ -112,6 +113,42 @@
     }
 
     # ----------------------------------------------------------------
+    # Phase 5 - Workstation / PAW firewall targeting
+    # ----------------------------------------------------------------
+    Phase5 = @{
+        Firewall = @{
+            AutoDiscoverDomainControllers = $true
+            AutoDiscoverTierServerAddresses = $true
+
+            # Static allow lists can contain IPv4 addresses, CIDR ranges,
+            # or DNS names that will be resolved at deployment time.
+            Tier0AllowedRemoteAddresses = @(
+            )
+            Tier1AllowedRemoteAddresses = @(
+            )
+            Tier2AllowedRemoteAddresses = @(
+            )
+        }
+
+        PAW = @{
+            DeviceGuard = @{
+                EnableHVCI = $true
+                HVCIMode = 'EnabledWithoutLock'
+            }
+
+            BitLocker = @{
+                IdentificationField = 'MATI-PAW'
+                EncryptionType = 'Full'
+                RequireTPMPin = $true
+                MinimumPinLength = 8
+                RequireADRecoveryBackup = $true
+                DenyWriteUnencryptedFixedDrives = $true
+                DenyWriteUnencryptedRemovableDrives = $true
+            }
+        }
+    }
+
+    # ----------------------------------------------------------------
     # Tier classification rules (auto-classification of existing objects)
     # ----------------------------------------------------------------
     Classification = @{
@@ -138,6 +175,16 @@
                 '*CA*'
                 '*AADConnect*'
                 '*EntraConnect*'
+                '*ADSync*'
+                '*AzureADConnect*'
+            )
+            DescriptionPatterns = @(
+                'Entra ID Connect'
+                'Microsoft Entra Connect'
+                'Azure AD Connect'
+                'AzureAD Connect'
+                'ADSync'
+                'Directory Synchronization'
             )
             # Well-known server roles
             Roles = @('DomainController', 'ADFS', 'ADCS', 'AADConnect', 'PAM')

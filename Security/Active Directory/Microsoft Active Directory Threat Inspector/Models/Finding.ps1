@@ -4,7 +4,7 @@
 
 class MATIFinding {
     [string]$Id            # Rule ID, e.g. MATI-CONFIG-001
-    [string]$Category      # Category derived from rule folder, e.g. Config, Kerberos
+    [string]$Category      # Category used for reporting/scoring, derived from folder unless overridden by the rule
     [string]$Severity      # Critical | High | Medium | Low | Informational
     [string]$Title         # Short human-readable title
     [string]$Description   # Detailed explanation of the finding

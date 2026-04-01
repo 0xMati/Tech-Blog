@@ -13,19 +13,79 @@
         param($Data, $Config)
         $findings = @()
 
-        # Build set of known computer names and hostnames
+        # Build set of known computer names, hostnames, and published SPN targets.
         $knownHosts = @{}
+        $knownSpns = @{}
+
         foreach ($comp in $Data.ComputerAccounts) {
             $name = $comp.SamAccountName -replace '\$$', ''
-            $knownHosts[$name.ToLower()] = $true
-            if ($comp.DNSHostName) { $knownHosts[$comp.DNSHostName.ToLower()] = $true }
+            if (-not [string]::IsNullOrWhiteSpace($name)) {
+                $knownHosts[$name.ToLower()] = $true
+            }
+
+            if ($comp.DNSHostName) {
+                $dnsName = $comp.DNSHostName.ToLower()
+                $knownHosts[$dnsName] = $true
+
+                $shortDnsName = ($dnsName -split '\.', 2)[0]
+                if (-not [string]::IsNullOrWhiteSpace($shortDnsName)) {
+                    $knownHosts[$shortDnsName] = $true
+                }
+            }
+
+            foreach ($spn in @($comp.ServicePrincipalName)) {
+                if ([string]::IsNullOrWhiteSpace($spn)) { continue }
+
+                $normalizedSpn = $spn.ToLower()
+                $knownSpns[$normalizedSpn] = $true
+
+                $spnParts = $normalizedSpn -split '/'
+                if ($spnParts.Count -ge 2) {
+                    $spnHost = ($spnParts[1] -split ':')[0]
+                    if (-not [string]::IsNullOrWhiteSpace($spnHost)) {
+                        $knownHosts[$spnHost] = $true
+
+                        $shortSpnHost = ($spnHost -split '\.', 2)[0]
+                        if (-not [string]::IsNullOrWhiteSpace($shortSpnHost)) {
+                            $knownHosts[$shortSpnHost] = $true
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach ($account in @($Data.KerberosConfig.SPNAccounts)) {
+            foreach ($spn in @($account.ServicePrincipalName)) {
+                if ([string]::IsNullOrWhiteSpace($spn)) { continue }
+
+                $normalizedSpn = $spn.ToLower()
+                $knownSpns[$normalizedSpn] = $true
+
+                $spnParts = $normalizedSpn -split '/'
+                if ($spnParts.Count -ge 2) {
+                    $spnHost = ($spnParts[1] -split ':')[0]
+                    if (-not [string]::IsNullOrWhiteSpace($spnHost)) {
+                        $knownHosts[$spnHost] = $true
+
+                        $shortSpnHost = ($spnHost -split '\.', 2)[0]
+                        if (-not [string]::IsNullOrWhiteSpace($shortSpnHost)) {
+                            $knownHosts[$shortSpnHost] = $true
+                        }
+                    }
+                }
+            }
         }
 
         foreach ($acct in $Data.KerberosConfig.DelegationAccounts) {
             foreach ($spn in $acct.AllowedToDelegateTo) {
-                $parts = $spn -split '/'
+                if ([string]::IsNullOrWhiteSpace($spn)) { continue }
+
+                $normalizedTargetSpn = $spn.ToLower()
+                if ($knownSpns.ContainsKey($normalizedTargetSpn)) { continue }
+
+                $parts = $normalizedTargetSpn -split '/'
                 if ($parts.Count -lt 2) { continue }
-                $targetHost = ($parts[1] -split ':')[0].ToLower()
+                $targetHost = ($parts[1] -split ':')[0]
 
                 if (-not $knownHosts.ContainsKey($targetHost)) {
                     $findings += @{

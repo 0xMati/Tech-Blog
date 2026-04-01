@@ -3,6 +3,7 @@
 
 @{
     Id          = 'MATI-ADMIN-013'
+    Category    = 'Governance'
     Title       = 'Enterprise Admins or Schema Admins group has permanent members'
     Severity    = 'High'
     Description = "The Enterprise Admins or Schema Admins group has permanent members. These groups grant forest-wide privileges and should be empty by default. Membership should only be granted temporarily (Just-In-Time) when performing specific tasks that require it (e.g., schema extensions, cross-domain operations). Permanent membership significantly increases the attack surface for Golden Ticket and credential theft attacks."

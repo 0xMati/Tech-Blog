@@ -14,6 +14,7 @@
         $findings = @()
         foreach ($acct in $Data.KerberosConfig.DelegationAccounts) {
             if (-not $acct.TrustedForDelegation) { continue }
+            if (-not $acct.Enabled) { continue }
             if ($acct.ObjectClass -ne 'user') { continue }
 
             $findings += @{

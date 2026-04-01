@@ -33,12 +33,16 @@ function Get-MATIProtocolConfig {
                     NTLMLevel              = $null   # LmCompatibilityLevel: 0-5
                     NoLMHash               = $null   # NoLMHash: 0 or 1
                     AuditPolicySub         = $null   # Subcategory audit results
+                    AuditPolicyReadError   = $null   # Error returned while reading advanced audit policy
                     NetSessionHardened     = $null   # SrvsvcSessionInfo hardened (NetCease)
                     TLS                    = $null   # TLS/Schannel settings hashtable
                     WDigestEnabled         = $null   # UseLogonCredential: 0=disabled, 1=enabled
+                    VbsEnabled             = $null   # EnableVirtualizationBasedSecurity: 0=disabled, 1=enabled
                     CredentialGuard        = $null   # LsaCfgFlags: 0=off, 1=with lock, 2=without lock
-                    RunAsPPL               = $null   # RunAsPPL: 0=off, 1=enabled
+                    RunAsPPL               = $null   # RunAsPPL: 0=off, 1=enabled with UEFI lock, 2=enabled without UEFI lock
                     KdcArmoring            = $null   # EnableCbacAndArmor: 0=off, 1=supported, 2=always
+                    StrongCertificateBindingEnforcement = $null   # KDC strong certificate binding: 0=disabled, 1=compatibility, 2=full
+                    CertificateMappingMethods = $null   # Schannel certificate mapping methods bitmask
                     WinRMAccessible        = $false
                 }
 
@@ -81,17 +85,54 @@ function Get-MATIProtocolConfig {
                             $out['NoLMHash'] = $v.NoLMHash
                         } catch { $out['NoLMHash'] = $null }
 
-                        # Advanced audit policy (quick check for key subcategories)
+                        # Advanced audit policy (GUID-based parsing for locale-safe subcategory identification)
                         $auditResults = @{}
+                        $auditReadError = $null
                         try {
-                            $auditPol = & auditpol /get /category:* /r 2>$null | ConvertFrom-Csv -ErrorAction SilentlyContinue
-                            foreach ($entry in $auditPol) {
-                                $subcat = $entry.'Subcategory'
-                                $setting = $entry.'Inclusion Setting'
-                                $auditResults[$subcat] = $setting
+                            $auditCsv = @(& auditpol /get /subcategory:* /r 2>&1)
+                            $auditLines = @($auditCsv | Where-Object { $_ -and $_.Trim() })
+                            if ($LASTEXITCODE -ne 0) {
+                                $auditReadError = ($auditLines -join ' | ')
+                            }
+                            elseif ($auditLines.Count -gt 1) {
+                                $auditPayload = @($auditLines | Select-Object -Skip 1)
+                                $auditPol = @()
+                                $validEntries = @()
+
+                                foreach ($delimiter in @(',', ';', "`t")) {
+                                    $parsedRows = @($auditPayload |
+                                        ConvertFrom-Csv -Delimiter $delimiter -Header 'MachineName','PolicyTarget','Subcategory','SubcategoryGuid','InclusionSetting','ExclusionSetting' -ErrorAction SilentlyContinue)
+                                    $candidateEntries = @($parsedRows | Where-Object {
+                                        ("$($_.SubcategoryGuid)" -replace '[{}]', '').Trim().ToUpperInvariant() -match '^[0-9A-F-]{36}$'
+                                    })
+
+                                    if ($candidateEntries.Count -gt 0) {
+                                        $auditPol = $parsedRows
+                                        $validEntries = $candidateEntries
+                                        break
+                                    }
+                                }
+
+                                if ($validEntries.Count -eq 0) {
+                                    $auditReadError = 'Could not parse auditpol CSV output'
+                                }
+
+                                foreach ($entry in $validEntries) {
+                                    $guid = ("$($entry.SubcategoryGuid)" -replace '[{}]', '').Trim().ToUpperInvariant()
+
+                                    $auditResults["{$guid}"] = [PSCustomObject]@{
+                                        Name             = "$($entry.Subcategory)".Trim()
+                                        Guid             = "{$guid}"
+                                        InclusionSetting = "$($entry.InclusionSetting)".Trim()
+                                        ExclusionSetting = "$($entry.ExclusionSetting)".Trim()
+                                    }
+                                }
+                            } elseif (-not $auditReadError) {
+                                $auditReadError = 'auditpol returned no advanced audit policy rows'
                             }
                         } catch { }
                         $out['AuditPolicy'] = $auditResults
+                        $out['AuditPolicyReadError'] = $auditReadError
 
                         # ---- TLS / Schannel settings ----
                         $tls = @{}
@@ -163,6 +204,19 @@ function Get-MATIProtocolConfig {
                             $out['KdcArmoring'] = $v.EnableCbacAndArmor
                         } catch { $out['KdcArmoring'] = $null }
 
+                        # ---- Strong certificate binding / Schannel mapping ----
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc' `
+                                -Name 'StrongCertificateBindingEnforcement' -ErrorAction SilentlyContinue
+                            $out['StrongCertificateBindingEnforcement'] = $v.StrongCertificateBindingEnforcement
+                        } catch { $out['StrongCertificateBindingEnforcement'] = $null }
+
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL' `
+                                -Name 'CertificateMappingMethods' -ErrorAction SilentlyContinue
+                            $out['CertificateMappingMethods'] = $v.CertificateMappingMethods
+                        } catch { $out['CertificateMappingMethods'] = $null }
+
                         return $out
                     }
 
@@ -173,12 +227,16 @@ function Get-MATIProtocolConfig {
                     $result.NTLMLevel          = $regData['NTLMLevel']
                     $result.NoLMHash           = $regData['NoLMHash']
                     $result.AuditPolicySub     = $regData['AuditPolicy']
+                    $result.AuditPolicyReadError = $regData['AuditPolicyReadError']
                     $result.NetSessionHardened = $regData['NetSession']?.Hardened
                     $result.TLS                = $regData['TLS']
                     $result.WDigestEnabled     = $regData['WDigest']
+                    $result.VbsEnabled         = $regData['VBSEnabled']
                     $result.CredentialGuard    = $regData['LsaCfgFlags']
                     $result.RunAsPPL           = $regData['RunAsPPL']
                     $result.KdcArmoring        = $regData['KdcArmoring']
+                    $result.StrongCertificateBindingEnforcement = $regData['StrongCertificateBindingEnforcement']
+                    $result.CertificateMappingMethods = $regData['CertificateMappingMethods']
                 }
                 catch {
                     $errors.Add([PSCustomObject]@{

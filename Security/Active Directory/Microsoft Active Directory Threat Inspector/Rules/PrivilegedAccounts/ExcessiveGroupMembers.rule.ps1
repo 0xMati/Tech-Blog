@@ -3,6 +3,7 @@
 
 @{
     Id          = 'MATI-ADMIN-004'
+    Category    = 'Governance'
     Title       = 'Privileged group with too many members'
     Severity    = 'High'
     Description = "A privileged group contains more members than the recommended threshold. Too many privileged accounts significantly increase the attack surface and make access tracking difficult."

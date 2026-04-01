@@ -25,6 +25,7 @@ function Invoke-MATITieringMenu {
 
     # Load tiering modules
     $tieringModules = @(
+        'Engine\Get-MATISummarySnapshot.ps1'
         'Tiering\Invoke-MATITieringDiscovery.ps1'
         'Tiering\Export-TieringDiscoveryHtml.ps1'
         'Tiering\Invoke-MATITieringPhase1.ps1'
@@ -67,12 +68,12 @@ function Invoke-MATITieringMenu {
         Write-Host "    │              IMPLEMENT TIERING MODEL                        │" -ForegroundColor Cyan
         Write-Host "    ├─────────────────────────────────────────────────────────────┤" -ForegroundColor Cyan
         Write-Host "    │  [0]  Phase 0 — Discovery & Tier Classification            │" -ForegroundColor Green
-        Write-Host "    │  [1]  Phase 1 — OU Structure & Group Model                │" -ForegroundColor Green
-        Write-Host "    │  [2]  Phase 2 — Tiered Admin Accounts                     │" -ForegroundColor Green
-        Write-Host "    │  [3]  Phase 3 — Deny Logon GPOs                           │" -ForegroundColor Green
-        Write-Host "    │  [4]  Phase 4 — Auth Policies & Silos                     │" -ForegroundColor Green
-        Write-Host "    │  [5]  Phase 5 — PAW Hardening GPOs                        │" -ForegroundColor Green
-        Write-Host "    │  [6]  Phase 6 — GPO Hardening Per Tier                    │" -ForegroundColor Green
+        Write-Host "    │  [1]  Phase 1 — Create Recommended OU Structure & Group Model │" -ForegroundColor Green
+        Write-Host "    │  [2]  Phase 2 — Create Recommended Tiered Admin Accounts │" -ForegroundColor Green
+        Write-Host "    │  [3]  Phase 3 — Create Deny Logon GPOs for each Tiers    │" -ForegroundColor Green
+        Write-Host "    │  [4]  Phase 4 — Create Auth Policies & Silos              │" -ForegroundColor Green
+        Write-Host "    │  [5]  Phase 5 — Create PAW Hardening GPOs                 │" -ForegroundColor Green
+        Write-Host "    │  [6]  Phase 6 — Create GPO Hardening Per Tier             │" -ForegroundColor Green
         Write-Host "    │  [7]  Phase 7 — Tier 0 Object Protection                  │" -ForegroundColor Green
         Write-Host "    │  [8]  Phase 8 — Monitoring & Detection                    │" -ForegroundColor Green
         Write-Host "    │  [9]  Phase 9 — Health Check & Ongoing Ops                │" -ForegroundColor Green

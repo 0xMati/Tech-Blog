@@ -19,12 +19,19 @@ function Get-MATIDomainInfo {
     $domains = foreach ($domainDns in $forest.Domains) {
         try {
             $dom = Get-ADDomain -Identity $domainDns -Server $domainDns -ErrorAction Stop
+            $ouCount = 0
+            try {
+                $ouCount = @(Get-ADOrganizationalUnit -Filter * -Server $domainDns -ResultSetSize $null -ErrorAction Stop).Count
+            } catch {
+                Write-Verbose "    Cannot count organizational units for $domainDns : $($_.Exception.Message)"
+            }
             [PSCustomObject]@{
                 Name                  = $dom.Name
                 DNSRoot               = $dom.DNSRoot
                 NetBIOSName           = $dom.NetBIOSName
                 DistinguishedName     = $dom.DistinguishedName
                 DomainMode            = $dom.DomainMode
+                OrganizationalUnitCount = $ouCount
                 DomainModeNumeric     = [int]$dom.DomainMode
                 InfrastructureMaster  = $dom.InfrastructureMaster
                 PDCEmulator           = $dom.PDCEmulator

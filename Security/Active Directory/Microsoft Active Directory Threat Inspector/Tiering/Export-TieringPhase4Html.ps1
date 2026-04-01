@@ -1,5 +1,5 @@
 # Tiering\Export-TieringPhase4Html.ps1
-# Generates a rich HTML report for Phase 4 — Authentication Policies & Silos.
+# Generates a rich HTML report for Phase 4 — Create Auth Policies & Silos.
 
 function Export-TieringPhase4Html {
     [CmdletBinding()]
@@ -15,9 +15,13 @@ function Export-TieringPhase4Html {
     $accAssigned  = $Results.AccountsAssigned.Count
     $compAssigned = $Results.ComputersAssigned.Count
     $errCount     = $Results.Errors.Count
+    $warningCount = $Results.Warnings.Count
+    $claimsReady  = [bool]$Results.ClaimsReady
+    $claimsCount  = $Results.ClaimsStatus.Count
     $timestamp    = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $mode         = $Results.EnforcementMode
-    $modeColor    = if ($mode -eq 'Enforce') { 'var(--red)' } else { 'var(--yellow)' }
+    $modeColor    = 'var(--yellow)'
+    $claimsColor  = if ($claimsReady) { 'var(--green)' } else { 'var(--red)' }
 
     # Account rows
     $accRows = ''
@@ -30,6 +34,22 @@ function Export-TieringPhase4Html {
     foreach ($c in $Results.ComputersAssigned) {
         $compRows += "<tr><td>$(HtmlEncode $c.SamAccountName)</td><td>$($c.Type)</td><td>$(HtmlEncode $c.Silo)</td><td><span class='badge pass'>Assigned</span></td></tr>`n"
     }
+
+    # Claims rows
+    $claimsRows = ''
+    foreach ($c in $Results.ClaimsStatus) {
+        $statusBadge = switch ($c.Status) {
+            'Supported' { "<span class='badge pass'>Supported</span>" }
+            'Always provide claims' { "<span class='badge pass'>Always provide claims</span>" }
+            'Not configured' { "<span class='badge fail'>Not configured</span>" }
+            default { "<span class='badge warn'>$(HtmlEncode $c.Status)</span>" }
+        }
+        $claimsRows += "<tr><td>$(HtmlEncode $c.DCName)</td><td>$statusBadge</td><td>$(if($null -ne $c.ClaimsValue){$c.ClaimsValue}else{'—'})</td><td>$(HtmlEncode $c.Detail)</td></tr>`n"
+    }
+
+    # Warning rows
+    $warningRows = ''
+    foreach ($w in $Results.Warnings) { $warningRows += "<tr><td>$(HtmlEncode $w)</td></tr>`n" }
 
     # Error rows
     $errRows = ''
@@ -65,23 +85,26 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:#21262d
 @media(max-width:1000px){.summary-grid{grid-template-columns:repeat(2,1fr)}.policy-grid{grid-template-columns:1fr}}
 </style></head><body><div class="container">
 <h1>MATI — Phase 4 Deployment Report</h1>
-<p class="subtitle">Authentication Policies &amp; Silos | Domain: $(HtmlEncode $DomainDN) | Generated: $timestamp</p>
+<p class="subtitle">Authentication Policies &amp; Silos | Audit-only deployment | Domain: $(HtmlEncode $DomainDN) | Generated: $timestamp</p>
 <nav class="section-nav">
-<a href="#summary">Summary</a><a href="#policies">Policies</a><a href="#accounts">Accounts</a><a href="#computers">Computers</a>
+<a href="#summary">Summary</a><a href="#policies">Policies</a><a href="#claims">KDC Claims</a><a href="#accounts">Accounts</a><a href="#computers">Computers</a>
+$(if($warningCount -gt 0){'<a href="#warnings" style="color:var(--yellow);">Warnings</a>'})
 $(if($errCount -gt 0){'<a href="#errors" style="color:var(--red);">Errors</a>'})
 <a href="#nextsteps">Next Steps</a></nav>
 
 <div class="info-banner">
-<span style="font-size:1.5rem;">$(if($mode -eq 'Enforce'){'&#x1F6A8;'}else{'&#x1F50D;'})</span>
-<div><strong>Mode: $mode</strong> — $(if($mode -eq 'Enforce'){'Authentication that violates the policy will be BLOCKED.'}else{'Violations are logged (Event ID 105/106) but NOT blocked. Monitor before enforcing.'})<br>
+<span style="font-size:1.5rem;">&#x1F50D;</span>
+<div><strong>Mode: $mode</strong> — Phase 4 deploys audit-only configuration. Analyze Event ID 105/106 before any later move to enforce mode.<br>
 <span style="color:#8b949e;">DFL: $(HtmlEncode $Results.DomainMode) | Base DN: <code style="color:var(--cyan);">$(HtmlEncode $Results.BaseDN)</code></span></div>
 </div>
 
 <div id="summary"><h2 class="section-header"><span class="section-icon">&#x1F4CA;</span> Summary</h2>
 <div class="summary-grid">
 <div class="summary-metric" style="border-top:3px solid $modeColor"><div class="metric-value" style="color:$modeColor">$mode</div><div class="metric-label">Enforcement</div></div>
+<div class="summary-metric" style="border-top:3px solid $claimsColor"><div class="metric-value" style="color:$claimsColor">$(if($claimsReady){'Ready'}else{'Review'})</div><div class="metric-label">KDC Claims</div></div>
 <div class="summary-metric" style="border-top:3px solid var(--green)"><div class="metric-value" style="color:var(--green)">$accAssigned</div><div class="metric-label">Accounts Assigned</div></div>
 <div class="summary-metric" style="border-top:3px solid var(--cyan)"><div class="metric-value" style="color:var(--cyan)">$compAssigned</div><div class="metric-label">Computers Assigned</div></div>
+<div class="summary-metric" style="border-top:3px solid var(--yellow)"><div class="metric-value" style="color:var(--yellow)">$warningCount</div><div class="metric-label">Warnings</div></div>
 <div class="summary-metric" style="border-top:3px solid $errColor"><div class="metric-value" style="color:$errColor">$errCount</div><div class="metric-label">Errors</div></div>
 </div></div>
 
@@ -102,6 +125,10 @@ Status: <span>$(if($Results.SiloCreated){$Results.SiloCreated.Status}else{'N/A'}
 </div></div>
 </div></div>
 
+<div id="claims"><h2 class="section-header"><span class="section-icon">&#x1F6E1;</span> KDC Claims, Compound Auth &amp; Kerberos Armoring</h2>
+$(if($claimsCount -gt 0){"<div class='card'><table><thead><tr><th>Domain Controller</th><th>Status</th><th>EnableCbacAndArmor</th><th>Detail</th></tr></thead><tbody>$claimsRows</tbody></table></div>"}else{"<p class='note'>No domain controller claims status could be collected.</p>"})
+</div>
+
 <div id="accounts"><h2 class="section-header"><span class="section-icon">&#x1F464;</span> Accounts Assigned to Silo</h2>
 $(if($accAssigned -gt 0){"<div class='card'><table><thead><tr><th>Account</th><th>Type</th><th>Silo</th><th>Status</th></tr></thead><tbody>$accRows</tbody></table></div>"}else{"<p class='note'>No accounts were assigned to the silo.</p>"})
 </div>
@@ -115,12 +142,18 @@ $(if($errCount -gt 0){@"
 <div class="error-alert"><h3>$errCount error(s)</h3><table><tbody>$errRows</tbody></table></div></div>
 "@})
 
+$(if($warningCount -gt 0){@"
+<div id="warnings"><h2 class="section-header"><span class="section-icon">&#x26A0;</span> Warnings</h2>
+<div class="card"><table><tbody>$warningRows</tbody></table></div></div>
+"@})
+
 <div id="nextsteps"><h2 class="section-header"><span class="section-icon">&#x1F680;</span> Next Steps</h2>
 <div class="steps-grid">
 <div class="step-card"><div class="step-number">1</div><div class="step-text"><strong>Monitor Event IDs 105/106</strong> — Check <code>AuthenticationPolicyFailures-DomainController</code> log on all DCs for violations.</div></div>
-<div class="step-card"><div class="step-number">2</div><div class="step-text"><strong>Switch to Enforce mode</strong> — After validating audit results (no false positives), re-run with Enforce mode.</div></div>
-<div class="step-card"><div class="step-number">3</div><div class="step-text"><strong>Assign remaining T0 assets</strong> — Ensure all T0 servers (AD CS, ADFS, etc.) are in the silo.</div></div>
-<div class="step-card"><div class="step-number">4</div><div class="step-text"><strong>Phase 5 — PAW Hardening GPOs</strong> — Harden PAW machines with Credential Guard, WDAC, and firewall rules.</div></div>
+<div class="step-card"><div class="step-number">2</div><div class="step-text"><strong>Fix KDC claims prerequisites</strong> — Ensure every DC has <code>EnableCbacAndArmor</code> set to <code>1</code> or <code>2</code> before planning enforce mode.</div></div>
+<div class="step-card"><div class="step-number">3</div><div class="step-text"><strong>Review warnings before enforce</strong> — Existing enforced policies or silos should be reviewed to avoid blocking valid Tier 0 authentication flows.</div></div>
+<div class="step-card"><div class="step-number">4</div><div class="step-text"><strong>Move to Enforce later</strong> — After audit analysis and prerequisite validation, apply enforce mode through a separate controlled change.</div></div>
+<div class="step-card"><div class="step-number">5</div><div class="step-text"><strong>Phase 5 — Create PAW Hardening GPOs</strong> — Harden PAW machines with Credential Guard, HVCI, BitLocker, and firewall rules, and prepare for a Microsoft-recommended WDAC / App Control rollout.</div></div>
 </div></div>
 
 <p class="note" style="text-align:center;margin-top:2rem;">Generated by MATI — Phase 4 — Authentication Policies &amp; Silos</p>

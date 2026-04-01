@@ -1,6 +1,6 @@
 # Tiering\Invoke-MATITieringPhase4.ps1
-# Phase 4 — Authentication Policies & Silos
-# Creates T0 Authentication Policy, Computer Authentication Policy, and Authentication Silo.
+# Phase 4 — Create Auth Policies & Silos
+# Creates T0 Authentication Policy, Computer Authentication Policy, and Authentication Silo in audit-only mode.
 # Optionally assigns T0 accounts and computers to the silo.
 
 function Invoke-MATITieringPhase4 {
@@ -10,12 +10,12 @@ function Invoke-MATITieringPhase4 {
     .DESCRIPTION
         Guided, step-by-step deployment:
         1. Pre-check: DFL >= 2012 R2, Phase 1 groups/OUs exist
-        2. Choose enforcement mode: Audit or Enforce
-        3. Create T0 Authentication Policy (user TGT lifetime)
-        4. Create T0 Computer Authentication Policy
-        5. Create T0 Authentication Silo
+        2. Verify KDC support for claims, compound authentication, and Kerberos armoring on DCs
+        3. Create T0 Authentication Policy (audit-only)
+        4. Create T0 Computer Authentication Policy (audit-only)
+        5. Create T0 Authentication Silo (audit-only)
         6. Optionally assign T0 accounts and computers to the silo
-        7. Generate an HTML deployment report
+        7. Generate an HTML deployment report with warnings and next steps toward enforce mode
     #>
     [CmdletBinding()]
     param(
@@ -35,18 +35,45 @@ function Invoke-MATITieringPhase4 {
     $domain   = Get-ADDomain
     $domainDN = $domain.DistinguishedName
 
-    # Determine base DN
-    $containerOU = $ouCfg.ContainerOU
-    if ($containerOU) {
-        $candidateDN = "OU=$containerOU,$domainDN"
-        if ([adsi]::Exists("LDAP://$candidateDN")) { $baseDN = $candidateDN } else { $baseDN = $domainDN }
-    } else { $baseDN = $domainDN }
+    $phase1StatePath = Join-Path $RootPath 'Outputs\Tiering\MATI-Tiering-Phase1-Latest.json'
+    if (-not (Test-Path $phase1StatePath)) {
+        Write-Host "`n  [ERROR] Phase 1 state file not found. Run Phase 1 first." -ForegroundColor Red
+        Write-Host "    Expected: $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host ""
+        return
+    }
+
+    try {
+        $phase1State = Get-Content -Path $phase1StatePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-Host "`n  [ERROR] Failed to read Phase 1 state file." -ForegroundColor Red
+        Write-Host "    $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host "    $($_.Exception.Message)" -ForegroundColor DarkGray
+        Write-Host ""
+        return
+    }
+
+    $baseDN = [string]$phase1State.BaseDN
+    $containerOU = if ($null -ne $phase1State.ContainerOU -and [string]$phase1State.ContainerOU -ne '') { [string]$phase1State.ContainerOU } else { $null }
+    $tier0OUDN = [string]$phase1State.Tier0OUDN
+
+    if ([string]::IsNullOrWhiteSpace($baseDN) -or [string]::IsNullOrWhiteSpace($tier0OUDN)) {
+        Write-Host "`n  [ERROR] Phase 1 state is incomplete. Run Phase 1 again." -ForegroundColor Red
+        Write-Host "    State file: $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host ""
+        return
+    }
 
     # Results tracker
     $results = @{
         BaseDN              = $baseDN
+        ContainerOU         = $containerOU
+        Phase1StatePath     = $phase1StatePath
         DomainMode          = ''
-        EnforcementMode     = ''
+        EnforcementMode     = 'Audit'
+        ClaimsReady         = $false
+        ClaimsStatus        = [System.Collections.Generic.List[object]]::new()
+        Warnings            = [System.Collections.Generic.List[string]]::new()
         PolicyCreated       = $null
         ComputerPolicyCreated = $null
         SiloCreated         = $null
@@ -59,9 +86,9 @@ function Invoke-MATITieringPhase4 {
     # Banner
     # ================================================================
     Write-Host "`n  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "   Phase 4 — Authentication Policies & Silos" -ForegroundColor Cyan
+    Write-Host "   Phase 4 — Create Auth Policies & Silos" -ForegroundColor Cyan
     Write-Host "  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "   Adds Kerberos-level enforcement for Tier 0 isolation." -ForegroundColor DarkGray
+    Write-Host "   Deploys Authentication Policies and Silos in audit-only mode for Tier 0 isolation." -ForegroundColor DarkGray
     Write-Host "   Silo: $($authCfg.SiloName) | Policy: $($authCfg.PolicyName)`n" -ForegroundColor DarkGray
 
     # ================================================================
@@ -72,7 +99,6 @@ function Invoke-MATITieringPhase4 {
     # Domain functional level
     $domainMode = (Get-ADDomain).DomainMode
     $results.DomainMode = $domainMode.ToString()
-    $supportedModes = @('Windows2012R2Domain','Windows2016Domain','Windows2025Domain','UnknownDomain')
     # Allow unknowns (future DFL) and >= 2012R2
     $dflOk = $domainMode -ge [Microsoft.ActiveDirectory.Management.ADDomainMode]::Windows2012R2Domain
     if (-not $dflOk) {
@@ -94,28 +120,83 @@ function Invoke-MATITieringPhase4 {
     }
 
     # T0 OU
-    $tier0OU = "OU=$($ouCfg.Tier0),$baseDN"
+    $tier0OU = $tier0OUDN
     if (-not ([adsi]::Exists("LDAP://$tier0OU"))) {
         Write-Host "  [ERROR] Tier 0 OU not found: $tier0OU. Run Phase 1 first." -ForegroundColor Red
         return
     }
     Write-Host "    [OK] Tier 0 OU found" -ForegroundColor Green
 
+    # Verify KDC support for claims, compound auth and Kerberos armoring on DCs
+    $claimsReady = $true
+    try {
+        $domainControllers = @(Get-ADDomainController -Filter * -ErrorAction Stop)
+        foreach ($dc in $domainControllers) {
+            $claimsValue = $null
+            $status = 'Unknown'
+            $detail = 'Could not verify KDC support for claims, compound authentication and Kerberos armoring.'
+
+            try {
+                $claimsValue = Invoke-Command -ComputerName $dc.HostName -ScriptBlock {
+                    $value = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\KDC\Parameters' -Name 'EnableCbacAndArmor' -ErrorAction SilentlyContinue
+                    if ($null -eq $value) { return $null }
+                    return $value.EnableCbacAndArmor
+                } -ErrorAction Stop
+
+                switch ($claimsValue) {
+                    1 {
+                        $status = 'Supported'
+                        $detail = 'KDC support for claims, compound authentication and Kerberos armoring is set to Supported.'
+                    }
+                    2 {
+                        $status = 'Always provide claims'
+                        $detail = 'KDC support for claims, compound authentication and Kerberos armoring is set to Always provide claims.'
+                    }
+                    default {
+                        $status = 'Not configured'
+                        $detail = 'KDC support for claims, compound authentication and Kerberos armoring is missing or disabled.'
+                        $claimsReady = $false
+                        $results.Warnings.Add("DC $($dc.HostName) does not have KDC support for claims, compound authentication and Kerberos armoring enabled.")
+                    }
+                }
+            } catch {
+                $status = 'Check failed'
+                $detail = $_.Exception.Message
+                $claimsReady = $false
+                $results.Warnings.Add("Cannot verify KDC support for claims on $($dc.HostName): $($_.Exception.Message)")
+            }
+
+            $results.ClaimsStatus.Add([PSCustomObject]@{
+                DCName       = $dc.HostName
+                ClaimsValue  = $claimsValue
+                Status       = $status
+                Detail       = $detail
+            })
+        }
+    } catch {
+        $claimsReady = $false
+        $results.Warnings.Add("Cannot enumerate domain controllers to verify KDC claims support: $($_.Exception.Message)")
+    }
+    $results.ClaimsReady = $claimsReady
+    if ($claimsReady) {
+        Write-Host "    [OK] KDC claims/compound auth/armoring support verified on all reachable DCs" -ForegroundColor Green
+    } else {
+        Write-Host "    [WARN] One or more DCs do not have KDC claims/compound auth/armoring support verified" -ForegroundColor Yellow
+    }
+
     # ================================================================
-    # Step 1 — Choose enforcement mode
+    # Step 1 — Audit-only deployment model
     # ================================================================
     Write-Host ""
-    Write-Host "  Step 1/4 — Enforcement Mode" -ForegroundColor Yellow
+    Write-Host "  Step 1/4 — Audit-Only Deployment" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "    [A] Audit mode  — Logs violations (Event ID 105/106) but does NOT block." -ForegroundColor White
-    Write-Host "                      Recommended for initial deployment." -ForegroundColor DarkGray
-    Write-Host "    [E] Enforce mode — Blocks authentication that violates the policy." -ForegroundColor White
-    Write-Host "                      Use only after validating audit results." -ForegroundColor DarkGray
-    Write-Host ""
-    $modeChoice = Read-Host "    Select mode [A/E]"
-    $enforceMode = $modeChoice.Trim().ToUpper() -eq 'E'
-    $results.EnforcementMode = if ($enforceMode) { 'Enforce' } else { 'Audit' }
-    Write-Host "    Mode: $($results.EnforcementMode)" -ForegroundColor Cyan
+    Write-Host "    This phase now deploys Authentication Policies and Silos in AUDIT mode only." -ForegroundColor White
+    Write-Host "    No enforce flag will be set by MATI during Phase 4." -ForegroundColor DarkGray
+    Write-Host "    After you analyze Event ID 105/106 and validate the scope, you can move to enforce in a later controlled change." -ForegroundColor DarkGray
+    if (-not $results.ClaimsReady) {
+        Write-Host "    [WARN] KDC claims/compound auth/armoring is not fully in place. Do not move to enforce until this is corrected." -ForegroundColor Yellow
+    }
+    Write-Host "    Mode: Audit" -ForegroundColor Cyan
 
     # ================================================================
     # Step 2 — Create Authentication Policies
@@ -130,9 +211,13 @@ function Invoke-MATITieringPhase4 {
 
     # User Authentication Policy
     try {
-        $existingPolicy = Get-ADAuthenticationPolicy -Identity $policyName -ErrorAction Stop
+        $existingUserPolicy = Get-ADAuthenticationPolicy -Identity $policyName -ErrorAction Stop
         Write-Host "      [=] Already exists: $policyName" -ForegroundColor DarkGray
         $results.PolicyCreated = [PSCustomObject]@{ Name = $policyName; Status = 'Existed'; TGTLifetime = $tgtLifetime }
+        if ($existingUserPolicy.Enforce) {
+            $results.Warnings.Add("Existing user authentication policy '$policyName' is already in Enforce mode. Phase 4 expects audit-only deployment first.")
+            Write-Host "      [WARN] Existing policy is already Enforce: $policyName" -ForegroundColor Yellow
+        }
     } catch {
         try {
             $policyParams = @{
@@ -140,7 +225,6 @@ function Invoke-MATITieringPhase4 {
                 Description           = "Restricts Tier 0 accounts — TGT lifetime $tgtLifetime min"
                 UserTGTLifetimeMins   = $tgtLifetime
             }
-            if ($enforceMode) { $policyParams['Enforce'] = $true }
             New-ADAuthenticationPolicy @policyParams -ErrorAction Stop
             Write-Host "      [+] Created: $policyName (TGT: ${tgtLifetime}min, Mode: $($results.EnforcementMode))" -ForegroundColor Green
             $results.PolicyCreated = [PSCustomObject]@{ Name = $policyName; Status = 'Created'; TGTLifetime = $tgtLifetime }
@@ -152,9 +236,13 @@ function Invoke-MATITieringPhase4 {
 
     # Computer Authentication Policy
     try {
-        $null = Get-ADAuthenticationPolicy -Identity $compPolicyName -ErrorAction Stop
+        $existingComputerPolicy = Get-ADAuthenticationPolicy -Identity $compPolicyName -ErrorAction Stop
         Write-Host "      [=] Already exists: $compPolicyName" -ForegroundColor DarkGray
         $results.ComputerPolicyCreated = [PSCustomObject]@{ Name = $compPolicyName; Status = 'Existed' }
+        if ($existingComputerPolicy.Enforce) {
+            $results.Warnings.Add("Existing computer authentication policy '$compPolicyName' is already in Enforce mode. Phase 4 expects audit-only deployment first.")
+            Write-Host "      [WARN] Existing computer policy is already Enforce: $compPolicyName" -ForegroundColor Yellow
+        }
     } catch {
         try {
             $compParams = @{
@@ -162,7 +250,6 @@ function Invoke-MATITieringPhase4 {
                 Description              = "Restricts service tickets to Tier 0 machines"
                 ComputerTGTLifetimeMins  = $tgtLifetime
             }
-            if ($enforceMode) { $compParams['Enforce'] = $true }
             New-ADAuthenticationPolicy @compParams -ErrorAction Stop
             Write-Host "      [+] Created: $compPolicyName" -ForegroundColor Green
             $results.ComputerPolicyCreated = [PSCustomObject]@{ Name = $compPolicyName; Status = 'Created' }
@@ -181,9 +268,13 @@ function Invoke-MATITieringPhase4 {
 
     $siloName = $authCfg.SiloName
     try {
-        $null = Get-ADAuthenticationPolicySilo -Identity $siloName -ErrorAction Stop
+        $existingSilo = Get-ADAuthenticationPolicySilo -Identity $siloName -ErrorAction Stop
         Write-Host "      [=] Already exists: $siloName" -ForegroundColor DarkGray
         $results.SiloCreated = [PSCustomObject]@{ Name = $siloName; Status = 'Existed' }
+        if ($existingSilo.Enforce) {
+            $results.Warnings.Add("Existing authentication silo '$siloName' is already in Enforce mode. Phase 4 expects audit-only deployment first.")
+            Write-Host "      [WARN] Existing silo is already Enforce: $siloName" -ForegroundColor Yellow
+        }
     } catch {
         try {
             $siloParams = @{
@@ -193,7 +284,6 @@ function Invoke-MATITieringPhase4 {
                 ComputerAuthenticationPolicy  = $compPolicyName
                 ServiceAuthenticationPolicy   = $policyName
             }
-            if ($enforceMode) { $siloParams['Enforce'] = $true }
             New-ADAuthenticationPolicySilo @siloParams -ErrorAction Stop
             Write-Host "      [+] Created: $siloName (Mode: $($results.EnforcementMode))" -ForegroundColor Green
             $results.SiloCreated = [PSCustomObject]@{ Name = $siloName; Status = 'Created' }
@@ -212,7 +302,7 @@ function Invoke-MATITieringPhase4 {
     Write-Host "    Assign T0 accounts and computers to $siloName?" -ForegroundColor White
     Write-Host "    - T0 accounts from group: $t0adminsGroup" -ForegroundColor DarkGray
 
-    $serversOU = "OU=Servers,OU=$($ouCfg.Tier0),$baseDN"
+    $serversOU = "OU=Servers,$tier0OUDN"
     $hasServersOU = [adsi]::Exists("LDAP://$serversOU")
     if ($hasServersOU) {
         Write-Host "    - T0 computers from OU: $serversOU" -ForegroundColor DarkGray
@@ -302,6 +392,10 @@ function Invoke-MATITieringPhase4 {
     Write-Host "   Policies : $(if($results.PolicyCreated){$results.PolicyCreated.Status}else{'N/A'})" -ForegroundColor White
     Write-Host "   Silo     : $(if($results.SiloCreated){$results.SiloCreated.Status}else{'N/A'})" -ForegroundColor White
     Write-Host "   Assigned : $($results.AccountsAssigned.Count) accounts, $($results.ComputersAssigned.Count) computers" -ForegroundColor White
+    Write-Host "   Claims   : $(if($results.ClaimsReady){'Ready'}else{'Review required'})" -ForegroundColor White
+    if ($results.Warnings.Count -gt 0) {
+        Write-Host "   Warnings : $($results.Warnings.Count)" -ForegroundColor Yellow
+    }
     if ($results.Errors.Count -gt 0) {
         Write-Host "   Errors   : $($results.Errors.Count)" -ForegroundColor Red
     }

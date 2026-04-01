@@ -49,6 +49,7 @@
             ADCS               = 8
             Config             = 10
             Delegation         = 8
+            Governance         = 6
             Hardening          = 15
             Kerberos           = 12
             PasswordPolicy     = 10
@@ -135,21 +136,24 @@
         # Maximum number of non-privileged PwdNeverExpires accounts (HARD-025)
         MaxPwdNeverExpiresNonPriv = 20
 
-        # Audit policy subcategories that must be enabled (HARD-023)
-        RequiredAuditSubcategories = @(
-            'Logon'
-            'Logoff'
-            'Credential Validation'
-            'Security Group Management'
-            'User Account Management'
-            'Computer Account Management'
-            'Directory Service Access'
-            'Directory Service Changes'
-            'Kerberos Authentication Service'
-            'Kerberos Service Ticket Operations'
-            'Special Logon'
-            'Other Object Access Events'
-        )
+        # Audit policy subcategories and minimum expected audit mode (HARD-023)
+        # Keys are auditpol subcategory GUIDs for locale-independent matching.
+        # Allowed values: Success, Failure, SuccessAndFailure, Any
+        RequiredAuditSubcategories = @{
+            '{0CCE9215-69AE-11D9-BED3-505054503030}' = @{ Name = 'Logon'; Requirement = 'SuccessAndFailure' }
+            '{0CCE9216-69AE-11D9-BED3-505054503030}' = @{ Name = 'Logoff'; Requirement = 'Success' }
+            '{0CCE921B-69AE-11D9-BED3-505054503030}' = @{ Name = 'Special Logon'; Requirement = 'Success' }
+            '{0CCE922F-69AE-11D9-BED3-505054503030}' = @{ Name = 'Audit Policy Change'; Requirement = 'SuccessAndFailure' }
+            '{0CCE9230-69AE-11D9-BED3-505054503030}' = @{ Name = 'Authentication Policy Change'; Requirement = 'SuccessAndFailure' }
+            '{0CCE9235-69AE-11D9-BED3-505054503030}' = @{ Name = 'User Account Management'; Requirement = 'SuccessAndFailure' }
+            '{0CCE9236-69AE-11D9-BED3-505054503030}' = @{ Name = 'Computer Account Management'; Requirement = 'SuccessAndFailure' }
+            '{0CCE9237-69AE-11D9-BED3-505054503030}' = @{ Name = 'Security Group Management'; Requirement = 'SuccessAndFailure' }
+            '{0CCE923B-69AE-11D9-BED3-505054503030}' = @{ Name = 'Directory Service Access'; Requirement = 'Success' }
+            '{0CCE923C-69AE-11D9-BED3-505054503030}' = @{ Name = 'Directory Service Changes'; Requirement = 'SuccessAndFailure' }
+            '{0CCE923F-69AE-11D9-BED3-505054503030}' = @{ Name = 'Credential Validation'; Requirement = 'SuccessAndFailure' }
+            '{0CCE9240-69AE-11D9-BED3-505054503030}' = @{ Name = 'Kerberos Service Ticket Operations'; Requirement = 'SuccessAndFailure' }
+            '{0CCE9242-69AE-11D9-BED3-505054503030}' = @{ Name = 'Kerberos Authentication Service'; Requirement = 'SuccessAndFailure' }
+        }
 
         # Legacy Protocol Audit — event-log based analysis on DCs
         EventLogAudit = @{
@@ -191,7 +195,7 @@
             'TrustedForDelegation', 'TrustedToAuthForDelegation',
             'msDS-AllowedToDelegateTo',
             'msDS-KeyCredentialLink',
-            'mail', 'userPassword', 'unixUserPassword'
+            'mail', 'scriptPath', 'userPassword', 'unixUserPassword'
         )
 
         # Properties to request via Get-ADComputer

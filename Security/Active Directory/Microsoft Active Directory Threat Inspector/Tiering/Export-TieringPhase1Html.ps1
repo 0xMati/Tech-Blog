@@ -1,5 +1,5 @@
 # Tiering\Export-TieringPhase1Html.ps1
-# Generates a rich HTML report for Phase 1 — OU Structure & Group Model.
+# Generates a rich HTML report for Phase 1 — Create Recommended OU Structure & Group Model.
 
 function Export-TieringPhase1Html {
     [CmdletBinding()]
@@ -103,7 +103,7 @@ function Export-TieringPhase1Html {
 
     # Container OU if applicable
     if ($Results.ContainerOU) {
-        $containerDN = "OU=$($Results.ContainerOU),$DomainDN"
+        $containerDN = if ($Results.ContainerOUDN) { $Results.ContainerOUDN } else { "OU=$($Results.ContainerOU),$DomainDN" }
         $cssBadge = if ($createdSet.Contains($containerDN)) { 'pass' } else { 'info' }
         $treeHtml += "<div class='ou-node' style='--depth:0;'><span class='ou-icon'>&#x1F4C1;</span><span class='ou-name'>$($Results.ContainerOU)</span> <span class='ou-badge $cssBadge'>$(if($cssBadge -eq 'pass'){'NEW'}else{'EXISTS'})</span></div>`n"
     }
@@ -166,7 +166,7 @@ function Export-TieringPhase1Html {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MATI — Phase 1 Deployment Report</title>
+<title>MATI — Phase 1 — Create Recommended OU Structure & Group Model</title>
 <style>
     :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; --cyan: #39c5cf; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -258,8 +258,8 @@ function Export-TieringPhase1Html {
 <body>
 <div class="container">
 
-<h1>MATI — Phase 1 Deployment Report</h1>
-<p class="subtitle">OU Structure & Group Model | Domain: $(HtmlEncode $DomainDN) | Generated: $timestamp</p>
+<h1>MATI — Phase 1 — Create Recommended OU Structure & Group Model</h1>
+<p class="subtitle">Create Recommended OU Structure &amp; Group Model | Domain: $(HtmlEncode $DomainDN) | Generated: $timestamp</p>
 
 <nav class="section-nav">
     <a href="#summary">Summary</a>
@@ -350,7 +350,7 @@ $treeHtml</div>
 <!-- ================================================================ -->
 <div id="groups">
 <h2 class="section-header"><span class="section-icon">&#x1F465;</span> Security Groups ($grpTotal)</h2>
-<p class="section-intro">Tiered security groups for administration, deny-logon policies, and service account isolation.</p>
+<p class="section-intro">Tiered security groups for administration, service account isolation, and the deny-logon model that will be enforced later by Phase 3 GPOs.</p>
 
 $(if ($grpTotal -gt 0) {
 @"
@@ -443,12 +443,14 @@ $(if ($errCount -gt 0) {
 <!-- ================================================================ -->
 <div id="nextsteps">
 <h2 class="section-header"><span class="section-icon">&#x1F680;</span> Recommended Next Steps</h2>
-<p class="section-intro">Actions to take after Phase 1 deployment before proceeding to Phase 2.</p>
+<p class="section-intro">Actions to take after Phase 1 deployment before proceeding through the next implementation phases.</p>
 <div class="steps-grid">
     <div class="step-card"><div class="step-number">1</div><div class="step-text"><strong>Verify OU structure</strong> — Open Active Directory Users and Computers and confirm the OU hierarchy matches expectations.</div></div>
     <div class="step-card"><div class="step-number">2</div><div class="step-text"><strong>Validate group membership</strong> — Confirm deny-logon nesting is correct with <code>Get-ADGroupMember</code>.</div></div>
     <div class="step-card"><div class="step-number">3</div><div class="step-text"><strong>Run Phase 0 again</strong> — Re-run Discovery to see the updated OU tree with the new structure.</div></div>
-    <div class="step-card"><div class="step-number">4</div><div class="step-text"><strong>Proceed to Phase 2</strong> — Account Isolation & Logon restrictions (Authentication Policies, GPO deny-logon).</div></div>
+    <div class="step-card"><div class="step-number">4</div><div class="step-text"><strong>Proceed to Phase 2</strong> — Create or align the tiered admin accounts that will populate the new OU and group model.</div></div>
+    <div class="step-card"><div class="step-number">5</div><div class="step-text"><strong>Proceed to Phase 3</strong> — Create and link the deny-logon GPOs that enforce the cross-tier boundaries prepared in Phase 1.</div></div>
+    <div class="step-card"><div class="step-number">6</div><div class="step-text"><strong>Proceed to Phase 4</strong> — Review and deploy Authentication Policies and Silos after the account and workstation/server model is stable.</div></div>
 </div>
 </div>
 

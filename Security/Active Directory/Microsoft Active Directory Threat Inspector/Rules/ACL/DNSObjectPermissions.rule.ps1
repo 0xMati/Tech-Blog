@@ -6,7 +6,7 @@
     Id          = 'MATI-ACL-011'
     Title       = 'Dangerous permissions on MicrosoftDNS objects'
     Severity    = 'High'
-    Description = "A non-privileged principal (outside of DnsAdmins) has dangerous permissions on MicrosoftDNS container objects in the DomainDnsZones or ForestDnsZones application partition. An attacker with write access to DNS objects can create or modify DNS records to redirect traffic, enabling man-in-the-middle attacks, credential interception, or denial of service. This is particularly dangerous for WPAD, _msdcs, and SRV records used for DC location."
+    Description = "A principal other than the expected DNS administration principals has dangerous permissions on MicrosoftDNS container objects in the DomainDnsZones or ForestDnsZones application partition. An attacker with write access to DNS objects can create or modify DNS records to redirect traffic, enabling man-in-the-middle attacks, credential interception, or denial of service. This is particularly dangerous for WPAD, _msdcs, and SRV records used for DC location."
     Remediation = "Remove the dangerous ACE from MicrosoftDNS containers. Only DNS Admins, Domain Admins, and SYSTEM should have write access to DNS objects. Review DNS delegation and ensure the DnsAdmins group membership is tightly controlled (DnsAdmins is a known privilege escalation path via DLL injection)."
     Collectors  = @('ACLInfo')
     References  = @(
@@ -17,9 +17,9 @@
         param($Data, $Config)
         $findings = @()
 
-        # DnsAdmins well-known RID = -1102, DnsUpdateProxy = -1103
+        # DnsAdmins domain-relative RID = -1101, DnsUpdateProxy = -1102
         # These groups are expected to have permissions on DNS objects
-        $dnsAdminRIDs = @('-1102', '-1103')
+        $dnsAdminRIDs = @('-1101', '-1102')
 
         foreach ($ace in $Data.ACLInfo.DNSObjects) {
             # Skip DnsAdmins and DnsUpdateProxy (expected permissions)

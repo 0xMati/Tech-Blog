@@ -23,47 +23,49 @@ function Export-TieringDiscoveryHtml {
     # Build HTML sections
     # ================================================================
 
-    # --- Current state summary (structured data for dashboard) ---
-    $obs = $Discovery.Observations
-
     # Extract numeric values for stat cards
+    $summary = Get-MATISummarySnapshot -Discovery $Discovery
     $totalComputers = $Discovery.ComputersByTier.Tier0.Count + $Discovery.ComputersByTier.Tier1.Count + $Discovery.ComputersByTier.Tier2.Count + $Discovery.ComputersByTier.Unclassified.Count
-    $allDA = $Discovery.PrivilegedAccounts.Keys | Where-Object { $_ -like '*\Domain Admins' } | ForEach-Object { $Discovery.PrivilegedAccounts[$_] } | ForEach-Object { $_ }
-    $daCount = ($allDA | ForEach-Object { $_.SamAccountName } | Select-Object -Unique).Count
-    $allEA = $Discovery.PrivilegedAccounts.Keys | Where-Object { $_ -like '*\Enterprise Admins' } | ForEach-Object { $Discovery.PrivilegedAccounts[$_] } | ForEach-Object { $_ }
-    $eaCount = ($allEA | ForEach-Object { $_.SamAccountName } | Select-Object -Unique).Count
-    $svcInDA = $Discovery.ServiceAccountsInDA.Count
-    $orphans = $Discovery.AdminCountOrphans.Count
-    $trustCount = $Discovery.Trusts.Count
-    $unsafeTrustCount = @($Discovery.Trusts | Where-Object { -not $_.SIDFilteringQuarantined -and -not $_.IntraForest }).Count
-    $gpoCount = $Discovery.GPOs.Count
-    $ouCount = $Discovery.OUStructure.Count
-
-    # Color logic
-    $daColor = if ($daCount -gt 5) { 'var(--red)' } elseif ($daCount -gt 2) { 'var(--yellow)' } else { 'var(--green)' }
-    $eaColor = if ($eaCount -gt 3) { 'var(--red)' } elseif ($eaCount -gt 1) { 'var(--yellow)' } else { 'var(--green)' }
-    $svcDAColor = if ($svcInDA -gt 0) { 'var(--red)' } else { 'var(--green)' }
-    $orphanColor = if ($orphans -gt 0) { 'var(--yellow)' } else { 'var(--green)' }
-    $trustColor = if ($unsafeTrustCount -gt 0) { 'var(--red)' } elseif ($trustCount -gt 0) { 'var(--yellow)' } else { 'var(--green)' }
-
-    # Build per-domain policy rows
-    $policyRows = ''
-    foreach ($d in $Discovery.Domains) {
-        $pwdColor = if ([int]$d.MinPwdLength -lt 12) { 'var(--red)' } elseif ([int]$d.MinPwdLength -lt 14) { 'var(--yellow)' } else { 'var(--green)' }
-        $lockColor = if ([int]$d.LockoutThreshold -eq 0) { 'var(--red)' } else { 'var(--green)' }
-        $maqColor = if ([int]$d.MachineAccountQuota -gt 0) { 'var(--red)' } else { 'var(--green)' }
-        $policyRows += "<tr><td>$(HtmlEncode $d.Name)</td><td>$(HtmlEncode $d.DomainMode)</td>"
-        $policyRows += "<td><span style='color:$pwdColor;font-weight:600;'>$($d.MinPwdLength)</span></td>"
-        $policyRows += "<td><span style='color:$lockColor;font-weight:600;'>$($d.LockoutThreshold)</span></td>"
-        $policyRows += "<td><span style='color:$maqColor;font-weight:600;'>$($d.MachineAccountQuota)</span></td></tr>`n"
+    $daCount = $summary.IdentityAccess.DomainAdmins.Count
+    $eaCount = $summary.IdentityAccess.EnterpriseAdmins.Count
+    $svcInDA = $summary.IdentityAccess.ServiceAccountsInDA.Count
+    $gmsaCount = $summary.IdentityAccess.GMSA.Count
+    $msaCount = $summary.IdentityAccess.MSA.Count
+    $userCount = $summary.Environment.Users
+    $groupCount = $summary.Environment.Groups
+    $orphans = $summary.IdentityAccess.AdminCountOrphans.Count
+    $trustCount = $summary.Trusts.TrustRelationships.Count
+    $unsafeTrustCount = $summary.Trusts.UnsafeTrusts.Count
+    $gpoCount = $summary.Infrastructure.GroupPolicies
+    $ouCount = $summary.Infrastructure.OrganizationalUnits
+    $reviewQueueCount = @($Discovery.ReviewQueue).Count
+    $authPolicySummary = if ($Discovery.AuthenticationControls.Summary) { $Discovery.AuthenticationControls.Summary } else { [ordered]@{ PolicyCount = 0; EnforcedPolicies = 0; SiloCount = 0; EnforcedSilos = 0; AuditOnlySilos = 0; AssignedMembers = 0 } }
+    $readinessStatus = if ($Discovery.Readiness.Status) { $Discovery.Readiness.Status } else { 'Unknown' }
+    $readinessColor = switch ($readinessStatus) {
+        'Ready' { 'var(--green)' }
+        'ReadyWithWarnings' { 'var(--yellow)' }
+        'Blocked' { 'var(--red)' }
+        default { 'var(--accent)' }
+    }
+    $readinessBadgeClass = switch ($readinessStatus) {
+        'Ready' { 'pass' }
+        'ReadyWithWarnings' { 'warn' }
+        'Blocked' { 'fail' }
+        default { 'info' }
     }
 
+    # Color logic
+    $daColor = if ($summary.IdentityAccess.DomainAdmins.Dot -eq 'red') { 'var(--red)' } elseif ($summary.IdentityAccess.DomainAdmins.Dot -eq 'yellow') { 'var(--yellow)' } else { 'var(--green)' }
+    $eaColor = if ($summary.IdentityAccess.EnterpriseAdmins.Dot -eq 'red') { 'var(--red)' } elseif ($summary.IdentityAccess.EnterpriseAdmins.Dot -eq 'yellow') { 'var(--yellow)' } else { 'var(--green)' }
     # --- Forest summary ---
     $forestInfo = $Discovery.Forest
     $domainRows = ''
     foreach ($d in $Discovery.Domains) {
+        $pwdColor = if ([int]$d.MinPwdLength -lt 12) { 'var(--red)' } elseif ([int]$d.MinPwdLength -lt 14) { 'var(--yellow)' } else { 'var(--green)' }
+        $lockColor = if ([int]$d.LockoutThreshold -eq 0) { 'var(--red)' } else { 'var(--green)' }
+        $maqColor = if ([int]$d.MachineAccountQuota -gt 0) { 'var(--red)' } else { 'var(--green)' }
         $domainRows += "<tr><td>$(HtmlEncode $d.Name)</td><td>$(HtmlEncode $d.NetBIOSName)</td><td>$(HtmlEncode $d.DomainMode)</td>"
-        $domainRows += "<td>$($d.MinPwdLength)</td><td>$($d.LockoutThreshold)</td><td>$($d.MachineAccountQuota)</td></tr>`n"
+        $domainRows += "<td><span style='color:$pwdColor;font-weight:600;'>$($d.MinPwdLength)</span></td><td><span style='color:$lockColor;font-weight:600;'>$($d.LockoutThreshold)</span></td><td><span style='color:$maqColor;font-weight:600;'>$($d.MachineAccountQuota)</span></td></tr>`n"
     }
 
     # --- DCs ---
@@ -73,6 +75,20 @@ function Export-TieringDiscoveryHtml {
         $rodc = if ($dc.IsReadOnly) { '<span class="badge warn">RODC</span>' } else { 'RWDC' }
         $dcRows += "<tr><td>$(HtmlEncode $dc.Name)</td><td>$(HtmlEncode $dc.Domain)</td><td>$(HtmlEncode $dc.Site)</td>"
         $dcRows += "<td>$(HtmlEncode $dc.OperatingSystem)</td><td>$rodc</td><td>$(HtmlEncode $roles)</td></tr>`n"
+    }
+
+    $dcConnectivityRows = ''
+    foreach ($dc in @($Discovery.DCConnectivity | Sort-Object Domain, Name)) {
+        $statusClass = switch ($dc.Status) {
+            'OK' { 'ok' }
+            'Unreachable' { 'unreachable' }
+            '' { 'warning' }
+            $null { 'warning' }
+            default { 'warning' }
+        }
+        $latency = if ($null -ne $dc.LatencyMs) { "$($dc.LatencyMs) ms" } else { '—' }
+        $gc = if ($dc.IsGlobalCatalog) { 'Yes' } else { 'No' }
+        $dcConnectivityRows += "<tr><td><strong>$(HtmlEncode $dc.Name)</strong></td><td>$(HtmlEncode $dc.HostName)</td><td>$(HtmlEncode $dc.Domain)</td><td>$(HtmlEncode $dc.IPv4Address)</td><td>$gc</td><td><span class='dc-status $statusClass'>$(HtmlEncode $dc.Status)</span></td><td>$latency</td></tr>`n"
     }
 
     # --- Computers by tier ---
@@ -88,8 +104,11 @@ function Export-TieringDiscoveryHtml {
     $t0Rows = ''
     foreach ($c in ($Discovery.ComputersByTier.Tier0 | Sort-Object { $_.Name })) {
         $enabled = if ($c.Enabled) { '<span class="badge pass">Yes</span>' } else { '<span class="badge fail">No</span>' }
+        $confidence = switch ($c.Confidence) { 'High' { 'pass' } 'Medium' { 'warn' } default { 'fail' } }
+        $review = if ($c.ReviewRequired) { '<span class="badge warn">Review</span>' } else { '<span class="badge pass">No</span>' }
+        $evidence = if ($c.Evidence.Count -gt 0) { $c.Evidence -join ' | ' } else { $c.Reason }
         $t0Rows += "<tr><td>$(HtmlEncode $c.Name)</td><td>$(HtmlEncode $c.Domain)</td><td>$(HtmlEncode $c.OperatingSystem)</td>"
-        $t0Rows += "<td>$enabled</td><td>$(HtmlEncode $c.Reason)</td><td>$(HtmlEncode $c.OU)</td></tr>`n"
+        $t0Rows += "<td>$enabled</td><td><span class='badge $confidence'>$(HtmlEncode $c.Confidence)</span></td><td>$review</td><td>$(HtmlEncode $evidence)</td><td>$(HtmlEncode $c.OU)</td></tr>`n"
     }
 
     # Tier 1 detail table (limit to 100 for readability, count shown)
@@ -98,8 +117,11 @@ function Export-TieringDiscoveryHtml {
     $t1Display = if ($t1All.Count -gt 100) { $t1All | Select-Object -First 100 } else { $t1All }
     foreach ($c in $t1Display) {
         $enabled = if ($c.Enabled) { '<span class="badge pass">Yes</span>' } else { '<span class="badge fail">No</span>' }
+        $confidence = switch ($c.Confidence) { 'High' { 'pass' } 'Medium' { 'warn' } default { 'fail' } }
+        $review = if ($c.ReviewRequired) { '<span class="badge warn">Review</span>' } else { '<span class="badge pass">No</span>' }
+        $evidence = if ($c.Evidence.Count -gt 0) { $c.Evidence -join ' | ' } else { $c.Reason }
         $t1Rows += "<tr><td>$(HtmlEncode $c.Name)</td><td>$(HtmlEncode $c.Domain)</td><td>$(HtmlEncode $c.OperatingSystem)</td>"
-        $t1Rows += "<td>$enabled</td><td>$(HtmlEncode $c.Reason)</td><td>$(HtmlEncode $c.OU)</td></tr>`n"
+        $t1Rows += "<td>$enabled</td><td><span class='badge $confidence'>$(HtmlEncode $c.Confidence)</span></td><td>$review</td><td>$(HtmlEncode $evidence)</td><td>$(HtmlEncode $c.OU)</td></tr>`n"
     }
     $t1Note = if ($t1All.Count -gt 100) { "<p class='note'>Showing first 100 of $($t1All.Count) Tier 1 computers. See JSON export for full list.</p>" } else { '' }
 
@@ -109,8 +131,11 @@ function Export-TieringDiscoveryHtml {
     $t2Display = if ($t2All.Count -gt 100) { $t2All | Select-Object -First 100 } else { $t2All }
     foreach ($c in $t2Display) {
         $enabled = if ($c.Enabled) { '<span class="badge pass">Yes</span>' } else { '<span class="badge fail">No</span>' }
+        $confidence = switch ($c.Confidence) { 'High' { 'pass' } 'Medium' { 'warn' } default { 'fail' } }
+        $review = if ($c.ReviewRequired) { '<span class="badge warn">Review</span>' } else { '<span class="badge pass">No</span>' }
+        $evidence = if ($c.Evidence.Count -gt 0) { $c.Evidence -join ' | ' } else { $c.Reason }
         $t2Rows += "<tr><td>$(HtmlEncode $c.Name)</td><td>$(HtmlEncode $c.Domain)</td><td>$(HtmlEncode $c.OperatingSystem)</td>"
-        $t2Rows += "<td>$enabled</td><td>$(HtmlEncode $c.Reason)</td><td>$(HtmlEncode $c.OU)</td></tr>`n"
+        $t2Rows += "<td>$enabled</td><td><span class='badge $confidence'>$(HtmlEncode $c.Confidence)</span></td><td>$review</td><td>$(HtmlEncode $evidence)</td><td>$(HtmlEncode $c.OU)</td></tr>`n"
     }
     $t2Note = if ($t2All.Count -gt 100) { "<p class='note'>Showing first 100 of $($t2All.Count) Tier 2 computers. See JSON export for full list.</p>" } else { '' }
 
@@ -118,8 +143,42 @@ function Export-TieringDiscoveryHtml {
     $unRows = ''
     foreach ($c in ($Discovery.ComputersByTier.Unclassified | Sort-Object { $_.Name })) {
         $enabled = if ($c.Enabled) { '<span class="badge pass">Yes</span>' } else { '<span class="badge fail">No</span>' }
+        $confidence = switch ($c.Confidence) { 'High' { 'pass' } 'Medium' { 'warn' } default { 'fail' } }
+        $review = if ($c.ReviewRequired) { '<span class="badge warn">Review</span>' } else { '<span class="badge pass">No</span>' }
+        $evidence = if ($c.Evidence.Count -gt 0) { $c.Evidence -join ' | ' } else { $c.Reason }
         $unRows += "<tr><td>$(HtmlEncode $c.Name)</td><td>$(HtmlEncode $c.Domain)</td><td>$(HtmlEncode $c.OperatingSystem)</td>"
-        $unRows += "<td>$enabled</td><td>$(HtmlEncode $c.Reason)</td><td>$(HtmlEncode $c.OU)</td></tr>`n"
+        $unRows += "<td>$enabled</td><td><span class='badge $confidence'>$(HtmlEncode $c.Confidence)</span></td><td>$review</td><td>$(HtmlEncode $evidence)</td><td>$(HtmlEncode $c.OU)</td></tr>`n"
+    }
+
+    $reviewQueueRows = ''
+    foreach ($item in (@($Discovery.ReviewQueue) | Sort-Object { $_.Name })) {
+        $confidence = switch ($item.Confidence) { 'High' { 'pass' } 'Medium' { 'warn' } default { 'fail' } }
+        $evidence = if ($item.Evidence.Count -gt 0) { $item.Evidence -join ' | ' } else { '' }
+        $reviewQueueRows += "<tr><td>$(HtmlEncode $item.Name)</td><td>$(HtmlEncode $item.Domain)</td><td>$(HtmlEncode $item.ProposedTier)</td><td><span class='badge $confidence'>$(HtmlEncode $item.Confidence)</span></td><td>$(HtmlEncode $item.ReviewReason)</td><td>$(HtmlEncode $evidence)</td></tr>`n"
+    }
+
+    $priorityActionCards = ''
+    foreach ($action in @($Discovery.PriorityActions | Sort-Object Priority)) {
+        $severityColor = switch ($action.Severity) {
+            'High' { 'var(--red)' }
+            'Medium' { 'var(--yellow)' }
+            'Low' { 'var(--cyan)' }
+            default { 'var(--accent)' }
+        }
+        $priorityActionCards += "<div class='step-card'><div class='step-number' style='background:$severityColor;'>$($action.Priority)</div><div class='step-text'><strong>$(HtmlEncode $action.Title)</strong> — $(HtmlEncode $action.Detail)</div></div>"
+    }
+
+    $readinessBlockerItems = ''
+    foreach ($item in @($Discovery.Readiness.Blockers)) {
+        $readinessBlockerItems += "<li>$(HtmlEncode $item)</li>"
+    }
+    $readinessWarningItems = ''
+    foreach ($item in @($Discovery.Readiness.Warnings)) {
+        $readinessWarningItems += "<li>$(HtmlEncode $item)</li>"
+    }
+    $readinessRecommendationItems = ''
+    foreach ($item in @($Discovery.Readiness.Recommendations)) {
+        $readinessRecommendationItems += "<li>$(HtmlEncode $item)</li>"
     }
 
     # --- Privileged accounts (grouped by group name) ---
@@ -176,8 +235,39 @@ function Export-TieringDiscoveryHtml {
     # Service accounts in DA
     $svcDARows = ''
     foreach ($s in $Discovery.ServiceAccountsInDA) {
-        $svcDARows += "<tr><td>$(HtmlEncode $s.SamAccountName)</td><td>$(HtmlEncode $s.Domain)</td>"
+        $svcType = if ($s.ManagedServiceType) { $s.ManagedServiceType } elseif ($s.IsServiceAccount) { 'User service account' } else { 'SPN-bearing account' }
+        $svcDARows += "<tr><td>$(HtmlEncode $s.SamAccountName)</td><td>$(HtmlEncode $s.Domain)</td><td>$(HtmlEncode $svcType)</td>"
         $svcDARows += "<td>$(HtmlEncode $s.Description)</td></tr>`n"
+    }
+
+    $gmsaRows = ''
+    foreach ($svc in (@($Discovery.ManagedServiceAccounts.GMSA) | Sort-Object { $_.SamAccountName })) {
+        $principals = if ($svc.PrincipalsAllowed.Count -gt 0) { ($svc.PrincipalsAllowed | ForEach-Object { HtmlEncode ([string]$_) }) -join '<br>' } else { '<span style="color:#8b949e;">None</span>' }
+        $enabled = if ($svc.Enabled) { '<span class="badge pass">Yes</span>' } else { '<span class="badge fail">No</span>' }
+        $gmsaRows += "<tr><td>$(HtmlEncode $svc.SamAccountName)</td><td>$(HtmlEncode $svc.Domain)</td><td>$enabled</td><td>$($svc.PrincipalsCount)</td><td>$principals</td><td>$(HtmlEncode ([string]$svc.PasswordInterval))</td><td>$(HtmlEncode $svc.Description)</td></tr>`n"
+    }
+
+    $msaRows = ''
+    foreach ($svc in (@($Discovery.ManagedServiceAccounts.MSA) | Sort-Object { $_.SamAccountName })) {
+        $enabled = if ($svc.Enabled) { '<span class="badge pass">Yes</span>' } else { '<span class="badge fail">No</span>' }
+        $msaRows += "<tr><td>$(HtmlEncode $svc.SamAccountName)</td><td>$(HtmlEncode $svc.Domain)</td><td>$enabled</td><td>$(HtmlEncode $svc.PasswordLastSet)</td><td>$(HtmlEncode $svc.Description)</td></tr>`n"
+    }
+
+    $authPolicyRows = ''
+    foreach ($policy in (@($Discovery.AuthenticationControls.Policies) | Sort-Object { $_.Name })) {
+        $mode = if ($policy.Enforce) { '<span class="badge fail">Enforce</span>' } else { '<span class="badge warn">Audit</span>' }
+        $authPolicyRows += "<tr><td>$(HtmlEncode $policy.Name)</td><td>$mode</td><td>$(HtmlEncode $policy.Description)</td><td>$(HtmlEncode $policy.DistinguishedName)</td></tr>`n"
+    }
+
+    $authSiloRows = ''
+    foreach ($silo in (@($Discovery.AuthenticationControls.Silos) | Sort-Object { $_.Name })) {
+        $mode = if ($silo.Enforce) { '<span class="badge fail">Enforce</span>' } else { '<span class="badge warn">Audit</span>' }
+        $policyBindings = @()
+        if ($silo.UserPolicy) { $policyBindings += "User: $($silo.UserPolicy)" }
+        if ($silo.ComputerPolicy) { $policyBindings += "Computer: $($silo.ComputerPolicy)" }
+        if ($silo.ServicePolicy) { $policyBindings += "Service: $($silo.ServicePolicy)" }
+        $bindingText = if ($policyBindings.Count -gt 0) { $policyBindings -join ' | ' } else { 'None' }
+        $authSiloRows += "<tr><td>$(HtmlEncode $silo.Name)</td><td>$mode</td><td>$($silo.MemberCount)</td><td>$(HtmlEncode $bindingText)</td><td>$(HtmlEncode $silo.Description)</td></tr>`n"
     }
 
     # AdminCount orphans
@@ -188,8 +278,9 @@ function Export-TieringDiscoveryHtml {
 
     # --- OUs (sorted hierarchically: parent before children) ---
     $sortedOUs = $Discovery.OUStructure | Sort-Object {
-        ($_.DistinguishedName -split '(?<!\\),' | Where-Object { $_ -match '^(OU|DC)=' }) |
-            ForEach-Object -Begin { $parts = @() } -Process { $parts += $_ } -End { ($parts[$parts.Count..0]) -join '/' }
+        $dnParts = @($_.DistinguishedName -split '(?<!\\),' | Where-Object { $_ -match '^(OU|DC)=' })
+        [array]::Reverse($dnParts)
+        $dnParts -join '/'
     }
 
     # Group OUs by domain for per-domain trees
@@ -304,7 +395,7 @@ function Export-TieringDiscoveryHtml {
     .section-nav a:hover { text-decoration: underline; }
 
     /* Summary dashboard */
-    .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
     .summary-metric { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem 1rem; text-align: center; position: relative; overflow: hidden; }
     .summary-metric::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
     .summary-metric .metric-icon { font-size: 1.5rem; margin-bottom: 0.2rem; }
@@ -365,6 +456,12 @@ function Export-TieringDiscoveryHtml {
     .step-number { background: var(--accent); color: var(--bg); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; }
     .step-text { font-size: 0.85rem; color: var(--text); line-height: 1.5; }
     .step-text strong { color: var(--accent); }
+    .status-list { margin: 0.5rem 0 0 1.2rem; }
+    .status-list li { margin-bottom: 0.35rem; }
+    .dc-status { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em; }
+    .dc-status.ok { background: #0d2818; color: var(--green); }
+    .dc-status.warning { background: #2d2000; color: var(--yellow); }
+    .dc-status.unreachable { background: #2d0000; color: var(--red); }
 
     /* OU Tree */
     .ou-tree { padding: 0.5rem 0; font-size: 0.88rem; font-family: 'Cascadia Code', 'Consolas', monospace; }
@@ -395,7 +492,9 @@ function Export-TieringDiscoveryHtml {
     <a href="#forest">Forest</a>
     <a href="#dcs">Domain Controllers</a>
     <a href="#computers">Computers</a>
+    <a href="#review">Review Queue</a>
     <a href="#privileged">Privileged Accounts</a>
+    <a href="#managed-service-accounts">Managed Service Accounts</a>
     <a href="#ous">OU Structure</a>
     <a href="#gpos">GPOs</a>
     <a href="#trusts">Trusts</a>
@@ -405,19 +504,29 @@ function Export-TieringDiscoveryHtml {
 <!-- CURRENT STATE SUMMARY -->
 <!-- ================================================================ -->
 <div id="summary">
-<h2>&#x1F4CA; Current State Summary</h2>
+<h2>&#x1F4CA; Environment Snapshot</h2>
 
 <!-- Top metric cards -->
 <div class="summary-grid">
     <div class="summary-metric" style="border-top: 3px solid var(--accent);">
         <div class="metric-icon">&#x1F3E2;</div>
-        <div class="metric-value" style="color:var(--accent);">$($forestInfo.DomainCount)</div>
+        <div class="metric-value" style="color:var(--accent);">$($summary.Environment.Domains)</div>
         <div class="metric-label">Domains</div>
     </div>
     <div class="summary-metric" style="border-top: 3px solid var(--accent);">
         <div class="metric-icon">&#x1F5A5;</div>
         <div class="metric-value" style="color:var(--accent);">$totalComputers</div>
         <div class="metric-label">Computers</div>
+    </div>
+    <div class="summary-metric" style="border-top: 3px solid var(--accent);">
+        <div class="metric-icon">&#x1F464;</div>
+        <div class="metric-value" style="color:var(--accent);">$($summary.Environment.Users)</div>
+        <div class="metric-label">Users</div>
+    </div>
+    <div class="summary-metric" style="border-top: 3px solid var(--accent);">
+        <div class="metric-icon">&#x1F465;</div>
+        <div class="metric-value" style="color:var(--accent);">$($summary.Environment.Groups)</div>
+        <div class="metric-label">Groups</div>
     </div>
     <div class="summary-metric" style="border-top: 3px solid $daColor;">
         <div class="metric-icon">&#x1F6E1;</div>
@@ -458,19 +567,27 @@ function Export-TieringDiscoveryHtml {
     <h3>&#x1F464; Identity & Access</h3>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x1F6E1;</span> Domain Admins</div>
-        <div class="row-value"><span class="dot $(if($daCount -gt 5){'red'}elseif($daCount -gt 2){'yellow'}else{'green'})"></span> $daCount account(s)</div>
+        <div class="row-value"><span class="dot $($summary.IdentityAccess.DomainAdmins.Dot)"></span> $($summary.IdentityAccess.DomainAdmins.Count) account(s)</div>
     </div>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x1F451;</span> Enterprise Admins</div>
-        <div class="row-value"><span class="dot $(if($eaCount -gt 3){'red'}elseif($eaCount -gt 1){'yellow'}else{'green'})"></span> $eaCount account(s)</div>
+        <div class="row-value"><span class="dot $($summary.IdentityAccess.EnterpriseAdmins.Dot)"></span> $($summary.IdentityAccess.EnterpriseAdmins.Count) account(s)</div>
     </div>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x2699;</span> Svc Accounts in DA</div>
-        <div class="row-value"><span class="dot $(if($svcInDA -gt 0){'red'}else{'green'})"></span> $svcInDA found</div>
+        <div class="row-value"><span class="dot $($summary.IdentityAccess.ServiceAccountsInDA.Dot)"></span> $($summary.IdentityAccess.ServiceAccountsInDA.Count) found</div>
+    </div>
+    <div class="summary-row">
+        <div class="row-label"><span class="icon">&#x1F527;</span> gMSA</div>
+        <div class="row-value"><span class="dot $($summary.IdentityAccess.GMSA.Dot)"></span> $($summary.IdentityAccess.GMSA.Count) account(s)</div>
+    </div>
+    <div class="summary-row">
+        <div class="row-label"><span class="icon">&#x1F9F0;</span> sMSA</div>
+        <div class="row-value"><span class="dot $($summary.IdentityAccess.MSA.Dot)"></span> $($summary.IdentityAccess.MSA.Count) account(s)</div>
     </div>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x26A0;</span> AdminCount Orphans</div>
-        <div class="row-value"><span class="dot $(if($orphans -gt 0){'yellow'}else{'green'})"></span> $orphans account(s)</div>
+        <div class="row-value"><span class="dot $($summary.IdentityAccess.AdminCountOrphans.Dot)"></span> $($summary.IdentityAccess.AdminCountOrphans.Count) account(s)</div>
     </div>
 </div>
 
@@ -479,19 +596,19 @@ function Export-TieringDiscoveryHtml {
     <h3>&#x1F3D7; Infrastructure</h3>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x1F310;</span> Sites</div>
-        <div class="row-value" style="color:var(--accent);">$($forestInfo.SiteCount)</div>
+        <div class="row-value" style="color:var(--accent);">$($summary.Infrastructure.Sites)</div>
     </div>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x1F5A5;</span> Domain Controllers</div>
-        <div class="row-value" style="color:var(--accent);">$($Discovery.DomainControllers.Count)</div>
+        <div class="row-value" style="color:var(--accent);">$($summary.Infrastructure.DomainControllers)</div>
     </div>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x1F4C2;</span> Organizational Units</div>
-        <div class="row-value" style="color:var(--accent);">$ouCount</div>
+        <div class="row-value" style="color:var(--accent);">$($summary.Infrastructure.OrganizationalUnits)</div>
     </div>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x1F4DC;</span> Group Policies</div>
-        <div class="row-value" style="color:var(--accent);">$gpoCount</div>
+        <div class="row-value" style="color:var(--accent);">$($summary.Infrastructure.GroupPolicies)</div>
     </div>
 </div>
 
@@ -500,23 +617,22 @@ function Export-TieringDiscoveryHtml {
     <h3>&#x1F517; Trusts</h3>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x1F91D;</span> Trust Relationships</div>
-        <div class="row-value"><span class="dot $(if($unsafeTrustCount -gt 0){'red'}elseif($trustCount -gt 0){'yellow'}else{'green'})"></span> $trustCount total</div>
+        <div class="row-value"><span class="dot $($summary.Trusts.TrustRelationships.Dot)"></span> $($summary.Trusts.TrustRelationships.Count) total</div>
     </div>
     <div class="summary-row">
         <div class="row-label"><span class="icon">&#x1F6A8;</span> Unsafe Trusts (no SID filter)</div>
-        <div class="row-value"><span class="dot $(if($unsafeTrustCount -gt 0){'red'}else{'green'})"></span> $unsafeTrustCount</div>
+        <div class="row-value"><span class="dot $($summary.Trusts.UnsafeTrusts.Dot)"></span> $($summary.Trusts.UnsafeTrusts.Count)</div>
     </div>
 </div>
 
 </div>
 
-<!-- Per-domain policy table -->
 <div class="card">
-    <h3 style="margin-top:0;">&#x1F512; Domain Policies</h3>
-    <table>
-        <thead><tr><th>Domain</th><th>Functional Level</th><th>Min Pwd Length</th><th>Lockout Threshold</th><th>MachineAccountQuota</th></tr></thead>
-        <tbody>$policyRows</tbody>
-    </table>
+    <h3 style="margin-top:0;">&#x1F6A6; Tiering Readiness</h3>
+    <p><span class="badge $readinessBadgeClass">$readinessStatus</span></p>
+    $(if ($Discovery.Readiness.Blockers.Count -gt 0) { "<h3>Blockers</h3><ul class='status-list'>$readinessBlockerItems</ul>" })
+    $(if ($Discovery.Readiness.Warnings.Count -gt 0) { "<h3>Warnings</h3><ul class='status-list'>$readinessWarningItems</ul>" })
+    $(if ($Discovery.Readiness.Recommendations.Count -gt 0) { "<h3>Recommended actions</h3><ul class='status-list'>$readinessRecommendationItems</ul>" })
 </div>
 
 </div>
@@ -556,6 +672,14 @@ function Export-TieringDiscoveryHtml {
     <tbody>$dcRows</tbody>
 </table>
 </div>
+
+<div class="card">
+    <h3 style="margin-top:0;">&#x1F6A6; Connectivity Status</h3>
+    <table>
+        <thead><tr><th>Name</th><th>FQDN</th><th>Domain</th><th>IP</th><th>GC</th><th>Status</th><th>Latency</th></tr></thead>
+        <tbody>$dcConnectivityRows</tbody>
+    </table>
+</div>
 </div>
 
 <!-- ================================================================ -->
@@ -570,6 +694,7 @@ function Export-TieringDiscoveryHtml {
     <div class="metric-card" style="border-top: 3px solid #f39c12;"><div class="mc-icon">&#x1F7E0;</div><div class="mc-value" style="color:#f39c12;">$($Discovery.ComputersByTier.Tier1.Count)</div><div class="mc-label">Tier 1 — Servers</div></div>
     <div class="metric-card" style="border-top: 3px solid #3498db;"><div class="mc-icon">&#x1F535;</div><div class="mc-value" style="color:#3498db;">$($Discovery.ComputersByTier.Tier2.Count)</div><div class="mc-label">Tier 2 — Workstations</div></div>
     <div class="metric-card" style="border-top: 3px solid #6c757d;"><div class="mc-icon">&#x2753;</div><div class="mc-value" style="color:#6c757d;">$($Discovery.ComputersByTier.Unclassified.Count)</div><div class="mc-label">Unclassified</div></div>
+    <div class="metric-card" style="border-top: 3px solid var(--yellow);"><div class="mc-icon">&#x1F50D;</div><div class="mc-value" style="color:var(--yellow);">$reviewQueueCount</div><div class="mc-label">Review Queue</div></div>
 </div>
 
 <div class="card" style="padding: 1rem 1.5rem;">
@@ -589,7 +714,7 @@ function Export-TieringDiscoveryHtml {
 <h3 class="collapsible" onclick="toggleSection(this)">&#x1F534; Tier 0 — Control Plane ($($Discovery.ComputersByTier.Tier0.Count))</h3>
 <div class="collapsible-content">
 <table>
-    <thead><tr><th>Name</th><th>Domain</th><th>OS</th><th>Enabled</th><th>Reason</th><th>Current OU</th></tr></thead>
+    <thead><tr><th>Name</th><th>Domain</th><th>OS</th><th>Enabled</th><th>Confidence</th><th>Review</th><th>Evidence</th><th>Current OU</th></tr></thead>
     <tbody>$t0Rows</tbody>
 </table>
 </div>
@@ -600,7 +725,7 @@ function Export-TieringDiscoveryHtml {
 <div class="collapsible-content hidden">
 $t1Note
 <table>
-    <thead><tr><th>Name</th><th>Domain</th><th>OS</th><th>Enabled</th><th>Reason</th><th>Current OU</th></tr></thead>
+    <thead><tr><th>Name</th><th>Domain</th><th>OS</th><th>Enabled</th><th>Confidence</th><th>Review</th><th>Evidence</th><th>Current OU</th></tr></thead>
     <tbody>$t1Rows</tbody>
 </table>
 </div>
@@ -611,7 +736,7 @@ $t1Note
 <div class="collapsible-content hidden">
 $t2Note
 <table>
-    <thead><tr><th>Name</th><th>Domain</th><th>OS</th><th>Enabled</th><th>Reason</th><th>Current OU</th></tr></thead>
+    <thead><tr><th>Name</th><th>Domain</th><th>OS</th><th>Enabled</th><th>Confidence</th><th>Review</th><th>Evidence</th><th>Current OU</th></tr></thead>
     <tbody>$t2Rows</tbody>
 </table>
 </div>
@@ -624,12 +749,29 @@ $(if ($Discovery.ComputersByTier.Unclassified.Count -gt 0) {
 <div class="collapsible-content">
 <p class="note">These computers could not be automatically classified. Review and adjust classification rules in Tiering.config.psd1.</p>
 <table>
-    <thead><tr><th>Name</th><th>Domain</th><th>OS</th><th>Enabled</th><th>Reason</th><th>Current OU</th></tr></thead>
+    <thead><tr><th>Name</th><th>Domain</th><th>OS</th><th>Enabled</th><th>Confidence</th><th>Review</th><th>Evidence</th><th>Current OU</th></tr></thead>
     <tbody>$unRows</tbody>
 </table>
 </div>
 </div>
 "@
+})
+</div>
+
+<div id="review">
+<h2 class="section-header"><span class="section-icon">&#x1F50D;</span> Review Queue ($reviewQueueCount)</h2>
+<p class="section-intro">Computers that were classified with weak or conflicting evidence and should be validated before using this output to drive tier placement.</p>
+$(if ($reviewQueueCount -gt 0) {
+@"
+<div class="card" style="border-top: 3px solid var(--yellow);">
+<table>
+    <thead><tr><th>Name</th><th>Domain</th><th>Proposed Tier</th><th>Confidence</th><th>Review Reason</th><th>Evidence</th></tr></thead>
+    <tbody>$reviewQueueRows</tbody>
+</table>
+</div>
+"@
+} else {
+    '<div class="card"><p style="color:#8b949e; text-align:center; padding:1rem 0;">&#x2705; No computers currently require manual review.</p></div>'
 })
 </div>
 
@@ -645,9 +787,9 @@ $(if ($Discovery.ServiceAccountsInDA.Count -gt 0) {
 @"
 <div class="card" style="border-top: 3px solid var(--red);">
 <h3 style="margin-top:0;">&#x26A0; Service Accounts in Domain Admins ($($Discovery.ServiceAccountsInDA.Count))</h3>
-<p class="note">These service or SPN-bearing accounts are members of Domain Admins. They should be migrated to gMSA and removed from DA.</p>
+<p class="note">These service, gMSA, sMSA or SPN-bearing accounts are members of Domain Admins. They should be reviewed and removed from DA where possible.</p>
 <table>
-    <thead><tr><th>Account</th><th>Domain</th><th>Description</th></tr></thead>
+    <thead><tr><th>Account</th><th>Domain</th><th>Type</th><th>Description</th></tr></thead>
     <tbody>$svcDARows</tbody>
 </table>
 </div>
@@ -665,6 +807,91 @@ $(if ($Discovery.AdminCountOrphans.Count -gt 0) {
 </table>
 </div>
 "@
+})
+</div>
+
+<!-- ================================================================ -->
+<!-- MANAGED SERVICE ACCOUNTS -->
+<!-- ================================================================ -->
+<div id="managed-service-accounts">
+<h2 class="section-header"><span class="section-icon">&#x1F527;</span> Managed Service Accounts</h2>
+<p class="section-intro">Inventory of Group Managed Service Accounts and standalone Managed Service Accounts discovered during Phase 0.</p>
+
+<div class="metric-grid">
+    <div class="metric-card" style="border-top: 3px solid var(--green);"><div class="mc-icon">&#x1F527;</div><div class="mc-value" style="color:var(--green);">$gmsaCount</div><div class="mc-label">gMSA</div></div>
+    <div class="metric-card" style="border-top: 3px solid var(--yellow);"><div class="mc-icon">&#x1F9F0;</div><div class="mc-value" style="color:var(--yellow);">$msaCount</div><div class="mc-label">sMSA</div></div>
+</div>
+
+$(if ($gmsaCount -gt 0) {
+@"
+<div class="card">
+<h3 style="margin-top:0;">&#x1F512; Group Managed Service Accounts ($gmsaCount)</h3>
+<table>
+    <thead><tr><th>Account</th><th>Domain</th><th>Enabled</th><th>Allowed Principals</th><th>Principals</th><th>Password Interval</th><th>Description</th></tr></thead>
+    <tbody>$gmsaRows</tbody>
+</table>
+</div>
+"@
+})
+
+$(if ($msaCount -gt 0) {
+@"
+<div class="card">
+<h3 style="margin-top:0;">&#x1F4A1; Standalone Managed Service Accounts ($msaCount)</h3>
+<table>
+    <thead><tr><th>Account</th><th>Domain</th><th>Enabled</th><th>Password Last Set</th><th>Description</th></tr></thead>
+    <tbody>$msaRows</tbody>
+</table>
+</div>
+"@
+})
+
+$(if ($gmsaCount -eq 0 -and $msaCount -eq 0) {
+    '<div class="card"><p style="color:#8b949e; text-align:center; padding:1rem 0;">No managed service accounts were discovered.</p></div>'
+})
+</div>
+
+<!-- ================================================================ -->
+<!-- AUTHENTICATION POLICIES & SILOS -->
+<!-- ================================================================ -->
+<div id="auth-policies">
+<h2 class="section-header"><span class="section-icon">&#x1F512;</span> Authentication Policies &amp; Silos</h2>
+<p class="section-intro">Read-only inventory of Authentication Policies and Authentication Policy Silos already deployed in the forest. Phase 0 reports the current state; Phase 4 remains the deployment phase.</p>
+
+<div class="metric-grid">
+    <div class="metric-card" style="border-top: 3px solid var(--accent);"><div class="mc-icon">&#x1F4CB;</div><div class="mc-value" style="color:var(--accent);">$($authPolicySummary.PolicyCount)</div><div class="mc-label">Policies</div></div>
+    <div class="metric-card" style="border-top: 3px solid var(--red);"><div class="mc-icon">&#x1F6E1;</div><div class="mc-value" style="color:var(--red);">$($authPolicySummary.EnforcedPolicies)</div><div class="mc-label">Policies Enforced</div></div>
+    <div class="metric-card" style="border-top: 3px solid var(--accent);"><div class="mc-icon">&#x1F3F0;</div><div class="mc-value" style="color:var(--accent);">$($authPolicySummary.SiloCount)</div><div class="mc-label">Silos</div></div>
+    <div class="metric-card" style="border-top: 3px solid var(--yellow);"><div class="mc-icon">&#x1F50E;</div><div class="mc-value" style="color:var(--yellow);">$($authPolicySummary.AuditOnlySilos)</div><div class="mc-label">Audit-Only Silos</div></div>
+    <div class="metric-card" style="border-top: 3px solid var(--green);"><div class="mc-icon">&#x1F465;</div><div class="mc-value" style="color:var(--green);">$($authPolicySummary.AssignedMembers)</div><div class="mc-label">Assigned Members</div></div>
+</div>
+
+$(if ($authPolicySummary.PolicyCount -gt 0) {
+@"
+<div class="card">
+<h3 style="margin-top:0;">Policies</h3>
+<table>
+    <thead><tr><th>Name</th><th>Mode</th><th>Description</th><th>DN</th></tr></thead>
+    <tbody>$authPolicyRows</tbody>
+</table>
+</div>
+"@
+})
+
+$(if ($authPolicySummary.SiloCount -gt 0) {
+@"
+<div class="card">
+<h3 style="margin-top:0;">Silos</h3>
+<table>
+    <thead><tr><th>Name</th><th>Mode</th><th>Members</th><th>Bound Policies</th><th>Description</th></tr></thead>
+    <tbody>$authSiloRows</tbody>
+</table>
+</div>
+"@
+})
+
+$(if ($authPolicySummary.PolicyCount -eq 0 -and $authPolicySummary.SiloCount -eq 0) {
+    '<div class="card"><p style="color:#8b949e; text-align:center; padding:1rem 0;">No Authentication Policies or Authentication Policy Silos were discovered in the current baseline.</p></div>'
 })
 </div>
 
@@ -718,13 +945,9 @@ $(if ($Discovery.Trusts.Count -gt 0) {
 <!-- NEXT STEPS -->
 <!-- ================================================================ -->
 <h2 class="section-header"><span class="section-icon">&#x1F680;</span> Recommended Next Steps</h2>
-<p class="section-intro">Actions to take based on this discovery report before proceeding to Phase 1.</p>
+<p class="section-intro">Priority actions generated from the current discovery output before proceeding to Phase 1.</p>
 <div class="steps-grid">
-    <div class="step-card"><div class="step-number">1</div><div class="step-text"><strong>Review tier classification</strong> — Validate that T0/T1/T2 computers are correctly classified. Adjust rules in <code>Tiering.config.psd1</code>.</div></div>
-    <div class="step-card"><div class="step-number">2</div><div class="step-text"><strong>Review privileged accounts</strong> — Identify accounts needing tiered replacements (t0-, t1-, t2- prefix).</div></div>
-    <div class="step-card"><div class="step-number">3</div><div class="step-text"><strong>Remove service accounts from DA</strong> — Plan gMSA migrations for Phase 5.</div></div>
-    <div class="step-card"><div class="step-number">4</div><div class="step-text"><strong>Clean AdminCount orphans</strong> — Clear adminCount and reset inherited ACLs.</div></div>
-    <div class="step-card"><div class="step-number">5</div><div class="step-text"><strong>Proceed to Phase 1</strong> — OU Structure & Group Model creation.</div></div>
+    $priorityActionCards
 </div>
 
 <p class="subtitle" style="margin-top:2rem; text-align:center;">Generated by MATI — Microsoft Active Directory Threat Inspector</p>

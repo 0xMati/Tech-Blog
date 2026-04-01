@@ -1,5 +1,5 @@
 # Tiering\Invoke-MATITieringPhase3.ps1
-# Phase 3 — Deny Logon GPOs
+# Phase 3 — Create Deny Logon GPOs for each Tiers
 # Creates the six cross-tier deny-logon GPOs, configures user-rights assignment,
 # and links them to the correct OUs.
 
@@ -43,17 +43,40 @@ function Invoke-MATITieringPhase3 {
     $domainDN = $domain.DistinguishedName
     $dnsRoot  = $domain.DNSRoot
 
-    # Determine base DN
-    $containerOU = $ouCfg.ContainerOU
-    if ($containerOU) {
-        $candidateDN = "OU=$containerOU,$domainDN"
-        if ([adsi]::Exists("LDAP://$candidateDN")) { $baseDN = $candidateDN } else { $baseDN = $domainDN }
-    } else { $baseDN = $domainDN }
+    $phase1StatePath = Join-Path $RootPath 'Outputs\Tiering\MATI-Tiering-Phase1-Latest.json'
+    if (-not (Test-Path $phase1StatePath)) {
+        Write-Host "`n  [ERROR] Phase 1 state file not found. Run Phase 1 first." -ForegroundColor Red
+        Write-Host "    Expected: $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host ""; return
+    }
+
+    try {
+        $phase1State = Get-Content -Path $phase1StatePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-Host "`n  [ERROR] Failed to read Phase 1 state file." -ForegroundColor Red
+        Write-Host "    $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host "    $($_.Exception.Message)" -ForegroundColor DarkGray
+        Write-Host ""; return
+    }
+
+    $baseDN = [string]$phase1State.BaseDN
+    $containerOU = if ($null -ne $phase1State.ContainerOU -and [string]$phase1State.ContainerOU -ne '') { [string]$phase1State.ContainerOU } else { $null }
+    $tier0OUDN = [string]$phase1State.Tier0OUDN
+    $tier1OUDN = [string]$phase1State.Tier1OUDN
+    $tier2OUDN = [string]$phase1State.Tier2OUDN
+
+    if ([string]::IsNullOrWhiteSpace($baseDN) -or [string]::IsNullOrWhiteSpace($tier0OUDN) -or [string]::IsNullOrWhiteSpace($tier1OUDN) -or [string]::IsNullOrWhiteSpace($tier2OUDN)) {
+        Write-Host "`n  [ERROR] Phase 1 state is incomplete. Run Phase 1 again." -ForegroundColor Red
+        Write-Host "    State file: $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host ""; return
+    }
 
     # Results tracker
     $results = @{
         BaseDN          = $baseDN
         ContainerOU     = $containerOU
+        Phase1StatePath = $phase1StatePath
+        IncludeDomainControllersLinks = $false
         GPOsCreated     = [System.Collections.Generic.List[object]]::new()
         GPOsExisted     = [System.Collections.Generic.List[object]]::new()
         LinksCreated    = [System.Collections.Generic.List[object]]::new()
@@ -66,7 +89,7 @@ function Invoke-MATITieringPhase3 {
     # Banner
     # ================================================================
     Write-Host "`n  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "   Phase 3 — Deny Logon GPOs" -ForegroundColor Cyan
+    Write-Host "   Phase 3 — Create Deny Logon GPOs for each Tiers" -ForegroundColor Cyan
     Write-Host "  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host "   Creates 6 cross-tier deny-logon GPOs to enforce tier boundaries." -ForegroundColor DarkGray
     Write-Host "   GPO prefix: $($naming.GPOPrefix)`n" -ForegroundColor DarkGray
@@ -78,9 +101,9 @@ function Invoke-MATITieringPhase3 {
 
     # Check tier OUs exist
     $tierOUs = @{
-        'Tier0' = "OU=$($ouCfg.Tier0),$baseDN"
-        'Tier1' = "OU=$($ouCfg.Tier1),$baseDN"
-        'Tier2' = "OU=$($ouCfg.Tier2),$baseDN"
+        'Tier0' = $tier0OUDN
+        'Tier1' = $tier1OUDN
+        'Tier2' = $tier2OUDN
     }
     $missingOUs = @()
     foreach ($kv in $tierOUs.GetEnumerator()) {
@@ -114,6 +137,153 @@ function Invoke-MATITieringPhase3 {
         Write-Host ""; return
     }
 
+    function New-MATIUserRightsAssignmentBackup {
+        param(
+            [Parameter(Mandatory)]
+            [string]$GpoName,
+
+            [Parameter(Mandatory)]
+            [string[]]$Rights,
+
+            [Parameter(Mandatory)]
+            [string]$GroupSid
+        )
+
+        $backupId = ([guid]::NewGuid().ToString().ToUpper())
+        $templateGpoGuid = ([guid]::NewGuid().ToString().ToUpper())
+        $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+        $backupRoot = Join-Path $tempRoot ("{" + $backupId + "}")
+        $gptRelativePath = 'DomainSysvol\GPO\Machine\Microsoft\Windows NT\SecEdit\GptTmpl.inf'
+        $gptFilePath = Join-Path $backupRoot $gptRelativePath
+        $gptDirectory = Split-Path -Path $gptFilePath -Parent
+
+        New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $gptDirectory -Force | Out-Null
+
+        $manifestXml = '<BackupInst xmlns="http://www.microsoft.com/GroupPolicy/GPOOperations/Manifest" xmlns:mfst="http://www.microsoft.com/GroupPolicy/GPOOperations/Manifest" mfst:version="1.0"><BackupInst><GPOGuid><![CDATA[{' + $templateGpoGuid + '}]]></GPOGuid><GPODomain/><GPODomainGuid/><GPODomainController/><BackupTime/><ID><![CDATA[{' + $backupId + '}]]></ID><Comment/><GPODisplayName><![CDATA[' + $GpoName + ']]></GPODisplayName></BackupInst><Backups/></BackupInst>'
+        $bkupInfoXml = '<BackupInst xmlns="http://www.microsoft.com/GroupPolicy/GPOOperations/Manifest"><GPOGuid><![CDATA[{' + $templateGpoGuid + '}]]></GPOGuid><GPODomain/><GPODomainGuid/><GPODomainController/><BackupTime/><ID><![CDATA[{' + $backupId + '}]]></ID><Comment/><GPODisplayName><![CDATA[' + $GpoName + ']]></GPODisplayName></BackupInst>'
+        $backupXml = '<?xml version="1.0" encoding="utf-8"?><GroupPolicyBackupScheme bkp:version="2.0" bkp:type="GroupPolicyBackupTemplate" xmlns:bkp="http://www.microsoft.com/GroupPolicy/GPOOperations" xmlns="http://www.microsoft.com/GroupPolicy/GPOOperations"><GroupPolicyObject><SecurityGroups/><FilePaths/><GroupPolicyCoreSettings><ID/><Domain/><SecurityDescriptor/><DisplayName/><Options/><UserVersionNumber/><MachineVersionNumber/><MachineExtensionGuids><![CDATA[[{827D319E-6EAC-11D2-A4EA-00C04F79F83A}{803E14A0-B4FB-11D0-A0D0-00A0C90F574B}]]]></MachineExtensionGuids><UserExtensionGuids/><WMIFilter/></GroupPolicyCoreSettings><GroupPolicyExtension bkp:ID="{827D319E-6EAC-11D2-A4EA-00C04F79F83A}{803E14A0-B4FB-11D0-A0D0-00A0C90F574B}" bkp:DescName="Security"><FSObjectFile bkp:Path="%GPO_MACH_FSPATH%\Microsoft\Windows NT\SecEdit\GptTmpl.inf" bkp:Location="DomainSysvol\GPO\Machine\Microsoft\Windows NT\SecEdit\GptTmpl.inf"/></GroupPolicyExtension></GroupPolicyObject></GroupPolicyBackupScheme>'
+
+        $gptLines = [System.Collections.Generic.List[string]]::new()
+        $gptLines.Add('[Unicode]') | Out-Null
+        $gptLines.Add('Unicode=yes') | Out-Null
+        $gptLines.Add('[Version]') | Out-Null
+        $gptLines.Add('signature="$CHICAGO$"') | Out-Null
+        $gptLines.Add('Revision=1') | Out-Null
+        $gptLines.Add('[Privilege Rights]') | Out-Null
+        foreach ($right in $Rights) {
+            $gptLines.Add("$right = *$GroupSid") | Out-Null
+        }
+
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        $utf16Le = New-Object System.Text.UnicodeEncoding
+
+        [System.IO.File]::WriteAllText((Join-Path $tempRoot 'manifest.xml'), $manifestXml, $utf8NoBom)
+        [System.IO.File]::WriteAllText((Join-Path $backupRoot 'bkupInfo.xml'), $bkupInfoXml, $utf8NoBom)
+        [System.IO.File]::WriteAllText((Join-Path $backupRoot 'backup.xml'), $backupXml, $utf8NoBom)
+        [System.IO.File]::WriteAllLines($gptFilePath, $gptLines, $utf16Le)
+
+        return [PSCustomObject]@{
+            BackupId = $backupId
+            TempRoot = $tempRoot
+        }
+    }
+
+    function Import-MATIUserRightsAssignmentGpo {
+        param(
+            [Parameter(Mandatory)]
+            [string]$Name,
+
+            [Parameter(Mandatory)]
+            [string]$Description,
+
+            [Parameter(Mandatory)]
+            [string[]]$Rights,
+
+            [Parameter(Mandatory)]
+            [string]$GroupSid
+        )
+
+        function Test-MATIImportedGpoState {
+            param(
+                [Parameter(Mandatory)]
+                [string]$GpoName,
+
+                [Parameter(Mandatory)]
+                [string[]]$ExpectedRights,
+
+                [Parameter(Mandatory)]
+                [string]$ExpectedSid
+            )
+
+            $candidate = Get-GPO -Name $GpoName -ErrorAction SilentlyContinue
+            if (-not $candidate) {
+                return $null
+            }
+
+            $infPath = "\\$dnsRoot\SYSVOL\$dnsRoot\Policies\{$($candidate.Id)}\Machine\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+            if (-not (Test-Path $infPath)) {
+                return $null
+            }
+
+            $raw = Get-Content -Path $infPath -Raw -ErrorAction SilentlyContinue
+            if ([string]::IsNullOrWhiteSpace($raw)) {
+                return $null
+            }
+
+            foreach ($expectedRight in $ExpectedRights) {
+                $pattern = [regex]::Escape($expectedRight + ' = *' + $ExpectedSid)
+                if ($raw -notmatch $pattern) {
+                    return $null
+                }
+            }
+
+            return $candidate
+        }
+
+        $backup = New-MATIUserRightsAssignmentBackup -GpoName $Name -Rights $Rights -GroupSid $GroupSid
+        try {
+            try {
+                Import-GPO -BackupId $backup.BackupId -Path $backup.TempRoot -TargetName $Name -CreateIfNeeded -ErrorAction Stop | Out-Null
+            } catch {
+                Start-Sleep -Milliseconds 500
+                $validatedGpo = Test-MATIImportedGpoState -GpoName $Name -ExpectedRights $Rights -ExpectedSid $GroupSid
+                if ($validatedGpo) {
+                    return $validatedGpo
+                }
+
+                throw
+            }
+
+            $gpo = Get-GPO -Name $Name -ErrorAction Stop
+            try {
+                if ($Description) {
+                    $gpo.Description = $Description
+                }
+            } catch {
+                # Non-fatal: the import result is what matters.
+            }
+
+            return $gpo
+        }
+        finally {
+            if ($backup -and (Test-Path $backup.TempRoot)) {
+                try {
+                    Remove-Item -Path $backup.TempRoot -Recurse -Force -ErrorAction Stop
+                } catch {
+                    Start-Sleep -Milliseconds 300
+                    try {
+                        Get-ChildItem -Path $backup.TempRoot -Force -ErrorAction SilentlyContinue |
+                            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                        Remove-Item -Path $backup.TempRoot -Recurse -Force -ErrorAction SilentlyContinue
+                    } catch {
+                        # Cleanup failures must never make the import look failed.
+                    }
+                }
+            }
+        }
+    }
+
     Write-Host "    [OK] Tier OUs found" -ForegroundColor Green
     Write-Host "    [OK] Deny-logon groups found" -ForegroundColor Green
 
@@ -123,6 +293,19 @@ function Invoke-MATITieringPhase3 {
     # Each GPO denies one tier's accounts from logging onto another tier's machines.
     # Deny rights are configured via GptTmpl.inf in the GPO's SYSVOL folder.
     $denyRights = $gpoCfg.DenyLogonRights
+
+    $domainControllersOU = "OU=Domain Controllers,$domainDN"
+    $includeDomainControllersLinks = $false
+    if ([adsi]::Exists("LDAP://$domainControllersOU")) {
+        Write-Host "" 
+        Write-Host "  Domain Controllers OU" -ForegroundColor Yellow
+        Write-Host "    This will also link the following GPOs to the Domain Controllers OU:" -ForegroundColor White
+        Write-Host "      - $($naming.GPOPrefix) - Deny T1 Logon on T0" -ForegroundColor Cyan
+        Write-Host "      - $($naming.GPOPrefix) - Deny T2 Logon on T0" -ForegroundColor Cyan
+        $dcLinkChoice = Read-Host "    Link the Tier 0 protection GPOs to Domain Controllers? [Y/N]"
+        $includeDomainControllersLinks = $dcLinkChoice.Trim().ToUpper() -eq 'Y'
+    }
+    $results.IncludeDomainControllersLinks = $includeDomainControllersLinks
 
     $gpoDefinitions = @(
         @{
@@ -140,7 +323,7 @@ function Invoke-MATITieringPhase3 {
         @{
             Name       = "$($naming.GPOPrefix) - Deny T1 Logon on T0"
             Group      = "${prefix}1-${denySuffix}-${prefix}0"
-            LinkTargets = @($tierOUs.Tier0, "OU=Domain Controllers,$domainDN")
+            LinkTargets = @($tierOUs.Tier0)
             Description = "Prevents Tier 1 accounts from logging into Tier 0 machines"
         }
         @{
@@ -152,7 +335,7 @@ function Invoke-MATITieringPhase3 {
         @{
             Name       = "$($naming.GPOPrefix) - Deny T2 Logon on T0"
             Group      = "${prefix}2-${denySuffix}-${prefix}0"
-            LinkTargets = @($tierOUs.Tier0, "OU=Domain Controllers,$domainDN")
+            LinkTargets = @($tierOUs.Tier0)
             Description = "Prevents Tier 2 accounts from logging into Tier 0 machines"
         }
         @{
@@ -163,11 +346,19 @@ function Invoke-MATITieringPhase3 {
         }
     )
 
+    if ($includeDomainControllersLinks) {
+        foreach ($def in $gpoDefinitions) {
+            if ($def.Name -match 'Deny T[12] Logon on T0') {
+                $def.LinkTargets += $domainControllersOU
+            }
+        }
+    }
+
     # ================================================================
     # Step 1 — Review GPO plan
     # ================================================================
     Write-Host ""
-    Write-Host "  Step 1/4 — GPO Plan Review" -ForegroundColor Yellow
+    Write-Host "  Step 1/3 — GPO Plan Review" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "    The following 6 GPOs will be created:" -ForegroundColor White
     Write-Host ""
@@ -188,132 +379,51 @@ function Invoke-MATITieringPhase3 {
     }
 
     # ================================================================
-    # Step 2 — Create GPOs
+    # Step 2 — Create or update GPOs via Import-GPO
     # ================================================================
     Write-Host ""
-    Write-Host "  Step 2/4 — Creating GPOs" -ForegroundColor Yellow
+    Write-Host "  Step 2/3 — Importing Deny Logon GPOs" -ForegroundColor Yellow
     Write-Host ""
 
     foreach ($def in $gpoDefinitions) {
         $gpoName = $def.Name
-        try {
-            $existingGpo = Get-GPO -Name $gpoName -ErrorAction Stop
-            Write-Host "      [=] Already exists: $gpoName" -ForegroundColor DarkGray
-            $results.GPOsExisted.Add([PSCustomObject]@{ Name = $gpoName; Id = $existingGpo.Id; Status = 'Existed' })
-        } catch {
-            try {
-                $newGpo = New-GPO -Name $gpoName -Comment $def.Description -ErrorAction Stop
-                Write-Host "      [+] Created: $gpoName" -ForegroundColor Green
-                $results.GPOsCreated.Add([PSCustomObject]@{ Name = $gpoName; Id = $newGpo.Id; Status = 'Created' })
-            } catch {
-                Write-Host "      [!] FAILED: $gpoName — $($_.Exception.Message)" -ForegroundColor Red
-                $results.Errors.Add("GPO creation failed: $gpoName — $($_.Exception.Message)")
-                continue
-            }
-        }
-    }
-
-    # ================================================================
-    # Step 3 — Configure deny-logon rights via GptTmpl.inf
-    # ================================================================
-    Write-Host ""
-    Write-Host "  Step 3/4 — Configuring Deny Logon Rights" -ForegroundColor Yellow
-    Write-Host ""
-
-    foreach ($def in $gpoDefinitions) {
-        $gpoName  = $def.Name
         $groupName = $def.Group
-
         try {
-            $gpo = Get-GPO -Name $gpoName -ErrorAction Stop
-        } catch {
-            Write-Host "      [!] GPO not found for rights config: $gpoName" -ForegroundColor Red
-            $results.Errors.Add("GPO not found for rights config: $gpoName")
-            continue
-        }
+            $existingGpo = Get-GPO -Name $gpoName -ErrorAction SilentlyContinue
 
-        # Resolve group SID
-        try {
             $groupObj = Get-ADGroup -Identity $groupName -ErrorAction Stop
             $groupSID = $groupObj.SID.Value
-        } catch {
-            Write-Host "      [!] Cannot resolve SID for $groupName" -ForegroundColor Red
-            $results.Errors.Add("Cannot resolve SID for $groupName")
-            continue
-        }
 
-        # Build GptTmpl.inf content
-        $infPath = "\\$dnsRoot\SYSVOL\$dnsRoot\Policies\{$($gpo.Id)}\Machine\Microsoft\Windows NT\SecEdit"
-        $infFile = Join-Path $infPath 'GptTmpl.inf'
+            $importedGpo = Import-MATIUserRightsAssignmentGpo -Name $gpoName -Description $def.Description -Rights $denyRights -GroupSid $groupSID
 
-        try {
-            if (-not (Test-Path $infPath)) {
-                New-Item -ItemType Directory -Force -Path $infPath | Out-Null
+            if ($existingGpo) {
+                Write-Host "      [=] Updated: $gpoName" -ForegroundColor DarkGray
+                $results.GPOsExisted.Add([PSCustomObject]@{ Name = $gpoName; Id = $importedGpo.Id; Status = 'Existed' })
+            } else {
+                Write-Host "      [+] Created: $gpoName" -ForegroundColor Green
+                $results.GPOsCreated.Add([PSCustomObject]@{ Name = $gpoName; Id = $importedGpo.Id; Status = 'Created' })
             }
 
-            $infContent = @"
-[Unicode]
-Unicode=yes
-[Version]
-signature="`$CHICAGO`$"
-Revision=1
-[Privilege Rights]
-"@
-            foreach ($right in $denyRights) {
-                $infContent += "`n$right = *$groupSID"
-            }
-
-            Set-Content -Path $infFile -Value $infContent -Encoding Unicode -Force
-
-            # Update GPO machine extension CSE GUIDs so the policy engine processes security settings
-            $gpoADPath = "CN={$($gpo.Id)},CN=Policies,CN=System,$domainDN"
-            $cseGuids  = '[{827D319E-6EAC-11D2-A4EA-00C04F79F83A}{803E14A0-B4FB-11D0-A0D0-00A0C90F574B}]'
-            try {
-                $gpoADObj = Get-ADObject -Identity $gpoADPath -Properties gPCMachineExtensionNames -ErrorAction Stop
-                $current  = $gpoADObj.gPCMachineExtensionNames
-                if (-not $current -or $current -notmatch '827D319E') {
-                    $newValue = if ($current) { $current + $cseGuids } else { $cseGuids }
-                    Set-ADObject -Identity $gpoADPath -Replace @{ gPCMachineExtensionNames = $newValue }
-                }
-            } catch {
-                $results.Errors.Add("CSE GUID update failed for $gpoName — $($_.Exception.Message)")
-            }
-
-            # Bump GPO version
-            $gpo.MakeADEditable()
-            try {
-                $verPath = "\\$dnsRoot\SYSVOL\$dnsRoot\Policies\{$($gpo.Id)}\GPT.INI"
-                if (Test-Path $verPath) {
-                    $gptIni = Get-Content $verPath -Raw
-                    if ($gptIni -match 'Version=(\d+)') {
-                        $ver = [int]$Matches[1] + 1
-                        $gptIni = $gptIni -replace 'Version=\d+', "Version=$ver"
-                        Set-Content -Path $verPath -Value $gptIni -Force
-                    }
-                }
-            } catch { <# non-fatal #> }
-
-            Write-Host "      [+] Configured deny rights on: $gpoName" -ForegroundColor Green
             foreach ($right in $denyRights) {
                 $results.RightsConfigured.Add([PSCustomObject]@{
-                    GPO   = $gpoName
-                    Right = $right
-                    Group = $groupName
-                    SID   = $groupSID
+                    GPO    = $gpoName
+                    Right  = $right
+                    Group  = $groupName
+                    SID    = $groupSID
                     Status = 'Configured'
                 })
             }
         } catch {
-            Write-Host "      [!] FAILED configuring rights on $gpoName — $($_.Exception.Message)" -ForegroundColor Red
-            $results.Errors.Add("Rights config failed: $gpoName — $($_.Exception.Message)")
+            Write-Host "      [!] FAILED import on $gpoName — $($_.Exception.Message)" -ForegroundColor Red
+            $results.Errors.Add("GPO import failed: $gpoName — $($_.Exception.Message)")
         }
     }
 
     # ================================================================
-    # Step 4 — Link GPOs to OUs
+    # Step 3 — Link GPOs to OUs
     # ================================================================
     Write-Host ""
-    Write-Host "  Step 4/4 — Linking GPOs to OUs" -ForegroundColor Yellow
+    Write-Host "  Step 3/3 — Linking GPOs to OUs" -ForegroundColor Yellow
     Write-Host ""
 
     foreach ($def in $gpoDefinitions) {

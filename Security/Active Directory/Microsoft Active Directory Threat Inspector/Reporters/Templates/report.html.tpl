@@ -42,6 +42,14 @@
             margin: 0 auto;
         }
 
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
         /* ===== Header ===== */
         .header {
             text-align: center;
@@ -183,11 +191,17 @@
             grid-template-columns: repeat(2, 1fr);
             gap: 1rem;
         }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
         .metric-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 10px;
-            padding: 1.3rem 1rem;
+            padding: 1.2rem;
             text-align: center;
             position: relative;
             overflow: hidden;
@@ -204,19 +218,52 @@
         .metric-card.mc-medium::after { background: var(--severity-medium); }
         .metric-card.mc-low::after { background: var(--severity-low); }
 
-        .metric-card .mc-icon { font-size: 1.3rem; margin-bottom: 0.2rem; }
+        .metric-card .mc-icon { font-size: 1.3rem; margin-bottom: 0.3rem; }
         .metric-card .mc-value {
-            font-size: 2.2rem;
+            font-size: 2rem;
             font-weight: 700;
-            line-height: 1.1;
+            line-height: 1.2;
         }
         .metric-card .mc-label {
             color: var(--text-secondary);
             font-size: 0.78rem;
+            margin-top: 0.2rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-top: 0.2rem;
         }
+
+        /* ===== Environment Summary ===== */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .summary-metric {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem 1rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .summary-metric::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+        .summary-metric .metric-icon { font-size: 1.5rem; margin-bottom: 0.2rem; }
+        .summary-metric .metric-value { font-size: 2.2rem; font-weight: 700; line-height: 1.1; }
+        .summary-metric .metric-label { color: var(--text-secondary); font-size: 0.78rem; margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+        .summary-category { margin-bottom: 1.5rem; }
+        .summary-category h3 { color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin-top: 0; margin-bottom: 0.8rem; border: none; }
+        .summary-row { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+        .summary-row:last-child { border-bottom: none; }
+        .row-label { display: flex; align-items: center; gap: 0.6rem; color: var(--text-primary); font-size: 0.88rem; }
+        .row-label .icon { font-size: 1rem; width: 1.5rem; text-align: center; }
+        .row-value { font-weight: 600; font-size: 0.88rem; display: flex; align-items: center; gap: 0.5rem; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+        .dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+        .dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
 
         /* Severity bar */
         .severity-bar {
@@ -627,6 +674,9 @@
             body { padding: 1rem; }
             .score-dashboard { grid-template-columns: 1fr; }
             .score-metrics { grid-template-columns: 1fr; }
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
+            .grid-3 { grid-template-columns: 1fr; }
+            .metric-grid { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
@@ -640,6 +690,8 @@
     <!-- Navigation -->
     <nav class="section-nav">
         <a href="#score">Score</a>
+        <a href="#env-summary">Environment</a>
+        <a href="#forest">Forest</a>
         <a href="#dc">Domain Controllers</a>
         <a href="#protocol">Protocol Audit</a>
         <a href="#breakdown">Score Breakdown</a>
@@ -691,6 +743,12 @@
             </div>
         </div>
     </div>
+
+    {{ENVIRONMENT_SUMMARY}}
+
+    {{FOREST_DOMAINS}}
+
+    {{DC_INVENTORY}}
 
     {{DC_CONNECTIVITY}}
 

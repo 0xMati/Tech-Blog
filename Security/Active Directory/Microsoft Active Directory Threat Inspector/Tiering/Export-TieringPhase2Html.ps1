@@ -1,5 +1,5 @@
 # Tiering\Export-TieringPhase2Html.ps1
-# Generates a rich HTML report for Phase 2 — Tiered Admin Accounts.
+# Generates a rich HTML report for Phase 2 — Create Recommended Tiered Admin Accounts.
 
 function Export-TieringPhase2Html {
     [CmdletBinding()]
@@ -25,21 +25,24 @@ function Export-TieringPhase2Html {
     # ================================================================
     # Pre-compute values
     # ================================================================
-    $created   = $Results.AccountsCreated.Count
-    $existed   = $Results.AccountsExisted.Count
-    $skipped   = $Results.AccountsSkipped.Count
-    $totalAcc  = $created + $existed + $skipped
-    $hardened  = ($Results.HardeningApplied | Where-Object Status -eq 'Applied').Count
-    $errCount  = $Results.Errors.Count
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $source    = $Results.Source
+    $created         = $Results.AccountsCreated.Count
+    $existed         = $Results.AccountsExisted.Count
+    $skipped         = $Results.AccountsSkipped.Count
+    $hardened        = ($Results.HardeningApplied | Where-Object Status -eq 'Applied').Count
+    $groupChanges    = $Results.GroupMembershipsAdded.Count
+    $errCount        = $Results.Errors.Count
+    $timestamp       = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $source          = $Results.Source
+    $csvTemplatePath = $Results.CsvTemplatePath
+    $inputCsvPath    = $Results.InputCsvPath
 
     # Colors
     $createdColor  = if ($created -gt 0)  { 'var(--green)' } else { 'var(--accent)' }
     $existedColor  = if ($existed -gt 0)  { 'var(--cyan)'  } else { 'var(--accent)' }
     $skippedColor  = if ($skipped -gt 0)  { 'var(--yellow)' } else { 'var(--accent)' }
-    $hardenedColor = if ($hardened -gt 0) { 'var(--green)' } else { 'var(--accent)' }
-    $errColor      = if ($errCount -gt 0) { 'var(--red)'   } else { 'var(--green)' }
+    $hardenedColor = if ($hardened -gt 0)    { 'var(--green)' } else { 'var(--accent)' }
+    $groupColor    = if ($groupChanges -gt 0){ 'var(--cyan)'  } else { 'var(--accent)' }
+    $errColor      = if ($errCount -gt 0)    { 'var(--red)'   } else { 'var(--green)' }
 
     # ================================================================
     # Tier breakdown
@@ -63,7 +66,7 @@ function Export-TieringPhase2Html {
             'T1' { "<span class='tier-badge t1'>T1</span>" }
             'T2' { "<span class='tier-badge t2'>T2</span>" }
         }
-        $acctRows += "<tr><td>$(HtmlEncode $a.SamAccountName)</td><td>$(HtmlEncode $a.FirstName) $(HtmlEncode $a.LastName)</td><td>$tierBadge</td><td>$(HtmlEncode $a.Source)</td><td class='mono'>$(HtmlEncode $a.TargetOU)</td><td><span class='badge pass'>Created</span></td></tr>`n"
+        $acctRows += "<tr><td>$(HtmlEncode $a.SamAccountName)</td><td>$(HtmlEncode $a.DisplayName)</td><td>$tierBadge</td><td>$(HtmlEncode $a.Description)</td><td>$(HtmlEncode $a.TargetGroup)</td><td class='mono'>$(HtmlEncode $a.TargetOU)</td><td><span class='badge pass'>Created</span></td></tr>`n"
     }
     foreach ($a in $Results.AccountsExisted) {
         $tierBadge = switch ($a.Tier) {
@@ -71,10 +74,10 @@ function Export-TieringPhase2Html {
             'T1' { "<span class='tier-badge t1'>T1</span>" }
             'T2' { "<span class='tier-badge t2'>T2</span>" }
         }
-        $acctRows += "<tr><td>$(HtmlEncode $a.SamAccountName)</td><td>$(HtmlEncode $a.FirstName) $(HtmlEncode $a.LastName)</td><td>$tierBadge</td><td>$(HtmlEncode $a.Source)</td><td class='mono'>$(HtmlEncode $a.TargetOU)</td><td><span class='badge info'>Already Existed</span></td></tr>`n"
+        $acctRows += "<tr><td>$(HtmlEncode $a.SamAccountName)</td><td>$(HtmlEncode $a.DisplayName)</td><td>$tierBadge</td><td>$(HtmlEncode $a.Description)</td><td>$(HtmlEncode $a.TargetGroup)</td><td class='mono'>$(HtmlEncode $a.TargetOU)</td><td><span class='badge info'>Already Existed</span></td></tr>`n"
     }
     foreach ($a in $Results.AccountsSkipped) {
-        $acctRows += "<tr><td>$(HtmlEncode $a.SamAccountName)</td><td>—</td><td>$(if($a.Tier){"<span class='tier-badge t$(($a.Tier -replace 'T',''))'>$($a.Tier)</span>"}else{'—'})</td><td>—</td><td>—</td><td><span class='badge warn'>Skipped</span></td></tr>`n"
+        $acctRows += "<tr><td>$(HtmlEncode $a.SamAccountName)</td><td>$(HtmlEncode $a.DisplayName)</td><td>$(if($a.Tier){"<span class='tier-badge t$(($a.Tier -replace 'T',''))'>$($a.Tier)</span>"}else{'—'})</td><td>$(HtmlEncode $a.Description)</td><td>—</td><td>—</td><td><span class='badge warn'>Skipped</span></td></tr>`n"
     }
 
     # ================================================================
@@ -117,7 +120,7 @@ function Export-TieringPhase2Html {
             'Skip'   { "<span class='badge warn'>Skip</span>" }
             default  { "<span class='badge info'>$($m.Action)</span>" }
         }
-        $mappedRows += "<tr><td>$(HtmlEncode $m.Source)</td><td>$(HtmlEncode $m.CurrentAccount)</td><td>$(HtmlEncode $m.NewSamAccountName)</td><td>$(HtmlEncode $m.Tier)</td><td>$actionBadge</td></tr>`n"
+        $mappedRows += "<tr><td>$(HtmlEncode $m.Source)</td><td>$(HtmlEncode $m.NewSamAccountName)</td><td>$(HtmlEncode $m.DisplayName)</td><td>$(HtmlEncode $m.Description)</td><td>$(HtmlEncode $m.Tier)</td><td>$actionBadge</td></tr>`n"
     }
 
     # ================================================================
@@ -129,7 +132,7 @@ function Export-TieringPhase2Html {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MATI — Phase 2 Deployment Report</title>
+<title>MATI — Phase 2 — Create Recommended Tiered Admin Accounts</title>
 <style>
     :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; --cyan: #39c5cf; --t0: #f85149; --t1: #d29922; --t2: #58a6ff; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -229,8 +232,8 @@ function Export-TieringPhase2Html {
 <body>
 <div class="container">
 
-<h1>MATI — Phase 2 Deployment Report</h1>
-<p class="subtitle">Tiered Admin Accounts | Domain: $(HtmlEncode $DomainDN) | Generated: $timestamp</p>
+<h1>MATI — Phase 2 — Create Recommended Tiered Admin Accounts</h1>
+<p class="subtitle">Create Recommended Tiered Admin Accounts | Domain: $(HtmlEncode $DomainDN) | Generated: $timestamp</p>
 
 <nav class="section-nav">
     <a href="#summary">Summary</a>
@@ -263,13 +266,18 @@ function Export-TieringPhase2Html {
     </div>
     <div class="summary-metric" style="border-top: 3px solid $skippedColor;">
         <div class="metric-icon">&#x23ED;</div>
-        <div class="metric-value" style="color:$skippedColor;">$skipped</div>
-        <div class="metric-label">Skipped</div>
+        <div class="metric-value" style="color:$skippedColor;">$planned</div>
+        <div class="metric-label">CSV Rows Processed</div>
     </div>
     <div class="summary-metric" style="border-top: 3px solid $hardenedColor;">
         <div class="metric-icon">&#x1F6E1;</div>
         <div class="metric-value" style="color:$hardenedColor;">$hardened</div>
         <div class="metric-label">Hardening Applied</div>
+    </div>
+    <div class="summary-metric" style="border-top: 3px solid $groupColor;">
+        <div class="metric-icon">&#x1F517;</div>
+        <div class="metric-value" style="color:$groupColor;">$groupChanges</div>
+        <div class="metric-label">Group Adds</div>
     </div>
     <div class="summary-metric" style="border-top: 3px solid $errColor;">
         <div class="metric-icon">$(if($errCount -gt 0){'&#x274C;'}else{'&#x2705;'})</div>
@@ -277,6 +285,8 @@ function Export-TieringPhase2Html {
         <div class="metric-label">Errors</div>
     </div>
 </div>
+
+<p class="note">This phase executes a CSV-based creation plan and reports the concrete actions performed: account creation, target group membership, and Tier 0 hardening.</p>
 </div>
 
 <!-- ================================================================ -->
@@ -287,7 +297,9 @@ function Export-TieringPhase2Html {
     <div class="sb-icon">&#x1F50D;</div>
     <div class="sb-text">
         <strong>Account Source:</strong> $(HtmlEncode $source)<br>
-        <span style="color:#8b949e;">Base DN: <code style="color:var(--cyan);">$(HtmlEncode $Results.BaseDN)</code></span>
+        <span style="color:#8b949e;">CSV Template: <span class='mono' style='color:var(--cyan);'>$(HtmlEncode $csvTemplatePath)</span></span><br>
+        <span style="color:#8b949e;">Imported CSV: <span class='mono' style='color:var(--cyan);'>$(HtmlEncode $inputCsvPath)</span></span><br>
+        <span style="color:#8b949e;">Base DN: <span class='mono' style='color:var(--cyan);'>$(HtmlEncode $Results.BaseDN)</span></span>
     </div>
 </div>
 </div>
@@ -323,14 +335,17 @@ function Export-TieringPhase2Html {
 <div id="accounts">
 <h2 class="section-header"><span class="section-icon">&#x1F465;</span> Admin Accounts</h2>
 
+<p class="note">Each row shows the generated SamAccountName, DisplayName, Description, the target administrative group, and the resulting action.</p>
+
 <div class="card">
     <table>
         <thead>
             <tr>
                 <th>SamAccountName</th>
-                <th>Full Name</th>
+                <th>DisplayName</th>
                 <th>Tier</th>
-                <th>Source</th>
+                <th>Description</th>
+                <th>Target Group</th>
                 <th>Target OU</th>
                 <th>Status</th>
             </tr>
@@ -347,6 +362,8 @@ function Export-TieringPhase2Html {
 <!-- ================================================================ -->
 <div id="hardening">
 <h2 class="section-header"><span class="section-icon">&#x1F6E1;</span> Tier 0 Hardening</h2>
+
+<p class="note">Tier 0 accounts created from the CSV plan are additionally hardened by adding them to Protected Users and setting AccountNotDelegated.</p>
 
 $(if ($Results.HardeningApplied.Count -gt 0) {
 @"
@@ -377,6 +394,8 @@ $(if ($Results.HardeningApplied.Count -gt 0) {
 <!-- ================================================================ -->
 <div id="groups">
 <h2 class="section-header"><span class="section-icon">&#x1F517;</span> Group Memberships</h2>
+
+<p class="note">This table shows which tier administration group each recommended account was added to during execution.</p>
 
 $(if ($Results.GroupMembershipsAdded.Count -gt 0) {
 @"
@@ -425,7 +444,7 @@ $(if ($errCount -gt 0) {
     <p class="note">Complete mapping of all accounts that were evaluated, including skipped entries.</p>
     <table>
         <thead>
-            <tr><th>Source</th><th>Current Account</th><th>New Account Name</th><th>Tier</th><th>Action</th></tr>
+            <tr><th>Source</th><th>SamAccountName</th><th>DisplayName</th><th>Description</th><th>Tier</th><th>Action</th></tr>
         </thead>
         <tbody>
             $mappedRows
@@ -460,7 +479,7 @@ $(if ($errCount -gt 0) {
     </div>
     <div class="step-card">
         <div class="step-number">5</div>
-        <div class="step-text"><strong>Phase 3 — Deny Logon GPOs</strong> — Create and link the six deny-logon GPOs to enforce tier boundaries. Without this, tiered accounts are cosmetic only.</div>
+        <div class="step-text"><strong>Phase 3 — Create Deny Logon GPOs for each Tiers</strong> — Create and link the six deny-logon GPOs to enforce tier boundaries. Without this, tiered accounts are cosmetic only.</div>
     </div>
     <div class="step-card">
         <div class="step-number">6</div>
@@ -469,7 +488,7 @@ $(if ($errCount -gt 0) {
 </div>
 </div>
 
-<p class="note" style="text-align:center; margin-top: 2rem;">Generated by MATI — Microsoft Active Directory Threat Inspector | Phase 2 — Tiered Admin Accounts</p>
+<p class="note" style="text-align:center; margin-top: 2rem;">Generated by MATI — Microsoft Active Directory Threat Inspector | Phase 2 — Create Recommended Tiered Admin Accounts</p>
 
 </div>
 

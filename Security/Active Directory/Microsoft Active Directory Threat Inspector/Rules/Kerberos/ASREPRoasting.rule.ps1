@@ -16,16 +16,15 @@
             if (-not $account._ASREPRoastable) { continue }
             if (-not $account.Enabled) { continue }
 
-            $severity = if ($account.AdminCount -eq 1) { 'Critical' } else { 'High' }
-
             $findings += @{
-                Severity = $severity
+                Severity = 'High'
                 ObjectDN = $account.DistinguishedName
                 Domain   = $account.Domain
                 Details  = @{
                     SamAccountName        = $account.SamAccountName
                     DoesNotRequirePreAuth = 'True'
                     AdminCount            = "$($account.AdminCount)"
+                    PrivilegeNote         = if ($account.AdminCount -eq 1) { 'AdminCount=1 detected - verify current privileged group membership separately' } else { 'No AdminCount-based escalation applied' }
                 }
             }
         }

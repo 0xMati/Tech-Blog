@@ -42,6 +42,7 @@ function Get-MATILegacyProtocolAudit {
     $rc4DCs          = @{}
     $failedAccounts  = @{}
     $otherEncTypes   = @{}
+    $kdcStrongKeyWarnings = [System.Collections.Generic.List[PSCustomObject]]::new()
 
     $ntlmV1Total = 0
     $ntlmV2Total = 0
@@ -75,6 +76,7 @@ function Get-MATILegacyProtocolAudit {
             RC4ClientIPs   = @{}
             FailedAccounts = @{}
             OtherEncTypes  = @{}
+            KdcStrongKeyWarnings = @()
             # NTLM
             NTLMv1 = 0; NTLMv2 = 0
             NTLMAccounts     = @{}
@@ -144,6 +146,33 @@ function Get-MATILegacyProtocolAudit {
                             $result.OtherEncTypes[$encLabel]++
                         }
                     }
+                }
+            }
+        } catch { }
+
+        # ---------- KDC strong-key warnings (System / Kdcsvc 42) ----------
+        try {
+            $kdcEvents = Get-WinEvent -FilterHashtable @{
+                LogName   = 'System'
+                Id        = 42
+                StartTime = $since
+            } -ErrorAction SilentlyContinue | Where-Object {
+                $_.ProviderName -match 'Kdcsvc|Kerberos-Key-Distribution-Center'
+            }
+
+            foreach ($ev in $kdcEvents) {
+                $message = $ev.Message
+                $account = $null
+                if ($message -match 'account:\s*([^\.\r\n]+)') {
+                    $account = $matches[1].Trim()
+                }
+
+                $result.KdcStrongKeyWarnings += [PSCustomObject]@{
+                    Account   = $account
+                    EventId   = $ev.Id
+                    Provider  = $ev.ProviderName
+                    TimeCreated = $ev.TimeCreated
+                    Message   = $message
                 }
             }
         } catch { }
@@ -262,6 +291,23 @@ function Get-MATILegacyProtocolAudit {
     # ---------------------------------------------------------------
     # Aggregate results and report per-DC status
     # ---------------------------------------------------------------
+    $domainKerberos = @{}
+
+    function Get-OrCreateKerberosDomainBucket {
+        param([string]$DomainName)
+
+        if (-not $domainKerberos.ContainsKey($DomainName)) {
+            $domainKerberos[$DomainName] = @{
+                Domain = $DomainName
+                TGT_AES256 = 0; TGT_AES128 = 0; TGT_RC4 = 0; TGT_Failed = 0; TGT_Other = 0
+                TGS_AES256 = 0; TGS_AES128 = 0; TGS_RC4 = 0; TGS_Failed = 0; TGS_Other = 0
+                KdcStrongKeyWarnings = [System.Collections.Generic.List[PSCustomObject]]::new()
+            }
+        }
+
+        return $domainKerberos[$DomainName]
+    }
+
     $processedDCs = @{}
     foreach ($dcResult in $rawResults) {
         # Invoke-Command adds PSComputerName to deserialized results
@@ -272,11 +318,14 @@ function Get-MATILegacyProtocolAudit {
         }
         if (-not $dcHost) { continue }
         $processedDCs[$dcHost] = $true
+        $dcDomain = $dcMap[$dcHost]
+        $domainBucket = if ($dcDomain) { Get-OrCreateKerberosDomainBucket -DomainName $dcDomain } else { $null }
 
         # --- Kerberos aggregation ---
         foreach ($k in @('TGT_AES256','TGT_AES128','TGT_RC4','TGT_Failed','TGT_Other',
                          'TGS_AES256','TGS_AES128','TGS_RC4','TGS_Failed','TGS_Other')) {
             $krbTotals[$k] += [int]$dcResult[$k]
+            if ($domainBucket) { $domainBucket[$k] += [int]$dcResult[$k] }
         }
         if ($dcResult.RC4TGTAccounts) {
             foreach ($entry in $dcResult.RC4TGTAccounts.GetEnumerator()) {
@@ -314,6 +363,22 @@ function Get-MATILegacyProtocolAudit {
             foreach ($entry in $dcResult.OtherEncTypes.GetEnumerator()) {
                 if (-not $otherEncTypes.ContainsKey($entry.Key)) { $otherEncTypes[$entry.Key] = 0 }
                 $otherEncTypes[$entry.Key] += $entry.Value
+            }
+        }
+        if ($dcResult.KdcStrongKeyWarnings) {
+            foreach ($warning in @($dcResult.KdcStrongKeyWarnings)) {
+                $warningObject = [PSCustomObject]@{
+                    Domain      = $dcDomain
+                    DC          = $dcHost
+                    Account     = $warning.Account
+                    EventId     = $warning.EventId
+                    Provider    = $warning.Provider
+                    TimeCreated = $warning.TimeCreated
+                    Message     = $warning.Message
+                }
+
+                $kdcStrongKeyWarnings.Add($warningObject)
+                if ($domainBucket) { $domainBucket.KdcStrongKeyWarnings.Add($warningObject) }
             }
         }
 
@@ -447,6 +512,46 @@ function Get-MATILegacyProtocolAudit {
         OtherEncTypes     = @(ConvertTo-TopN $otherEncTypes  $topN)
         RC4AccountDetails = @()
         RC4ServiceDetails = @()
+        KdcStrongKeyWarnings = @($kdcStrongKeyWarnings)
+        ByDomain = @()
+    }
+
+    foreach ($domainEntry in $domainKerberos.GetEnumerator() | Sort-Object Key) {
+        $domainTotals = $domainEntry.Value
+        $domainTotalTGT = $domainTotals.TGT_AES256 + $domainTotals.TGT_AES128 + $domainTotals.TGT_RC4 + $domainTotals.TGT_Failed + $domainTotals.TGT_Other
+        $domainTotalTGS = $domainTotals.TGS_AES256 + $domainTotals.TGS_AES128 + $domainTotals.TGS_RC4 + $domainTotals.TGS_Failed + $domainTotals.TGS_Other
+        $domainAESCount = $domainTotals.TGT_AES256 + $domainTotals.TGT_AES128 + $domainTotals.TGS_AES256 + $domainTotals.TGS_AES128
+        $domainRC4Count = $domainTotals.TGT_RC4 + $domainTotals.TGS_RC4
+        $domainFailedCount = $domainTotals.TGT_Failed + $domainTotals.TGS_Failed
+        $domainOtherCount = $domainTotals.TGT_Other + $domainTotals.TGS_Other
+        $domainTotalAll = $domainTotalTGT + $domainTotalTGS
+
+        $kerberos.ByDomain += [PSCustomObject]@{
+            Domain                  = $domainTotals.Domain
+            TGT_AES256              = $domainTotals.TGT_AES256
+            TGT_AES128              = $domainTotals.TGT_AES128
+            TGT_RC4                 = $domainTotals.TGT_RC4
+            TGT_Failed              = $domainTotals.TGT_Failed
+            TGT_Other               = $domainTotals.TGT_Other
+            TGS_AES256              = $domainTotals.TGS_AES256
+            TGS_AES128              = $domainTotals.TGS_AES128
+            TGS_RC4                 = $domainTotals.TGS_RC4
+            TGS_Failed              = $domainTotals.TGS_Failed
+            TGS_Other               = $domainTotals.TGS_Other
+            TotalTGT                = $domainTotalTGT
+            TotalTGS                = $domainTotalTGS
+            TotalAll                = $domainTotalAll
+            AESCount                = $domainAESCount
+            RC4Count                = $domainRC4Count
+            FailedCount             = $domainFailedCount
+            OtherCount              = $domainOtherCount
+            AESPercent              = if ($domainTotalAll -gt 0) { [math]::Round(100 * $domainAESCount / $domainTotalAll, 1) } else { 0 }
+            RC4Percent              = if ($domainTotalAll -gt 0) { [math]::Round(100 * $domainRC4Count / $domainTotalAll, 1) } else { 0 }
+            FailedPercent           = if ($domainTotalAll -gt 0) { [math]::Round(100 * $domainFailedCount / $domainTotalAll, 1) } else { 0 }
+            OtherPercent            = if ($domainTotalAll -gt 0) { [math]::Round(100 * $domainOtherCount / $domainTotalAll, 1) } else { 0 }
+            KdcStrongKeyWarningCount = @($domainTotals.KdcStrongKeyWarnings).Count
+            KdcStrongKeyWarnings    = @($domainTotals.KdcStrongKeyWarnings)
+        }
     }
 
     # ---------------------------------------------------------------

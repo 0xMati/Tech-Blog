@@ -3,6 +3,7 @@
 
 @{
     Id          = 'MATI-HARD-001'
+    Category    = 'Governance'
     Title       = 'Protected Users group is empty or incomplete'
     Severity    = 'High'
     Description = "The Protected Users security group is empty or contains very few members. Privileged accounts should be members of this group to receive additional protection: no NTLM authentication, no DES/RC4 encryption, no delegation, no long-lived TGT caching."

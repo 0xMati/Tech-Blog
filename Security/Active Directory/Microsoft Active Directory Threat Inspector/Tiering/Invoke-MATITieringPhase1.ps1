@@ -1,6 +1,6 @@
 # Tiering\Invoke-MATITieringPhase1.ps1
-# Phase 1 — OU Structure & Group Model
-# Creates the tiering OU hierarchy, security groups, deny-logon nesting,
+# Phase 1 — Create Recommended OU Structure & Group Model
+# Creates the tiering OU hierarchy, security groups, deny-logon group nesting,
 # and optionally redirects the default Computers/Users containers.
 
 function Invoke-MATITieringPhase1 {
@@ -11,7 +11,7 @@ function Invoke-MATITieringPhase1 {
         Guided, step-by-step deployment:
         1. Choose placement: domain root vs. container sub-OU
         2. Create OU hierarchy (idempotent — skips existing OUs)
-        3. Create security groups and configure deny-logon nesting
+        3. Create security groups and prepare deny-logon nesting for later GPO enforcement
         4. Optionally redirect default Computers container (redircmp)
         5. Optionally redirect default Users container (redirusr)
         6. Generate an HTML deployment report
@@ -49,6 +49,10 @@ function Invoke-MATITieringPhase1 {
         Placement       = ''
         BaseDN          = ''
         ContainerOU     = $null
+        ContainerOUDN   = ''
+        Tier0OUDN       = ''
+        Tier1OUDN       = ''
+        Tier2OUDN       = ''
         OUsCreated      = [System.Collections.Generic.List[string]]::new()
         OUsExisted      = [System.Collections.Generic.List[string]]::new()
         GroupsCreated   = [System.Collections.Generic.List[string]]::new()
@@ -68,11 +72,11 @@ function Invoke-MATITieringPhase1 {
     function Ensure-OU {
         param([string]$Name, [string]$ParentDN, [string]$Description)
         $ouDN = "OU=$Name,$ParentDN"
-        try {
-            $null = Get-ADOrganizationalUnit -Identity $ouDN -ErrorAction Stop
+        $existingOu = Get-ADOrganizationalUnit -Identity $ouDN -ErrorAction SilentlyContinue
+        if ($existingOu) {
             Write-Host "      [=] Already exists: $ouDN" -ForegroundColor DarkGray
             $results.OUsExisted.Add($ouDN)
-        } catch {
+        } else {
             try {
                 New-ADOrganizationalUnit -Name $Name -Path $ParentDN `
                     -Description $Description `
@@ -92,11 +96,11 @@ function Invoke-MATITieringPhase1 {
     # ================================================================
     function Ensure-Group {
         param([string]$Name, [string]$Path, [string]$Scope, [string]$Description)
-        try {
-            $null = Get-ADGroup -Identity $Name -ErrorAction Stop
+        $existingGroup = Get-ADGroup -Identity $Name -ErrorAction SilentlyContinue
+        if ($existingGroup) {
             Write-Host "      [=] Already exists: $Name" -ForegroundColor DarkGray
             $results.GroupsExisted.Add($Name)
-        } catch {
+        } else {
             try {
                 New-ADGroup -Name $Name -GroupScope $Scope -GroupCategory Security `
                     -Path $Path -Description $Description -ErrorAction Stop
@@ -131,11 +135,50 @@ function Invoke-MATITieringPhase1 {
     }
 
     # ================================================================
+    # Helper: Resolve container OU input
+    # The wizard expects a full OU distinguished name.
+    # If only a simple name is provided, it is created under the domain root.
+    # ================================================================
+    function Resolve-ContainerOUInput {
+        param(
+            [string]$InputValue,
+            [string]$DefaultName,
+            [string]$DefaultParentDN
+        )
+
+        $rawValue = if ($InputValue) { $InputValue.Trim() } else { '' }
+        if (-not $rawValue) {
+            $rawValue = $DefaultName
+        }
+
+        if ($rawValue -match '^(?i)OU=') {
+            $parts = $rawValue -split '(?<!\\),', 2
+            $leaf = $parts[0]
+            $parentDN = if ($parts.Count -gt 1) { $parts[1] } else { $DefaultParentDN }
+            $name = ($leaf -replace '^(?i)OU=', '').Trim()
+
+            return [ordered]@{
+                Name     = $name
+                ParentDN = $parentDN
+                TargetDN = "OU=$name,$parentDN"
+                RawValue = $rawValue
+            }
+        }
+
+        return [ordered]@{
+            Name     = $rawValue
+            ParentDN = $DefaultParentDN
+            TargetDN = "OU=$rawValue,$DefaultParentDN"
+            RawValue = $rawValue
+        }
+    }
+
+    # ================================================================
     # STEP 1 — Choose placement
     # ================================================================
     Write-Host ""
     Write-Host "  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "   Phase 1 — OU Structure & Group Model" -ForegroundColor Cyan
+    Write-Host "   Phase 1 — Create Recommended OU Structure & Group Model" -ForegroundColor Cyan
     Write-Host "  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Step 1/5 — OU Placement" -ForegroundColor Yellow
@@ -170,15 +213,21 @@ function Invoke-MATITieringPhase1 {
             }
             'B' {
                 $defaultName = $ouCfg.ContainerOU
-                $containerInput = Read-Host "    Container OU name [$defaultName]"
-                $containerName = if ($containerInput.Trim()) { $containerInput.Trim() } else { $defaultName }
+                $defaultDNExample = "OU=$defaultName,DC=contoso,DC=com"
+                $containerInput = Read-Host "    Container OU distinguishedName [$defaultDNExample]"
+                $containerInfo = Resolve-ContainerOUInput -InputValue $containerInput -DefaultName $defaultName -DefaultParentDN $domainDN
+                $containerName = $containerInfo.Name
 
                 Write-Host ""
-                Write-Host "    Creating container OU: $containerName" -ForegroundColor Yellow
-                $baseDN = Ensure-OU -Name $containerName -ParentDN $domainDN -Description 'Tiering Model — container OU for all tiering objects'
-                $results.Placement = "Sub-OU: $containerName"
+                if ($containerInfo.RawValue -notmatch '^(?i)OU=') {
+                    Write-Host "    [!] Simple OU name detected. Using domain root as parent: $($containerInfo.TargetDN)" -ForegroundColor Yellow
+                }
+                Write-Host "    Creating container OU: $($containerInfo.TargetDN)" -ForegroundColor Yellow
+                $baseDN = Ensure-OU -Name $containerName -ParentDN $containerInfo.ParentDN -Description 'Tiering Model — container OU for all tiering objects'
+                $results.Placement = "Sub-OU: $($containerInfo.TargetDN)"
                 $results.BaseDN = $baseDN
                 $results.ContainerOU = $containerName
+                $results.ContainerOUDN = $baseDN
                 $placementValid = $true
             }
             default {
@@ -248,6 +297,7 @@ function Invoke-MATITieringPhase1 {
                 'Tier2' { 'User Access (Workstations and End-Users)' }
             }
         )"
+        $results["$($tier.Key)OUDN"] = $tierDN
         foreach ($sub in $tier.SubOUs) {
             Ensure-OU -Name $sub -ParentDN $tierDN -Description "$($tier.Name) — $sub" | Out-Null
         }
@@ -442,6 +492,10 @@ function Invoke-MATITieringPhase1 {
     $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase1-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
+
+    $statePath = Join-Path $RootPath 'Outputs\Tiering\MATI-Tiering-Phase1-Latest.json'
+    $results | ConvertTo-Json -Depth 10 | Set-Content -Path $statePath -Encoding UTF8
+    Write-Host "    State: $statePath" -ForegroundColor DarkGray
 
     $sw.Stop()
     Write-Host ""

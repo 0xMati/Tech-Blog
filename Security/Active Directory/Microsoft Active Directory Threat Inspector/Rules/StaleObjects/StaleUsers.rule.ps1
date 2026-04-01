@@ -5,7 +5,7 @@
     Id          = 'MATI-STALE-001'
     Title       = 'Stale (inactive) user accounts'
     Severity    = 'Medium'
-    Description = "User accounts have not been used for an extended period. Stale accounts increase the attack surface as they can be compromised without being detected. Severity increases with inactivity duration."
+    Description = "User accounts appear inactive based on the latest available account activity evidence. The rule uses the most recent known date among logon timestamp, password set, and object creation to avoid treating missing logon metadata as a confirmed stale account."
     Remediation = "Disable accounts inactive for more than 90 days. Delete accounts inactive for more than 365 days after validation. Implement an automated account lifecycle management process."
     Collectors  = @('UserAccounts')
     Condition   = {
@@ -20,19 +20,26 @@
         foreach ($user in $Data.UserAccounts) {
             if (-not $user.Enabled) { continue }
 
-            $lastLogon = $user.LastLogonTimestamp
-            if (-not $lastLogon) {
-                $daysSinceLogon = 9999
+            $activityCandidates = @($user.LastLogonTimestamp, $user.PasswordLastSet, $user.WhenCreated) | Where-Object { $_ }
+            if (@($activityCandidates).Count -eq 0) { continue }
+
+            $lastActivity = @($activityCandidates | Sort-Object -Descending)[0]
+            $daysSinceActivity = ($now - $lastActivity).Days
+
+            $activitySource = if ($user.LastLogonTimestamp -and $lastActivity -eq $user.LastLogonTimestamp) {
+                'LastLogonTimestamp'
+            } elseif ($user.PasswordLastSet -and $lastActivity -eq $user.PasswordLastSet) {
+                'PasswordLastSet'
             } else {
-                $daysSinceLogon = ($now - $lastLogon).Days
+                'WhenCreated'
             }
 
             $severity = $null
-            if ($daysSinceLogon -ge $thresholds.Critical) {
+            if ($daysSinceActivity -ge $thresholds.Critical) {
                 $severity = 'Critical'
-            } elseif ($daysSinceLogon -ge $thresholds.High) {
+            } elseif ($daysSinceActivity -ge $thresholds.High) {
                 $severity = 'High'
-            } elseif ($daysSinceLogon -ge $thresholds.Medium) {
+            } elseif ($daysSinceActivity -ge $thresholds.Medium) {
                 $severity = 'Medium'
             }
 
@@ -48,7 +55,7 @@
                 }
                 $domainBuckets[$key].Count++
                 if ($domainBuckets[$key].Examples.Count -lt 5) {
-                    $domainBuckets[$key].Examples.Add("$($user.SamAccountName) ($daysSinceLogon days)")
+                    $domainBuckets[$key].Examples.Add("$($user.SamAccountName) ($daysSinceActivity days via $activitySource)")
                 }
             }
         }

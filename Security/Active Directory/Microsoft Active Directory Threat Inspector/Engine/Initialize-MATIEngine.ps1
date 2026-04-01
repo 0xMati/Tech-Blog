@@ -98,8 +98,19 @@ function Initialize-MATIEngine {
                 continue
             }
 
+            $effectiveCategory = if ($ruleDef.ContainsKey('Category') -and -not [string]::IsNullOrWhiteSpace($ruleDef.Category)) {
+                "$($ruleDef.Category)".Trim()
+            } else {
+                $category
+            }
+
+            if ($effectiveCategory -in $disabledCategories) {
+                Write-Host "  [~] Rule $($ruleDef.Id) category '$effectiveCategory' is disabled - skipping" -ForegroundColor Yellow
+                continue
+            }
+
             # Inject metadata
-            $ruleDef['_Category'] = $category
+            $ruleDef['_Category'] = $effectiveCategory
             $ruleDef['_FilePath'] = $ruleFile.FullName
             $ruleDef['_FileName'] = $ruleFile.Name
 
@@ -154,7 +165,7 @@ function Initialize-MATIEngine {
             try {
                 $domainCacheMap[$domDns] = Get-ADDomain -Identity $domDns -Server $domDns -ErrorAction Stop
             } catch {
-                Write-Warning "  [!] Could not query domain '$domDns': $($_.Exception.Message)"
+                Write-Warning "  [!] Could not query domain '${domDns}': $($_.Exception.Message)"
             }
         }
         # Inject caches into Config so all collectors can reuse them

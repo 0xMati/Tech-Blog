@@ -14,13 +14,19 @@
     Remediation = 'Review each RBCD configuration. Remove unauthorized entries with: ' +
                   'Set-ADComputer <target> -PrincipalsAllowedToDelegateToAccount $null. ' +
                   'Limit who can write to this attribute via ACL hardening.'
-    Collectors  = @('ComputerAccounts')
+    Collectors  = @('ComputerAccounts', 'DCInfo')
     References  = @('https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-constrained-delegation-overview')
 
     Condition = {
         param($Data, $Config)
         $computers = $Data['ComputerAccounts']
         if (-not $computers) { return $null }
+        $dcDNs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($dc in @($Data.DCInfo)) {
+            if ($dc.DistinguishedName) {
+                $null = $dcDNs.Add($dc.DistinguishedName)
+            }
+        }
 
         $findings = [System.Collections.Generic.List[hashtable]]::new()
 
@@ -36,15 +42,17 @@
                 $allowedNames = @("(populated - binary SD)")
             }
 
+            $isDomainController = $dcDNs.Contains($comp.DistinguishedName)
+
             $findings.Add(@{
-                Severity    = if ($comp.IsDomainController) { 'Critical' } else { 'High' }
+                Severity    = if ($isDomainController) { 'Critical' } else { 'High' }
                 Description = "Computer '$($comp.SamAccountName)' has RBCD configured. " +
                               "Allowed principals: $($allowedNames -join ', ')"
                 ObjectDN    = $comp.DistinguishedName
                 Domain      = $comp.Domain
                 Details     = @{
                     Computer          = $comp.SamAccountName
-                    IsDC              = "$($comp.IsDomainController)"
+                    IsDC              = "$isDomainController"
                     AllowedPrincipals = ($allowedNames -join '; ')
                 }
             })

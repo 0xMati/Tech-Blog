@@ -3,6 +3,7 @@
 
 @{
     Id          = 'MATI-HARD-034'
+    Category    = 'Governance'
     Title       = 'Authentication Policies and Silos not deployed'
     Severity    = 'Medium'
     Description = "No Authentication Policies or Silos are configured in the domain. Authentication Silos restrict where privileged accounts can authenticate, enforcing Tier 0 credential isolation at the Kerberos level. Without them, a compromised Tier 0 credential can be used from any machine. Requires Domain Functional Level 2012 R2 or higher."

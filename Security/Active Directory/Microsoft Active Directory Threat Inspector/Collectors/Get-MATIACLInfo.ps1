@@ -26,6 +26,9 @@ function Get-MATIACLInfo {
         $driveName = "MATITemp_$([guid]::NewGuid().ToString('N').Substring(0,8))"
         try {
             New-PSDrive -Name $driveName -PSProvider ActiveDirectory -Root "" -Server $Server -ErrorAction Stop | Out-Null
+            if (-not (Test-Path -Path "${driveName}:\$DN")) {
+                throw "Active Directory path not found: $DN"
+            }
             $acl = Get-ACL -Path "${driveName}:\$DN" -ErrorAction Stop
             return $acl
         }
@@ -337,10 +340,13 @@ function Get-MATIACLInfo {
             # SYSVOL Subscription object
             $sysvolSubDN = "CN=SYSVOL Subscription,CN=Domain System Volume,CN=DFSR-GlobalSettings,CN=System,$domainDN"
             try {
-                $acl = Get-RemoteADACL -DN $sysvolSubDN -Server $domainDns
-                $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $sysvolSubDN
-                foreach ($a in $aces) { $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force }
-                $dfsrSysvolACEs += $aces
+                $sysvolSubscription = Get-ADObject -Identity $sysvolSubDN -Server $domainDns -ErrorAction SilentlyContinue
+                if ($sysvolSubscription) {
+                    $acl = Get-RemoteADACL -DN $sysvolSubDN -Server $domainDns
+                    $aces = Get-DangerousACEs -ACL $acl -PrivilegedSIDs $privSIDArray -ObjectDN $sysvolSubDN
+                    foreach ($a in $aces) { $a | Add-Member -NotePropertyName 'Domain' -NotePropertyValue $domainDns -Force }
+                    $dfsrSysvolACEs += $aces
+                }
             } catch { }
             # Per-DC DFSR-LocalSettings
             $dcs = Get-ADDomainController -Filter * -Server $domainDns -ErrorAction SilentlyContinue

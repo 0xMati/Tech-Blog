@@ -18,6 +18,18 @@ function Get-MATIComputerAccounts {
 
     $computers = foreach ($domainDns in $forest.Domains) {
         try {
+            $domainControllerDNs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            try {
+                $domainDCs = @(Get-ADDomainController -Filter * -Server $domainDns -ErrorAction Stop)
+                foreach ($dc in $domainDCs) {
+                    if ($dc.ComputerObjectDN) {
+                        $null = $domainControllerDNs.Add($dc.ComputerObjectDN)
+                    }
+                }
+            } catch {
+                Write-Verbose "    Could not pre-load Domain Controller DNs for ${domainDns}: $($_.Exception.Message)"
+            }
+
             $domainComputers = Get-ADComputer -Filter * -Server $domainDns -Properties $compProps -ErrorAction Stop
             foreach ($comp in $domainComputers) {
                 [PSCustomObject]@{
@@ -38,7 +50,7 @@ function Get-MATIComputerAccounts {
                     SID                   = $comp.SID.Value
                     PrimaryGroupID        = $comp.PrimaryGroupID
                     UserAccountControl    = $comp.UserAccountControl
-                    IsDomainController    = $comp.DistinguishedName -match 'OU=Domain Controllers'
+                    IsDomainController    = $domainControllerDNs.Contains($comp.DistinguishedName)
                     # RBCD: Resource-Based Constrained Delegation
                     AllowedToActOnBehalf  = $comp.'msDS-AllowedToActOnBehalfOfOtherIdentity'
                     # Shadow Credentials
@@ -47,7 +59,7 @@ function Get-MATIComputerAccounts {
             }
         }
         catch {
-            Write-Warning "    Cannot query computers for $domainDns : $($_.Exception.Message)"
+            Write-Warning "    Cannot query computers for ${domainDns} : $($_.Exception.Message)"
         }
     }
 
