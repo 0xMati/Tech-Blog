@@ -128,7 +128,9 @@ Once you look at the problem that way, the troubleshooting path becomes much cle
 
 ### `msDS-SupportedEncryptionTypes`
 
-This is the per-account declaration that tells the KDC what the identity supports.
+This is the per-account declaration that tells the KDC what the identity is supposed to support.
+
+That wording matters. The attribute expresses capability and intent, but it is only useful if the underlying key material is consistent with it.
 
 Common values:
 
@@ -136,13 +138,26 @@ Common values:
 - `0x04` = RC4 only
 - `0` or absent = unset, historically ambiguous, now less dangerous after KB5021131 but still not ideal for long-term enforcement
 
-Changing this attribute is only half the job. Once you move an account toward AES, the secret also needs to be refreshed so the KDC can actually mint AES keys:
+Why it matters for the article:
+
+- this is one of the first places where you can spot obviously weak service identities
+- it helps explain why a service ticket was issued in RC4 instead of AES
+- it lets you separate explicit weak configuration from implicit or ambiguous configuration
+
+Why it is not enough on its own:
+
+- the attribute can say “AES is supported”
+- but if the secret was never rotated after that change, the KDC may still not have usable AES keys for that account
+
+That is why changing the attribute is only half the job. Once you move an account toward AES, the secret also needs to be refreshed so the KDC can actually mint AES keys:
 
 - user or traditional service account: change the password
 - computer account: reset the machine password
 - gMSA: rotation is automatic
 
 If you skip that step, you have basically repainted the dashboard while the engine still runs on the old parts. The attribute looks modern; the usable keys do not.
+
+This is also why the script does not treat `msDS-SupportedEncryptionTypes` as the final truth. It treats it as one signal that must be compared with live ticket behavior.
 
 ### `DefaultDomainSupportedEncTypes`
 
@@ -152,11 +167,27 @@ This is the domain controller registry baseline under:
 
 It defines the default encryption types used when `msDS-SupportedEncryptionTypes` is not set on the account.
 
+In other words, when an account is silent, the KDC still has to choose. This setting influences that choice.
+
 For an AES-only target state, the value you ultimately want is usually:
 
 - `0x18` = AES128 + AES256 only
 
-But that should come after you have audited both directory posture and live Kerberos traffic. Enforcing it too early is how you discover hidden dependencies at exactly the wrong moment.
+Why it matters for the article:
+
+- it explains whether the domain is still structurally allowing mixed behavior
+- it tells you whether “unset” accounts are being handled under an explicit hardened baseline or a more permissive default
+- it helps you distinguish between a service-specific problem and a broader KDC baseline problem
+
+Why it is not enough on its own:
+
+- a strong default does not fix stale service account keys
+- a strong default does not prove that live tickets are no longer using RC4
+- a missing or mixed default does not automatically mean every ticket will be weak
+
+So this control is important, but it is a baseline control, not proof of outcome. That is why the article keeps pairing it with account posture and real 4768/4769 evidence.
+
+And this is the operational takeaway: set it too early, and you risk breaking services you did not fully understand. Set it too late, and you keep an unnecessary downgrade path alive. The right time to lock it is after the audit tells you the environment is ready.
 
 ## Why `0` or absent is still tricky after KB5021131 🧪
 
@@ -200,9 +231,23 @@ Event 4768 and event 4769 are where the deep dive becomes real.
 - 4768 gives you the AS exchange side, which is where you see TGT issuance behavior.
 - 4769 gives you the TGS side, which is usually where the useful RC4 hunting happens because it shows service ticket issuance.
 
+Why this matters for the article:
+
+- directory settings tell you what should happen
+- event logs tell you what did happen
+
+That difference is the whole point of the audit. Without live events, you can easily mistake declared posture for actual protocol behavior.
+
 In most environments, 4769 is the better place to spend your time first. That is where SPN-backed services show up, and that is where lingering RC4 tends to be tied to a real dependency you can remediate.
 
-For practical analysis, the useful questions are:
+Here is the practical reading model:
+
+1. Start with 4769 to find which services are still receiving RC4 tickets.
+2. Look at the requestor accounts to understand who was involved in that traffic.
+3. Correlate that with the target service account in AD.
+4. Compare the observed ticket type with the advertised or configured AES capability.
+
+The useful questions are:
 
 1. Is RC4 showing up mostly in TGTs, TGS tickets, or both?
 2. Which requestor accounts are repeatedly associated with RC4?
@@ -212,6 +257,8 @@ For practical analysis, the useful questions are:
 That last point matters a lot. If the client advertises AES, the service has AES-capable keys, and the DC also supports AES, but the ticket is still RC4, you are no longer looking at a vague legacy condition. You are looking at a highly actionable inconsistency.
 
 That is exactly why the script highlights avoidable RC4 TGS cases. Those are the tickets that deserve immediate attention because the environment is already close to the correct state.
+
+This is also why the article spends so much time on service accounts and SPNs. 4769 is where those objects stop being abstract directory entries and become observable protocol behavior.
 
 ## What usually causes RC4 to survive longer than expected 🧨
 
