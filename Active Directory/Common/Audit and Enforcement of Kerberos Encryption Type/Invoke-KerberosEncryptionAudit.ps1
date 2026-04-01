@@ -244,7 +244,12 @@ function Convert-EncryptionFlagsToText {
 }
 
 function Get-EncStatus {
-    param([Nullable[int]]$Value)
+    param(
+        [Nullable[int]]$Value,
+        [string]$Category = 'User/Service',
+        [bool]$HasSPN = $false,
+        [bool]$KdcDefaultsExplicitAesOnly = $false
+    )
 
     $hasAes128 = ($Value -ne $null) -and (($Value -band 0x08) -ne 0)
     $hasAes256 = ($Value -ne $null) -and (($Value -band 0x10) -ne 0)
@@ -253,7 +258,19 @@ function Get-EncStatus {
     $hasDes = ($Value -ne $null) -and ((($Value -band 0x01) -ne 0) -or (($Value -band 0x02) -ne 0))
 
     if ($Value -eq $null -or $Value -eq 0) {
-        return 'Warning (Unset/0)'
+        $serviceLike = $HasSPN -or $Category -in @('gMSA', 'sMSA')
+        if ($serviceLike) {
+            if ($KdcDefaultsExplicitAesOnly) {
+                return 'Review (Unset/0, service relies on explicit KDC AES-only default)'
+            }
+            return 'Warning (Unset/0, service relies on KDC default)'
+        }
+
+        if ($KdcDefaultsExplicitAesOnly) {
+            return 'Info (Unset/0, non-service account inherits AES-only KDC default)'
+        }
+
+        return 'Info (Unset/0, non-service account inherits KDC default)'
     }
     if ($hasAes) {
         if ($hasRc4) { return 'Warning (AES present + RC4 allowed)' }
@@ -290,9 +307,53 @@ function Get-StatusBadgeClass {
     param([string]$Status)
 
     if ($Status -like 'Compliant*' -or $Status -eq 'OK') { return 'pass' }
+    if ($Status -like 'Review*') { return 'warn' }
     if ($Status -like 'Warning*') { return 'warn' }
     if ($Status -like 'Failed*' -or $Status -eq 'Critical') { return 'fail' }
     return 'info'
+}
+
+function Get-KpiDescription {
+    param([psobject]$Kpi)
+
+    switch ($Kpi.Name) {
+        'DCs with AES-only KDC default' {
+            return 'Reads DefaultDomainSupportedEncTypes on every DC. A value like 0/3 means no DC is explicitly set to 0x18, so AES-only is not enforced through the KDC baseline even if patched DCs usually prefer AES.'
+        }
+        'SPN accounts failed (RC4 or no AES)' {
+            return 'Counts SPN-bearing identities whose msDS-SupportedEncryptionTypes does not expose usable AES capability. These are direct blockers for clean AES-only service ticket issuance.'
+        }
+        'SPN accounts unset' {
+            return 'Counts SPN-bearing identities where msDS-SupportedEncryptionTypes is absent or 0. That does not always mean broken, but it leaves the KDC to fall back to the domain controller default instead of an explicit per-account declaration.'
+        }
+        'RC4 events' {
+            return 'Observed 4768/4769 events that actually used RC4 in the selected time window. This is protocol evidence, not just directory configuration.'
+        }
+        'Avoidable RC4 TGS' {
+            return 'RC4 TGS events where the event fields suggest client, service, and DC all advertised AES. Those are the highest-signal RC4 cases because the protocol path looks capable of doing better already.'
+        }
+        default {
+            return ''
+        }
+    }
+}
+
+function Get-KdcDefaultExplanation {
+    param([psobject]$Row)
+
+    if ($Row.Status -eq 'Failed') {
+        return 'The registry value could not be read from this domain controller, so its fallback Kerberos baseline could not be evaluated.'
+    }
+
+    if ($Row.RawValue -eq '(absent)') {
+        return 'The registry value is not explicitly set. After KB5021131 the DC usually prefers AES, but AES-only is not pinned here, so unset accounts still rely on implicit behavior.'
+    }
+
+    if ($Row.Status -like 'Compliant*') {
+        return 'This DC is explicitly pinned to 0x18, meaning AES128 and AES256 only when an account does not define msDS-SupportedEncryptionTypes.'
+    }
+
+    return 'This DC has an explicit KDC baseline, but the value still allows mixed behavior such as RC4 when the account attribute is unset.'
 }
 
 function Get-ObjectEnabledState {
@@ -365,6 +426,8 @@ function Get-KdcDefaultAudit {
 }
 
 function Get-AccountKerberosAudit {
+    param([bool]$KdcDefaultsExplicitAesOnly = $false)
+
     $rows = New-Object System.Collections.Generic.List[object]
 
     $userProps = @('msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'userAccountControl', 'pwdLastSet', 'lastLogonDate', 'distinguishedName')
@@ -382,7 +445,7 @@ function Get-AccountKerberosAudit {
             EncValue = $encValue
             EncHex = if ($null -ne $encValue) { '0x{0:X}' -f $encValue } else { '(absent/0)' }
             Flags = Convert-EncryptionFlagsToText -Value $encValue
-            Status = Get-EncStatus -Value $encValue
+            Status = Get-EncStatus -Value $encValue -Category 'User/Service' -HasSPN ([bool]$user.servicePrincipalName) -KdcDefaultsExplicitAesOnly $KdcDefaultsExplicitAesOnly
             DistinguishedName = $user.DistinguishedName
             PasswordLastSet = if ($user.pwdLastSet) { [datetime]::FromFileTime([int64]$user.pwdLastSet) } else { $null }
             LastLogonDate = $user.LastLogonDate
@@ -404,7 +467,7 @@ function Get-AccountKerberosAudit {
             EncValue = $encValue
             EncHex = if ($null -ne $encValue) { '0x{0:X}' -f $encValue } else { '(absent/0)' }
             Flags = Convert-EncryptionFlagsToText -Value $encValue
-            Status = Get-EncStatus -Value $encValue
+            Status = Get-EncStatus -Value $encValue -Category 'Computer' -HasSPN ([bool]$computer.servicePrincipalName) -KdcDefaultsExplicitAesOnly $KdcDefaultsExplicitAesOnly
             DistinguishedName = $computer.DistinguishedName
             PasswordLastSet = if ($computer.pwdLastSet) { [datetime]::FromFileTime([int64]$computer.pwdLastSet) } else { $null }
             LastLogonDate = $computer.LastLogonDate
@@ -426,7 +489,7 @@ function Get-AccountKerberosAudit {
                 EncValue = $encValue
                 EncHex = if ($null -ne $encValue) { '0x{0:X}' -f $encValue } else { '(absent/0)' }
                 Flags = Convert-EncryptionFlagsToText -Value $encValue
-                Status = Get-EncStatus -Value $encValue
+                Status = Get-EncStatus -Value $encValue -Category (Get-ObjectCategory -ObjectClass ([string]$serviceAccount.ObjectClass)) -HasSPN ([bool]$serviceAccount.servicePrincipalName) -KdcDefaultsExplicitAesOnly $KdcDefaultsExplicitAesOnly
                 DistinguishedName = $serviceAccount.DistinguishedName
                 PasswordLastSet = $null
                 LastLogonDate = $null
@@ -611,7 +674,7 @@ function Resolve-AdPrincipalSummary {
         SamAccountName = $principal.SamAccountName
         DistinguishedName = $principal.DistinguishedName
         EncHex = if ($null -ne $encValue) { '0x{0:X}' -f $encValue } else { '(absent/0)' }
-        Status = Get-EncStatus -Value $encValue
+        Status = Get-EncStatus -Value $encValue -Category $category -HasSPN ([bool]$principal.servicePrincipalName)
         PasswordLastSet = if ($principal.pwdLastSet) { [datetime]::FromFileTime([int64]$principal.pwdLastSet) } else { $null }
         LastLogonDate = $principal.LastLogonDate
         SPNs = if ($principal.servicePrincipalName) { $principal.servicePrincipalName -join '; ' } else { '' }
@@ -680,7 +743,7 @@ function Resolve-AdServiceTargetSummary {
         SamAccountName = $principal.SamAccountName
         DistinguishedName = $principal.DistinguishedName
         EncHex = if ($null -ne $encValue) { '0x{0:X}' -f $encValue } else { '(absent/0)' }
-        Status = Get-EncStatus -Value $encValue
+        Status = Get-EncStatus -Value $encValue -Category $category -HasSPN ([bool]$principal.servicePrincipalName)
         PasswordLastSet = if ($principal.PSObject.Properties['pwdLastSet'] -and $principal.pwdLastSet) { [datetime]::FromFileTime([int64]$principal.pwdLastSet) } else { $null }
         LastLogonDate = if ($principal.PSObject.Properties['lastLogonDate']) { $principal.lastLogonDate } else { $null }
         SPNs = if ($principal.PSObject.Properties['servicePrincipalName'] -and $principal.servicePrincipalName) { $principal.servicePrincipalName -join '; ' } else { '' }
@@ -724,28 +787,36 @@ function New-HtmlReport {
     $summaryRows = ''
     foreach ($kpi in $Results.Kpis) {
         $badgeClass = Get-StatusBadgeClass -Status $kpi.Status
-        $summaryRows += "<tr><td>$(HtmlEncode $kpi.Name)</td><td style='font-weight:700;'>$(HtmlEncode ([string]$kpi.Value))</td><td>$(HtmlEncode ([string]$kpi.Target))</td><td><span class='badge $badgeClass'>$(HtmlEncode $kpi.Status)</span></td></tr>`n"
+        $kpiDescription = if ($kpi.PSObject.Properties['Description']) { [string]$kpi.Description } else { Get-KpiDescription -Kpi $kpi }
+        $summaryRows += "<tr><td>$(HtmlEncode $kpi.Name)</td><td style='font-weight:700;'>$(HtmlEncode ([string]$kpi.Value))</td><td>$(HtmlEncode $kpiDescription)</td><td>$(HtmlEncode ([string]$kpi.Target))</td><td><span class='badge $badgeClass'>$(HtmlEncode $kpi.Status)</span></td></tr>`n"
     }
     if ([string]::IsNullOrWhiteSpace($summaryRows)) {
-        $summaryRows = "<tr><td colspan='4' class='empty'>No KPI data available.</td></tr>"
+        $summaryRows = "<tr><td colspan='5' class='empty'>No KPI data available.</td></tr>"
     }
 
     $kdcRows = ''
     foreach ($row in $Results.KdcDefaults) {
         $badgeClass = Get-StatusBadgeClass -Status $row.Status
-        $kdcRows += "<tr><td>$(HtmlEncode $row.Computer)</td><td>$(HtmlEncode $row.RawValue)</td><td>$(HtmlEncode $row.Decoded)</td><td><span class='badge $badgeClass'>$(HtmlEncode $row.Status)</span></td></tr>`n"
+        $kdcRows += "<tr><td>$(HtmlEncode $row.Computer)</td><td>$(HtmlEncode $row.RawValue)</td><td>$(HtmlEncode $row.Decoded)</td><td>$(HtmlEncode (Get-KdcDefaultExplanation -Row $row))</td><td><span class='badge $badgeClass'>$(HtmlEncode $row.Status)</span></td></tr>`n"
     }
     if ([string]::IsNullOrWhiteSpace($kdcRows)) {
-        $kdcRows = "<tr><td colspan='4' class='empty'>No KDC data collected.</td></tr>"
+        $kdcRows = "<tr><td colspan='5' class='empty'>No KDC data collected.</td></tr>"
     }
 
+    $priorityDisplayLimit = 200
+    $priorityDisplayRows = @($Results.PriorityAccounts | Select-Object -First $priorityDisplayLimit)
     $priorityRows = ''
-    foreach ($row in $Results.PriorityAccounts) {
+    foreach ($row in $priorityDisplayRows) {
         $badgeClass = Get-StatusBadgeClass -Status $row.Status
         $priorityRows += "<tr><td>$(HtmlEncode $row.Name)</td><td>$(HtmlEncode $row.Category)</td><td>$($row.Enabled)</td><td>$($row.HasSPN)</td><td>$(HtmlEncode $row.EncHex)</td><td>$(HtmlEncode $row.Flags)</td><td><span class='badge $badgeClass'>$(HtmlEncode $row.Status)</span></td></tr>`n"
     }
     if ([string]::IsNullOrWhiteSpace($priorityRows)) {
         $priorityRows = "<tr><td colspan='7' class='empty'>No priority accounts identified.</td></tr>"
+    }
+    $priorityRowsNote = if ($Results.PriorityAccounts.Count -gt $priorityDisplayLimit) {
+        "Showing the first $priorityDisplayLimit priority accounts out of $($Results.PriorityAccounts.Count). Use the JSON or CSV artifact for the full dataset."
+    } else {
+        "Showing all $($Results.PriorityAccounts.Count) priority accounts identified in this run."
     }
 
     $accountStatusRows = ''
@@ -842,11 +913,11 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:rgba(25
 </div>
 <div class="advisory"><strong>Purpose:</strong> this unified audit checks the KDC default, inventories account encryption capability, inspects 4768 and 4769 ticket encryption on domain controllers, and highlights the RC4 usage you need to remove before enforcing AES-only settings.</div>
 <div class="findings">$($findingItems -join "`n")</div>
-<div class="card"><table><thead><tr><th>KPI</th><th>Value</th><th>Target</th><th>Status</th></tr></thead><tbody>$summaryRows</tbody></table></div></div>
+<div class="card"><p class="note">These KPIs are interpretive. They combine raw data from DC registry reads, the account attribute <span class='mono'>msDS-SupportedEncryptionTypes</span>, and live 4768/4769 evidence.</p><table><thead><tr><th>KPI</th><th>Value</th><th>How to read it</th><th>Desired state</th><th>Status</th></tr></thead><tbody>$summaryRows</tbody></table></div></div>
 
-<div id="kdc"><h2>KDC Default</h2><div class="card"><table><thead><tr><th>Domain Controller</th><th>Raw</th><th>Decoded</th><th>Status</th></tr></thead><tbody>$kdcRows</tbody></table></div></div>
+<div id="kdc"><h2>KDC Default</h2><div class="card"><p class="note">This section reads <span class='mono'>HKLM\SYSTEM\CurrentControlSet\Services\Kdc\DefaultDomainSupportedEncTypes</span> on each DC. If the value is absent, patched DCs usually prefer AES, but the fallback is implicit rather than explicitly pinned to AES-only. A value of <span class='mono'>0x18</span> means AES128 + AES256 only for accounts that do not define <span class='mono'>msDS-SupportedEncryptionTypes</span>.</p><table><thead><tr><th>Domain Controller</th><th>Registry raw value</th><th>Interpreted value</th><th>Why it matters</th><th>Status</th></tr></thead><tbody>$kdcRows</tbody></table></div></div>
 
-<div id="accounts"><h2>Account Posture</h2><div class="card"><p class="note">Priority accounts are SPN-bearing identities or service accounts that still allow RC4 or do not declare AES explicitly.</p><table><thead><tr><th>Name</th><th>Category</th><th>Enabled</th><th>Has SPN</th><th>Enc</th><th>Flags</th><th>Status</th></tr></thead><tbody>$priorityRows</tbody></table></div><div class="card"><table><thead><tr><th>Category</th><th>Status</th><th>Count</th></tr></thead><tbody>$accountStatusRows</tbody></table></div></div>
+<div id="accounts"><h2>Account Posture</h2><div class="card"><p class="note">This section is based primarily on <span class='mono'>msDS-SupportedEncryptionTypes</span>, <span class='mono'>servicePrincipalName</span>, and account category. The report does not assume every user account must be explicitly stamped. An <span class='mono'>(absent/0)</span> value is informational for non-service accounts, but it remains a review point for SPN-bearing or service identities because they directly influence TGS encryption.</p><p class="note">$priorityRowsNote</p><table><thead><tr><th>Name</th><th>Category</th><th>Enabled</th><th>Has SPN</th><th>Enc attr</th><th>Flags</th><th>Status</th></tr></thead><tbody>$priorityRows</tbody></table></div><div class="card"><table><thead><tr><th>Category</th><th>Status</th><th>Count</th></tr></thead><tbody>$accountStatusRows</tbody></table></div></div>
 
 <div id="tickets"><h2>Ticket Encryption</h2><div class="card"><table><thead><tr><th>Ticket Type</th><th>Encryption</th><th>Events</th></tr></thead><tbody>$breakdownRows</tbody></table></div><div class="card"><table><thead><tr><th>Encryption</th><th>Events</th><th>Percent</th><th>Signal</th></tr></thead><tbody>$globalRows</tbody></table></div></div>
 
@@ -949,9 +1020,11 @@ $kdcDefaults = Get-KdcDefaultAudit -Dcs $DomainControllers
 $kdcDefaults | ForEach-Object { $results.KdcDefaults.Add($_) | Out-Null }
 Write-StatusLine -Label 'DCs audited' -Value ([string]$results.KdcDefaults.Count) -Color Green
 
+$kdcDefaultsExplicitAesOnly = $results.KdcDefaults.Count -gt 0 -and (@($results.KdcDefaults | Where-Object { $_.Status -like 'Compliant*' }).Count -eq $results.KdcDefaults.Count)
+
 Write-Step -Number 2 -Title 'Account encryption capability audit' -Hint 'Inventorying users, computers, and managed service accounts'
 try {
-    $accountRows = @(Get-AccountKerberosAudit)
+    $accountRows = @(Get-AccountKerberosAudit -KdcDefaultsExplicitAesOnly $kdcDefaultsExplicitAesOnly)
 } catch {
     throw "Account audit failed: $($_.Exception.Message)"
 }
@@ -1060,13 +1133,43 @@ Write-Step -Number 4 -Title 'Build report' -Hint 'Generating JSON and HTML outpu
 
 $kdcCompliant = (@($results.KdcDefaults | Where-Object { $_.Status -like 'Compliant*' })).Count
 $spnFailed = (@($priorityAccounts | Where-Object { $_.HasSPN -and $_.Status -like 'Failed*' })).Count
-$spnUnset = (@($priorityAccounts | Where-Object { $_.HasSPN -and $_.Status -like 'Warning*' })).Count
+$spnUnset = (@($priorityAccounts | Where-Object { $_.HasSPN -and ($_.EncValue -eq $null -or $_.EncValue -eq 0) })).Count
 
-$results.Kpis.Add([PSCustomObject]@{ Name = 'DCs with AES-only KDC default'; Value = "$kdcCompliant/$($results.KdcDefaults.Count)"; Target = 'All DCs'; Status = if ($kdcCompliant -eq $results.KdcDefaults.Count) { 'OK' } else { 'Warning' } }) | Out-Null
-$results.Kpis.Add([PSCustomObject]@{ Name = 'SPN accounts failed (RC4 or no AES)'; Value = $spnFailed; Target = '0'; Status = if ($spnFailed -eq 0) { 'OK' } else { 'Critical' } }) | Out-Null
-$results.Kpis.Add([PSCustomObject]@{ Name = 'SPN accounts unset'; Value = $spnUnset; Target = '0'; Status = if ($spnUnset -eq 0) { 'OK' } else { 'Warning' } }) | Out-Null
-$results.Kpis.Add([PSCustomObject]@{ Name = 'RC4 events'; Value = $results.TotalRc4Events; Target = '0'; Status = if ($results.TotalRc4Events -eq 0) { 'OK' } else { 'Critical' } }) | Out-Null
-$results.Kpis.Add([PSCustomObject]@{ Name = 'Avoidable RC4 TGS'; Value = $results.AvoidableRc4Tgs; Target = '0'; Status = if ($results.AvoidableRc4Tgs -eq 0) { 'OK' } else { 'Critical' } }) | Out-Null
+$results.Kpis.Add([PSCustomObject]@{
+    Name = 'DCs with AES-only KDC default'
+    Value = "$kdcCompliant/$($results.KdcDefaults.Count)"
+    Target = 'Every DC explicitly set to 0x18'
+    Description = 'Reads DefaultDomainSupportedEncTypes on each DC. If this is not 100%, some accounts with unset msDS-SupportedEncryptionTypes still rely on an implicit or mixed KDC fallback.'
+    Status = if ($kdcCompliant -eq $results.KdcDefaults.Count) { 'OK' } else { 'Warning' }
+}) | Out-Null
+$results.Kpis.Add([PSCustomObject]@{
+    Name = 'SPN accounts failed (RC4 or no AES)'
+    Value = $spnFailed
+    Target = '0 SPN-bearing accounts'
+    Description = 'SPN-bearing identities where msDS-SupportedEncryptionTypes still lacks AES or is explicitly RC4-only. These are the cleanest directory-side blockers for AES-only service tickets.'
+    Status = if ($spnFailed -eq 0) { 'OK' } else { 'Critical' }
+}) | Out-Null
+$results.Kpis.Add([PSCustomObject]@{
+    Name = 'SPN accounts unset'
+    Value = $spnUnset
+    Target = '0 critical SPN-bearing accounts left implicit'
+    Description = 'SPN-bearing identities with msDS-SupportedEncryptionTypes absent or 0. They may still work, but ticket behavior depends on the KDC fallback instead of an explicit per-account declaration.'
+    Status = if ($spnUnset -eq 0) { 'OK' } else { 'Warning' }
+}) | Out-Null
+$results.Kpis.Add([PSCustomObject]@{
+    Name = 'RC4 events'
+    Value = $results.TotalRc4Events
+    Target = '0 observed RC4 events'
+    Description = 'Live 4768/4769 events that actually used RC4 during the selected window. This is stronger evidence than configuration alone.'
+    Status = if ($results.TotalRc4Events -eq 0) { 'OK' } else { 'Critical' }
+}) | Out-Null
+$results.Kpis.Add([PSCustomObject]@{
+    Name = 'Avoidable RC4 TGS'
+    Value = $results.AvoidableRc4Tgs
+    Target = '0 avoidable RC4 TGS events'
+    Description = 'RC4 TGS events where the event fields suggest AES support was already available end to end. These are usually the first RC4 cases to remediate.'
+    Status = if ($results.AvoidableRc4Tgs -eq 0) { 'OK' } else { 'Critical' }
+}) | Out-Null
 
 if ($results.TotalRc4Events -gt 0 -and $results.Rc4TargetServices.Count -eq 0) {
     $results.Warnings.Add('RC4 events were found, but no RC4 target service could be resolved from AD. Check ServiceSid, SPN, or application-side SPN registration.') | Out-Null

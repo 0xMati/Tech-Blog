@@ -24,6 +24,22 @@ Miss any one of those, and you can end up with a false sense of security. The di
 
 This distinction matters a lot, because many Kerberos discussions casually say “the ticket is RC4” when they really mean “some part of the Kerberos exchange is still using RC4.” Those are related ideas, but they are not exactly the same thing.
 
+Quick visual model:
+
+```mermaid
+flowchart LR
+	A[Client] -->|AS-REQ| B[KDC]
+	B -->|AS-REP| A
+	B -->|TGT encrypted with krbtgt key| C[(TGT)]
+	A -->|TGS-REQ with TGT| B
+	B -->|TGS-REP| A
+	B -->|Service ticket encrypted with service account key| D[(Service Ticket)]
+	A -->|Presents ticket| E[Target Service]
+
+	F[Client-readable reply part] -.->|Contains session key for client| A
+	D -.->|Contains same session key for service| E
+```
+
 At a high level, Kerberos relies on two different cryptographic objects during authentication:
 
 1. The ticket itself
@@ -53,6 +69,20 @@ They are tightly linked in practice, so it is easy to blur them together:
 - both are influenced by what the KDC believes the client and target account support
 
 That is why the subject gets confusing fast. A change in account key material can alter the ticket encryption outcome, the session key outcome, or both depending on the scenario.
+
+Another way to picture it:
+
+```mermaid
+flowchart TD
+	A[Kerberos reply] --> B[Ticket blob]
+	A --> C[Reply part readable by client]
+	B --> D[TGT: encrypted with krbtgt key]
+	B --> E[TGS: encrypted with target service key]
+	B --> F[Contains session key copy for recipient]
+	C --> G[Contains session key copy for client]
+	H[Important point] --> I[Ticket enctype and session key enctype are related]
+	H --> J[But they are not always the same thing]
+```
 
 ### Why this matters for this article
 
@@ -113,6 +143,17 @@ The critical nuance is that the patch does not magically create AES keys for an 
 ## How to think about the problem like an investigator 🕵️
 
 If you want a more useful mental model, stop thinking in terms of a single “Kerberos setting” and start thinking in terms of a decision chain.
+
+```mermaid
+flowchart LR
+	A[Client capabilities] --> D[KDC decision]
+	B[Target account attribute<br/>msDS-SupportedEncryptionTypes] --> D
+	C[Real key material<br/>password or secret age and rotation] --> D
+	E[KDC baseline<br/>DefaultDomainSupportedEncTypes] --> D
+	D --> F[4768 or 4769 outcome]
+	F --> G[AES]
+	F --> H[RC4]
+```
 
 When a ticket is issued, three questions matter:
 
@@ -342,6 +383,15 @@ The report surfaces RC4 TGS cases where client, service, and domain controller a
 ## A practical deep-dive workflow 🧭
 
 If you want to use the report like an engineer doing triage rather than just reading it top to bottom, this order works well:
+
+```mermaid
+flowchart TD
+	A[KDC default section] --> B[Priority accounts]
+	B --> C[Global ticket breakdown]
+	C --> D[RC4 target services]
+	D --> E[Avoidable RC4 cases]
+	E --> F[Remediation plan]
+```
 
 1. Check the KDC default section to understand whether mixed behavior is still structurally allowed.
 2. Check the priority account list to see which SPN-bearing or service identities still look weak on paper.
