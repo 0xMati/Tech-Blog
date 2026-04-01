@@ -3,12 +3,12 @@ Published: 2025-12-03
 
 Kerberos hardening got a lot more interesting with KB5021131. On paper, the change is simple: reduce legacy RC4 usage and move the ecosystem toward AES. In practice, it is one of those deceptively clean security stories where the directory can look compliant while the wire still tells a very different story.
 
-That is why this topic matters. You can set a registry value, update a few account attributes, and still watch RC4 tickets being issued in production because an old SPN-bearing account never rotated its secret, a service stayed stuck on legacy crypto, or a client path kept negotiating something weaker than expected.
+That is why this topic matters. You can set a registry value, update a few account attributes, and still watch RC4 tickets being issued in production because an old SPN-bearing account never rotated its secret, a service stayed stuck on legacy crypto, or a client path kept negotiating something weaker than expected. In other words: the config may look sharp, but the packets are still out there doing weird things.
 
 Microsoft reference:
 https://support.microsoft.com/en-us/topic/kb5021131-how-to-manage-the-kerberos-protocol-changes-related-to-cve-2022-37966-fd837ac3-cdec-4e76-a6ec-86e67501407d
 
-## Why this topic matters
+## Why this topic matters 🔍
 
 Kerberos encryption posture is not just a domain controller setting. It is the combined result of directory configuration, key material, and real ticket issuance.
 
@@ -18,9 +18,9 @@ To know whether you are actually ready for AES-only enforcement, you need to loo
 2. The encryption capability declared on users, computers, service accounts, and SPN-bearing identities.
 3. The encryption type that is actually observed in live 4768 and 4769 traffic.
 
-Miss any one of those, and you can end up with a false sense of security. The directory looks clean, the GPO looks clean, but 4769 is still quietly handing out RC4 service tickets like it is 2012.
+Miss any one of those, and you can end up with a false sense of security. The directory looks clean, the GPO looks clean, but 4769 is still quietly handing out RC4 service tickets like it is 2012. That is the kind of gap that makes an environment look hardened in PowerPoint and legacy in the Security log.
 
-## Ticket encryption vs session key
+## Ticket encryption vs session key 🧠
 
 These two concepts are frequently mixed together, and that leads to bad assumptions during remediation.
 
@@ -29,9 +29,9 @@ These two concepts are frequently mixed together, and that leads to bad assumpti
   - Service tickets are encrypted with the key of the service or computer account.
 - The session key is a temporary key carried inside the ticket and used by the client and service during the Kerberos exchange.
 
-In the real world, if the target account only has RC4 material available, you often end up with RC4 for both the ticket and the session path. If AES is available and preferred, you should see AES in the ticket events and in the effective Kerberos flow.
+In the real world, if the target account only has RC4 material available, you often end up with RC4 for both the ticket and the session path. If AES is available and preferred, you should see AES in the ticket events and in the effective Kerberos flow. This is one of those classic Kerberos moments where a tiny detail in key material has very visible downstream consequences.
 
-## What KB5021131 changed
+## What KB5021131 changed ⚙️
 
 KB5021131 changed the default Kerberos behavior so that patched domain controllers prefer AES more aggressively.
 
@@ -41,9 +41,9 @@ The practical impact is this:
 - `DefaultDomainSupportedEncTypes` gives you a way to lock the domain-wide KDC default to AES-only instead of relying on implicit behavior.
 - Unset accounts are less likely to drift into RC4 by omission, but that still does not prove your environment is ready for enforcement.
 
-The critical nuance is that the patch does not magically create AES keys for an account that never refreshed its secret after AES support was enabled. That is where many environments get trapped: configuration says one thing, cryptographic reality says another.
+The critical nuance is that the patch does not magically create AES keys for an account that never refreshed its secret after AES support was enabled. That is where many environments get trapped: configuration says one thing, cryptographic reality says another. And Kerberos, as usual, is brutally honest once you start reading the tickets instead of the intent.
 
-## The two controls that matter most
+## The two controls that matter most 🛠️
 
 ### `msDS-SupportedEncryptionTypes`
 
@@ -61,7 +61,7 @@ Changing this attribute is only half the job. Once you move an account toward AE
 - computer account: reset the machine password
 - gMSA: rotation is automatic
 
-If you skip that step, you have basically repainted the dashboard while the engine still runs on the old parts.
+If you skip that step, you have basically repainted the dashboard while the engine still runs on the old parts. The attribute looks modern; the usable keys do not.
 
 ### `DefaultDomainSupportedEncTypes`
 
@@ -77,7 +77,7 @@ For an AES-only target state, the value you ultimately want is usually:
 
 But that should come after you have audited both directory posture and live Kerberos traffic. Enforcing it too early is how you discover hidden dependencies at exactly the wrong moment.
 
-## Why SPN-bearing accounts are the highest priority
+## Why SPN-bearing accounts are the highest priority 🎯
 
 If you want to know where RC4 is still alive, follow the SPNs.
 
@@ -90,9 +90,9 @@ Prioritize:
 - gMSAs and sMSAs
 - any account tied to `HTTP/`, `MSSQLSvc/`, `CIFS/`, `LDAP/`, `HOST/`, and similar SPNs
 
-If these identities are still RC4-only, the domain can remain fully operational while silently issuing weak service tickets behind the scenes. That is why service identities are usually the real story, not the easy account inventory summary you get on page one.
+If these identities are still RC4-only, the domain can remain fully operational while silently issuing weak service tickets behind the scenes. That is why service identities are usually the real story, not the easy account inventory summary you get on page one. If you are hunting RC4, the interesting trail usually starts where the SPNs live.
 
-## Companion script
+## Companion script 🤖
 
 The companion script in this folder consolidates the audit into one PowerShell file:
 
@@ -109,7 +109,7 @@ It performs all of the following in one run:
 7. Flags avoidable RC4 TGS events where client, service, and DC all advertised AES capability.
 8. Generates a clean HTML report, a JSON report, and optional CSV exports.
 
-The point of the script is not to guess whether your Kerberos posture is healthy. It is to let the directory, the DCs, and the ticket stream answer that question together.
+The point of the script is not to guess whether your Kerberos posture is healthy. It is to let the directory, the DCs, and the ticket stream answer that question together. Think of it as a reality check for environments that are convinced they are already done with RC4.
 
 ## How to run it
 
@@ -137,7 +137,7 @@ Run against a specific DC subset:
 .\Invoke-KerberosEncryptionAudit.ps1 -DomainControllers MM-DC1.mathiasmotron.com,MM-DC2.mathiasmotron.com
 ```
 
-## What the report tells you
+## What the report tells you 📊
 
 The HTML report is built to answer four operational questions quickly.
 
@@ -155,9 +155,9 @@ The report summarizes ticket encryption for both TGT and TGS events, not just ac
 
 ### 4. Is the remaining RC4 avoidable?
 
-The report surfaces RC4 TGS cases where client, service, and domain controller all appear to support AES. Those are often the fastest wins because the protocol path already has the right ingredients and is still making the wrong choice.
+The report surfaces RC4 TGS cases where client, service, and domain controller all appear to support AES. Those are often the fastest wins because the protocol path already has the right ingredients and is still making the wrong choice. From an engineering perspective, those are the nicest findings: ugly enough to matter, clean enough to fix.
 
-## Recommended migration path
+## Recommended migration path 🚀
 
 Use this order.
 
@@ -168,17 +168,17 @@ Use this order.
 5. Lock `DefaultDomainSupportedEncTypes` to `0x18`.
 6. Restrict client Kerberos encryption types to AES128 and AES256 only.
 
-The sequence matters. If you jump straight to enforcement before you have evidence from live tickets, you are not hardening, you are gambling.
+The sequence matters. If you jump straight to enforcement before you have evidence from live tickets, you are not hardening, you are gambling. And Kerberos outages caused by “we thought it was fine” are rarely fun to explain afterward.
 
-## Common mistakes to avoid
+## Common mistakes to avoid ⚠️
 
 - Setting `msDS-SupportedEncryptionTypes` without rotating the secret afterward.
 - Looking only at account configuration and ignoring 4768 and 4769.
 - Treating absent values as fully remediated just because KB5021131 improved the default.
 - Enforcing AES-only on the KDC before identifying the SPN-bearing accounts still tied to RC4.
 
-## Practical takeaway
+## Practical takeaway ✅
 
 If your goal is to enforce AES-only Kerberos safely, you need evidence from both configuration and live traffic.
 
-That is exactly what the companion script in this folder is built to provide: not a theoretical compliance snapshot, but a technical view of what your KDCs, your identities, and your ticket stream are actually doing.
+That is exactly what the companion script in this folder is built to provide: not a theoretical compliance snapshot, but a technical view of what your KDCs, your identities, and your ticket stream are actually doing. If the goal is AES-only Kerberos without surprises, this is the kind of evidence you want before touching enforcement.
