@@ -43,6 +43,20 @@ The practical impact is this:
 
 The critical nuance is that the patch does not magically create AES keys for an account that never refreshed its secret after AES support was enabled. That is where many environments get trapped: configuration says one thing, cryptographic reality says another. And Kerberos, as usual, is brutally honest once you start reading the tickets instead of the intent.
 
+## How to think about the problem like an investigator 🕵️
+
+If you want a more useful mental model, stop thinking in terms of a single “Kerberos setting” and start thinking in terms of a decision chain.
+
+When a ticket is issued, three questions matter:
+
+1. What does the client say it can use?
+2. What keys does the target account actually have available?
+3. What is the KDC allowed or forced to do when it has to choose?
+
+That framing is important because RC4 usually survives for boring reasons, not mysterious ones. A service account never rotated. A machine account is stale. An SPN points to an identity whose attribute changed, but whose usable keys never caught up. Or the KDC is still allowed to make a mixed-mode choice because the default was never fully locked down.
+
+Once you look at the problem that way, the troubleshooting path becomes much cleaner: do not ask “why is Kerberos bad?” Ask “which actor in the ticket path is still introducing legacy crypto?”
+
 ## The two controls that matter most 🛠️
 
 ### `msDS-SupportedEncryptionTypes`
@@ -77,6 +91,26 @@ For an AES-only target state, the value you ultimately want is usually:
 
 But that should come after you have audited both directory posture and live Kerberos traffic. Enforcing it too early is how you discover hidden dependencies at exactly the wrong moment.
 
+## Why `0` or absent is still tricky after KB5021131 🧪
+
+This is one of the most misunderstood parts of the story.
+
+After KB5021131, an unset `msDS-SupportedEncryptionTypes` value is less dangerous than it used to be because the KDC is better at preferring AES by default. But “less dangerous” is not the same thing as “proven safe.”
+
+An unset account still leaves you with ambiguity:
+
+- you do not have an explicit declaration of intended encryption capability
+- you still need to care about whether usable AES key material actually exists
+- you still need live ticket evidence to prove what the KDC is issuing
+
+That is why mature remediation usually aims for explicitness. In a hardened environment, “we think the default should do the right thing” is weaker than “the account explicitly advertises AES and the tickets prove it.”
+
+For a deep-dive review, it helps to separate these three states clearly:
+
+- explicit AES: best state, because intent and capability are aligned
+- unset: potentially acceptable temporarily, but operationally ambiguous
+- explicit RC4-only: clear remediation target
+
 ## Why SPN-bearing accounts are the highest priority 🎯
 
 If you want to know where RC4 is still alive, follow the SPNs.
@@ -91,6 +125,38 @@ Prioritize:
 - any account tied to `HTTP/`, `MSSQLSvc/`, `CIFS/`, `LDAP/`, `HOST/`, and similar SPNs
 
 If these identities are still RC4-only, the domain can remain fully operational while silently issuing weak service tickets behind the scenes. That is why service identities are usually the real story, not the easy account inventory summary you get on page one. If you are hunting RC4, the interesting trail usually starts where the SPNs live.
+
+## Reading 4768 and 4769 without getting lost in the weeds 📡
+
+Event 4768 and event 4769 are where the deep dive becomes real.
+
+- 4768 gives you the AS exchange side, which is where you see TGT issuance behavior.
+- 4769 gives you the TGS side, which is usually where the useful RC4 hunting happens because it shows service ticket issuance.
+
+In most environments, 4769 is the better place to spend your time first. That is where SPN-backed services show up, and that is where lingering RC4 tends to be tied to a real dependency you can remediate.
+
+For practical analysis, the useful questions are:
+
+1. Is RC4 showing up mostly in TGTs, TGS tickets, or both?
+2. Which requestor accounts are repeatedly associated with RC4?
+3. Which target services are repeatedly receiving RC4 TGS tickets?
+4. Do the event fields indicate that client, service, and DC all support AES anyway?
+
+That last point matters a lot. If the client advertises AES, the service has AES-capable keys, and the DC also supports AES, but the ticket is still RC4, you are no longer looking at a vague legacy condition. You are looking at a highly actionable inconsistency.
+
+That is exactly why the script highlights avoidable RC4 TGS cases. Those are the tickets that deserve immediate attention because the environment is already close to the correct state.
+
+## What usually causes RC4 to survive longer than expected 🧨
+
+In real environments, RC4 tends to persist for a small set of repeat offenders:
+
+- old service accounts whose password has not changed in years
+- application identities that were updated in AD but never retested end to end
+- machine accounts with stale secrets or edge-case platform behavior
+- accounts with SPNs attached where nobody realized ticket encryption was anchored to that identity
+- environments that improved defaults but never validated ticket outcomes
+
+None of this is especially glamorous, but that is the point. Kerberos crypto drift is usually operational debt wearing a protocol badge.
 
 ## Companion script 🤖
 
@@ -110,6 +176,8 @@ It performs all of the following in one run:
 8. Generates a clean HTML report, a JSON report, and optional CSV exports.
 
 The point of the script is not to guess whether your Kerberos posture is healthy. It is to let the directory, the DCs, and the ticket stream answer that question together. Think of it as a reality check for environments that are convinced they are already done with RC4.
+
+In other words, the script is built around correlation. A single data source can be misleading. Registry alone is not enough. Account attributes alone are not enough. Event logs alone are noisy without directory context. Put them together, and the picture gets a lot sharper.
 
 ## How to run it
 
@@ -156,6 +224,18 @@ The report summarizes ticket encryption for both TGT and TGS events, not just ac
 ### 4. Is the remaining RC4 avoidable?
 
 The report surfaces RC4 TGS cases where client, service, and domain controller all appear to support AES. Those are often the fastest wins because the protocol path already has the right ingredients and is still making the wrong choice. From an engineering perspective, those are the nicest findings: ugly enough to matter, clean enough to fix.
+
+## A practical deep-dive workflow 🧭
+
+If you want to use the report like an engineer doing triage rather than just reading it top to bottom, this order works well:
+
+1. Check the KDC default section to understand whether mixed behavior is still structurally allowed.
+2. Check the priority account list to see which SPN-bearing or service identities still look weak on paper.
+3. Check the global ticket breakdown to understand whether RC4 is rare, common, or concentrated.
+4. Check the RC4 target services table to find the service-side hotspots.
+5. Check the avoidable RC4 cases to identify the shortest remediation path.
+
+That order matters because it moves from control plane to data plane. First: what is allowed. Then: what accounts claim. Then: what the KDC is actually issuing. That sequence keeps the analysis readable and prevents you from drowning in event noise too early.
 
 ## Recommended migration path 🚀
 
