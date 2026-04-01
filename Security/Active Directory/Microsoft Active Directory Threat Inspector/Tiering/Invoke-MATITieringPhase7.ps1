@@ -1,18 +1,20 @@
 # Tiering\Invoke-MATITieringPhase7.ps1
 # Phase 7 — Tier 0 Object Protection
-# Audits ACLs on critical AD objects, GPO ownership, krbtgt, service accounts.
+# Audits ACLs on critical Tier 0 AD objects, Tier 0-linked GPO ownership and
+# permissions, krbtgt password age, and service account exposure.
 
 function Invoke-MATITieringPhase7 {
     <#
     .SYNOPSIS
-        Phase 7 — Audit and harden Tier 0 AD objects.
+        Phase 7 — Audit Tier 0 AD object protection.
     .DESCRIPTION
         Guided, step-by-step assessment:
-        1. Audit ACLs on domain root, AdminSDHolder, Configuration, Schema
-        2. Audit GPO ownership and permissions for T0-linked GPOs
-        3. Check krbtgt password age and optionally rotate
-        4. Audit service accounts (SPN, Domain Admins membership, password age)
-        5. Generate an HTML audit report
+        1. Consume the exact OU state exported by Phase 1
+        2. Audit ACLs on critical Tier 0 AD objects
+        3. Audit ownership and edit permissions on GPOs linked to Tier 0
+        4. Review krbtgt password age and optionally perform the first reset
+        5. Audit SPN-bearing accounts, sMSAs, and gMSAs for privileged exposure
+        6. Generate an HTML audit report
     #>
     [CmdletBinding()]
     param(
@@ -26,69 +28,212 @@ function Invoke-MATITieringPhase7 {
 
     if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null }
 
-    $domain   = Get-ADDomain
+    $domain = Get-ADDomain
+    $rootDse = Get-ADRootDSE
     $domainDN = $domain.DistinguishedName
-    $ouCfg    = $TieringConfig.OUStructure
-    $naming   = $TieringConfig.Naming
+    $ouCfg = $TieringConfig.OUStructure
 
-    $containerOU = $ouCfg.ContainerOU
-    if ($containerOU) {
-        $candidateDN = "OU=$containerOU,$domainDN"
-        if ([adsi]::Exists("LDAP://$candidateDN")) { $baseDN = $candidateDN } else { $baseDN = $domainDN }
-    } else { $baseDN = $domainDN }
+    $phase1StatePath = Join-Path $RootPath 'Outputs\Tiering\MATI-Tiering-Phase1-Latest.json'
+    if (-not (Test-Path $phase1StatePath)) {
+        Write-Host "`n  [ERROR] Phase 1 state file not found. Run Phase 1 first." -ForegroundColor Red
+        Write-Host "    Expected: $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host ""
+        return
+    }
+
+    try {
+        $phase1State = Get-Content -Path $phase1StatePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-Host "`n  [ERROR] Failed to read Phase 1 state file." -ForegroundColor Red
+        Write-Host "    $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host "    $($_.Exception.Message)" -ForegroundColor DarkGray
+        Write-Host ""
+        return
+    }
+
+    $baseDN = [string]$phase1State.BaseDN
+    $containerOU = if ($null -ne $phase1State.ContainerOU -and [string]$phase1State.ContainerOU -ne '') { [string]$phase1State.ContainerOU } else { $null }
+    $tier0OUDN = [string]$phase1State.Tier0OUDN
+
+    if ([string]::IsNullOrWhiteSpace($baseDN) -or [string]::IsNullOrWhiteSpace($tier0OUDN)) {
+        Write-Host "`n  [ERROR] Phase 1 state is incomplete. Run Phase 1 again." -ForegroundColor Red
+        Write-Host "    State file: $phase1StatePath" -ForegroundColor DarkGray
+        Write-Host ""
+        return
+    }
 
     $results = @{
         BaseDN              = $baseDN
+        ContainerOU         = $containerOU
+        Phase1StatePath     = $phase1StatePath
+        Tier0OUDN           = $tier0OUDN
+        AuditedObjects      = [System.Collections.Generic.List[object]]::new()
+        AuditedGPOs         = [System.Collections.Generic.List[object]]::new()
         ACLFindings         = [System.Collections.Generic.List[object]]::new()
         GPOFindings         = [System.Collections.Generic.List[object]]::new()
         KrbtgtStatus        = $null
         KrbtgtRotated       = $false
         ServiceAccountAudit = [System.Collections.Generic.List[object]]::new()
+        Warnings            = [System.Collections.Generic.List[string]]::new()
         Errors              = [System.Collections.Generic.List[string]]::new()
     }
 
-    # ================================================================
+    function Test-AdObjectExists {
+        param([string]$DistinguishedName)
+
+        if ([string]::IsNullOrWhiteSpace($DistinguishedName)) { return $false }
+        try {
+            return [adsi]::Exists("LDAP://$DistinguishedName")
+        } catch {
+            return $false
+        }
+    }
+
+    function Add-AuditedObject {
+        param(
+            [string]$Name,
+            [string]$Path,
+            [string]$Category,
+            [string]$Notes
+        )
+
+        $results.AuditedObjects.Add([PSCustomObject]@{
+            Name     = $Name
+            Path     = $Path
+            Category = $Category
+            Notes    = $Notes
+        })
+    }
+
+    function New-StrongPassword {
+        param([int]$Length = 48)
+
+        $allowedCharacters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{}'
+        $bytes = New-Object byte[] $Length
+        $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+
+        try {
+            $rng.GetBytes($bytes)
+        } finally {
+            $rng.Dispose()
+        }
+
+        $passwordCharacters = foreach ($byte in $bytes) {
+            $allowedCharacters[$byte % $allowedCharacters.Length]
+        }
+
+        return (-join $passwordCharacters)
+    }
+
+    function Add-PrivilegeMembers {
+        param(
+            [string]$GroupIdentity,
+            [string]$Label,
+            [hashtable]$PrivilegeMap
+        )
+
+        try {
+            $group = Get-ADGroup -Identity $GroupIdentity -ErrorAction Stop
+            $members = Get-ADGroupMember -Identity $group -Recursive -ErrorAction Stop
+            foreach ($member in $members) {
+                if (-not $PrivilegeMap.ContainsKey($member.DistinguishedName)) {
+                    $PrivilegeMap[$member.DistinguishedName] = [System.Collections.Generic.List[string]]::new()
+                }
+                if (-not $PrivilegeMap[$member.DistinguishedName].Contains($Label)) {
+                    $PrivilegeMap[$member.DistinguishedName].Add($Label)
+                }
+            }
+        } catch {
+            $results.Warnings.Add("Unable to resolve privileged group '$GroupIdentity' during service account audit: $($_.Exception.Message)")
+        }
+    }
+
+    function Get-ServiceAccountRisk {
+        param(
+            [string]$AccountType,
+            [bool]$Enabled,
+            [int]$PasswordAgeDays,
+            [bool]$PasswordNeverExpires,
+            [bool]$IsPrivileged,
+            [bool]$AdminCount,
+            [bool]$IsTier0Scoped
+        )
+
+        if ($IsPrivileged) { return 'Critical' }
+        if (-not $Enabled) { return 'Low' }
+        if ($AccountType -in @('gMSA', 'sMSA')) {
+            if ($IsTier0Scoped) { return 'Medium' }
+            return 'Low'
+        }
+        if ($PasswordNeverExpires) { return 'High' }
+        if ($AdminCount) { return 'High' }
+        if ($PasswordAgeDays -gt 365) { return 'High' }
+        if ($PasswordAgeDays -gt 180) { return 'Medium' }
+        if ($IsTier0Scoped) { return 'Medium' }
+        return 'Low'
+    }
+
     Write-Host "`n  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host "   Phase 7 — Tier 0 Object Protection" -ForegroundColor Cyan
     Write-Host "  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "   Audits critical AD objects, GPOs, krbtgt, service accounts.`n" -ForegroundColor DarkGray
-
-    # ================================================================
-    # Step 1 — ACL Audit on critical objects
-    # ================================================================
-    Write-Host "  Step 1/4 — ACL Audit on Critical Objects" -ForegroundColor Yellow
+    Write-Host "   Audits critical Tier 0 objects, Tier 0-linked GPOs, krbtgt, and service account exposure." -ForegroundColor DarkGray
+    Write-Host "   Consumes the exact OU state exported by Phase 1 instead of reconstructing the hierarchy." -ForegroundColor DarkGray
     Write-Host ""
 
-    $criticalObjects = @(
-        @{ Name = 'Domain Root';    Path = $domainDN }
-        @{ Name = 'AdminSDHolder';  Path = "CN=AdminSDHolder,CN=System,$domainDN" }
-        @{ Name = 'Configuration';  Path = "CN=Configuration,$domainDN" }
-    )
+    $criticalObjects = [System.Collections.Generic.List[object]]::new()
+    $criticalObjects.Add([PSCustomObject]@{ Name = 'Domain Root'; Path = $domainDN; Category = 'Directory'; Notes = 'Default naming context root.' })
+    $criticalObjects.Add([PSCustomObject]@{ Name = 'AdminSDHolder'; Path = "CN=AdminSDHolder,CN=System,$domainDN"; Category = 'Privileged Protection'; Notes = 'Protected ACL template for privileged objects.' })
+    $criticalObjects.Add([PSCustomObject]@{ Name = 'Configuration'; Path = [string]$rootDse.configurationNamingContext; Category = 'Directory'; Notes = 'Configuration partition.' })
+    $criticalObjects.Add([PSCustomObject]@{ Name = 'Schema'; Path = [string]$rootDse.schemaNamingContext; Category = 'Directory'; Notes = 'Schema partition.' })
+    $criticalObjects.Add([PSCustomObject]@{ Name = 'System'; Path = "CN=System,$domainDN"; Category = 'Directory'; Notes = 'System container hosting privileged metadata.' })
+    $criticalObjects.Add([PSCustomObject]@{ Name = 'Tier 0 Root OU'; Path = $tier0OUDN; Category = 'Tier 0 OU'; Notes = 'Exact Tier 0 OU from Phase 1 state.' })
 
-    $trustedPatterns = 'S-1-5-18|NT AUTHORITY|BUILTIN\\Administrators|Domain Admins|Enterprise Admins|SYSTEM|Schema Admins'
+    foreach ($subOuName in $ouCfg.SubOUs.Tier0) {
+        $subOuDn = "OU=$subOuName,$tier0OUDN"
+        if (Test-AdObjectExists -DistinguishedName $subOuDn) {
+            $criticalObjects.Add([PSCustomObject]@{
+                Name = "Tier 0 $subOuName OU"
+                Path = $subOuDn
+                Category = 'Tier 0 OU'
+                Notes = 'Tier 0 child OU created by the tiering model.'
+            })
+        }
+    }
+
+    $trustedAclPatterns = 'S-1-5-18|NT AUTHORITY\\SYSTEM|^SYSTEM$|BUILTIN\\Administrators|Domain Admins|Enterprise Admins|Schema Admins|Enterprise Domain Controllers|Key Admins|Enterprise Key Admins'
+    $dangerousRightsPattern = 'GenericAll|WriteDacl|WriteOwner|GenericWrite|CreateChild|DeleteChild'
+
+    Write-Host "  Step 1/4 — ACL Audit on Critical Tier 0 Objects" -ForegroundColor Yellow
+    Write-Host ""
 
     foreach ($obj in $criticalObjects) {
+        Add-AuditedObject -Name $obj.Name -Path $obj.Path -Category $obj.Category -Notes $obj.Notes
+
         Write-Host "    Auditing: $($obj.Name)" -ForegroundColor White
         try {
             $acl = Get-Acl "AD:\$($obj.Path)" -ErrorAction Stop
-            $dangerousACEs = $acl.Access | Where-Object {
-                $_.ActiveDirectoryRights -match 'GenericAll|WriteDacl|WriteOwner|GenericWrite' -and
-                $_.IdentityReference.Value -notmatch $trustedPatterns -and
-                $_.AccessControlType -eq 'Allow'
+            $dangerousAces = $acl.Access | Where-Object {
+                $_.AccessControlType -eq 'Allow' -and
+                $_.IdentityReference.Value -notmatch $trustedAclPatterns -and
+                $_.ActiveDirectoryRights.ToString() -match $dangerousRightsPattern
             }
-            foreach ($ace in $dangerousACEs) {
-                $severity = if ($ace.ActiveDirectoryRights -match 'GenericAll|WriteDacl') { 'Critical' } else { 'High' }
-                Write-Host "      [!] ${severity}: $($ace.IdentityReference) has $($ace.ActiveDirectoryRights) on $($obj.Name)" -ForegroundColor $(if($severity -eq 'Critical'){'Red'}else{'Yellow'})
+
+            foreach ($ace in $dangerousAces) {
+                $rights = $ace.ActiveDirectoryRights.ToString()
+                $severity = if ($rights -match 'GenericAll|WriteDacl|WriteOwner') { 'Critical' } else { 'High' }
+                Write-Host "      [!] ${severity}: $($ace.IdentityReference) has $rights on $($obj.Name)" -ForegroundColor $(if ($severity -eq 'Critical') { 'Red' } else { 'Yellow' })
                 $results.ACLFindings.Add([PSCustomObject]@{
                     Object    = $obj.Name
+                    Category  = $obj.Category
                     Path      = $obj.Path
                     Identity  = $ace.IdentityReference.Value
-                    Rights    = $ace.ActiveDirectoryRights.ToString()
+                    Rights    = $rights
                     Inherited = $ace.IsInherited
                     Severity  = $severity
                 })
             }
-            if (-not $dangerousACEs) {
+
+            if (-not $dangerousAces) {
                 Write-Host "      [OK] No dangerous non-standard ACEs found" -ForegroundColor Green
             }
         } catch {
@@ -97,73 +242,118 @@ function Invoke-MATITieringPhase7 {
         }
     }
 
-    # ================================================================
-    # Step 2 — GPO Ownership Audit
-    # ================================================================
     Write-Host ""
-    Write-Host "  Step 2/4 — GPO Ownership Audit" -ForegroundColor Yellow
+    Write-Host "  Step 2/4 — Tier 0-Linked GPO Audit" -ForegroundColor Yellow
     Write-Host ""
 
     try {
-        $allGPOs = Get-GPO -All -ErrorAction Stop
-        foreach ($gpo in $allGPOs) {
-            $ownerOk = $gpo.Owner -match 'Domain Admins|Enterprise Admins'
-            $severity = if (-not $ownerOk) { 'Warning' } else { 'OK' }
+        $tier0Inheritance = Get-GPInheritance -Target $tier0OUDN -ErrorAction Stop
+        $tier0GpoLinks = @($tier0Inheritance.GpoLinks)
 
-            if (-not $ownerOk) {
-                Write-Host "      [!] GPO '$($gpo.DisplayName)' owned by: $($gpo.Owner)" -ForegroundColor Yellow
+        if (-not $tier0GpoLinks -or $tier0GpoLinks.Count -eq 0) {
+            Write-Host "    [!] No GPOs are directly linked to the Tier 0 OU." -ForegroundColor Yellow
+            $results.Warnings.Add('No GPOs are directly linked to the Tier 0 OU exported by Phase 1. Phase 7 only audits GPOs linked to that exact OU.')
+        }
+
+        $trustedGpoPermissionPatterns = 'Domain Admins|Enterprise Admins|NT AUTHORITY\\SYSTEM|^SYSTEM$'
+
+        foreach ($link in $tier0GpoLinks) {
+            $gpo = Get-GPO -Name $link.DisplayName -ErrorAction Stop
+
+            $results.AuditedGPOs.Add([PSCustomObject]@{
+                GPOName   = $gpo.DisplayName
+                GPOId     = $gpo.Id.ToString()
+                TargetOU  = $tier0OUDN
+                Enabled   = [bool]$link.Enabled
+                Enforced  = [bool]$link.Enforced
+                LinkOrder = [int]$link.Order
+            })
+
+            $ownerStatus = if ($gpo.Owner -match 'Domain Admins|Enterprise Admins') { 'OK' } else { 'Warning' }
+            if ($ownerStatus -ne 'OK') {
+                Write-Host "      [!] GPO '$($gpo.DisplayName)' has non-standard owner: $($gpo.Owner)" -ForegroundColor Yellow
             }
 
             $results.GPOFindings.Add([PSCustomObject]@{
-                GPOName  = $gpo.DisplayName
-                GPOId    = $gpo.Id.ToString()
-                Owner    = $gpo.Owner
-                Status   = $severity
+                GPOName     = $gpo.DisplayName
+                GPOId       = $gpo.Id.ToString()
+                FindingType = 'Owner'
+                Principal   = $gpo.Owner
+                Permission  = 'Owner'
+                Status      = $ownerStatus
+                Details     = if ($ownerStatus -eq 'OK') { 'Owner is a standard Tier 0 admin principal.' } else { 'Owner should normally be Domain Admins or Enterprise Admins.' }
             })
+
+            try {
+                $permissions = Get-GPPermission -Name $gpo.DisplayName -All -ErrorAction Stop
+                foreach ($permissionEntry in $permissions) {
+                    $principal = if ($permissionEntry.Trustee) { [string]$permissionEntry.Trustee.Name } else { [string]$permissionEntry.Trustee }
+                    $permissionName = [string]$permissionEntry.Permission
+                    if ([string]::IsNullOrWhiteSpace($principal)) { continue }
+
+                    if ($permissionName -match 'GpoEditDeleteModifySecurity|GpoEdit|GpoCustom' -and $principal -notmatch $trustedGpoPermissionPatterns) {
+                        Write-Host "      [!] Critical: $principal has $permissionName on '$($gpo.DisplayName)'" -ForegroundColor Red
+                        $results.GPOFindings.Add([PSCustomObject]@{
+                            GPOName     = $gpo.DisplayName
+                            GPOId       = $gpo.Id.ToString()
+                            FindingType = 'Permission'
+                            Principal   = $principal
+                            Permission  = $permissionName
+                            Status      = 'Critical'
+                            Details     = 'Non-standard principal can edit or modify security on a Tier 0-linked GPO.'
+                        })
+                    }
+                }
+            } catch {
+                Write-Host "      [!] Cannot read GPO permissions for '$($gpo.DisplayName)': $($_.Exception.Message)" -ForegroundColor Red
+                $results.Errors.Add("GPO permission audit failed for '$($gpo.DisplayName)': $($_.Exception.Message)")
+            }
         }
 
-        $badOwners = ($results.GPOFindings | Where-Object Status -ne 'OK').Count
-        Write-Host "    Total GPOs: $($allGPOs.Count) | Non-standard ownership: $badOwners" -ForegroundColor $(if($badOwners -gt 0){'Yellow'}else{'Green'})
+        $gpoIssueCount = ($results.GPOFindings | Where-Object Status -ne 'OK').Count
+        Write-Host "    Tier 0-linked GPOs audited: $($results.AuditedGPOs.Count) | Issues: $gpoIssueCount" -ForegroundColor $(if ($gpoIssueCount -gt 0) { 'Yellow' } else { 'Green' })
     } catch {
-        Write-Host "      [!] Cannot enumerate GPOs: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "      [!] Cannot audit Tier 0-linked GPOs: $($_.Exception.Message)" -ForegroundColor Red
         $results.Errors.Add("GPO audit failed: $($_.Exception.Message)")
     }
 
-    # ================================================================
-    # Step 3 — krbtgt Password Age
-    # ================================================================
     Write-Host ""
     Write-Host "  Step 3/4 — krbtgt Account Status" -ForegroundColor Yellow
     Write-Host ""
 
     try {
         $krbtgt = Get-ADUser 'krbtgt' -Properties PasswordLastSet, Enabled -ErrorAction Stop
-        $pwdAge = (New-TimeSpan -Start $krbtgt.PasswordLastSet -End (Get-Date)).Days
+        $pwdAge = if ($krbtgt.PasswordLastSet) { (New-TimeSpan -Start $krbtgt.PasswordLastSet -End (Get-Date)).Days } else { 9999 }
         $severity = if ($pwdAge -le 180) { 'OK' } elseif ($pwdAge -le 365) { 'Warning' } else { 'Critical' }
 
         $results.KrbtgtStatus = [PSCustomObject]@{
-            PasswordLastSet = $krbtgt.PasswordLastSet
-            AgeDays         = $pwdAge
-            Severity        = $severity
+            PasswordLastSet     = $krbtgt.PasswordLastSet
+            AgeDays             = $pwdAge
+            Severity            = $severity
+            Enabled             = [bool]$krbtgt.Enabled
+            RotationRecommended = [bool]($pwdAge -gt 180)
+            Guidance            = if ($pwdAge -gt 180) { 'Perform a double rotation with replication time between resets. This phase only offers the first reset.' } else { 'Password age is within the current threshold.' }
         }
 
         $color = switch ($severity) { 'OK' { 'Green' } 'Warning' { 'Yellow' } 'Critical' { 'Red' } }
         Write-Host "    krbtgt password last set: $($krbtgt.PasswordLastSet) ($pwdAge days ago)" -ForegroundColor $color
 
         if ($pwdAge -gt 180) {
-            Write-Host "    [!] krbtgt password is older than 180 days. Rotation recommended." -ForegroundColor Yellow
-            $rotateChoice = Read-Host "    Rotate krbtgt password now? (First rotation of double rotation) [Y/N]"
-            if ($rotateChoice.Trim().ToUpper() -eq 'Y') {
+            $results.Warnings.Add("krbtgt password age is $pwdAge days. Microsoft guidance requires a controlled double rotation, not a single reset.")
+            Write-Host "    [!] krbtgt password is older than 180 days. Controlled double rotation is recommended." -ForegroundColor Yellow
+            $rotateChoice = Read-Host "    Type ROTATE to perform only the first krbtgt reset now, or press Enter to skip"
+            if ($rotateChoice.Trim().ToUpper() -eq 'ROTATE') {
                 try {
-                    $newPwd = [System.Web.Security.Membership]::GeneratePassword(64, 16)
+                    $newPwd = New-StrongPassword -Length 64
                     Set-ADAccountPassword -Identity 'krbtgt' -Reset -NewPassword (
                         ConvertTo-SecureString -String $newPwd -AsPlainText -Force
                     ) -ErrorAction Stop
-                    Write-Host "    [+] First krbtgt rotation complete. Wait 12+ hours, then run second rotation." -ForegroundColor Green
+                    Write-Host "    [+] First krbtgt reset complete. Wait for replication and perform the second reset later." -ForegroundColor Green
                     $results.KrbtgtRotated = $true
+                    $results.Warnings.Add('First krbtgt reset completed. A second reset is still required after replication convergence.')
                 } catch {
-                    Write-Host "    [!] krbtgt rotation failed: $($_.Exception.Message)" -ForegroundColor Red
-                    $results.Errors.Add("krbtgt rotation failed: $($_.Exception.Message)")
+                    Write-Host "    [!] krbtgt reset failed: $($_.Exception.Message)" -ForegroundColor Red
+                    $results.Errors.Add("krbtgt reset failed: $($_.Exception.Message)")
                 }
             }
         }
@@ -172,58 +362,102 @@ function Invoke-MATITieringPhase7 {
         $results.Errors.Add("krbtgt audit failed: $($_.Exception.Message)")
     }
 
-    # ================================================================
-    # Step 4 — Service Account Audit
-    # ================================================================
     Write-Host ""
-    Write-Host "  Step 4/4 — Service Account Audit (SPN + Domain Admins)" -ForegroundColor Yellow
+    Write-Host "  Step 4/4 — Service Account Exposure Audit" -ForegroundColor Yellow
     Write-Host ""
 
     try {
-        $svcAccounts = Get-ADUser -Filter { ServicePrincipalName -like '*' } `
-            -Properties ServicePrincipalName, PasswordLastSet, MemberOf, Enabled -ErrorAction Stop
+        $tier0ServiceAccountsDn = "OU=Service Accounts,$tier0OUDN"
+        $privilegeMap = @{}
+        $groupPrefix = $TieringConfig.Naming.GroupPrefix
+        $tier0AdminsGroup = "${groupPrefix}0-Admins"
+        $privilegedGroups = @(
+            @{ Name = 'Domain Admins'; Label = 'Domain Admins' }
+            @{ Name = 'Enterprise Admins'; Label = 'Enterprise Admins' }
+            @{ Name = 'Schema Admins'; Label = 'Schema Admins' }
+            @{ Name = 'Administrators'; Label = 'Administrators' }
+            @{ Name = 'Account Operators'; Label = 'Account Operators' }
+            @{ Name = 'Server Operators'; Label = 'Server Operators' }
+            @{ Name = 'Backup Operators'; Label = 'Backup Operators' }
+            @{ Name = 'Print Operators'; Label = 'Print Operators' }
+            @{ Name = 'DnsAdmins'; Label = 'DnsAdmins' }
+            @{ Name = $tier0AdminsGroup; Label = $tier0AdminsGroup }
+        )
 
-        foreach ($svc in $svcAccounts) {
-            $inDA  = $svc.MemberOf | Where-Object { $_ -match 'CN=Domain Admins,' }
-            $pwAge = if ($svc.PasswordLastSet) { (New-TimeSpan -Start $svc.PasswordLastSet -End (Get-Date)).Days } else { 9999 }
+        foreach ($groupInfo in $privilegedGroups) {
+            Add-PrivilegeMembers -GroupIdentity $groupInfo.Name -Label $groupInfo.Label -PrivilegeMap $privilegeMap
+        }
 
-            $risk = 'Low'
-            if ($inDA) { $risk = 'Critical' }
-            elseif ($pwAge -gt 365) { $risk = 'High' }
-            elseif ($pwAge -gt 180) { $risk = 'Medium' }
+        $serviceUsers = @(Get-ADUser -LDAPFilter '(servicePrincipalName=*)' -Properties ServicePrincipalName, PasswordLastSet, PasswordNeverExpires, Enabled, DistinguishedName, SamAccountName, AdminCount -ErrorAction Stop)
+        $managedServiceAccounts = @()
+        try {
+            $managedServiceAccounts = @(Get-ADServiceAccount -Filter * -Properties ServicePrincipalName, Enabled, DistinguishedName, SamAccountName, ObjectClass -ErrorAction Stop)
+        } catch {
+            $results.Warnings.Add("Managed service account enumeration failed: $($_.Exception.Message)")
+        }
+
+        foreach ($svc in $serviceUsers) {
+            $passwordAge = if ($svc.PasswordLastSet) { (New-TimeSpan -Start $svc.PasswordLastSet -End (Get-Date)).Days } else { 9999 }
+            $passwordState = if ($svc.PasswordNeverExpires) { 'Never expires' } elseif ($svc.PasswordLastSet) { "$passwordAge days" } else { 'Unknown' }
+            $isTier0Scoped = $svc.DistinguishedName -like "*$tier0OUDN"
+            $privilegedLabels = if ($privilegeMap.ContainsKey($svc.DistinguishedName)) { @($privilegeMap[$svc.DistinguishedName]) } else { @() }
+            $risk = Get-ServiceAccountRisk -AccountType 'User-SPN' -Enabled ([bool]$svc.Enabled) -PasswordAgeDays $passwordAge -PasswordNeverExpires ([bool]$svc.PasswordNeverExpires) -IsPrivileged ($privilegedLabels.Count -gt 0) -AdminCount ([bool]($svc.AdminCount -eq 1)) -IsTier0Scoped $isTier0Scoped
 
             $results.ServiceAccountAudit.Add([PSCustomObject]@{
-                SamAccountName = $svc.SamAccountName
-                SPNs           = ($svc.ServicePrincipalName -join '; ')
-                PasswordAge    = $pwAge
-                InDomainAdmins = [bool]$inDA
-                Enabled        = $svc.Enabled
-                Risk           = $risk
+                Name              = $svc.SamAccountName
+                AccountType       = 'User-SPN'
+                Enabled           = [bool]$svc.Enabled
+                PasswordState     = $passwordState
+                PrivilegedGroups  = if ($privilegedLabels.Count -gt 0) { $privilegedLabels -join ', ' } else { '' }
+                Tier0Scoped       = $isTier0Scoped
+                SPNs              = ($svc.ServicePrincipalName -join '; ')
+                DistinguishedName = $svc.DistinguishedName
+                Risk              = $risk
             })
 
-            if ($risk -in @('Critical','High')) {
-                $c = if ($risk -eq 'Critical') { 'Red' } else { 'Yellow' }
-                Write-Host "      [$risk] $($svc.SamAccountName) — PwdAge: ${pwAge}d$(if($inDA){' — IN DOMAIN ADMINS'})" -ForegroundColor $c
+            if ($risk -in @('Critical', 'High')) {
+                Write-Host "      [$risk] $($svc.SamAccountName) — $passwordState$(if ($privilegedLabels.Count -gt 0) { " — Privileged: $($privilegedLabels -join ', ')" })" -ForegroundColor $(if ($risk -eq 'Critical') { 'Red' } else { 'Yellow' })
             }
         }
 
-        $critCount = ($results.ServiceAccountAudit | Where-Object Risk -eq 'Critical').Count
-        $highCount = ($results.ServiceAccountAudit | Where-Object Risk -eq 'High').Count
-        Write-Host "    Total: $($svcAccounts.Count) | Critical: $critCount | High: $highCount" -ForegroundColor $(if($critCount -gt 0){'Red'}elseif($highCount -gt 0){'Yellow'}else{'Green'})
+        foreach ($svc in $managedServiceAccounts) {
+            $accountType = if ([string]$svc.ObjectClass -eq 'msDS-GroupManagedServiceAccount') { 'gMSA' } else { 'sMSA' }
+            $isTier0Scoped = $svc.DistinguishedName -like "*$tier0ServiceAccountsDn" -or $svc.DistinguishedName -like "*$tier0OUDN"
+            $privilegedLabels = if ($privilegeMap.ContainsKey($svc.DistinguishedName)) { @($privilegeMap[$svc.DistinguishedName]) } else { @() }
+            $risk = Get-ServiceAccountRisk -AccountType $accountType -Enabled ([bool]$svc.Enabled) -PasswordAgeDays 0 -PasswordNeverExpires $false -IsPrivileged ($privilegedLabels.Count -gt 0) -AdminCount $false -IsTier0Scoped $isTier0Scoped
+
+            $results.ServiceAccountAudit.Add([PSCustomObject]@{
+                Name              = $svc.SamAccountName
+                AccountType       = $accountType
+                Enabled           = [bool]$svc.Enabled
+                PasswordState     = 'Managed by AD'
+                PrivilegedGroups  = if ($privilegedLabels.Count -gt 0) { $privilegedLabels -join ', ' } else { '' }
+                Tier0Scoped       = $isTier0Scoped
+                SPNs              = if ($svc.ServicePrincipalName) { $svc.ServicePrincipalName -join '; ' } else { '' }
+                DistinguishedName = $svc.DistinguishedName
+                Risk              = $risk
+            })
+
+            if ($risk -eq 'Critical') {
+                Write-Host "      [Critical] $($svc.SamAccountName) — Privileged managed service account" -ForegroundColor Red
+            }
+        }
+
+        $criticalSvc = ($results.ServiceAccountAudit | Where-Object Risk -eq 'Critical').Count
+        $highSvc = ($results.ServiceAccountAudit | Where-Object Risk -eq 'High').Count
+        Write-Host "    Accounts audited: $($results.ServiceAccountAudit.Count) | Critical: $criticalSvc | High: $highSvc" -ForegroundColor $(if ($criticalSvc -gt 0) { 'Red' } elseif ($highSvc -gt 0) { 'Yellow' } else { 'Green' })
     } catch {
         Write-Host "    [!] Service account audit failed: $($_.Exception.Message)" -ForegroundColor Red
         $results.Errors.Add("Service account audit failed: $($_.Exception.Message)")
     }
 
-    # ================================================================
-    # Generate Report
-    # ================================================================
     Write-Host ""
     Write-Host "  Generating Phase 7 report..." -ForegroundColor Yellow
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase7-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase7-$timestamp.html"
     Export-TieringPhase7Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase7-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase7-$timestamp.json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 
@@ -231,10 +465,12 @@ function Invoke-MATITieringPhase7 {
     Write-Host ""
     Write-Host "  ══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host "   Phase 7 Complete — Duration: $([math]::Round($sw.Elapsed.TotalSeconds, 1))s" -ForegroundColor Cyan
+    Write-Host "   Objects audited  : $($results.AuditedObjects.Count)" -ForegroundColor White
     Write-Host "   ACL findings     : $($results.ACLFindings.Count)" -ForegroundColor White
-    Write-Host "   GPO non-standard : $(($results.GPOFindings | Where-Object Status -ne 'OK').Count)" -ForegroundColor White
-    Write-Host "   krbtgt age       : $(if($results.KrbtgtStatus){"$($results.KrbtgtStatus.AgeDays) days ($($results.KrbtgtStatus.Severity))"}else{'N/A'})" -ForegroundColor White
-    Write-Host "   Svc acct risks   : $(($results.ServiceAccountAudit | Where-Object {$_.Risk -in 'Critical','High'}).Count)" -ForegroundColor White
+    Write-Host "   Tier 0 GPO issues: $(($results.GPOFindings | Where-Object Status -ne 'OK').Count)" -ForegroundColor White
+    Write-Host "   krbtgt age       : $(if ($results.KrbtgtStatus) { "$($results.KrbtgtStatus.AgeDays) days ($($results.KrbtgtStatus.Severity))" } else { 'N/A' })" -ForegroundColor White
+    Write-Host "   Svc acct risks   : $(($results.ServiceAccountAudit | Where-Object { $_.Risk -in 'Critical', 'High' }).Count)" -ForegroundColor White
+    if ($results.Warnings.Count -gt 0) { Write-Host "   Warnings         : $($results.Warnings.Count)" -ForegroundColor Yellow }
     if ($results.Errors.Count -gt 0) { Write-Host "   Errors           : $($results.Errors.Count)" -ForegroundColor Red }
     Write-Host "   Report           : $htmlPath" -ForegroundColor Cyan
     Write-Host "  ══════════════════════════════════════════════════════════`n" -ForegroundColor Cyan
