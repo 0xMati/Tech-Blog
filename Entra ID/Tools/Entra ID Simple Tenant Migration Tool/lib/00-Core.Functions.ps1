@@ -390,8 +390,16 @@ function Select-EIDMConfigAction {
     Write-Host "  A configuration file was found:" -ForegroundColor Gray
     Write-Host "  $ConfigPath" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  The config defines which tenants (SOURCE/TARGET) and which" -ForegroundColor DarkGray
-    Write-Host "  workloads (Exchange, OneDrive, SharePoint...) are enabled." -ForegroundColor DarkGray
+    Write-Host "  The configuration file stores the settings for this tool:" -ForegroundColor DarkGray
+    Write-Host "    - SOURCE tenant: the Microsoft 365 tenant you migrate FROM" -ForegroundColor DarkGray
+    Write-Host "      (e.g. source.contoso.com or source.onmicrosoft.com)" -ForegroundColor DarkGray
+    Write-Host "    - TARGET tenant: the Microsoft 365 tenant you migrate TO" -ForegroundColor DarkGray
+    Write-Host "      (e.g. target.contoso.com or target.onmicrosoft.com)" -ForegroundColor DarkGray
+    Write-Host "    - Workloads: which migration tasks are enabled" -ForegroundColor DarkGray
+    Write-Host "      (Discovery, Identity, Exchange, OneDrive, SharePoint)" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  If this is your first time, choose option 2 to review the" -ForegroundColor DarkGray
+    Write-Host "  current settings, or option 4 to start fresh." -ForegroundColor DarkGray
     Write-Host ""
 
     Write-Host "  " -NoNewline; Write-Host " 1 " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host " Use existing config" -ForegroundColor Green
@@ -641,11 +649,16 @@ function Select-EIDMPhaseFromUser {
     Write-Host ""
 
     # --- Section: SharePoint ---
-    Write-Host "  " -NoNewline; Write-Host " SHAREPOINT MIGRATION " -ForegroundColor Gray -BackgroundColor DarkGray
+    Write-Host "  " -NoNewline; Write-Host " SHAREPOINT MIGRATION " -ForegroundColor White -BackgroundColor DarkMagenta
     Write-Host ""
 
-    Write-Host "  " -NoNewline; Write-Host " 7 " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " 07-SharePointMigrationPlan" -NoNewline -ForegroundColor DarkGray; Write-Host "  (not yet implemented)" -ForegroundColor DarkGray
-    Write-Host "  " -NoNewline; Write-Host " 8 " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " 08-SharePointMigrationExecution" -NoNewline -ForegroundColor DarkGray; Write-Host "  (not yet implemented)" -ForegroundColor DarkGray
+    Write-Host "  " -NoNewline; Write-Host " 7 " -NoNewline -ForegroundColor White -BackgroundColor DarkMagenta; Write-Host " 07-SharePointMigrationPlan" -ForegroundColor Magenta
+    Write-Host "      Discover SharePoint sites, build mapping, verify trust," -ForegroundColor DarkGray
+    Write-Host "      upload identity map, check compatibility." -ForegroundColor DarkGray
+    Write-Host ""
+
+    Write-Host "  " -NoNewline; Write-Host " 8 " -NoNewline -ForegroundColor White -BackgroundColor DarkMagenta; Write-Host " 08-SharePointMigrationExecution" -ForegroundColor Magenta
+    Write-Host "      Start site moves, monitor status, cancel/stop, cleanup." -ForegroundColor DarkGray
     Write-Host ""
 
     Write-Host "  " -NoNewline; Write-Host " X " -NoNewline -ForegroundColor White -BackgroundColor DarkRed; Write-Host " Cancel - return to main menu" -ForegroundColor Red

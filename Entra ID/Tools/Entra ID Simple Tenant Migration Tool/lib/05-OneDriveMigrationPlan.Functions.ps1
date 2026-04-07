@@ -608,22 +608,23 @@ function Step-05-04-AssignLicenses {
         2) Connects to TARGET Graph.
         3) Lists available SKUs, lets operator pick.
         4) Assigns selected licenses via Set-MgUserLicense.
-        5) Pre-provisions OneDrive via Request-SPOPersonalSite.
+        5) (Removed) OneDrive pre-provisioning is NOT done here because
+           Start-SPOCrossTenantUserContentMove creates the target site
+           automatically. Pre-provisioning causes a target site conflict.
         6) Exports OK / Issues CSVs.
     #>
     param(
         [Parameter(Mandatory)]$Ctx
     )
 
-    Write-EIDMSection "Assign Licenses & Pre-Provision OneDrive (TARGET)"
+    Write-EIDMSection "Assign Licenses for OneDrive Migration (TARGET)"
 
     Write-Host "This step will:" -ForegroundColor Cyan
     Write-Host "    - Load user mapping from step 05-01" -ForegroundColor DarkGray
     Write-Host "    - Connect to TARGET Graph and assign chosen license SKUs" -ForegroundColor DarkGray
-    Write-Host "    - Connect to TARGET SPO Admin and pre-provision OneDrive sites" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "Per Microsoft docs, target users MUST be licensed for OneDrive" -ForegroundColor Yellow
-    Write-Host "and have their OneDrive pre-provisioned before migration." -ForegroundColor Yellow
+    Write-Host "Target users MUST be licensed for OneDrive before migration." -ForegroundColor Yellow
+    Write-Host "OneDrive sites will be created automatically during the cross-tenant move." -ForegroundColor DarkGray
     Write-Host ""
 
     # ----------------------------------------------------------------
@@ -911,49 +912,17 @@ function Step-05-04-AssignLicenses {
     }
 
     # ----------------------------------------------------------------
-    # 8) Pre-provision OneDrive
+    # 8) OneDrive pre-provisioning - SKIPPED
     # ----------------------------------------------------------------
+    # NOTE: We intentionally do NOT pre-provision OneDrive sites on the target.
+    # Start-SPOCrossTenantUserContentMove creates the target OneDrive site
+    # automatically during migration. Pre-provisioning causes a "target tenant
+    # has a conflict" error that requires the site to be deleted first.
+
     Write-Host ""
-    Write-EIDMSection "Pre-Provision OneDrive Sites"
-
-    if ($provisionUpns.Count -eq 0) {
-        Write-EIDMTag -Tag "WARN" -Text "No users to pre-provision (all failed license assignment)." -Color Yellow
-    }
-    else {
-        Write-EIDMTag -Tag "INFO" -Text ("Pre-provisioning OneDrive for {0} user(s) via Request-SPOPersonalSite..." -f $provisionUpns.Count) -Color Gray
-        Write-Host "    This requires a connection to TARGET SPO Admin." -ForegroundColor DarkGray
-        Write-Host ""
-
-        # Connect to TARGET SPO Admin
-        try {
-            Disconnect-EIDMSharePointIfNeeded
-            Ensure-EIDMSharePointTargetConnection -Ctx $Ctx
-            Write-EIDMTag -Tag "OK" -Text "Connected to TARGET SPO Admin" -Color Green
-        }
-        catch {
-            Write-EIDMTag -Tag "ERROR" -Text ("SPO connection failed: {0}" -f $_.Exception.Message) -Color Red
-            Write-EIDMTag -Tag "WARN" -Text "Licenses assigned but OneDrive NOT pre-provisioned. Run this step again or provision manually." -Color Yellow
-            # Still export results below
-            $provisionUpns = @()
-        }
-
-        if ($provisionUpns.Count -gt 0) {
-            # Request-SPOPersonalSite accepts batches of UPNs
-            try {
-                Request-SPOPersonalSite -UserEmails $provisionUpns -NoWait -ErrorAction Stop
-                Write-EIDMTag -Tag "OK" -Text ("Request-SPOPersonalSite issued for {0} user(s). Provisioning runs in background." -f $provisionUpns.Count) -Color Green
-                Write-Host "    Note: OneDrive provisioning may take up to 24 hours." -ForegroundColor Yellow
-            }
-            catch {
-                $errMsg = $_.Exception.Message
-                Write-EIDMTag -Tag "ERROR" -Text ("Request-SPOPersonalSite failed: {0}" -f $errMsg) -Color Red
-                Write-EIDMTag -Tag "WARN" -Text "You can retry this step later or provision manually." -Color Yellow
-            }
-            finally {
-                Disconnect-EIDMSharePointIfNeeded
-            }
-        }
-    }
+    Write-EIDMSection "OneDrive Pre-Provisioning"
+    Write-Host "  OneDrive sites on TARGET will be created automatically during the cross-tenant move." -ForegroundColor DarkGray
+    Write-Host "  Pre-provisioning is skipped to avoid target site conflicts." -ForegroundColor DarkGray
 
     # ----------------------------------------------------------------
     # 9) Export results
@@ -988,7 +957,7 @@ function Step-05-04-AssignLicenses {
     Write-Host ("  Assigned:           {0}" -f $assignedCount) -ForegroundColor Green
     Write-Host ("  Already assigned:   {0}" -f $alreadyAssignedCount) -ForegroundColor DarkGray
     Write-Host ("  Failed:             {0}" -f $failedCount) -ForegroundColor $(if ($failedCount -gt 0) { "Red" } else { "Green" })
-    Write-Host ("  OneDrive provision: {0} user(s) queued" -f $provisionUpns.Count) -ForegroundColor Cyan
+    Write-Host "  OneDrive provision: skipped (created during migration)" -ForegroundColor DarkGray
     Write-Host ""
 
     if ($failedCount -gt 0) {

@@ -277,6 +277,50 @@ if (-not (Get-Variable -Name EIDMSpoState -Scope Script -ErrorAction SilentlyCon
     }
 }
 
+function Disconnect-EIDMSharePointIfNeeded {
+    try {
+        Disconnect-SPOService -ErrorAction SilentlyContinue | Out-Null
+    }
+    catch {
+        # Ignore disconnect errors
+    }
+
+    $script:EIDMSpoState.SourceConnected = $false
+    $script:EIDMSpoState.TargetConnected = $false
+    $script:EIDMSpoState.SourceAdminUrl  = $null
+    $script:EIDMSpoState.TargetAdminUrl  = $null
+}
+
+function Get-EIDMCrossTenantHostUrl {
+    [CmdletBinding()]
+    param(
+        [string]$Label = ""
+    )
+
+    $result = Get-SPOCrossTenantHostUrl -ErrorAction Stop
+    $raw = ($result | Out-String).Trim()
+
+    # The cmdlet returns a block of text containing the URL.
+    # Extract the first https:// URL from the output.
+    $hostUrl = $null
+    if ($raw -match '(https://[^\s]+)') {
+        $hostUrl = $Matches[1].TrimEnd('/')
+    }
+
+    if ([string]::IsNullOrWhiteSpace($hostUrl)) {
+        throw "Could not extract CrossTenantHostUrl from $Label output: $raw"
+    }
+
+    # Validate URI
+    $uri = $null
+    if (-not [System.Uri]::TryCreate($hostUrl, [System.UriKind]::Absolute, [ref]$uri)) {
+        throw "$Label CrossTenantHostUrl '$hostUrl' is not a valid URI."
+    }
+
+    Write-EIDMTag -Tag "OK" -Text ("$Label CrossTenantHostUrl: $hostUrl") -Color Green
+    return $hostUrl
+}
+
 function Get-EIDMSpoAdminUrlFromTenant {
     [CmdletBinding()]
     param(
@@ -315,8 +359,42 @@ function Ensure-EIDMSharePointSourceConnection {
     Write-Host "Connecting to SharePoint Online (SOURCE admin: $adminUrl)..." -ForegroundColor Cyan
     Write-Host "Tip: Sign in with a SOURCE tenant SharePoint admin account." -ForegroundColor DarkGray
 
+    # Ensure the SPO module is loaded (may not auto-import after fresh install)
+    $spoLoaded = $false
+    try {
+        Import-Module Microsoft.Online.SharePoint.PowerShell -DisableNameChecking -ErrorAction Stop
+        $spoLoaded = $true
+    }
+    catch {
+        # Fallback: locate via Get-InstalledModule and import from explicit path
+        try {
+            $inst = Get-InstalledModule -Name Microsoft.Online.SharePoint.PowerShell -ErrorAction Stop
+            $modulePath = Join-Path $inst.InstalledLocation "Microsoft.Online.SharePoint.PowerShell.psd1"
+            if (Test-Path $modulePath) {
+                Import-Module $modulePath -DisableNameChecking -ErrorAction Stop
+                $spoLoaded = $true
+            }
+            else {
+                # Try importing the folder directly
+                Import-Module $inst.InstalledLocation -DisableNameChecking -ErrorAction Stop
+                $spoLoaded = $true
+            }
+        }
+        catch {
+            Write-Host "[WARN] Could not import Microsoft.Online.SharePoint.PowerShell: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "[WARN] Try installing manually: Install-Module Microsoft.Online.SharePoint.PowerShell -Scope AllUsers -Force" -ForegroundColor Yellow
+        }
+    }
+
+    if (-not $spoLoaded) {
+        throw "Microsoft.Online.SharePoint.PowerShell module could not be loaded. Install it manually and restart."
+    }
+
     # Helpful info for troubleshooting
-    $spoMod = Get-Module -ListAvailable -Name Microsoft.Online.SharePoint.PowerShell | Sort-Object Version -Descending | Select-Object -First 1
+    $spoMod = Get-Module -Name Microsoft.Online.SharePoint.PowerShell | Select-Object -First 1
+    if (-not $spoMod) {
+        $spoMod = Get-Module -ListAvailable -Name Microsoft.Online.SharePoint.PowerShell | Sort-Object Version -Descending | Select-Object -First 1
+    }
     if ($spoMod) {
         Write-Host ("SPO module: {0} ({1})" -f $spoMod.Name, $spoMod.Version) -ForegroundColor DarkGray
     }
@@ -366,17 +444,92 @@ function Ensure-EIDMSharePointSourceConnection {
 
 
 function Ensure-EIDMSharePointTargetConnection {
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$Ctx
     )
 
-    $tenant = $Ctx.Config.Tenants.Target.TenantIdOrDomain
+    if ($script:EIDMSpoState.TargetConnected) { return }
+
+    # PS 5.1: TLS 1.2 often required
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+
+    $tenant   = $Ctx.Config.Tenants.Target.TenantIdOrDomain
+    $adminUrl = Get-EIDMSpoAdminUrlFromTenant -TenantIdOrDomain $tenant
+    $script:EIDMSpoState.TargetAdminUrl = $adminUrl
 
     Write-Host ""
-    Write-Host "SharePoint Online connection requested (TARGET tenant: $tenant)." -ForegroundColor Yellow
-    Write-Host "Not implemented yet. Please implement Ensure-EIDMSharePointTargetConnection in lib\00-Auth.Functions.ps1." -ForegroundColor Yellow
+    Write-Host "Connecting to SharePoint Online (TARGET admin: $adminUrl)..." -ForegroundColor Cyan
+    Write-Host "Tip: Sign in with a TARGET tenant SharePoint admin account." -ForegroundColor DarkGray
 
-    throw "Dependency not implemented: SharePointTarget"
+    # Ensure the SPO module is loaded
+    $spoLoaded = $false
+    try {
+        Import-Module Microsoft.Online.SharePoint.PowerShell -DisableNameChecking -ErrorAction Stop
+        $spoLoaded = $true
+    }
+    catch {
+        try {
+            $inst = Get-InstalledModule -Name Microsoft.Online.SharePoint.PowerShell -ErrorAction Stop
+            $modulePath = Join-Path $inst.InstalledLocation "Microsoft.Online.SharePoint.PowerShell.psd1"
+            if (Test-Path $modulePath) {
+                Import-Module $modulePath -DisableNameChecking -ErrorAction Stop
+                $spoLoaded = $true
+            }
+            else {
+                Import-Module $inst.InstalledLocation -DisableNameChecking -ErrorAction Stop
+                $spoLoaded = $true
+            }
+        }
+        catch {
+            Write-Host "[WARN] Could not import Microsoft.Online.SharePoint.PowerShell: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+
+    if (-not $spoLoaded) {
+        throw "Microsoft.Online.SharePoint.PowerShell module could not be loaded. Install it manually and restart."
+    }
+
+    # 1) Primary attempt
+    try {
+        Connect-SPOService -Url $adminUrl
+    }
+    catch {
+        Write-Host "[ERROR] Connect-SPOService failed." -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+
+        # 2) Fallback: -UseWebLogin
+        $hasUseWebLogin = $false
+        try {
+            $hasUseWebLogin = (Get-Command Connect-SPOService -ErrorAction Stop).Parameters.ContainsKey("UseWebLogin")
+        } catch { $hasUseWebLogin = $false }
+
+        if ($hasUseWebLogin) {
+            Write-Host "Retrying with -UseWebLogin..." -ForegroundColor Yellow
+            try {
+                Connect-SPOService -Url $adminUrl -UseWebLogin
+            }
+            catch {
+                Write-Host "[ERROR] Connect-SPOService -UseWebLogin failed." -ForegroundColor Red
+                Write-Host $_.Exception.Message -ForegroundColor Red
+                throw "Could not connect to SharePoint Online (TARGET)."
+            }
+        }
+        else {
+            throw "Could not connect to SharePoint Online (TARGET)."
+        }
+    }
+
+    # Lightweight validation
+    try {
+        $null = Get-SPOTenant -ErrorAction Stop
+    }
+    catch {
+        throw ("SharePoint Online connection validation failed (TARGET). Ensure the account is SharePoint Admin. Error: {0}" -f $_.Exception.Message)
+    }
+
+    $script:EIDMSpoState.TargetConnected = $true
+    Write-Host "SharePoint Online TARGET connection established." -ForegroundColor Green
 }
 # ------------------------------------------------------------
 # Prerequisites (Modules) - Interactive install (PowerShell 5.1)
@@ -471,6 +624,19 @@ function Ensure-EIDMPrerequisites {
         Write-Host "[ERROR] Some modules are still missing after install:" -ForegroundColor Red
         foreach ($m in $stillMissing) {
             Write-Host ("  - {0}" -f $m) -ForegroundColor Red
+            # Diagnostic info to help troubleshoot
+            Write-Host "    [DIAG] PowerShell edition: $($PSVersionTable.PSEdition) v$($PSVersionTable.PSVersion)" -ForegroundColor DarkGray
+            Write-Host "    [DIAG] PSModulePath:" -ForegroundColor DarkGray
+            foreach ($p in ($env:PSModulePath -split [IO.Path]::PathSeparator)) {
+                $exists = Test-Path (Join-Path $p $m)
+                Write-Host ("      {0} (folder exists: {1})" -f $p, $exists) -ForegroundColor DarkGray
+            }
+            try {
+                $inst = Get-InstalledModule -Name $m -ErrorAction Stop
+                Write-Host ("    [DIAG] Get-InstalledModule found it at: {0}" -f $inst.InstalledLocation) -ForegroundColor DarkGray
+            } catch {
+                Write-Host "    [DIAG] Get-InstalledModule: not found" -ForegroundColor DarkGray
+            }
         }
         throw "Prerequisites not met after installation."
     }
@@ -485,13 +651,29 @@ function Test-EIDMModuleAvailable {
         [Parameter(Mandatory)][string]$Name
     )
 
+    # 1) Already loaded in session?
+    if (Get-Module -Name $Name -ErrorAction SilentlyContinue) { return $true }
+
+    # 2) Discoverable via Get-Module -ListAvailable?
     try {
         $found = Get-Module -ListAvailable -Name $Name -ErrorAction Stop
-        return ($null -ne $found)
+        if ($found) { return $true }
     }
-    catch {
-        return $false
+    catch { }
+
+    # 3) Registered via PowerShellGet (Get-InstalledModule)?
+    try {
+        $installed = Get-InstalledModule -Name $Name -ErrorAction Stop
+        if ($installed) { return $true }
     }
+    catch { }
+
+    # 4) Fallback: scan PSModulePath directories for the module folder.
+    foreach ($basePath in ($env:PSModulePath -split [IO.Path]::PathSeparator)) {
+        if (Test-Path (Join-Path $basePath $Name)) { return $true }
+    }
+
+    return $false
 }
 
 function Ensure-EIDMPowerShellGalleryReady {
@@ -547,5 +729,14 @@ function Install-EIDMModule {
     }
     catch {
         throw ("Failed to install module '{0}': {1}" -f $Name, $_.Exception.Message)
+    }
+
+    # Force-load the module so it becomes visible to Get-Module -ListAvailable
+    # in the current session (known PowerShell module cache issue).
+    try {
+        Import-Module -Name $Name -Force -ErrorAction SilentlyContinue
+    }
+    catch {
+        # Non-blocking: the re-check will catch real failures.
     }
 }

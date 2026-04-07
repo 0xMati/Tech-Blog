@@ -12,7 +12,8 @@
 - [Phase 4 - Exchange Migration Execution](#phase-4---exchange-migration-execution)
 - [Phase 5 - OneDrive Migration Plan](#phase-5---onedrive-migration-plan)
 - [Phase 6 - OneDrive Migration Execution](#phase-6---onedrive-migration-execution)
-- [Phase 7 & 8 - SharePoint Migration](#phase-7--8---sharepoint-migration)
+- [Phase 7 - SharePoint Migration Plan](#phase-7---sharepoint-migration-plan)
+- [Phase 8 - SharePoint Migration Execution](#phase-8---sharepoint-migration-execution)
 - [Configuration Reference](#configuration-reference)
 - [Run Management & Resumability](#run-management--resumability)
 - [Troubleshooting](#troubleshooting)
@@ -29,7 +30,7 @@ The **Entra ID Simple Tenant Migration Tool** is an interactive PowerShell orche
 | **User identity provisioning** (AD-synced, cloud-only, guests, groups, contacts) | Available |
 | **Exchange Online mailbox migration** (cross-tenant) | Available |
 | **OneDrive for Business content migration** (cross-tenant) | Available |
-| **SharePoint Online site migration** | Planned |
+| **SharePoint Online site migration** | Available |
 
 The tool is designed around a **step engine** that records progress after every step. If something fails or needs manual intervention, you can fix the issue and **resume exactly where you left off** — no need to re-run completed steps.
 
@@ -95,9 +96,10 @@ If the **IdentityPreparation** workload is enabled (for migrating AD-synced user
 
 ### Licensing Requirements
 
-- **Cross-Tenant User Data Migration** license (or equivalent, e.g. included in some E5 plans) — required on **both** tenants for Exchange and OneDrive migration
-- **Exchange Online** licenses in the TARGET tenant — needed post-migration so users can access their mailboxes
-- **OneDrive/SharePoint** licenses in the TARGET tenant — needed before OneDrive migration so personal sites can be provisioned
+- **Cross-Tenant User Data Migration** license (or equivalent, e.g. included in some E5 plans) -- required on **both** tenants for Exchange and OneDrive migration
+- **Cross-Tenant Shared Data Migration** license -- required for SharePoint site migration (separate from the User Data Migration license). Sold per 100 GB of data moved. Must be assigned to at least one user on either SOURCE or TARGET tenant. Only available to Enterprise Agreement (EA) customers.
+- **Exchange Online** licenses in the TARGET tenant -- needed post-migration so users can access their mailboxes
+- **OneDrive/SharePoint** licenses in the TARGET tenant -- needed before OneDrive migration so personal sites can be provisioned
 
 > See: [Microsoft 365 cross-tenant mailbox migration prerequisites](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-mailbox-migration?view=o365-worldwide#prepare-the-target-destination-tenant-by-creating-the-migration-application-and-secret)
 
@@ -155,6 +157,8 @@ The recommended order is:
 4. **Exchange Migration Execution** — Run and monitor migration batches
 5. **OneDrive Migration Plan** — Set up cross-tenant OneDrive trust and mappings
 6. **OneDrive Migration Execution** — Run and monitor OneDrive content moves
+7. **SharePoint Migration Plan** — Discover sites, build mapping, verify trust and compatibility
+8. **SharePoint Migration Execution** — Run and monitor SharePoint site moves
 
 ---
 
@@ -678,6 +682,19 @@ After mailbox migration completes, users need an **Exchange Online license** in 
 >
 > See: [Assign licenses to users](https://learn.microsoft.com/en-us/microsoft-365/admin/manage/assign-licenses-to-users?view=o365-worldwide)
 
+### Step 04-05 -- Cleanup Migration Config
+
+Removes the cross-tenant mailbox migration infrastructure created in Phase 3:
+
+1. **Migration endpoint** on TARGET (`Remove-MigrationEndpoint`)
+2. **Organization relationships** on both SOURCE and TARGET
+3. **Scoping security group** on SOURCE (the mail-enabled group used to control which mailboxes can migrate)
+4. **Application registration** in TARGET Entra ID
+
+> **Why**: After all mailbox migrations are complete, the migration infrastructure should be cleaned up for security. The app registration and org relationships grant cross-tenant access that is no longer needed.
+>
+> **Warning**: Only run this after ALL mailbox migrations are finalized. This cannot be easily undone.
+
 ---
 
 ## Phase 5 — OneDrive Migration Plan
@@ -734,21 +751,17 @@ The operator is prompted for the source tenant GUID.
 >
 > See: [Create the identity mapping file](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-onedrive-migration-step3?view=o365-worldwide)
 
-### Step 05-04 — Assign Licenses & Pre-Provision OneDrive
+### Step 05-04 -- Assign Licenses
 
-Two operations:
+Assigns OneDrive/SharePoint licenses to target users so their OneDrive sites can be provisioned:
 
-1. **Assign licenses** — Same flow as Phase 4 (choose SKU, assign via `Set-MgUserLicense`)
-2. **Pre-provision OneDrive sites** — Runs `Request-SPOPersonalSite` for each target user so their OneDrive is created before content is moved into it
+1. **Assign licenses** -- Same flow as Phase 4 (choose SKU, assign via `Set-MgUserLicense`)
 
-> **Why**: OneDrive content can only be migrated into an existing OneDrive site. If the target user hasn't signed in yet, their OneDrive doesn't exist... unless you pre-provision it.
+> **Why**: Target users need an active license that includes OneDrive before content can be migrated to them. OneDrive sites are automatically provisioned when a licensed user first accesses OneDrive or through background provisioning.
 >
-> **Manual equivalent**: SharePoint admin center > More features > User profiles > My Site settings, or:
-> ```powershell
-> Request-SPOPersonalSite -UserEmails @("user1@target.com", "user2@target.com")
-> ```
+> **Note**: The tool no longer calls `Request-SPOPersonalSite` for pre-provisioning, as this can create target sites that conflict with the cross-tenant move process.
 >
-> See: [Pre-provision OneDrive](https://learn.microsoft.com/en-us/sharepoint/pre-provision-accounts)
+> **Manual equivalent**: Microsoft 365 admin center > Users > Active users > Select user > Licenses and apps > Assign license.
 
 ---
 
@@ -793,13 +806,220 @@ After all migrations are complete, removes the MnA trust from both tenants:
 
 ---
 
-## Phase 7 & 8 — SharePoint Migration
+## Phase 7 -- SharePoint Migration Plan
 
-**Status**: Planned but not yet implemented. Placeholder files exist (`lib/07-SharePointMigrationPlan.Functions.ps1` and `lib/08-SharePointMigrationExecution.Functions.ps1`) but contain no step definitions.
+**Purpose**: Discover SharePoint sites on the SOURCE tenant, build a migration mapping, verify cross-tenant trust, upload identity mappings, and check compatibility before migration.
 
-SharePoint site migration involves additional complexity (site templates, permissions, content databases, hub associations) that is beyond the current scope.
+**Output folder**: `<RunRoot>/07-SharePointMigrationPlan/`
 
+> **Important**: SharePoint site migration requires a separate **Cross-Tenant Shared Data Migration** license (per 100 GB of data), different from the Cross-Tenant User Data Migration license used for OneDrive/mailbox moves. Only available to Enterprise Agreement (EA) customers.
+>
 > See: [Cross-tenant SharePoint migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration?view=o365-worldwide)
+
+### Step 07-01 -- Discover & Build Sites Mapping
+
+1. Connects to SOURCE SharePoint Admin
+2. Enumerates all SharePoint sites via `Get-SPOSite -Limit All` (excluding OneDrive personal sites, search centers, and app catalogs)
+3. Detects GROUP#0 template sites as M365 Group-connected
+4. Auto-generates target URLs based on the target tenant domain
+5. Exports a mapping CSV with columns: SourceSiteUrl, TargetSiteUrl, Template, Owner, StorageGB, IsGroupConnected, **Migrate** (YES/NO)
+6. Opens the CSV for operator review
+
+The operator can:
+- Set `Migrate=NO` for sites that should not be migrated
+- Adjust `TargetSiteUrl` if the auto-generated URL is incorrect
+- For Group-connected sites, ensure the target M365 Group exists beforehand
+
+> **Important (from Microsoft docs)**:
+> - Do NOT create target SharePoint sites before migration -- the migration creates them automatically
+> - Each site must be < 5 TB and < 1 million items
+> - Source sites must be in Read/Write mode (not Read-only)
+
+> **Manual equivalent**:
+> ```powershell
+> Connect-SPOService -Url https://source-admin.sharepoint.com
+> Get-SPOSite -Limit All | Select-Object Url, Template, Owner, StorageUsageCurrent | Export-Csv .\sites.csv -NoTypeInformation
+> ```
+
+### Step 07-02 -- Verify Cross-Tenant Trust
+
+Verifies the MnA cross-tenant trust on both SOURCE and TARGET tenants using `Verify-SPOCrossTenantRelationship` (or `Test-SPOCrossTenantRelationship` on newer SPO module versions). The trust must return **GoodToProceed** on both sides.
+
+> **Note**: This trust is the same one established in Phase 5 (OneDrive). If you already completed Phase 5, the trust is already in place. If not, run Phase 5 step 05-02 first.
+>
+> **Manual equivalent**:
+> ```powershell
+> # On SOURCE:
+> Connect-SPOService -Url https://source-admin.sharepoint.com
+> $targetHostUrl = Get-SPOCrossTenantHostUrl
+> Verify-SPOCrossTenantRelationship -Scenario MnA -PartnerRole Target -PartnerCrossTenantHostUrl $targetHostUrl
+>
+> # On TARGET:
+> Connect-SPOService -Url https://target-admin.sharepoint.com
+> $sourceHostUrl = Get-SPOCrossTenantHostUrl
+> Verify-SPOCrossTenantRelationship -Scenario MnA -PartnerRole Source -PartnerCrossTenantHostUrl $sourceHostUrl
+> ```
+> Both should return `GoodToProceed`.
+>
+> See: [Verify trust](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step3?view=o365-worldwide)
+
+### Step 07-03 -- Build & Upload Identity Map
+
+Builds a cross-tenant identity mapping CSV for SharePoint (users + groups) and uploads it to the TARGET tenant via `Add-SPOTenantIdentityMap`.
+
+**User mappings**: Reuses the OneDrive CTIM file from Phase 5 if available. Otherwise, builds user mappings from Discovery data with domain-based UPN mapping.
+
+**Group mappings** (optional): Two modes available:
+- **Auto-discover** (recommended): Connects to Microsoft Graph on both tenants, lists all groups via `Get-MgGroup`, and automatically matches them by DisplayName. Shows matched/unmatched groups for confirmation.
+- **Manual**: Enter source/target group ObjectId pairs manually.
+
+The identity map CSV uses Microsoft's required 6-column format with NO headers:
+```
+User,<SourceTenantId>,source@contoso.com,target@fabrikam.com,target@fabrikam.com,RegularUser
+Group,<SourceTenantId>,<SourceGroupObjectId>,<TargetGroupObjectId>,GroupName,SecurityGroup
+```
+
+> **Why**: The identity map ensures file/folder permissions are preserved after migration. Without it, users lose access to shared content.
+>
+> **Manual equivalent**:
+> ```powershell
+> # Build a headerless CSV with 6 columns per line:
+> # User,<SourceTenantId>,<SourceUPN>,<TargetUPN>,<TargetEmail>,RegularUser
+> # Group,<SourceTenantId>,<SourceGroupObjId>,<TargetGroupObjId>,<GroupName>,SecurityGroup
+> #
+> # Example:
+> # User,12345678-abcd-1234-abcd-123456789abc,user1@source.com,user1@target.com,user1@target.com,RegularUser
+> # Group,12345678-abcd-1234-abcd-123456789abc,aaa-bbb-ccc,ddd-eee-fff,MySecurityGroup,SecurityGroup
+>
+> # Upload to TARGET:
+> Connect-SPOService -Url https://target-admin.sharepoint.com
+> Add-SPOTenantIdentityMap -IdentityMapPath .\identitymap.csv
+> ```
+> To find group ObjectIds, use `Get-MgGroup -All | Select-Object Id, DisplayName` on each tenant.
+>
+> See: [Prepare identity mapping](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step5?view=o365-worldwide)
+
+### Step 07-04 -- Verify Compatibility
+
+Runs `Get-SPOCrossTenantCompatibilityStatus` from the SOURCE tenant to check whether the tenants are compatible for migration. Expected result: **Compatible**.
+
+> **Manual equivalent**:
+> ```powershell
+> Connect-SPOService -Url https://source-admin.sharepoint.com
+> $targetHostUrl = Get-SPOCrossTenantHostUrl  # from TARGET
+> Get-SPOCrossTenantCompatibilityStatus -PartnerCrossTenantHostUrl $targetHostUrl
+> ```
+> Should return `Compatible`. If it returns `Incompatible`, check that both tenants meet all prerequisites (no Customer Key, correct SPO module version, etc.).
+>
+> See: [Prepare identity mapping - Compatibility check](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step5?view=o365-worldwide)
+
+---
+
+## Phase 8 -- SharePoint Migration Execution
+
+**Purpose**: Execute, monitor, cancel, and clean up SharePoint site migrations. Steps can be run individually and repeatedly.
+
+**Output folder**: `<RunRoot>/08-SharePointMigrationExecution/`
+
+> **Important**: This is a **MOVE**, not a copy. Content is moved from SOURCE to TARGET. A redirect link is left on SOURCE. Incremental/delta migrations are not possible.
+
+### Step 08-01 -- Start SharePoint Site Migrations
+
+1. Checks that the operator has the **Cross-Tenant Shared Data Migration** license
+2. Loads the sites mapping CSV from step 07-01 (only rows with `Migrate=YES`)
+3. Retrieves `CrossTenantHostUrl` from the TARGET tenant
+4. Starts site moves from the SOURCE tenant:
+   - **Standard sites**: `Start-SPOCrossTenantSiteContentMove -SourceSiteUrl <url> -TargetSiteUrl <url> -TargetCrossTenantHostUrl <url>`
+   - **Group-connected sites**: `Start-SPOCrossTenantGroupContentMove -SourceGroupAlias <alias> -TargetGroupAlias <alias> -TargetCrossTenantHostUrl <url>`
+5. Exports a results CSV with per-site OK/FAILED status
+
+> **Manual equivalent**:
+> ```powershell
+> # Standard site:
+> Start-SPOCrossTenantSiteContentMove -SourceSiteUrl "https://source.sharepoint.com/sites/MySite" -TargetSiteUrl "https://target.sharepoint.com/sites/MySite" -TargetCrossTenantHostUrl $targetHostUrl
+> # Group-connected site:
+> Start-SPOCrossTenantGroupContentMove -SourceGroupAlias "MyGroup" -TargetGroupAlias "MyGroup" -TargetCrossTenantHostUrl $targetHostUrl
+> ```
+>
+> See: [Start a cross-tenant SharePoint migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step6?view=o365-worldwide)
+
+### Step 08-02 -- Check Migration Status
+
+Queries `Get-SPOCrossTenantUserContentMoveState` on both SOURCE and TARGET tenants (same cmdlet as OneDrive). Filters results to show only SharePoint sites (excludes OneDrive personal sites). Displays color-coded status per site and exports status CSVs.
+
+| State | Meaning |
+|-------|---------|
+| `NotStarted` | Move is queued but hasn't begun |
+| `Scheduled` | Move is scheduled |
+| `ReadytoTrigger` | Move is ready to start |
+| `InProgress` | Move is actively running |
+| `Success` | Move completed successfully |
+| `Rescheduled` | Move was rescheduled (temporary issue) |
+| `Failed` | Move failed -- check error details |
+
+> **Tip**: Run this step repeatedly until all moves show `Success`. SharePoint site migrations can take hours or days depending on data volume.
+>
+> **Manual equivalent**:
+> ```powershell
+> # From SOURCE (query moves to TARGET):
+> Connect-SPOService -Url https://source-admin.sharepoint.com
+> Get-SPOCrossTenantUserContentMoveState -PartnerCrossTenantHostUrl $targetHostUrl
+>
+> # From TARGET (query moves from SOURCE):
+> Connect-SPOService -Url https://target-admin.sharepoint.com
+> Get-SPOCrossTenantUserContentMoveState -PartnerCrossTenantHostUrl $sourceHostUrl
+> ```
+> Filter out OneDrive personal sites (URLs containing `-my.sharepoint.com/personal/`) to see only SharePoint site moves.
+>
+> See: [Start a cross-tenant SharePoint migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step6?view=o365-worldwide)
+
+### Step 08-03 -- Stop/Cancel Migrations
+
+Interactive step to cancel pending or queued migrations:
+- **Standard sites**: `Stop-SPOCrossTenantSiteContentMove -SourceSiteUrl <url>`
+- **Group-connected sites**: `Stop-SPOCrossTenantGroupContentMove -SourceGroupAlias <alias>`
+
+> **Note**: Migrations that are `InProgress` or `Success` cannot be cancelled.
+>
+> **Manual equivalent**:
+> ```powershell
+> Connect-SPOService -Url https://source-admin.sharepoint.com
+> # Cancel a standard site:
+> Stop-SPOCrossTenantSiteContentMove -SourceSiteUrl "https://source.sharepoint.com/sites/MySite"
+> # Cancel a Group-connected site:
+> Stop-SPOCrossTenantGroupContentMove -SourceGroupAlias "MyGroup"
+> ```
+
+### Step 08-04 -- Cleanup (Post-Migration)
+
+Two cleanup operations, each requiring confirmation:
+
+**1. Remove cross-tenant trust**:
+- `Remove-SPOCrossTenantRelationship -Scenario MnA -PartnerRole Target` on SOURCE
+- `Remove-SPOCrossTenantRelationship -Scenario MnA -PartnerRole Source` on TARGET
+
+**2. Remove redirect sites** on SOURCE:
+- Lists all redirect sites via `Get-SPOSite -Template RedirectSite#0 -Limit All`
+- Optionally removes them via `Remove-SPOSite`
+
+> **Warning**: Only run this after ALL migrations (OneDrive + SharePoint) are complete. Removing the trust will prevent any future cross-tenant moves.
+>
+> **Manual equivalent**:
+> ```powershell
+> # Remove trust on SOURCE:
+> Connect-SPOService -Url https://source-admin.sharepoint.com
+> Remove-SPOCrossTenantRelationship -Scenario MnA -PartnerRole Target -PartnerCrossTenantHostUrl $targetHostUrl
+>
+> # Remove trust on TARGET:
+> Connect-SPOService -Url https://target-admin.sharepoint.com
+> Remove-SPOCrossTenantRelationship -Scenario MnA -PartnerRole Source -PartnerCrossTenantHostUrl $sourceHostUrl
+>
+> # List and remove redirect sites on SOURCE:
+> Connect-SPOService -Url https://source-admin.sharepoint.com
+> Get-SPOSite -Template RedirectSite#0 -Limit All | ForEach-Object { Remove-SPOSite -Identity $_.Url -NoWait -Confirm:$false }
+> ```
+>
+> See: [Post-migration steps](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step7?view=o365-worldwide)
 
 ---
 
@@ -825,7 +1045,7 @@ The configuration file `config/config.psd1` is a PowerShell Data File with this 
         IdentityPreparation = $true    # Phase 2
         ExchangeMigration   = $true    # Phases 3-4
         OneDriveMigration   = $true    # Phases 5-6
-        SharePointMigration = $false   # Phases 7-8 (not yet implemented)
+        SharePointMigration = $true     # Phases 7-8
     }
     OnPremIdentity = @{
         LastUsedTargetOU = ''           # Remembered from last Phase 2 run
@@ -887,7 +1107,14 @@ output/runs/2025-01-15_143022/
 ├── 03-ExchangeMigrationPlan/        # Exchange plan outputs
 ├── 04-ExchangeMigrationExecution/   # Exchange execution outputs
 ├── 05-OneDriveMigrationPlan/        # OneDrive plan outputs
-└── 06-OneDriveMigrationExecution/   # OneDrive execution outputs
+├── 06-OneDriveMigrationExecution/   # OneDrive execution outputs
+├── 07-SharePointMigrationPlan/      # SharePoint plan outputs
+│   ├── SharePoint_SitesMapping_*.csv
+│   └── SharePoint_IdentityMap_*.csv
+└── 08-SharePointMigrationExecution/ # SharePoint execution outputs
+    ├── SharePoint_StartResults_*.csv
+    ├── SharePoint_Status_Source_*.csv
+    └── SharePoint_Status_Target_*.csv
 ```
 
 ### State File (`run_state.csv`)
@@ -929,7 +1156,8 @@ Timestamp,Phase,Step,Status,Message
 | Migration batch fails with `MapiExceptionUnknownUser` | Target MailUser not stamped with ExchangeGuid | Re-run Step 03-06 (Prepare Mail Users) |
 | OneDrive migration stuck at `NotStarted` | Cross-tenant trust not `GoodToProceed` | Run `Verify-SPOCrossTenantRelationship` on both sides |
 | `Verify-SPOCrossTenantRelationship` returns `NotEstablished` | Trust takes time to propagate | Wait 5-15 minutes and try again |
-| `.Count` errors on filtered results | PowerShell single-object issue | Wrap `Where-Object` in `@()` — already handled in the tool |
+| SharePoint migration: `MnASiteMove feature is not enabled` | Missing Cross-Tenant Shared Data Migration license | Purchase from M365 admin center > Billing > Purchase services. Different from the User Data Migration license used for OneDrive |
+| `.Count` errors on filtered results | PowerShell single-object issue | Wrap `Where-Object` in `@()` -- already handled in the tool |
 | Step shows `Completed` but needs to be re-run | State file marks it done | Edit `run_state.csv` and remove the Completed row for that step |
 
 ### Connection Issues
@@ -959,6 +1187,7 @@ If a step needs to be repeated (e.g., new data was added):
 | **Cross-tenant mailbox migration** | [learn.microsoft.com](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-mailbox-migration?view=o365-worldwide) |
 | **Cross-tenant OneDrive migration** | [learn.microsoft.com](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-onedrive-migration?view=o365-worldwide) |
 | **Cross-tenant SharePoint migration** | [learn.microsoft.com](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration?view=o365-worldwide) |
+| **Cross-Tenant Shared Data Migration licensing** | [learn.microsoft.com](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration?view=o365-worldwide#how-to-participate) |
 | **Entra Connect sync setup** | [learn.microsoft.com](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-install-prerequisites) |
 | **Entra Connect OU filtering** | [learn.microsoft.com](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-sync-configure-filtering) |
 | **Pre-provision OneDrive sites** | [learn.microsoft.com](https://learn.microsoft.com/en-us/sharepoint/pre-provision-accounts) |

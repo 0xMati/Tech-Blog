@@ -491,14 +491,19 @@ function Step-03-01-ExchangeMigrationPrerequisites {
     Write-EIDMTag -Tag "BLOCK" -Text "Block 6 - Exchange Online licenses" -Color Cyan
     Write-Host ""
 
-    Write-Host "All users in both the source and target organizations must be licensed" -ForegroundColor Gray
-    Write-Host "with appropriate Exchange Online subscriptions." -ForegroundColor Gray
+    Write-Host "SOURCE: Users to be migrated must have an active Exchange Online" -ForegroundColor Gray
+    Write-Host "license and mailbox in the source tenant." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "TARGET: MailUsers do NOT need an Exchange license before migration." -ForegroundColor Gray
+    Write-Host "Licenses will be assigned after migration completes (step 04-04)." -ForegroundColor Gray
+    Write-Host "However, ensure enough Exchange Online licenses are AVAILABLE" -ForegroundColor Gray
+    Write-Host "(purchased) in the target tenant for post-migration assignment." -ForegroundColor Gray
     Write-Host ""
 
     $order++
-    $q = "Are ALL relevant users (source & target) licensed with appropriate Exchange Online subscriptions ?"
+    $q = "Are SOURCE users licensed with Exchange Online, and are enough licenses AVAILABLE in the target tenant ?"
     $a = Read-EIDMSimpleYesNo $q
-    Add-CheckResult $order "EXO Licenses" $q $a "Users without Exchange Online licenses cannot have mailboxes migrated."
+    Add-CheckResult $order "EXO Licenses" $q $a "Source users need active Exchange licenses. Target tenant needs available licenses for post-migration."
 
     Write-Host ""
 
@@ -823,6 +828,9 @@ function Step-03-02-CreateTargetApp {
     $config.ExchangeMigration.TargetSecretExpiry     = $endDate.ToString("yyyy-MM-dd")
     Save-EIDMConfigPsd1 -Config $config -Path $ConfigPath
 
+    # Keep the secret in memory for use in step 03-03 (same session only, never persisted to disk)
+    $script:EIDMExchangeAppSecret = $clientSecret
+
     Write-EIDMTag -Tag "OK" -Text "App details saved to config (except the secret - store it securely)." -Color Green
 
     # ------------------------------------------------------------------
@@ -906,8 +914,19 @@ function Step-03-03-EndpointAndOrgRelationships {
     $remoteServerInput = Read-Host "Remote server (Enter for 'outlook.office.com')"
     $remoteServer = if ([string]::IsNullOrWhiteSpace($remoteServerInput)) { "outlook.office.com" } else { $remoteServerInput.Trim() }
 
-    # Source onmicrosoft domain
-    $sourceOnMsDomain = Read-EIDMNonEmpty "SOURCE tenant onmicrosoft.com domain (e.g. contoso.onmicrosoft.com)"
+    # Source onmicrosoft domain (use config tenant as default if it looks like *.onmicrosoft.com)
+    $sourceTenantDomain = $config.Tenants.Source.TenantIdOrDomain
+    $defaultSourceOnMs = ""
+    if ($sourceTenantDomain -and $sourceTenantDomain.ToLower().EndsWith(".onmicrosoft.com")) {
+        $defaultSourceOnMs = $sourceTenantDomain
+    }
+    if ($defaultSourceOnMs) {
+        $sourceOnMsInput = Read-Host ("SOURCE tenant onmicrosoft.com domain (Enter for '{0}')" -f $defaultSourceOnMs)
+        $sourceOnMsDomain = if ([string]::IsNullOrWhiteSpace($sourceOnMsInput)) { $defaultSourceOnMs } else { $sourceOnMsInput.Trim() }
+    }
+    else {
+        $sourceOnMsDomain = Read-EIDMNonEmpty "SOURCE tenant onmicrosoft.com domain (e.g. contoso.onmicrosoft.com)"
+    }
 
     # Migration AppId (auto from config)
     $migrationAppId = $defaultAppId
@@ -1007,11 +1026,24 @@ function Step-03-03-EndpointAndOrgRelationships {
     Write-Host ""
     Write-EIDMTag -Tag "BLOCK" -Text "Migration app client secret" -Color Cyan
     Write-Host ""
-    Write-Host "Enter the client secret for the migration application." -ForegroundColor DarkGray
-    Write-Host "Value will NOT be echoed to the screen." -ForegroundColor DarkGray
-    Write-Host ""
 
-    $clientSecretSecure = Read-Host "Migration app client secret" -AsSecureString
+    $clientSecretSecure = $null
+
+    # If the secret was generated in step 03-02 during this session, offer to reuse it
+    if (-not [string]::IsNullOrWhiteSpace($script:EIDMExchangeAppSecret)) {
+        Write-Host "The client secret generated in the previous step is still in memory." -ForegroundColor Green
+        $reuse = Read-EIDMSimpleYesNo "Use the secret from step 03-02?"
+        if ($reuse) {
+            $clientSecretSecure = ConvertTo-SecureString $script:EIDMExchangeAppSecret -AsPlainText -Force
+        }
+    }
+
+    if (-not $clientSecretSecure) {
+        Write-Host "Enter the client secret for the migration application." -ForegroundColor DarkGray
+        Write-Host "Value will NOT be echoed to the screen." -ForegroundColor DarkGray
+        Write-Host ""
+        $clientSecretSecure = Read-Host "Migration app client secret" -AsSecureString
+    }
 
     # ==================================================================
     # PART 1 - TARGET TENANT

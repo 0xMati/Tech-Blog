@@ -16,6 +16,8 @@ $ConfigPath = Join-Path $RepoRoot "config\config.psd1"
 . (Join-Path $RepoRoot "lib\04-ExchangeMigrationExecution.Functions.ps1")
 . (Join-Path $RepoRoot "lib\05-OneDriveMigrationPlan.Functions.ps1")
 . (Join-Path $RepoRoot "lib\06-OneDriveMigrationExecution.Functions.ps1")
+. (Join-Path $RepoRoot "lib\07-SharePointMigrationPlan.Functions.ps1")
+. (Join-Path $RepoRoot "lib\08-SharePointMigrationExecution.Functions.ps1")
 
 # Welcome banner
 Write-Host ""
@@ -30,7 +32,14 @@ Write-Host "  Supported workloads:" -ForegroundColor White
 Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "*" -NoNewline -ForegroundColor Green; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " User identity provisioning (AD synced + cloud-only)" -ForegroundColor Gray
 Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "*" -NoNewline -ForegroundColor Green; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " Exchange Online mailbox migration" -ForegroundColor Gray
 Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "*" -NoNewline -ForegroundColor Green; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " OneDrive for Business content migration" -ForegroundColor Gray
-Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "~" -NoNewline -ForegroundColor Yellow; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " SharePoint Online site migration (coming soon)" -ForegroundColor DarkGray
+Write-Host "    [" -NoNewline -ForegroundColor DarkGray; Write-Host "*" -NoNewline -ForegroundColor Green; Write-Host "]" -NoNewline -ForegroundColor DarkGray; Write-Host " SharePoint Online site migration" -ForegroundColor Gray
+Write-Host ""
+Write-Host "  NOTE: This tool must be run from a domain-joined machine" -ForegroundColor Yellow
+Write-Host "        on the TARGET Active Directory (not the source)." -ForegroundColor Yellow
+Write-Host "        The account running this tool needs AD permissions to:" -ForegroundColor Yellow
+Write-Host "          - Create users and groups (New-ADUser, New-ADGroup)" -ForegroundColor Yellow
+Write-Host "          - Edit user attributes (Set-ADUser, Set-ADForest)" -ForegroundColor Yellow
+Write-Host "          - Manage group membership (Add-ADGroupMember)" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  Initializing..." -ForegroundColor Gray
 Write-Host ""
@@ -350,10 +359,15 @@ while ($true) {
                     Write-Host "      Required after migration completes so users can access mail." -ForegroundColor DarkGray
                     Write-Host ""
 
+                    Write-Host "  " -NoNewline; Write-Host " 5 " -NoNewline -ForegroundColor White -BackgroundColor DarkRed; Write-Host " Cleanup Migration Config" -ForegroundColor Red
+                    Write-Host "      Remove migration endpoint, org relationships, scope group," -ForegroundColor DarkGray
+                    Write-Host "      and app registration. Use to start fresh or after completion." -ForegroundColor DarkGray
+                    Write-Host ""
+
                     Write-Host "  " -NoNewline; Write-Host " X " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " Cancel" -ForegroundColor DarkGray
                     Write-Host ""
 
-                    $stepChoice = Read-Host "Select step [1-4 or X]"
+                    $stepChoice = Read-Host "Select step [1-5 or X]"
 
                     if ($stepChoice.Trim().ToUpper() -eq 'X') {
                         break
@@ -365,6 +379,7 @@ while ($true) {
                         '2' { $stepIndex = 1 }
                         '3' { $stepIndex = 2 }
                         '4' { $stepIndex = 3 }
+                        '5' { $stepIndex = 4 }
                         default {
                             Write-EIDMTag -Tag "ERROR" -Text "Invalid selection." -Color Red
                         }
@@ -439,6 +454,91 @@ while ($true) {
                         '1' { $stepIndex = 0 }
                         '2' { $stepIndex = 1 }
                         '3' { $stepIndex = 2 }
+                        default {
+                            Write-EIDMTag -Tag "ERROR" -Text "Invalid selection." -Color Red
+                        }
+                    }
+
+                    if ($stepIndex -ge 0 -and $stepIndex -lt $allSteps.Count) {
+                        $selectedStep = $allSteps[$stepIndex]
+                        Invoke-EIDMStep -Ctx $currentRun -Step $selectedStep
+                    }
+
+                    Read-Host "Press Enter to continue" | Out-Null
+                    break
+                }
+
+                '07-SharePointMigrationPlan' {
+
+                    if (-not (Get-Command -Name Invoke-EIDMPhase -ErrorAction SilentlyContinue)) {
+                        throw "Invoke-EIDMPhase not found in 00-Core.Functions.ps1. Step engine is missing."
+                    }
+
+                    $steps = Get-EIDMSharePointMigrationPlanSteps -Ctx $currentRun
+                    Invoke-EIDMPhase -Ctx $currentRun -PhaseName '07-SharePointMigrationPlan' -Steps $steps
+
+                    Write-EIDMTag -Tag "OK" -Text "Phase completed: 07-SharePointMigrationPlan" -Color Green
+                    Read-Host "Press Enter to continue" | Out-Null
+                    break
+                }
+
+                '08-SharePointMigrationExecution' {
+
+                    if (-not (Get-Command -Name Invoke-EIDMStep -ErrorAction SilentlyContinue)) {
+                        throw "Invoke-EIDMStep not found in 00-Core.Functions.ps1. Step engine is missing."
+                    }
+
+                    $allSteps = Get-EIDMSharePointMigrationExecutionSteps -Ctx $currentRun
+
+                    Write-Host ""
+                    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+                    Write-Host "  |  08 - SharePoint Migration Execution                     |" -ForegroundColor Magenta
+                    Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkGray
+                    Write-Host ""
+                    Write-Host "  Tip: Typical order: Start -> Check status -> Cleanup" -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 1 " -NoNewline -ForegroundColor White -BackgroundColor DarkGreen; Write-Host " Start SharePoint Site Migrations" -ForegroundColor Green
+                    Write-Host "      Loads the sites mapping CSV and starts cross-tenant moves" -ForegroundColor DarkGray
+                    Write-Host "      from SOURCE for each site marked Migrate=YES." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 2 " -NoNewline -ForegroundColor White -BackgroundColor DarkCyan; Write-Host " Check Migration Status" -ForegroundColor Cyan
+                    Write-Host "      Queries move state on both tenants. Exports status CSVs." -ForegroundColor DarkGray
+                    Write-Host "      Run repeatedly until all moves show Success." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 3 " -NoNewline -ForegroundColor Black -BackgroundColor DarkYellow; Write-Host " Stop/Cancel Migrations" -ForegroundColor Yellow
+                    Write-Host "      Cancel pending or queued site migrations." -ForegroundColor DarkGray
+                    Write-Host "      Migrations InProgress or Success cannot be cancelled." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 4 " -NoNewline -ForegroundColor White -BackgroundColor DarkRed; Write-Host " Cleanup (Remove trust + redirect sites)" -ForegroundColor Red
+                    Write-Host "      Remove cross-tenant trust on both tenants and clean up" -ForegroundColor DarkGray
+                    Write-Host "      redirect sites left on SOURCE. Run after ALL migrations." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " 5 " -NoNewline -ForegroundColor White -BackgroundColor DarkMagenta; Write-Host " Post-Migration: Fix Site Admins" -ForegroundColor Magenta
+                    Write-Host "      Add a TARGET admin as Site Collection Admin on migrated" -ForegroundColor DarkGray
+                    Write-Host "      sites. Run after migrations complete (Success state)." -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    Write-Host "  " -NoNewline; Write-Host " X " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " Cancel" -ForegroundColor DarkGray
+                    Write-Host ""
+
+                    $stepChoice = Read-Host "Select step [1-5 or X]"
+
+                    if ($stepChoice.Trim().ToUpper() -eq 'X') {
+                        break
+                    }
+
+                    $stepIndex = -1
+                    switch ($stepChoice.Trim()) {
+                        '1' { $stepIndex = 0 }
+                        '2' { $stepIndex = 1 }
+                        '3' { $stepIndex = 2 }
+                        '4' { $stepIndex = 3 }
+                        '5' { $stepIndex = 4 }
                         default {
                             Write-EIDMTag -Tag "ERROR" -Text "Invalid selection." -Color Red
                         }

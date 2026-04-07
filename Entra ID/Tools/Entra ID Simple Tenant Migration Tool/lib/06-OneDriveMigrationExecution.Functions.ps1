@@ -192,19 +192,18 @@ function Step-06-01-StartOneDriveMigrations {
 
     Ensure-EIDMSharePointSourceConnection -Ctx $Ctx
 
-    $results = @()
-    $iUser   = 0
-    $total   = $mappingData.Count
+    $results      = @()
+    $conflicts    = @()   # users that failed due to target site conflict
+    $iUser        = 0
+    $total        = $mappingData.Count
 
+    # --- Pass 1: attempt all moves ---
     foreach ($user in $mappingData) {
         $iUser++
         $srcUpn = $user.SourceUPN
         $tgtUpn = $user.TargetUPN
 
         Write-Host ("[{0}/{1}] {2} -> {3}" -f $iUser, $total, $srcUpn, $tgtUpn) -ForegroundColor Gray
-
-        $moveStatus = "OK"
-        $moveError  = ""
 
         try {
             Start-SPOCrossTenantUserContentMove `
@@ -214,19 +213,98 @@ function Step-06-01-StartOneDriveMigrations {
                 -ErrorAction Stop
 
             Write-EIDMTag -Tag "OK" -Text ("Move started: {0}" -f $srcUpn) -Color Green
+
+            $results += [PSCustomObject]@{
+                SourceUPN = $srcUpn; TargetUPN = $tgtUpn
+                Status = "OK"; Error = ""; StartedOn = (Get-Date).ToString("s")
+            }
         }
         catch {
-            $moveStatus = "FAILED"
-            $moveError  = $_.Exception.Message
-            Write-EIDMTag -Tag "ERROR" -Text ("Move failed: {0} - {1}" -f $srcUpn, $moveError) -Color Red
+            $errMsg = $_.Exception.Message
+
+            if ($errMsg -match 'target tenant has a conflict') {
+                Write-EIDMTag -Tag "WARN" -Text ("Target OneDrive exists for {0} - will batch-remove." -f $tgtUpn) -Color Yellow
+                $conflicts += $user
+            }
+            else {
+                Write-EIDMTag -Tag "ERROR" -Text ("Move failed: {0} - {1}" -f $srcUpn, $errMsg) -Color Red
+                $results += [PSCustomObject]@{
+                    SourceUPN = $srcUpn; TargetUPN = $tgtUpn
+                    Status = "FAILED"; Error = $errMsg; StartedOn = (Get-Date).ToString("s")
+                }
+            }
+        }
+    }
+
+    # --- Pass 2: batch-remove conflicting target sites, then retry ---
+    if ($conflicts.Count -gt 0) {
+        Write-EIDMSection "Remove Conflicting Target OneDrive Sites"
+        Write-Host ("  {0} user(s) with target site conflict. Switching to TARGET to remove..." -f $conflicts.Count) -ForegroundColor Yellow
+
+        Disconnect-EIDMSharePointIfNeeded
+        Ensure-EIDMSharePointTargetConnection -Ctx $Ctx
+
+        $tgtTenant = $Ctx.Config.Tenants.Target.TenantIdOrDomain
+        $tgtName = $tgtTenant
+        if ($tgtName -match '^([^\.]+)\.onmicrosoft\.com$') { $tgtName = $Matches[1] }
+
+        foreach ($user in $conflicts) {
+            $tgtUpn     = $user.TargetUPN
+            $userPart   = ($tgtUpn -replace '@.*$','') -replace '\.','_'
+            $domainPart = ($tgtUpn -replace '^[^@]+@','') -replace '\.','_'
+            $odSiteUrl  = "https://{0}-my.sharepoint.com/personal/{1}_{2}" -f $tgtName, $userPart, $domainPart
+
+            Write-Host ("  Removing: {0}" -f $odSiteUrl) -ForegroundColor DarkGray
+            try {
+                Remove-SPOSite -Identity $odSiteUrl -NoWait -Confirm:$false -ErrorAction Stop
+            } catch {
+                Write-Host ("    Remove-SPOSite: {0}" -f $_.Exception.Message) -ForegroundColor DarkGray
+            }
+            try {
+                Remove-SPODeletedSite -Identity $odSiteUrl -Confirm:$false -ErrorAction Stop
+            } catch {
+                Write-Host ("    Remove-SPODeletedSite: {0}" -f $_.Exception.Message) -ForegroundColor DarkGray
+            }
         }
 
-        $results += [PSCustomObject]@{
-            SourceUPN = $srcUpn
-            TargetUPN = $tgtUpn
-            Status    = $moveStatus
-            Error     = $moveError
-            StartedOn = (Get-Date).ToString("s")
+        Write-Host ""
+        Write-Host "  Waiting 5 seconds for deletions to propagate..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds 5
+
+        # Switch back to SOURCE for retries
+        Write-EIDMSection "Retry Moves (SOURCE)"
+        Disconnect-EIDMSharePointIfNeeded
+        Ensure-EIDMSharePointSourceConnection -Ctx $Ctx
+
+        foreach ($user in $conflicts) {
+            $srcUpn = $user.SourceUPN
+            $tgtUpn = $user.TargetUPN
+
+            Write-Host ("  Retrying: {0} -> {1}" -f $srcUpn, $tgtUpn) -ForegroundColor Yellow
+
+            try {
+                Start-SPOCrossTenantUserContentMove `
+                    -SourceUserPrincipalName $srcUpn `
+                    -TargetUserPrincipalName $tgtUpn `
+                    -TargetCrossTenantHostUrl $targetHostUrl `
+                    -ErrorAction Stop
+
+                Write-EIDMTag -Tag "OK" -Text ("Move started (after site removal): {0}" -f $srcUpn) -Color Green
+
+                $results += [PSCustomObject]@{
+                    SourceUPN = $srcUpn; TargetUPN = $tgtUpn
+                    Status = "OK"; Error = ""; StartedOn = (Get-Date).ToString("s")
+                }
+            }
+            catch {
+                $moveError = $_.Exception.Message
+                Write-EIDMTag -Tag "ERROR" -Text ("Retry failed: {0} - {1}" -f $srcUpn, $moveError) -Color Red
+
+                $results += [PSCustomObject]@{
+                    SourceUPN = $srcUpn; TargetUPN = $tgtUpn
+                    Status = "FAILED"; Error = $moveError; StartedOn = (Get-Date).ToString("s")
+                }
+            }
         }
     }
 
@@ -333,18 +411,23 @@ function Step-06-02-CheckMigrationStatus {
             $rawSource = @(Get-SPOCrossTenantUserContentMoveState -PartnerCrossTenantHostUrl $targetHostUrl -ErrorAction Stop)
             Write-EIDMTag -Tag "INFO" -Text ("SOURCE returned {0} move state(s)" -f $rawSource.Count) -Color Gray
 
+            # Dump first object's properties for diagnostic
+            if ($rawSource.Count -gt 0) {
+                $propNames = @($rawSource[0].PSObject.Properties | ForEach-Object { $_.Name })
+                Write-Host ("  Properties: {0}" -f ($propNames -join ', ')) -ForegroundColor DarkGray
+            }
+
             foreach ($s in $rawSource) {
-                $safe = $s | Select-Object MoveId, SourceUserPrincipalName, TargetUserPrincipalName, MoveState, MoveDirection, StatusCode, Result
                 $sourceResults += [PSCustomObject]@{
-                    MoveId       = $safe.MoveId
-                    SourceUPN    = $safe.SourceUserPrincipalName
-                    TargetUPN    = $safe.TargetUserPrincipalName
-                    MoveState    = $safe.MoveState
-                    MoveDirection = $safe.MoveDirection
-                    StatusCode   = $safe.StatusCode
-                    Result       = $safe.Result
-                    QuerySide    = "SOURCE"
-                    QueryTime    = (Get-Date).ToString("s")
+                    MoveJobId     = $s.MoveJobId
+                    SourceSiteUrl = $s.SourceSiteUrl
+                    TargetSiteUrl = $s.TargetSiteUrl
+                    MoveState     = $s.MoveState
+                    SourceDataLocation      = $s.SourceDataLocation
+                    DestinationDataLocation = $s.DestinationDataLocation
+                    TimeStamp     = $s.TimeStamp
+                    QuerySide     = "SOURCE"
+                    QueryTime     = (Get-Date).ToString("s")
                 }
             }
         }
@@ -372,17 +455,16 @@ function Step-06-02-CheckMigrationStatus {
             Write-EIDMTag -Tag "INFO" -Text ("TARGET returned {0} move state(s)" -f $rawTarget.Count) -Color Gray
 
             foreach ($t in $rawTarget) {
-                $safe = $t | Select-Object MoveId, SourceUserPrincipalName, TargetUserPrincipalName, MoveState, MoveDirection, StatusCode, Result
                 $targetResults += [PSCustomObject]@{
-                    MoveId       = $safe.MoveId
-                    SourceUPN    = $safe.SourceUserPrincipalName
-                    TargetUPN    = $safe.TargetUserPrincipalName
-                    MoveState    = $safe.MoveState
-                    MoveDirection = $safe.MoveDirection
-                    StatusCode   = $safe.StatusCode
-                    Result       = $safe.Result
-                    QuerySide    = "TARGET"
-                    QueryTime    = (Get-Date).ToString("s")
+                    MoveJobId     = $t.MoveJobId
+                    SourceSiteUrl = $t.SourceSiteUrl
+                    TargetSiteUrl = $t.TargetSiteUrl
+                    MoveState     = $t.MoveState
+                    SourceDataLocation      = $t.SourceDataLocation
+                    DestinationDataLocation = $t.DestinationDataLocation
+                    TimeStamp     = $t.TimeStamp
+                    QuerySide     = "TARGET"
+                    QueryTime     = (Get-Date).ToString("s")
                 }
             }
         }
@@ -406,12 +488,13 @@ function Step-06-02-CheckMigrationStatus {
         Write-Host "`n  -- SOURCE perspective --" -ForegroundColor Cyan
         $sourceResults | ForEach-Object {
             $color = switch ($_.MoveState) {
+                "Success"    { "Green" }
                 "Completed"  { "Green" }
                 "Failed"     { "Red" }
                 "InProgress" { "Yellow" }
                 default      { "Gray" }
             }
-            Write-Host ("    {0} -> {1}   State={2}  Status={3}" -f $_.SourceUPN, $_.TargetUPN, $_.MoveState, $_.StatusCode) -ForegroundColor $color
+            Write-Host ("    {0} -> {1}   State={2}" -f $_.SourceSiteUrl, $_.TargetSiteUrl, $_.MoveState) -ForegroundColor $color
         }
     }
     else {
@@ -422,12 +505,13 @@ function Step-06-02-CheckMigrationStatus {
         Write-Host "`n  -- TARGET perspective --" -ForegroundColor Cyan
         $targetResults | ForEach-Object {
             $color = switch ($_.MoveState) {
+                "Success"    { "Green" }
                 "Completed"  { "Green" }
                 "Failed"     { "Red" }
                 "InProgress" { "Yellow" }
                 default      { "Gray" }
             }
-            Write-Host ("    {0} -> {1}   State={2}  Status={3}" -f $_.SourceUPN, $_.TargetUPN, $_.MoveState, $_.StatusCode) -ForegroundColor $color
+            Write-Host ("    {0} -> {1}   State={2}" -f $_.SourceSiteUrl, $_.TargetSiteUrl, $_.MoveState) -ForegroundColor $color
         }
     }
     else {

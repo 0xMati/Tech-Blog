@@ -22,6 +22,13 @@
 #          - List available SKUs, let operator choose
 #          - Assign licenses via Set-MgUserLicense
 #          - Export OK / Issues CSVs
+#
+#   04-05  Cleanup Exchange Migration Config
+#          - Remove migration endpoint (TARGET EXO)
+#          - Remove Inbound Org Relationship (TARGET EXO)
+#          - Remove Outbound Org Relationship (SOURCE EXO)
+#          - Remove scope security group (SOURCE EXO)
+#          - Remove migration app registration (TARGET Entra ID)
 # ==========================================================================
 
 function Get-EIDMExchangeMigrationExecutionSteps {
@@ -55,6 +62,13 @@ function Get-EIDMExchangeMigrationExecutionSteps {
             Id         = "04-04-AssignLicenses"
             Phase      = "04-ExchangeMigrationExecution"
             Handler    = "Step-04-04-AssignLicenses"
+            Requires   = @()
+            AllowRerun = $true
+        },
+        @{
+            Id         = "04-05-CleanupExchangeMigrationConfig"
+            Phase      = "04-ExchangeMigrationExecution"
+            Handler    = "Step-04-05-CleanupExchangeMigrationConfig"
             Requires   = @()
             AllowRerun = $true
         }
@@ -533,7 +547,7 @@ function Step-04-02-CheckMigrationBatches {
         # Get users in this batch
         $users = @()
         try {
-            $users = @(Get-MigrationUser -BatchId $batch.Identity -ErrorAction Stop)
+            $users = @(Get-MigrationUser -BatchId $batch.Identity -ResultSize Unlimited -ErrorAction Stop)
         }
         catch {
             Write-EIDMTag -Tag "WARN" -Text ("  Failed to get MigrationUser for '{0}': {1}" -f $batch.Identity, $_.Exception.Message) -Color Yellow
@@ -1316,6 +1330,238 @@ function Step-04-04-AssignLicenses {
         }
         Write-Host ""
     }
+
+    return $script:EIDMStatus_Completed
+}
+
+# ==========================================================================
+# STEP 04-05 - Cleanup Exchange Migration Configuration
+# ==========================================================================
+
+function Step-04-05-CleanupExchangeMigrationConfig {
+    <#
+    .SYNOPSIS  Removes cross-tenant Exchange migration infrastructure from
+               both SOURCE and TARGET tenants.
+    .DESCRIPTION
+        Cleans up the following objects (each is optional):
+        - TARGET: Migration endpoint
+        - TARGET: Inbound Organization Relationship
+        - SOURCE: Outbound Organization Relationship
+        - SOURCE: Scope security group
+        - TARGET: Migration Entra ID app registration + service principal
+    #>
+    param(
+        [Parameter(Mandatory)]$Ctx
+    )
+
+    Write-EIDMSection "Cleanup Exchange Migration Configuration"
+
+    Write-Host "This step removes the cross-tenant migration infrastructure" -ForegroundColor Yellow
+    Write-Host "created during Phase 03. Use this to start fresh or after" -ForegroundColor Yellow
+    Write-Host "migration is fully completed." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "The following objects can be removed:" -ForegroundColor DarkGray
+    Write-Host "  TARGET: Migration endpoint (New-MigrationEndpoint)" -ForegroundColor DarkGray
+    Write-Host "  TARGET: Inbound Org Relationship" -ForegroundColor DarkGray
+    Write-Host "  SOURCE: Outbound Org Relationship" -ForegroundColor DarkGray
+    Write-Host "  SOURCE: Scope security group (mail-enabled)" -ForegroundColor DarkGray
+    Write-Host "  TARGET: Migration app (Entra ID app registration)" -ForegroundColor DarkGray
+    Write-Host ""
+
+    $confirmed = Read-EIDMSimpleYesNo "Proceed with cleanup?"
+    if (-not $confirmed) {
+        Write-EIDMTag -Tag "INFO" -Text "Cleanup cancelled by user." -Color Yellow
+        return $script:EIDMStatus_WaitingUser
+    }
+
+    $config = $Ctx.Config
+    $exMig = @{}
+    if ($config.ContainsKey("ExchangeMigration") -and $config.ExchangeMigration -is [hashtable]) {
+        $exMig = $config.ExchangeMigration
+    }
+
+    # Read names from config or use defaults
+    $endpointName    = if ($exMig.ContainsKey("EndpointName"))      { $exMig.EndpointName }      else { "CrossTenantMailboxEndpoint" }
+    $tgtOrgRelName   = if ($exMig.ContainsKey("TargetOrgRelName"))  { $exMig.TargetOrgRelName }  else { "CrossTenantMailboxRel-Inbound" }
+    $srcOrgRelName   = if ($exMig.ContainsKey("SourceOrgRelName"))  { $exMig.SourceOrgRelName }  else { "CrossTenantMailboxRel-Outbound" }
+    $scopeGroupName  = if ($exMig.ContainsKey("ScopeGroupNames"))   { ($exMig.ScopeGroupNames -split ",")[0].Trim() } else { "CrossTenant-MailboxMove-Scope" }
+    $appObjectId     = if ($exMig.ContainsKey("TargetAppObjectId")) { $exMig.TargetAppObjectId } else { "" }
+    $spObjectId      = if ($exMig.ContainsKey("TargetSpObjectId"))  { $exMig.TargetSpObjectId }  else { "" }
+
+    # ============================================================
+    # 1) TARGET: Remove migration endpoint
+    # ============================================================
+    Write-Host ""
+    Write-EIDMSection "1) TARGET - Migration Endpoint"
+
+    if (Read-EIDMSimpleYesNo ("Remove migration endpoint '{0}' on TARGET?" -f $endpointName)) {
+        Write-EIDMTag -Tag "STEP" -Text "Connecting to Exchange Online (TARGET)..." -Color Cyan
+        try {
+            Ensure-EIDMExchangeTargetConnection -Ctx $Ctx
+        }
+        catch {
+            Write-EIDMTag -Tag "ERROR" -Text ("EXO TARGET connection failed: {0}" -f $_.Exception.Message) -Color Red
+            return $script:EIDMStatus_Failed
+        }
+
+        try {
+            $ep = Get-MigrationEndpoint -Identity $endpointName -ErrorAction SilentlyContinue
+            if ($ep) {
+                Remove-MigrationEndpoint -Identity $endpointName -Confirm:$false -ErrorAction Stop
+                Write-EIDMTag -Tag "OK" -Text ("Migration endpoint '{0}' removed." -f $endpointName) -Color Green
+            }
+            else {
+                Write-EIDMTag -Tag "SKIP" -Text ("Endpoint '{0}' not found - nothing to remove." -f $endpointName) -Color DarkGray
+            }
+        }
+        catch {
+            Write-EIDMTag -Tag "ERROR" -Text ("Failed to remove endpoint: {0}" -f $_.Exception.Message) -Color Red
+        }
+    }
+    else {
+        Write-EIDMTag -Tag "SKIP" -Text "Skipped endpoint removal." -Color DarkGray
+    }
+
+    # ============================================================
+    # 2) TARGET: Remove Inbound Org Relationship
+    # ============================================================
+    Write-Host ""
+    Write-EIDMSection "2) TARGET - Inbound Organization Relationship"
+
+    if (Read-EIDMSimpleYesNo ("Remove org relationship '{0}' on TARGET?" -f $tgtOrgRelName)) {
+        try {
+            $rel = Get-OrganizationRelationship -Identity $tgtOrgRelName -ErrorAction SilentlyContinue
+            if ($rel) {
+                Remove-OrganizationRelationship -Identity $tgtOrgRelName -Confirm:$false -ErrorAction Stop
+                Write-EIDMTag -Tag "OK" -Text ("Org relationship '{0}' removed from TARGET." -f $tgtOrgRelName) -Color Green
+            }
+            else {
+                Write-EIDMTag -Tag "SKIP" -Text ("Org relationship '{0}' not found on TARGET." -f $tgtOrgRelName) -Color DarkGray
+            }
+        }
+        catch {
+            Write-EIDMTag -Tag "ERROR" -Text ("Failed to remove TARGET org relationship: {0}" -f $_.Exception.Message) -Color Red
+        }
+    }
+    else {
+        Write-EIDMTag -Tag "SKIP" -Text "Skipped TARGET org relationship removal." -Color DarkGray
+    }
+
+    # ============================================================
+    # 3) SOURCE: Remove Outbound Org Relationship
+    # ============================================================
+    Write-Host ""
+    Write-EIDMSection "3) SOURCE - Outbound Organization Relationship"
+
+    if (Read-EIDMSimpleYesNo ("Remove org relationship '{0}' on SOURCE?" -f $srcOrgRelName)) {
+        Write-EIDMTag -Tag "STEP" -Text "Connecting to Exchange Online (SOURCE)..." -Color Cyan
+        try {
+            # Disconnect TARGET EXO first
+            try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {}
+            $script:EIDMExoState.TargetConnected = $false
+            Ensure-EIDMExchangeSourceConnection -Ctx $Ctx
+        }
+        catch {
+            Write-EIDMTag -Tag "ERROR" -Text ("EXO SOURCE connection failed: {0}" -f $_.Exception.Message) -Color Red
+            return $script:EIDMStatus_Failed
+        }
+
+        try {
+            $rel = Get-OrganizationRelationship -Identity $srcOrgRelName -ErrorAction SilentlyContinue
+            if ($rel) {
+                Remove-OrganizationRelationship -Identity $srcOrgRelName -Confirm:$false -ErrorAction Stop
+                Write-EIDMTag -Tag "OK" -Text ("Org relationship '{0}' removed from SOURCE." -f $srcOrgRelName) -Color Green
+            }
+            else {
+                Write-EIDMTag -Tag "SKIP" -Text ("Org relationship '{0}' not found on SOURCE." -f $srcOrgRelName) -Color DarkGray
+            }
+        }
+        catch {
+            Write-EIDMTag -Tag "ERROR" -Text ("Failed to remove SOURCE org relationship: {0}" -f $_.Exception.Message) -Color Red
+        }
+
+        # ============================================================
+        # 4) SOURCE: Remove scope security group
+        # ============================================================
+        Write-Host ""
+        Write-EIDMSection "4) SOURCE - Scope Security Group"
+
+        if (Read-EIDMSimpleYesNo ("Remove scope group '{0}' on SOURCE?" -f $scopeGroupName)) {
+            try {
+                $grp = Get-DistributionGroup -Identity $scopeGroupName -ErrorAction SilentlyContinue
+                if ($grp) {
+                    Remove-DistributionGroup -Identity $scopeGroupName -Confirm:$false -ErrorAction Stop
+                    Write-EIDMTag -Tag "OK" -Text ("Scope group '{0}' removed from SOURCE." -f $scopeGroupName) -Color Green
+                }
+                else {
+                    Write-EIDMTag -Tag "SKIP" -Text ("Scope group '{0}' not found on SOURCE." -f $scopeGroupName) -Color DarkGray
+                }
+            }
+            catch {
+                Write-EIDMTag -Tag "ERROR" -Text ("Failed to remove scope group: {0}" -f $_.Exception.Message) -Color Red
+            }
+        }
+        else {
+            Write-EIDMTag -Tag "SKIP" -Text "Skipped scope group removal." -Color DarkGray
+        }
+    }
+    else {
+        Write-EIDMTag -Tag "SKIP" -Text "Skipped SOURCE org relationship and scope group removal." -Color DarkGray
+    }
+
+    # ============================================================
+    # 5) TARGET: Remove migration app (Entra ID)
+    # ============================================================
+    Write-Host ""
+    Write-EIDMSection "5) TARGET - Migration App Registration (Entra ID)"
+
+    if (-not [string]::IsNullOrWhiteSpace($appObjectId)) {
+        if (Read-EIDMSimpleYesNo ("Remove migration app (ObjectId: {0}) from TARGET Entra ID?" -f $appObjectId)) {
+            Write-EIDMTag -Tag "STEP" -Text "Connecting to TARGET Graph..." -Color Cyan
+            try {
+                Ensure-EIDMGraphTargetConnection -Ctx $Ctx
+            }
+            catch {
+                Write-EIDMTag -Tag "ERROR" -Text ("Graph connection failed: {0}" -f $_.Exception.Message) -Color Red
+                return $script:EIDMStatus_Failed
+            }
+
+            # Remove service principal first, then app
+            if (-not [string]::IsNullOrWhiteSpace($spObjectId)) {
+                try {
+                    Remove-MgServicePrincipal -ServicePrincipalId $spObjectId -ErrorAction Stop
+                    Write-EIDMTag -Tag "OK" -Text ("Service principal '{0}' removed." -f $spObjectId) -Color Green
+                }
+                catch {
+                    Write-EIDMTag -Tag "WARN" -Text ("Could not remove service principal: {0}" -f $_.Exception.Message) -Color Yellow
+                }
+            }
+
+            try {
+                Remove-MgApplication -ApplicationId $appObjectId -ErrorAction Stop
+                Write-EIDMTag -Tag "OK" -Text ("App registration '{0}' removed." -f $appObjectId) -Color Green
+            }
+            catch {
+                Write-EIDMTag -Tag "ERROR" -Text ("Failed to remove app: {0}" -f $_.Exception.Message) -Color Red
+            }
+        }
+        else {
+            Write-EIDMTag -Tag "SKIP" -Text "Skipped app removal." -Color DarkGray
+        }
+    }
+    else {
+        Write-EIDMTag -Tag "SKIP" -Text "No migration app ObjectId in config - skipping." -Color DarkGray
+    }
+
+    # Disconnect
+    try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {}
+    $script:EIDMExoState.SourceConnected = $false
+    $script:EIDMExoState.TargetConnected = $false
+
+    Write-Host ""
+    Write-EIDMSection "Cleanup Complete"
+    Write-Host "You can now re-run Phase 03 to set up fresh migration infrastructure." -ForegroundColor Green
+    Write-Host ""
 
     return $script:EIDMStatus_Completed
 }

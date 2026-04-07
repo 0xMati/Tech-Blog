@@ -132,6 +132,22 @@ function Step-02-01-BuildUsersOnPremProvisioningPlan {
 
     $suffixDecisions = @{}  # key = SourceSuffix, value = @{ Target=""; Status="Ready|Blocked" }
 
+    Write-Host ""
+    Write-EIDMSection "UPN Suffix Mapping"
+    Write-Host "  During Discovery, we inventoried the UPN suffixes used by" -ForegroundColor DarkGray
+    Write-Host "  source users (e.g. user@contoso.com, user@corp.contoso.com)." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  For each suffix, you can choose to register it in the target" -ForegroundColor DarkGray
+    Write-Host "  AD forest now. This prepares your AD so that when these domains" -ForegroundColor DarkGray
+    Write-Host "  are released from the source tenant (post-migration), you can" -ForegroundColor DarkGray
+    Write-Host "  verify them in the target tenant and assign them to users." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  In the meantime, users will be created with these suffixes in" -ForegroundColor DarkGray
+    Write-Host "  on-prem AD and synced to Entra ID via AAD Connect." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "    Y = Register this suffix in target AD (recommended)" -ForegroundColor DarkGray
+    Write-Host "    N = Skip or use a different suffix instead" -ForegroundColor DarkGray
+
     foreach ($suffix in $suffixes) {
 
         Write-Host ""
