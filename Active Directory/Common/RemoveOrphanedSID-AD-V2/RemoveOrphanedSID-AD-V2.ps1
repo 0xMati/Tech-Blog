@@ -7,12 +7,14 @@
     SIDs which no longer resolve to an existing account. It uses a single LDAP query with Subtree
     scope for better performance and includes proper error handling.
 
-    By default, only orphaned SIDs belonging to the current domain are detected.
+    By default, orphaned SIDs belonging to any domain in the current forest are detected.
     Use -IncludeTrustedDomains to also detect orphaned SIDs from trusted (external) domains.
+    Use -ObjectType to limit scanning to OUs or containers only (much faster on large directories).
 
     .PARAMETER SearchBase
-    Specifies the starting point for the scan. Use "All" for the entire forest or provide a
-    specific DN like "OU=Users,DC=example,DC=com".
+    Specifies the starting point for the scan. Use "All" to scan the current domain
+    (or the entire forest when combined with -ForestWide), or provide a specific DN
+    like "OU=Users,DC=example,DC=com".
 
     .PARAMETER List
     Lists the orphaned SIDs found without making any changes (report mode).
@@ -22,16 +24,34 @@
     Removes the orphaned SIDs from the ACLs.
     Mutually exclusive with -List.
 
+    .PARAMETER ObjectType
+    Filter the type of objects to scan. Default is 'All'.
+    - All            : scan every AD object (slow on large directories)
+    - OUOnly         : scan only Organizational Units (fastest, covers most delegation ACLs)
+    - ContainersOnly : scan OUs, Containers, builtin and domain objects
+
+    .PARAMETER ForestWide
+    When used with -SearchBase "All", scans the entire forest (starting from the root
+    domain) instead of only the current domain.
+
     .PARAMETER IncludeTrustedDomains
     If specified, the script will also detect orphaned SIDs from trusted domains,
-    not just the current domain. Any unresolved SID will be flagged.
+    not just the current forest. Any unresolved SID will be flagged.
 
     .PARAMETER LogPath
     Path to the transcript log file. Defaults to "C:\temp\RemoveOrphanedSID-AD-V2.txt".
 
     .EXAMPLE
     .\RemoveOrphanedSID-AD-V2.ps1 -SearchBase "All" -List
-    Lists all orphaned SIDs in the entire forest (report only).
+    Lists orphaned SIDs in the current domain (report only).
+
+    .EXAMPLE
+    .\RemoveOrphanedSID-AD-V2.ps1 -SearchBase "All" -List -ObjectType OUOnly
+    Lists orphaned SIDs scanning only OUs in the current domain (much faster).
+
+    .EXAMPLE
+    .\RemoveOrphanedSID-AD-V2.ps1 -SearchBase "All" -List -ForestWide
+    Lists orphaned SIDs across the entire forest.
 
     .EXAMPLE
     .\RemoveOrphanedSID-AD-V2.ps1 -SearchBase "OU=Users,DC=example,DC=com" -Remove
@@ -58,6 +78,11 @@
     V2.00, 03/31/2026 - Major rework: single LDAP query, error handling,
                          trusted domain support, SupportsShouldProcess,
                          progress bar, summary report
+    V2.10, 04/14/2026 - Fix: use current domain (not forest root) for SID detection
+                         Add: -ObjectType (All/OUOnly/ContainersOnly) for performance
+                         Add: -ForestWide switch
+                         Fix: collect all forest domain SIDs (child domains)
+                         Fix: ACL read errors on DNs with special characters
 #>
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'List')]
@@ -72,6 +97,11 @@ param (
     [Parameter(Mandatory = $true, ParameterSetName = 'Remove')]
     [switch]$Remove,
 
+    [ValidateSet('All', 'OUOnly', 'ContainersOnly')]
+    [string]$ObjectType = 'All',
+
+    [switch]$ForestWide,
+
     [switch]$IncludeTrustedDomains,
 
     [string]$LogPath = "C:\temp\RemoveOrphanedSID-AD-V2.txt"
@@ -79,21 +109,44 @@ param (
 
 # ── Initialisation ──────────────────────────────────────────────────────────
 try {
-    $Forest = Get-ADRootDSE -ErrorAction Stop
+    $RootDSE = Get-ADRootDSE -ErrorAction Stop
 }
 catch {
     Write-Error "Unable to contact Active Directory: $_"
     return
 }
 
-$ForestDN = $Forest.rootDomainNamingContext
+$CurrentDomainDN = $RootDSE.defaultNamingContext
+$ForestDN        = $RootDSE.rootDomainNamingContext
 
+# Get current domain SID
 try {
-    $DomainSID = (Get-ADDomain -Identity $ForestDN -ErrorAction Stop).DomainSID.ToString()
+    $currentDomainObj = Get-ADDomain -ErrorAction Stop
+    $DomainSID = $currentDomainObj.DomainSID.ToString()
 }
 catch {
-    Write-Error "Unable to retrieve domain SID for '$ForestDN': $_"
+    Write-Error "Unable to retrieve current domain information: $_"
     return
+}
+
+# Collect all domain SIDs in the forest (current + child/parent domains)
+$AllForestDomainSIDs = [System.Collections.Generic.List[string]]::new()
+$AllForestDomainSIDs.Add($DomainSID)
+try {
+    $forestObj = Get-ADForest -ErrorAction Stop
+    foreach ($domainName in $forestObj.Domains) {
+        if ($domainName -eq $currentDomainObj.DNSRoot) { continue }
+        try {
+            $d = Get-ADDomain -Identity $domainName -ErrorAction Stop
+            $AllForestDomainSIDs.Add($d.DomainSID.ToString())
+        }
+        catch {
+            Write-Warning "Unable to retrieve SID for forest domain '$domainName': $_"
+        }
+    }
+}
+catch {
+    Write-Warning "Unable to enumerate forest domains: $_. Only current domain SID will be used."
 }
 
 # Ensure log directory exists
@@ -106,19 +159,28 @@ Start-Transcript -Path $LogPath -Append -Force
 
 # Determine search base
 if ($SearchBase -eq "All") {
-    $TargetDN = $ForestDN
-    Write-Host "Scanning the entire forest: $ForestDN" -ForegroundColor Cyan
+    if ($ForestWide) {
+        $TargetDN = $ForestDN
+        Write-Host "Scanning the entire forest: $ForestDN" -ForegroundColor Cyan
+    }
+    else {
+        $TargetDN = $CurrentDomainDN
+        Write-Host "Scanning the current domain: $CurrentDomainDN" -ForegroundColor Cyan
+    }
 }
 else {
     $TargetDN = $SearchBase
     Write-Host "Scanning: $TargetDN" -ForegroundColor Cyan
 }
 
+Write-Host "Object filter: $ObjectType" -ForegroundColor Cyan
+Write-Host "Known forest domain SIDs: $($AllForestDomainSIDs.Count)" -ForegroundColor Cyan
+
 if ($IncludeTrustedDomains) {
     Write-Host "Mode: including orphaned SIDs from trusted domains" -ForegroundColor Cyan
 }
 else {
-    Write-Host "Mode: current domain SIDs only (SID prefix $DomainSID)" -ForegroundColor Cyan
+    Write-Host "Mode: forest domain SIDs only" -ForegroundColor Cyan
 }
 
 # ── Trust reachability check (when -IncludeTrustedDomains) ──────────────────
@@ -208,8 +270,16 @@ if ($IncludeTrustedDomains) {
 # ── Collect all objects in a single LDAP query ──────────────────────────────
 Write-Host "`nRetrieving AD objects from '$TargetDN' ..." -ForegroundColor Cyan
 
+$LDAPFilter = switch ($ObjectType) {
+    'OUOnly'         { '(objectClass=organizationalUnit)' }
+    'ContainersOnly' { '(|(objectClass=organizationalUnit)(objectClass=container)(objectClass=builtinDomain)(objectClass=domainDNS))' }
+    default          { '(objectClass=*)' }
+}
+
+Write-Host "LDAP filter: $LDAPFilter" -ForegroundColor Cyan
+
 try {
-    $ADObjects = @(Get-ADObject -LDAPFilter "(objectClass=*)" -SearchBase $TargetDN -SearchScope Subtree -ErrorAction Stop)
+    $ADObjects = @(Get-ADObject -LDAPFilter $LDAPFilter -SearchBase $TargetDN -SearchScope Subtree -ErrorAction Stop)
 }
 catch {
     Write-Error "Failed to query AD objects under '$TargetDN': $_"
@@ -270,8 +340,14 @@ function Test-OrphanedACE {
         return $false
     }
     else {
-        # Only flag SIDs belonging to the current domain
-        return ($identity.Value -like "$DomainSID*")
+        # Only flag unresolved SIDs belonging to any domain in the current forest
+        if ($identity -is [System.Security.Principal.SecurityIdentifier]) {
+            $sidValue = $identity.Value
+            foreach ($forestSID in $AllForestDomainSIDs) {
+                if ($sidValue.StartsWith($forestSID)) { return $true }
+            }
+        }
+        return $false
     }
 }
 
@@ -287,9 +363,10 @@ foreach ($obj in $ADObjects) {
             -PercentComplete $pct -CurrentOperation $dn
     }
 
-    # Read ACL
+    # Read ACL - use LiteralPath and escape forward slashes in DN
+    $adPath = "AD:" + ($dn -replace '/', '\/')
     try {
-        $acl = Get-ACL -Path "AD:$dn" -ErrorAction Stop
+        $acl = Get-Acl -LiteralPath $adPath -ErrorAction Stop
     }
     catch {
         Write-Warning "Cannot read ACL on '$dn': $_"
@@ -297,17 +374,31 @@ foreach ($obj in $ADObjects) {
         continue
     }
 
+    # Enumerate ACEs safely (some ACEs may have corrupt/unsupported formats)
+    $aceList = $null
+    try {
+        $aceList = @($acl.Access)
+    }
+    catch {
+        Write-Warning "Cannot enumerate ACEs on '$dn': $_"
+        $ObjectsWithError++
+        continue
+    }
+
     $modified = $false
     $orphansOnThisObject = @()
 
-    foreach ($ace in $acl.Access) {
-        if (Test-OrphanedACE -ACE $ace) {
+    foreach ($ace in $aceList) {
+        try { $isOrphaned = Test-OrphanedACE -ACE $ace } catch { continue }
+        if ($isOrphaned) {
             $sid = $ace.IdentityReference.Value
             $OrphanedACEsFound++
 
             if ($sid -notin $orphansOnThisObject) {
                 $orphansOnThisObject += $sid
-                $sidOrigin = if ($sid -like "$DomainSID*") { "Current Domain" } else { "Trusted Domain" }
+                $sidOrigin = "Trusted Domain"
+                if ($sid.StartsWith($DomainSID)) { $sidOrigin = "Current Domain" }
+                elseif ($AllForestDomainSIDs | Where-Object { $sid.StartsWith($_) }) { $sidOrigin = "Forest Domain" }
                 $OrphanedResults.Add([PSCustomObject]@{
                     SID    = $sid
                     Object = $dn
@@ -337,7 +428,7 @@ foreach ($obj in $ADObjects) {
     # Write back modified ACL
     if ($modified) {
         try {
-            Set-ACL -Path "AD:$dn" -AclObject $acl -ErrorAction Stop
+            Set-Acl -LiteralPath $adPath -AclObject $acl -ErrorAction Stop
             Write-Host "Orphaned SID(s) removed on $dn" -ForegroundColor Red
             $ObjectsModified++
         }
@@ -353,10 +444,12 @@ Write-Progress -Activity "Scanning ACLs" -Completed
 # ── Orphaned SIDs detail ────────────────────────────────────────────────────
 if ($OrphanedResults.Count -gt 0) {
     $currentDomainResults = $OrphanedResults | Where-Object { $_.Origin -eq "Current Domain" }
+    $forestDomainResults  = $OrphanedResults | Where-Object { $_.Origin -eq "Forest Domain" }
     $trustedDomainResults = $OrphanedResults | Where-Object { $_.Origin -eq "Trusted Domain" }
 
     foreach ($section in @(
         @{ Label = "CURRENT DOMAIN"; Color = "Yellow"; Data = $currentDomainResults },
+        @{ Label = "FOREST DOMAINS (child/parent)"; Color = "DarkCyan"; Data = $forestDomainResults },
         @{ Label = "TRUSTED DOMAINS"; Color = "Magenta"; Data = $trustedDomainResults }
     )) {
         if ($section.Data -and @($section.Data).Count -gt 0) {
@@ -387,11 +480,14 @@ Write-Host   "|           SUMMARY REPORT             |" -ForegroundColor Cyan
 Write-Host   "+======================================+" -ForegroundColor Cyan
 Write-Host   "| Objects scanned   : $($ObjectsScanned.ToString().PadLeft(15)) |" -ForegroundColor Cyan
 $currentDomainACEs = if ($OrphanedResults.Count -gt 0) { ($OrphanedResults | Where-Object { $_.Origin -eq 'Current Domain' } | Measure-Object -Property ACEs -Sum).Sum } else { 0 }
+$forestDomainACEs  = if ($OrphanedResults.Count -gt 0) { ($OrphanedResults | Where-Object { $_.Origin -eq 'Forest Domain' } | Measure-Object -Property ACEs -Sum).Sum } else { 0 }
 $trustedDomainACEs = if ($OrphanedResults.Count -gt 0) { ($OrphanedResults | Where-Object { $_.Origin -eq 'Trusted Domain' } | Measure-Object -Property ACEs -Sum).Sum } else { 0 }
 if (-not $currentDomainACEs) { $currentDomainACEs = 0 }
+if (-not $forestDomainACEs)  { $forestDomainACEs  = 0 }
 if (-not $trustedDomainACEs) { $trustedDomainACEs = 0 }
 Write-Host   "| Orphaned ACEs     : $($OrphanedACEsFound.ToString().PadLeft(15)) |" -ForegroundColor $(if ($OrphanedACEsFound -gt 0) { 'Yellow' } else { 'Green' })
 Write-Host   "|   Current domain  : $($currentDomainACEs.ToString().PadLeft(15)) |" -ForegroundColor $(if ($currentDomainACEs -gt 0) { 'Yellow' } else { 'Green' })
+Write-Host   "|   Forest domains  : $($forestDomainACEs.ToString().PadLeft(15)) |" -ForegroundColor $(if ($forestDomainACEs -gt 0) { 'DarkCyan' } else { 'Green' })
 Write-Host   "|   Trusted domains : $($trustedDomainACEs.ToString().PadLeft(15)) |" -ForegroundColor $(if ($trustedDomainACEs -gt 0) { 'Magenta' } else { 'Green' })
 Write-Host   "| ACEs removed      : $($OrphanedACEsRemoved.ToString().PadLeft(15)) |" -ForegroundColor $(if ($OrphanedACEsRemoved -gt 0) { 'Red' } else { 'Green' })
 Write-Host   "| Objects modified  : $($ObjectsModified.ToString().PadLeft(15)) |" -ForegroundColor $(if ($ObjectsModified -gt 0) { 'Red' } else { 'Green' })
