@@ -34,7 +34,6 @@ This is a **common operational choice**, but not a universal recommendation. Whe
 ### Why you might NOT want it
 
 - **Least privilege**: Adding BA widens the number of principals with Full Control on GPOs. In a strictly hardened environment, you may prefer to limit GPO management to only Domain Admins and Enterprise Admins.
-- **Schema modification**: This is a **forest-wide, difficult-to-reverse** change. Schema changes should never be taken lightly.
 - **Redundancy in most cases**: Domain Admins are automatically members of `BUILTIN\Administrators` on domain controllers. If your GPO management is exclusively done by DA/EA members, the BA ACE may be unnecessary.
 
 ### Recommendation
