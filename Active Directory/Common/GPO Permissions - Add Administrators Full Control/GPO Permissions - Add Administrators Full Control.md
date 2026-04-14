@@ -20,6 +20,29 @@ But **BA** (Built-in Administrators) is absent.
 
 This can cause operational issues when the Administrators group needs to manage GPOs — for example, delegated administration scenarios, or tools that operate under the context of the local Administrators group.
 
+## Is This a Best Practice?
+
+This is a **common operational choice**, but not a universal recommendation. Whether it's right for your environment depends on your security posture and delegation model.
+
+### Why you might want it
+
+- **Resilience**: If Domain Admins or Enterprise Admins group memberships are accidentally modified, or if a DA account is compromised and disabled, the Administrators group still retains control over GPOs. It acts as a **safety net**.
+- **Delegation consistency**: In environments with delegated administration, processes or service accounts that run under `BUILTIN\Administrators` (but are not in DA/EA) need explicit access to manage GPOs.
+- **Alignment with other AD objects**: Most other AD objects and containers grant Full Control to Built-in Administrators by default. The `groupPolicyContainer` class is an exception, which creates an inconsistency.
+- **Tooling**: Some management tools operate under the Administrators context and fail on GPO operations without this ACE.
+
+### Why you might NOT want it
+
+- **Least privilege**: Adding BA widens the number of principals with Full Control on GPOs. In a strictly hardened environment, you may prefer to limit GPO management to only Domain Admins and Enterprise Admins.
+- **Schema modification**: This is a **forest-wide, difficult-to-reverse** change. Schema changes should never be taken lightly.
+- **Redundancy in most cases**: Domain Admins are automatically members of `BUILTIN\Administrators` on domain controllers. If your GPO management is exclusively done by DA/EA members, the BA ACE may be unnecessary.
+
+### Recommendation
+
+> In most enterprise environments, adding the BA ACE is a **reasonable hardening measure** that improves operational resilience without meaningfully increasing risk — since members of `BUILTIN\Administrators` on DCs are already highly privileged. However, evaluate your own delegation model before applying.
+
+---
+
 ## Solution Overview
 
 The fix involves **two steps**:
@@ -167,6 +190,12 @@ The ACE we add:
 
 # Apply the schema modification
 .\Set-GPODefaultSchemaPermission.ps1 -Apply
+
+# Dry run — show what reverting would look like (remove BA ACE)
+.\Set-GPODefaultSchemaPermission.ps1 -Revert
+
+# Revert to default (remove BA ACE from schema)
+.\Set-GPODefaultSchemaPermission.ps1 -Revert -Apply
 ```
 
 ### What the script does
@@ -220,6 +249,7 @@ SDDL validation : OK (6 ACEs)
 - Always run in dry-run mode first to review the proposed SDDL
 - The script creates a backup file of the current SDDL before applying changes
 - Allow time for schema replication across all DCs before testing
+- Use `-Revert -Apply` to remove the BA ACE from the schema if needed (the backup file is also created before reverting)
 
 ---
 
@@ -234,6 +264,7 @@ For a multi-domain forest, the recommended approach is:
 # 1. Schema modification (once per forest, requires Schema Admins)
 .\Set-GPODefaultSchemaPermission.ps1          # Dry run first
 .\Set-GPODefaultSchemaPermission.ps1 -Apply   # Apply
+# To revert: .\Set-GPODefaultSchemaPermission.ps1 -Revert -Apply
 
 # 2. Remediation per domain (requires Domain Admin per domain)
 .\Set-GPOAdministratorsFullControl.ps1 -DomainName "domain1.contoso.com"              # Audit
