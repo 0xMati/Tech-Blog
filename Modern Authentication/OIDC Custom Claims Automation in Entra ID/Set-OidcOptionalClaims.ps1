@@ -234,7 +234,7 @@ if ($ClaimsMappingSchema -and $sp) {
     $existingPolicies = Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id -ErrorAction SilentlyContinue
     foreach ($p in $existingPolicies) {
         Remove-MgServicePrincipalClaimMappingPolicyByRef -ServicePrincipalId $sp.Id -ClaimMappingPolicyId $p.Id
-        Remove-MgPolicyClaimMappingPolicy -ClaimMappingPolicyId $p.Id -ErrorAction SilentlyContinue
+        Remove-MgPolicyClaimMappingPolicy -ClaimsMappingPolicyId $p.Id -ErrorAction SilentlyContinue
         Write-Host "  Removed old policy ($($p.Id))" -ForegroundColor DarkGray
     }
 
