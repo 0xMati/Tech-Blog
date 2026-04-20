@@ -174,6 +174,118 @@ This is **normal and expected**. The claims are correctly configured — the por
 
 > 💡 If you manage claims via automation, stick with PowerShell and treat this message as informational.
 
+### Portal vs. PowerShell: Mutually Exclusive Editing
+
+An important consequence of the above: the portal and PowerShell are **mutually exclusive** when it comes to editing Claims Mapping. If a policy was created via PowerShell, the portal cannot edit it — and vice versa, if the portal creates the configuration, it uses its own internal format that PowerShell policies will overwrite.
+
+| Mode | Editable in the portal | Automatable |
+|---|---|---|
+| **Portal** creates the claims config | ✅ Yes | ❌ No |
+| **PowerShell/Graph** creates a ClaimsMappingPolicy | ❌ No | ✅ Yes |
+
+This means there are **three practical strategies**:
+
+#### Strategy 1: Full PowerShell (recommended for mass deployment)
+
+The script manages everything. The portal is read-only for claims. To modify claims later, rerun the script with an updated `-ClaimsMappingSchema`. Best for organizations deploying many apps or managing claims in a CI/CD pipeline.
+
+#### Strategy 2: Hybrid — Script for Setup, Portal for Claims Mapping
+
+Use the script **without** the `-ClaimsMappingSchema` parameter. The script creates the App Registration, Enterprise Application, optional claims, and security settings (`-AcceptMappedClaims` or custom signing key). Then configure the claims mapping **manually** in the portal under Enterprise App → Attributes & Claims. Since no PowerShell policy exists, the portal remains fully editable.
+
+```powershell
+# Example: script sets up everything EXCEPT claims mapping
+.\Set-OidcOptionalClaims.ps1 `
+    -AppDisplayName "XX-MyTestApp" `
+    -RedirectUri "https://xx-mytestapp.contoso.com/callback" `
+    -WebApp `
+    -CreateEnterpriseApp `
+    -IdTokenClaims "email","upn","given_name","family_name","groups" `
+    -AccessTokenClaims "email","groups" `
+    -AcceptMappedClaims
+# Then: configure claims mapping manually in the portal
+```
+
+Best for: deploy once, then let admins manage claims visually.
+
+#### Strategy 3: Reclaim Portal Control
+
+If a PowerShell policy already exists and you want to switch back to portal editing:
+1. Go to Enterprise App → Single Sign-On → Attributes & Claims
+2. The portal will offer to **delete** the external policy and replace it with its own configuration
+3. Once done, the portal becomes editable again — but the PowerShell policy is gone
+
+> ⚠️ This is a **one-way operation**. The PowerShell policy will be deleted. If you need to go back to automation later, you'll have to recreate it.
+
+### Managing a ClaimsMappingPolicy with PowerShell
+
+#### Retrieve the current policy for an app
+
+```powershell
+Connect-MgGraph -Scopes "Policy.Read.All", "Application.Read.All"
+
+# Find the Service Principal
+$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'"
+
+# Get assigned Claims Mapping Policies
+$policies = Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id
+
+# Display the policy definition (JSON)
+foreach ($p in $policies) {
+    Write-Host "Policy ID    : $($p.Id)" -ForegroundColor Cyan
+    Write-Host "Display Name : $($p.DisplayName)" -ForegroundColor Cyan
+    Write-Host "Definition   :" -ForegroundColor Green
+    $p.Definition | ForEach-Object { $_ | ConvertFrom-Json | ConvertTo-Json -Depth 10 }
+}
+```
+
+#### Modify an existing policy
+
+```powershell
+Connect-MgGraph -Scopes "Policy.ReadWrite.ApplicationConfiguration"
+
+# Get the current policy
+$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'"
+$policy = (Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id)[0]
+
+# Define the updated claims schema
+$newDefinition = @{
+    ClaimsMappingPolicy = @{
+        Version              = 1
+        IncludeBasicClaimSet = $true
+        ClaimsSchema         = @(
+            @{ Source = "user"; ID = "userprincipalname"; JwtClaimType = "custom_id" }
+            @{ Source = "user"; ID = "mail";              JwtClaimType = "email" }
+            @{ Source = "user"; ID = "givenname";         JwtClaimType = "first_name" }
+            @{ Source = "user"; ID = "surname";           JwtClaimType = "last_name" }
+        )
+    }
+}
+
+# Update the policy
+Update-MgPolicyClaimMappingPolicy -ClaimMappingPolicyId $policy.Id `
+    -Definition @(($newDefinition | ConvertTo-Json -Depth 10 -Compress))
+
+Write-Host "Policy updated." -ForegroundColor Green
+```
+
+#### Delete a policy and unassign it
+
+```powershell
+$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'"
+$policies = Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id
+
+foreach ($p in $policies) {
+    # Unassign from the Service Principal
+    Remove-MgServicePrincipalClaimMappingPolicyByRef -ServicePrincipalId $sp.Id -ClaimMappingPolicyId $p.Id
+    # Delete the policy object
+    Remove-MgPolicyClaimMappingPolicy -ClaimMappingPolicyId $p.Id
+    Write-Host "Removed and deleted policy $($p.Id)" -ForegroundColor Yellow
+}
+```
+
+> 💡 After deleting the policy via PowerShell, the portal's Attributes & Claims panel becomes editable again.
+
 ---
 
 ## Automation Script
