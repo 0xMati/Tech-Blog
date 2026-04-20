@@ -1,4 +1,5 @@
 #Requires -Modules Microsoft.Graph.Applications
+#Requires -Modules Microsoft.Graph.Identity.SignIns
 
 <#
 .SYNOPSIS
