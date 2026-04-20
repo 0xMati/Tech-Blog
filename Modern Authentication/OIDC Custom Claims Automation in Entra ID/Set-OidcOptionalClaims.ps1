@@ -54,6 +54,12 @@ param(
 )
 
 # ============================================================
+# Import modules
+# ============================================================
+Import-Module Microsoft.Graph.Applications -ErrorAction Stop
+Import-Module Microsoft.Graph.Identity.SignIns -ErrorAction Stop
+
+# ============================================================
 # Validations
 # ============================================================
 if ($AcceptMappedClaims -and $CustomSigningCertPfxPath) {
