@@ -15,17 +15,17 @@
 
 .EXAMPLE
     # New app with optional claims + Enterprise App
-    .\Set-OidcOptionalClaims.ps1 -AppDisplayName "MyApp" -RedirectUri "https://myapp.com/callback" -WebApp -CreateEnterpriseApp
+    .\Set-OidcOptionalClaims.ps1 -AppDisplayName "XX-MyTestApp" -RedirectUri "https://xx-mytestapp.contoso.com/callback" -WebApp -CreateEnterpriseApp
 
 .EXAMPLE
     # Existing app with claims mapping + acceptMappedClaims
-    .\Set-OidcOptionalClaims.ps1 -AppDisplayName "MyApp" -AppObjectId "xxx" -CreateEnterpriseApp -AcceptMappedClaims `
+    .\Set-OidcOptionalClaims.ps1 -AppDisplayName "XX-MyTestApp" -AppObjectId "xxx" -CreateEnterpriseApp -AcceptMappedClaims `
         -ClaimsMappingSchema @(@{Source="user"; ID="userprincipalname"; JwtClaimType="custom_id"})
 
 .EXAMPLE
     # Existing app with claims mapping + custom signing certificate
-    .\Set-OidcOptionalClaims.ps1 -AppDisplayName "MyApp" -AppObjectId "xxx" -CreateEnterpriseApp `
-        -CustomSigningCertPfxPath "C:\certs\myapp.pfx" -CustomSigningCertCerPath "C:\certs\myapp.cer" -CustomSigningCertPassword "pwd" `
+    .\Set-OidcOptionalClaims.ps1 -AppDisplayName "XX-MyTestApp" -AppObjectId "xxx" -CreateEnterpriseApp `
+        -CustomSigningCertPfxPath "C:\certs\xx-mytestapp.pfx" -CustomSigningCertCerPath "C:\certs\xx-mytestapp.cer" -CustomSigningCertPassword "pwd" `
         -ClaimsMappingSchema @(@{Source="user"; ID="userprincipalname"; JwtClaimType="custom_id"})
 #>
 

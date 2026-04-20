@@ -177,8 +177,8 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
 
 ```powershell
 .\Set-OidcOptionalClaims.ps1 `
-    -AppDisplayName "MyWeatherApp" `
-    -RedirectUri "https://myapp.contoso.com/callback" `
+    -AppDisplayName "XX-MyTestApp" `
+    -RedirectUri "https://xx-mytestapp.contoso.com/callback" `
     -WebApp `
     -CreateEnterpriseApp `
     -IdTokenClaims "email","upn","given_name","family_name","groups" `
@@ -189,7 +189,7 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
 
 ```powershell
 .\Set-OidcOptionalClaims.ps1 `
-    -AppDisplayName "MyWeatherApp" `
+    -AppDisplayName "XX-MyTestApp" `
     -AppObjectId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
     -IdTokenClaims "email","upn","groups","sid" `
     -AccessTokenClaims "email","groups"
@@ -199,7 +199,7 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
 
 ```powershell
 .\Set-OidcOptionalClaims.ps1 `
-    -AppDisplayName "MyWeatherApp" `
+    -AppDisplayName "XX-MyTestApp" `
     -AppObjectId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
     -CreateEnterpriseApp `
     -AcceptMappedClaims `
@@ -213,11 +213,11 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
 
 ```powershell
 .\Set-OidcOptionalClaims.ps1 `
-    -AppDisplayName "MyWeatherApp" `
+    -AppDisplayName "XX-MyTestApp" `
     -AppObjectId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
     -CreateEnterpriseApp `
-    -CustomSigningCertPfxPath "C:\certs\myapp.pfx" `
-    -CustomSigningCertCerPath "C:\certs\myapp.cer" `
+    -CustomSigningCertPfxPath "C:\certs\xx-mytestapp.pfx" `
+    -CustomSigningCertCerPath "C:\certs\xx-mytestapp.cer" `
     -CustomSigningCertPassword "MyPassword" `
     -ClaimsMappingSchema @(
         @{ Source="user"; ID="userprincipalname"; JwtClaimType="custom_id" },
@@ -229,8 +229,8 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
 
 ```powershell
 .\Set-OidcOptionalClaims.ps1 `
-    -AppDisplayName "MonApp" `
-    -RedirectUri "https://monapp.contoso.com/callback" `
+    -AppDisplayName "XX-MyTestApp" `
+    -RedirectUri "https://xx-mytestapp.contoso.com/callback" `
     -WebApp `
     -CreateEnterpriseApp `
     -IdTokenClaims "email","upn","given_name","family_name","groups" `
