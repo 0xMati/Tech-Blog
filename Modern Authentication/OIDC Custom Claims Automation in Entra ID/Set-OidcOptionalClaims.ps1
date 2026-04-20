@@ -233,8 +233,8 @@ if ($ClaimsMappingSchema -and $sp) {
     # Remove existing policies
     $existingPolicies = Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id -ErrorAction SilentlyContinue
     foreach ($p in $existingPolicies) {
-        Remove-MgServicePrincipalClaimMappingPolicyByRef -ServicePrincipalId $sp.Id -ClaimsMappingPolicyId $p.Id
-        Remove-MgPolicyClaimsMappingPolicy -ClaimsMappingPolicyId $p.Id -ErrorAction SilentlyContinue
+        Remove-MgServicePrincipalClaimMappingPolicyByRef -ServicePrincipalId $sp.Id -ClaimMappingPolicyId $p.Id
+        Remove-MgPolicyClaimMappingPolicy -ClaimMappingPolicyId $p.Id -ErrorAction SilentlyContinue
         Write-Host "  Removed old policy ($($p.Id))" -ForegroundColor DarkGray
     }
 
@@ -247,7 +247,7 @@ if ($ClaimsMappingSchema -and $sp) {
         }
     }
 
-    $policy = New-MgPolicyClaimsMappingPolicy `
+    $policy = New-MgPolicyClaimMappingPolicy `
         -DisplayName "ClaimsMapping - $AppDisplayName" `
         -Definition @(($policyDefinition | ConvertTo-Json -Depth 10 -Compress))
 
