@@ -19,13 +19,13 @@
 .EXAMPLE
     # Existing app with claims mapping + acceptMappedClaims
     .\Set-OidcOptionalClaims.ps1 -AppDisplayName "MyApp" -AppObjectId "xxx" -CreateEnterpriseApp -AcceptMappedClaims `
-        -ClaimsMappingSchema @(@{Source="user"; ID="userprincipalname"; JwtClaimType="faro_id"})
+        -ClaimsMappingSchema @(@{Source="user"; ID="userprincipalname"; JwtClaimType="custom_id"})
 
 .EXAMPLE
     # Existing app with claims mapping + custom signing certificate
     .\Set-OidcOptionalClaims.ps1 -AppDisplayName "MyApp" -AppObjectId "xxx" -CreateEnterpriseApp `
         -CustomSigningCertPfxPath "C:\certs\myapp.pfx" -CustomSigningCertCerPath "C:\certs\myapp.cer" -CustomSigningCertPassword "pwd" `
-        -ClaimsMappingSchema @(@{Source="user"; ID="userprincipalname"; JwtClaimType="faro_id"})
+        -ClaimsMappingSchema @(@{Source="user"; ID="userprincipalname"; JwtClaimType="custom_id"})
 #>
 
 param(
@@ -43,7 +43,7 @@ param(
 
     # --- Claims Mapping (Enterprise App) ---
     [hashtable[]]$ClaimsMappingSchema,
-    # Ex: @(@{Source="user"; ID="userprincipalname"; JwtClaimType="faro_id"}, @{Source="user"; ID="mail"; JwtClaimType="email"})
+    # Ex: @(@{Source="user"; ID="userprincipalname"; JwtClaimType="custom_id"}, @{Source="user"; ID="mail"; JwtClaimType="email"})
 
     # --- Security: choose ONE of the two options ---
     [switch]$AcceptMappedClaims,          # Option 2: simple, single-tenant only

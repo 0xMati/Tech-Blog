@@ -57,7 +57,7 @@ Common optional claims:
 📦 **API Object**: `ClaimsMappingPolicy` on the **Service Principal**
 
 This is the advanced mechanism that allows:
-- 🔄 **Renaming** a claim in the token (e.g., send `user.userprincipalname` as `faro_id`)
+- 🔄 **Renaming** a claim in the token (e.g., send `user.userprincipalname` as `custom_id`)
 - 🧩 **Mapping custom attributes** (extension attributes, directory custom attributes)
 - ⚙️ **Applying transformations** (regex, concatenation, conditions, Extract, ToUpper, etc.)
 - 📌 **Adding constant values**
@@ -204,7 +204,7 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
     -CreateEnterpriseApp `
     -AcceptMappedClaims `
     -ClaimsMappingSchema @(
-        @{ Source="user"; ID="userprincipalname"; JwtClaimType="faro_id" },
+        @{ Source="user"; ID="userprincipalname"; JwtClaimType="custom_id" },
         @{ Source="user"; ID="mail"; JwtClaimType="email" }
     )
 ```
@@ -220,7 +220,7 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
     -CustomSigningCertCerPath "C:\certs\myapp.cer" `
     -CustomSigningCertPassword "MyPassword" `
     -ClaimsMappingSchema @(
-        @{ Source="user"; ID="userprincipalname"; JwtClaimType="faro_id" },
+        @{ Source="user"; ID="userprincipalname"; JwtClaimType="custom_id" },
         @{ Source="user"; ID="groups"; JwtClaimType="groups" }
     )
 ```
@@ -237,7 +237,7 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
     -AccessTokenClaims "email","groups" `
     -AcceptMappedClaims `
     -ClaimsMappingSchema @(
-        @{ Source="user"; ID="userprincipalname"; JwtClaimType="faro_id" },
+        @{ Source="user"; ID="userprincipalname"; JwtClaimType="custom_id" },
         @{ Source="user"; ID="groups"; JwtClaimType="groups" }
     )
 ```
