@@ -436,9 +436,9 @@ $newDefinition = @{
     }
 }
 
-# Update the policy
+# Update the policy (| Out-Null avoids a threading error on PowerShell 5.1)
 Update-MgPolicyClaimMappingPolicy -ClaimsMappingPolicyId $policy.Id `
-    -Definition @(($newDefinition | ConvertTo-Json -Depth 10 -Compress))
+    -Definition @(($newDefinition | ConvertTo-Json -Depth 10 -Compress)) | Out-Null
 
 Write-Host "Policy updated." -ForegroundColor Green
 ```
