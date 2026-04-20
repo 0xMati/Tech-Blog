@@ -14,7 +14,9 @@ While the Azure portal makes it straightforward to configure these manually, man
 In this article, we'll cover:
 ✅ The difference between Optional Claims and Claims Mapping
 ✅ Security requirements (custom signing keys vs. acceptMappedClaims)
+✅ Common automation pitfalls and how to avoid them
 ✅ A complete PowerShell script to automate everything
+✅ How to manage Claims Mapping Policies after deployment
 
 ---
 
@@ -71,7 +73,7 @@ This is the advanced mechanism that allows:
 |---|---|---|
 | **Configured on** | Application (App Registration) | Service Principal (Enterprise App) |
 | **Flexibility** | Predefined list only | Any user attribute, transformations, conditions |
-| **API** | `Update-MgApplication -OptionalClaims` | `New-MgPolicyClaimsMappingPolicy` |
+| **API** | `Update-MgApplication -OptionalClaims` | `New-MgPolicyClaimMappingPolicy` |
 | **Security requirement** | None | Custom signing key or `acceptMappedClaims` |
 | **Conflict resolution** | — | Claims Mapping takes priority |
 
@@ -124,11 +126,13 @@ Set the `acceptMappedClaims` property to `true` in the application manifest. Thi
 
 ---
 
-## The Enterprise Application Mystery
+## Automation Pitfalls
 
-A common gotcha when automating Entra ID with PowerShell or Graph API: **creating an App Registration does NOT automatically create the Enterprise Application** (Service Principal).
+When automating Entra ID app provisioning with PowerShell or Graph API, several gotchas can trip you up. These are all behaviors that differ from the portal experience.
 
-In the Azure portal, when you create an App Registration, the Service Principal is created silently behind the scenes. But with Graph API / PowerShell, these are **two separate operations**:
+### The Missing Enterprise Application
+
+Creating an App Registration via Graph API does **NOT** automatically create the Enterprise Application (Service Principal). In the Azure portal, both are created together behind the scenes, but with the API these are **two separate operations**:
 
 ```
 App Registration  ──────►  POST /applications
@@ -138,18 +142,18 @@ Enterprise App    ──────►  POST /servicePrincipals
                               (Service Principal object)
 ```
 
-If you forget to create the Service Principal, you won't have an Enterprise Application, and you won't be able to:
+If you forget to create the Service Principal, you won't be able to:
 - Assign users or groups
 - Configure Claims Mapping
 - See the app in "Enterprise Applications" in the portal
 
-The automation script below handles this with a `-CreateEnterpriseApp` switch.
+The automation script handles this with a `-CreateEnterpriseApp` switch.
 
-### The Enterprise App Visibility Gotcha
+### The Visibility Tag
 
-Even after creating the Service Principal via PowerShell, you might notice that the Enterprise Application **doesn't appear** in the portal's default list — you can only find it by searching its Object ID.
+Even after creating the Service Principal via PowerShell, the Enterprise Application may **not appear** in the portal's default list — you can only find it by searching its Object ID.
 
-This is because the Azure portal filters the Enterprise Applications list to show only apps tagged with `WindowsAzureActiveDirectoryIntegratedApp`. When you create a Service Principal via the portal, this tag is added automatically. When you create one via PowerShell or Graph API, **it is not**.
+This is because the portal filters the list to show only apps tagged with `WindowsAzureActiveDirectoryIntegratedApp`. The portal adds this tag automatically; PowerShell does **not**.
 
 The fix is to include the tag at creation time:
 
@@ -157,33 +161,46 @@ The fix is to include the tag at creation time:
 New-MgServicePrincipal -AppId $app.AppId -Tags @("WindowsAzureActiveDirectoryIntegratedApp")
 ```
 
-Without this tag, the app works perfectly — it's just invisible in the default filtered view.
+Without this tag, the app works perfectly — it's just invisible in the default filtered view. The automation script includes this tag automatically.
+
+### Microsoft Graph SDK Naming Inconsistencies
+
+The Microsoft Graph PowerShell SDK has inconsistent naming for Claims Mapping cmdlets. This can cause `CommandNotFoundException` errors if you guess the names:
+
+| Element | Convention | Example |
+|---|---|---|
+| **Cmdlet name** | Singular `ClaimMapping` (no 's') | `New-MgPolicyClaimMappingPolicy` |
+| **Parameter name** | Plural `ClaimsMapping` (with 's') | `-ClaimsMappingPolicyId` |
+| **Exception** | `Remove-MgServicePrincipalClaimMappingPolicyByRef` | Uses `-ClaimMappingPolicyId` (no 's') |
+
+> 💡 Always verify cmdlet signatures with `Get-Command <cmdlet> -Syntax` before using them.
+
+**Required modules**:
+- `Microsoft.Graph.Applications` — for app registration and service principal management
+- `Microsoft.Graph.Identity.SignIns` — for claims mapping policy cmdlets
+
+---
+
+## Portal vs. PowerShell: Managing Claims Mapping
+
+The Azure portal and PowerShell are **mutually exclusive** when it comes to editing Claims Mapping. Understanding this is critical before choosing your approach.
 
 ### The "Overwritten by a Claim Mapping Policy" Message
 
-When a Claims Mapping Policy has been applied via Graph API or PowerShell, the Enterprise Application's **Attributes & Claims** panel in the portal will display a warning:
+When a Claims Mapping Policy has been applied via Graph API or PowerShell, the Enterprise Application's **Attributes & Claims** panel displays a warning:
 
 > *"This configuration was overwritten by a claim mapping policy created via Graph/PowerShell"*
 
-This is **normal and expected**. The claims are correctly configured — the portal simply cannot display or edit them visually because they come from an external policy object. You have two choices:
+This is **normal and expected**. The claims are correctly configured — the portal simply cannot display or edit them visually because they come from an external policy object.
 
-| Option | Result |
-|---|---|
-| **Ignore the message** | Claims work fine, you manage them via PowerShell |
-| **Edit via the portal** | The portal will delete the PowerShell policy and recreate its own visual configuration |
-
-> 💡 If you manage claims via automation, stick with PowerShell and treat this message as informational.
-
-### Portal vs. PowerShell: Mutually Exclusive Editing
-
-An important consequence of the above: the portal and PowerShell are **mutually exclusive** when it comes to editing Claims Mapping. If a policy was created via PowerShell, the portal cannot edit it — and vice versa, if the portal creates the configuration, it uses its own internal format that PowerShell policies will overwrite.
+### How It Works
 
 | Mode | Editable in the portal | Automatable |
 |---|---|---|
 | **Portal** creates the claims config | ✅ Yes | ❌ No |
 | **PowerShell/Graph** creates a ClaimsMappingPolicy | ❌ No | ✅ Yes |
 
-This means there are **three practical strategies**:
+### Three Practical Strategies
 
 #### Strategy 1: Full PowerShell (recommended for mass deployment)
 
@@ -217,80 +234,11 @@ If a PowerShell policy already exists and you want to switch back to portal edit
 
 > ⚠️ This is a **one-way operation**. The PowerShell policy will be deleted. If you need to go back to automation later, you'll have to recreate it.
 
-### Managing a ClaimsMappingPolicy with PowerShell
-
-#### Retrieve the current policy for an app
-
-```powershell
-Connect-MgGraph -Scopes "Policy.Read.All", "Application.Read.All"
-
-# Find the Service Principal
-$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'"
-
-# Get assigned Claims Mapping Policies
-$policies = Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id
-
-# Display the policy definition (JSON)
-foreach ($p in $policies) {
-    Write-Host "Policy ID    : $($p.Id)" -ForegroundColor Cyan
-    Write-Host "Display Name : $($p.DisplayName)" -ForegroundColor Cyan
-    Write-Host "Definition   :" -ForegroundColor Green
-    $p.Definition | ForEach-Object { $_ | ConvertFrom-Json | ConvertTo-Json -Depth 10 }
-}
-```
-
-#### Modify an existing policy
-
-```powershell
-Connect-MgGraph -Scopes "Policy.ReadWrite.ApplicationConfiguration"
-
-# Get the current policy
-$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'"
-$policy = (Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id)[0]
-
-# Define the updated claims schema
-$newDefinition = @{
-    ClaimsMappingPolicy = @{
-        Version              = 1
-        IncludeBasicClaimSet = $true
-        ClaimsSchema         = @(
-            @{ Source = "user"; ID = "userprincipalname"; JwtClaimType = "custom_id" }
-            @{ Source = "user"; ID = "mail";              JwtClaimType = "email" }
-            @{ Source = "user"; ID = "givenname";         JwtClaimType = "first_name" }
-            @{ Source = "user"; ID = "surname";           JwtClaimType = "last_name" }
-        )
-    }
-}
-
-# Update the policy
-Update-MgPolicyClaimMappingPolicy -ClaimMappingPolicyId $policy.Id `
-    -Definition @(($newDefinition | ConvertTo-Json -Depth 10 -Compress))
-
-Write-Host "Policy updated." -ForegroundColor Green
-```
-
-#### Delete a policy and unassign it
-
-```powershell
-$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'"
-$policies = Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id
-
-foreach ($p in $policies) {
-    # Unassign from the Service Principal
-    Remove-MgServicePrincipalClaimMappingPolicyByRef -ServicePrincipalId $sp.Id -ClaimMappingPolicyId $p.Id
-    # Delete the policy object
-    Remove-MgPolicyClaimMappingPolicy -ClaimMappingPolicyId $p.Id
-    Write-Host "Removed and deleted policy $($p.Id)" -ForegroundColor Yellow
-}
-```
-
-> 💡 After deleting the policy via PowerShell, the portal's Attributes & Claims panel becomes editable again.
-
 ---
 
-## Automation Script
+## The Automation Script
 
-The PowerShell script `Set-OidcOptionalClaims.ps1` (included in this folder) automates the full lifecycle:
+The PowerShell script `Set-OidcOptionalClaims.ps1` (included in this folder) automates the full lifecycle.
 
 ### Features
 
@@ -310,6 +258,7 @@ The PowerShell script `Set-OidcOptionalClaims.ps1` (included in this folder) aut
 
 ```powershell
 Install-Module Microsoft.Graph.Applications -Scope CurrentUser
+Install-Module Microsoft.Graph.Identity.SignIns -Scope CurrentUser
 ```
 
 ### Usage Examples
@@ -383,11 +332,7 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser
     )
 ```
 
----
-
-## How It Works Under the Hood
-
-Here's the flow the script follows:
+### How It Works Under the Hood
 
 ```
     ┌──────────────────────────────────────────────────┐
@@ -416,7 +361,7 @@ Here's the flow the script follows:
                           ▼
     ┌──────────────────────────────────────────────────┐
     │          SERVICE PRINCIPAL (if requested)         │
-    │   Check if exists → Create if missing            │
+    │   Check if exists → Create with visibility tag   │
     └──────────────────────┬───────────────────────────┘
                            │
               ┌────────────┴────────────┐
@@ -444,6 +389,79 @@ Here's the flow the script follows:
 
 ---
 
+## Managing Claims Mapping Policies with PowerShell
+
+After deployment, you may need to inspect, modify, or delete the Claims Mapping Policy assigned to an application. Here are the common operations.
+
+### Retrieve the Current Policy
+
+```powershell
+Connect-MgGraph -Scopes "Policy.Read.All", "Application.Read.All"
+
+# Find the Service Principal (use Select-Object -First 1 to avoid array issues)
+$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'" | Select-Object -First 1
+
+# Get assigned Claims Mapping Policies
+$policies = Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id
+
+# Display the policy definition (JSON)
+foreach ($p in $policies) {
+    Write-Host "Policy ID    : $($p.Id)" -ForegroundColor Cyan
+    Write-Host "Display Name : $($p.DisplayName)" -ForegroundColor Cyan
+    Write-Host "Definition   :" -ForegroundColor Green
+    $p.Definition | ForEach-Object { $_ | ConvertFrom-Json | ConvertTo-Json -Depth 10 }
+}
+```
+
+### Modify an Existing Policy
+
+```powershell
+Connect-MgGraph -Scopes "Policy.ReadWrite.ApplicationConfiguration"
+
+# Get the current policy
+$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'" | Select-Object -First 1
+$policy = (Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id)[0]
+
+# Define the updated claims schema
+$newDefinition = @{
+    ClaimsMappingPolicy = @{
+        Version              = 1
+        IncludeBasicClaimSet = $true
+        ClaimsSchema         = @(
+            @{ Source = "user"; ID = "userprincipalname"; JwtClaimType = "custom_id" }
+            @{ Source = "user"; ID = "mail";              JwtClaimType = "email" }
+            @{ Source = "user"; ID = "givenname";         JwtClaimType = "first_name" }
+            @{ Source = "user"; ID = "surname";           JwtClaimType = "last_name" }
+        )
+    }
+}
+
+# Update the policy
+Update-MgPolicyClaimMappingPolicy -ClaimsMappingPolicyId $policy.Id `
+    -Definition @(($newDefinition | ConvertTo-Json -Depth 10 -Compress))
+
+Write-Host "Policy updated." -ForegroundColor Green
+```
+
+### Delete a Policy and Unassign It
+
+```powershell
+$sp = Get-MgServicePrincipal -Filter "displayName eq 'XX-MyTestApp'" | Select-Object -First 1
+$policies = Get-MgServicePrincipalClaimMappingPolicy -ServicePrincipalId $sp.Id
+
+foreach ($p in $policies) {
+    # Unassign from the Service Principal
+    Remove-MgServicePrincipalClaimMappingPolicyByRef -ServicePrincipalId $sp.Id -ClaimMappingPolicyId $p.Id
+    # Delete the policy object
+    Remove-MgPolicyClaimMappingPolicy -ClaimsMappingPolicyId $p.Id
+    Write-Host "Removed and deleted policy $($p.Id)" -ForegroundColor Yellow
+}
+```
+
+> 💡 After deleting the policy via PowerShell, the portal's Attributes & Claims panel becomes editable again.
+
+---
+
 ## Available Claim Transformations (Enterprise App)
 
 When using Claims Mapping via the Enterprise Application portal or API, you can apply transformations:
@@ -468,10 +486,11 @@ When using Claims Mapping via the Enterprise Application portal or API, you can 
 | Need | Where to configure | Automation |
 |---|---|---|
 | Standard claims (email, upn, groups…) | App Registration → Token Configuration | `Update-MgApplication -OptionalClaims` |
-| Custom mapping / transformations | Enterprise App → Attributes & Claims | `New-MgPolicyClaimsMappingPolicy` |
+| Custom mapping / transformations | Enterprise App → Attributes & Claims | `New-MgPolicyClaimMappingPolicy` |
 | Both at once | Possible — Claims Mapping wins on conflicts | The script handles both |
 | Security for Claims Mapping | Custom signing key (multi-tenant) or `acceptMappedClaims` (single-tenant) | Both options in the script |
 | Enterprise Application missing | Always create the Service Principal explicitly | `-CreateEnterpriseApp` switch |
+| Portal editing after PowerShell | Delete the policy first, or use hybrid strategy | See "Portal vs. PowerShell" section |
 
 ---
 
