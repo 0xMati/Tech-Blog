@@ -145,6 +145,35 @@ If you forget to create the Service Principal, you won't have an Enterprise Appl
 
 The automation script below handles this with a `-CreateEnterpriseApp` switch.
 
+### The Enterprise App Visibility Gotcha
+
+Even after creating the Service Principal via PowerShell, you might notice that the Enterprise Application **doesn't appear** in the portal's default list — you can only find it by searching its Object ID.
+
+This is because the Azure portal filters the Enterprise Applications list to show only apps tagged with `WindowsAzureActiveDirectoryIntegratedApp`. When you create a Service Principal via the portal, this tag is added automatically. When you create one via PowerShell or Graph API, **it is not**.
+
+The fix is to include the tag at creation time:
+
+```powershell
+New-MgServicePrincipal -AppId $app.AppId -Tags @("WindowsAzureActiveDirectoryIntegratedApp")
+```
+
+Without this tag, the app works perfectly — it's just invisible in the default filtered view.
+
+### The "Overwritten by a Claim Mapping Policy" Message
+
+When a Claims Mapping Policy has been applied via Graph API or PowerShell, the Enterprise Application's **Attributes & Claims** panel in the portal will display a warning:
+
+> *"This configuration was overwritten by a claim mapping policy created via Graph/PowerShell"*
+
+This is **normal and expected**. The claims are correctly configured — the portal simply cannot display or edit them visually because they come from an external policy object. You have two choices:
+
+| Option | Result |
+|---|---|
+| **Ignore the message** | Claims work fine, you manage them via PowerShell |
+| **Edit via the portal** | The portal will delete the PowerShell policy and recreate its own visual configuration |
+
+> 💡 If you manage claims via automation, stick with PowerShell and treat this message as informational.
+
 ---
 
 ## Automation Script

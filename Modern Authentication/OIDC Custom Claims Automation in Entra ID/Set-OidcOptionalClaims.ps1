@@ -143,7 +143,7 @@ $sp = $null
 if ($CreateEnterpriseApp -or $ClaimsMappingSchema -or $CustomSigningCertPfxPath) {
     $sp = Get-MgServicePrincipal -Filter "appId eq '$($app.AppId)'" -ErrorAction SilentlyContinue
     if (-not $sp) {
-        $sp = New-MgServicePrincipal -AppId $app.AppId
+        $sp = New-MgServicePrincipal -AppId $app.AppId -Tags @("WindowsAzureActiveDirectoryIntegratedApp")
         if ($sp) {
             Write-Host "Enterprise Application created (SP ObjectId: $($sp.Id))" -ForegroundColor Green
         } else {
