@@ -117,6 +117,8 @@ Here's the catch — and it's a big one. With Authentication Context, you tag th
 
 This makes Authentication Context alone impractical at scale. It works best for a **small number of high-security sites**, combined with a global baseline (keep reading — the good stuff is coming 👇).
 
+> 💡 **"Can't we do the reverse?"** — Block SPO globally with a CA, then use an Auth Context to *exempt* certain sites? Nope. CA policies are **additive** (most restrictive wins). The global block on SPO applies first — users never reach the Auth Context. Authentication Context can only **add** restrictions, never remove them.
+
 ### Licensing
 
 - Microsoft Entra ID P1
@@ -299,13 +301,13 @@ Only **10 sites** need to be tagged with an Authentication Context. The other 49
 
 | Criteria | Auth Context | SPO Advanced Mgmt | App-Enforced Restrictions | Defender for Cloud Apps |
 |---|---|---|---|---|
-| Granularity | Per site | Per site | Global (all SPO) | Per action / per file |
-| Impact on Teams | Protected sites only | Protected sites only | All file operations | Configurable |
-| Action type | Block access | Block access | Limit actions | Block / Monitor / Protect |
-| External users | Supported | Supported | Supported | Supported |
-| Per-site tagging | Required | Required | Not needed | Not needed |
-| Complexity | Medium | Low | Low | High |
-| Licensing | Entra ID P1 + Purview | SPO Advanced Mgmt | Entra ID P1 | Defender for Cloud Apps |
+| 🎯 Granularity | Per site | Per site | 🌐 Global (all SPO) | Per action / per file |
+| 💬 Impact on Teams | Protected sites only | Protected sites only | All file operations | ⚙️ Configurable |
+| 🔒 Action type | 🚫 Block access | 🚫 Block access | 👁️ Limit actions | 🚫 / 👁️ / 📊 Monitor |
+| 🌐 External users | ✅ Supported | ✅ Supported | ✅ Supported | ✅ Supported |
+| 🏷️ Per-site tagging | ⚠️ Required | ⚠️ Required | ✅ Not needed | ✅ Not needed |
+| 🧩 Complexity | 🟡 Medium | 🟢 Low | 🟢 Low | 🔴 High |
+| 💳 Licensing | Entra ID P1 + Purview | SPO Advanced Mgmt | Entra ID P1 | Defender for Cloud Apps |
 
 ---
 
