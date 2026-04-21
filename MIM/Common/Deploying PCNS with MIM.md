@@ -95,6 +95,12 @@ When MIM receives the password notification:
 
 On successful delivery, a record is added to `mms_tracking_entries_history` for audit purposes (user, target system, timestamp).
 
+### 💡 What If MIM Fails Completely?
+
+If the primary MIM server goes down permanently, you can configure a **warm standby server** and activate it using the `MIISactivate` tool — with **no loss of password changes**. The passwords remain queued on each DC until the standby server is activated.
+
+For details, see: [MIISactivate: Server Activation Tool](https://learn.microsoft.com/en-us/previous-versions/mim/jj590194(v=ws.10))
+
 ---
 
 ## 📋 Prerequisites
@@ -108,6 +114,8 @@ Before starting the deployment, make sure you have:
 | 🔗 Network connectivity | DCs must reach the MIM Sync server (see port requirements below) |
 | 👤 MIM Sync service account | Needed for SPN registration |
 | 📦 PCNS MSI installer | `Password Change Notification Service.msi` (x64) |
+| 🔄 Existing MAs synced | MAs for target data sources must be created and objects must be successfully joined/synced before enabling password sync |
+| 👥 MIM security groups | `FIMSyncBrowse` and `FIMSyncPasswordSet` groups are created during MIM installation for password management operations |
 
 ### 🔌 Port Requirements
 
@@ -195,6 +203,8 @@ pcnscfg ADDTARGET /N:<FriendlyName> /A:<MIM_FQDN> /S:<SPN> /FI:<InclusionGroup> 
 pcnscfg ADDTARGET /N:MIM-SERVER /A:MM-MIMSP1.contoso.com /S:PCNSCLNT/MM-MIMSP1.contoso.com /FI:"Domain Users" /FE:"Domain Admins" /F:1 /I:600 /D:False /WL:20 /WI:60
 ```
 
+> 💡 **Good news:** PCNS configuration is stored **in Active Directory**. You only need to run `pcnscfg` on **one DC** — Active Directory replicates the configuration to all other domain controllers automatically.
+
 **Parameter reference:**
 
 | Parameter | Description |
@@ -231,6 +241,8 @@ On the MIM Sync server:
 
 You need a **Password Extension DLL**. Password management is **not** built-in for database/file MAs — you must code it.
 
+The extension works by creating an export-only, encrypted attribute named `export_password`. This attribute doesn't exist in the target directory — it's a virtual attribute that can be accessed in provisioning rules extensions or during export attribute flow.
+
 **MAs with built-in password support:**
 
 | Built-in | Requires Password Extension |
@@ -246,6 +258,8 @@ You need a **Password Extension DLL**. Password management is **not** built-in f
 
 1. In Synchronization Service Manager, go to **Tools** → **Options**
 2. Check **Enable Password Synchronization**
+
+> ⚠️ Each target MA has a **"Require secure connection"** option for password sync operations. If enabled and the connection isn't secure, sync will fail. Only disable this after understanding the security implications (see the Lotus Notes troubleshooting tip below).
 
 ---
 
@@ -288,6 +302,8 @@ pcnscfg service [/L:MaxQueueLength] [/A:MaxQueueAge] [/R:MaxRetries] [/I:RetryIn
 | `/A` | 259200 sec (72h) | Max age before a queued entry is discarded |
 | `/R` | 0 (unlimited) | Max notification retry attempts |
 | `/I` | 60 sec | Seconds between retries |
+
+> ⏱️ **In practice:** By default, MIM can be offline for up to **72 hours** before passwords start being discarded from the DC queues. The queue itself (`%systemroot%\system32\pcns\pcns.dat`) has no size limit — it grows until disk space runs out. Before a planned extended downtime, consider setting `/A:0` (unlimited age) to prevent any loss, but monitor disk space on DCs.
 
 **Example:**
 
