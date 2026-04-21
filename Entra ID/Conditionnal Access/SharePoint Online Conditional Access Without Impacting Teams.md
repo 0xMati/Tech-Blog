@@ -13,7 +13,7 @@ This article explains why this happens, explores the available approaches, and r
 
 ---
 
-## The Problem
+## 🔍 The Problem
 
 ### Why SharePoint and Teams Are Coupled
 
@@ -31,25 +31,25 @@ Same service principal (`AppId 00000003-0ff1-ce00-0000-000000000002`) = same Con
 
 **Consequence**: any CA policy targeting the SharePoint Online cloud app — including IP-based restrictions — will also block file operations in Teams.
 
-### A Concrete Example
+### 💡 A Concrete Example
 
 Contoso has a global IP filter on SharePoint Online. An employee working from home opens Teams:
 
-- Chat and meetings work fine
-- They click on the **Files** tab in a Teams channel → **blocked** (the request goes to SharePoint Online, which checks the IP)
-- They try to open a shared document from a Teams chat → **blocked**
+- 💬 Chat and meetings → work fine
+- 📁 They click on the **Files** tab in a Teams channel → ❌ **blocked** (the request goes to SharePoint Online, which checks the IP)
+- 📎 They try to open a shared document from a Teams chat → ❌ **blocked**
 
 This is exactly the situation the security team did not intend.
 
 ---
 
-## Real-World Use Case
+## 🏢 Real-World Use Case
 
 A defense organization wants to:
 
-1. **Open certain SharePoint sites to external partners** (B2B guests with identities in the corporate directory)
-2. **Keep IP restrictions for internal users** — employees must connect from a trusted device/IP to access SharePoint
-3. **Not break Teams** — chat, meetings, and file access in Teams must remain usable from any location
+1. 🌐 **Open certain SharePoint sites to external partners** (B2B guests with identities in the corporate directory)
+2. 🔒 **Keep IP restrictions for internal users** — employees must connect from a trusted device/IP to access SharePoint
+3. 💬 **Not break Teams** — chat, meetings, and file access in Teams must remain usable from any location
 
 Their current setup: a **global IP filter on SPO**. They planned to replace it with Conditional Access policies, but quickly discovered that **any CA targeting SPO also breaks Teams file access**.
 
@@ -57,7 +57,7 @@ Their current setup: a **global IP filter on SPO**. They planned to replace it w
 
 ---
 
-## Approach 1: Authentication Context
+## 🔐 Approach 1: Authentication Context
 
 ### Concept
 
@@ -105,13 +105,13 @@ Or via **Microsoft Purview Sensitivity Labels**: create a label with Sites and G
 
 | Action | Result |
 |---|---|
-| Teams chat and meetings | No impact |
-| Files tab (non-protected site) | No impact |
-| Files tab (protected site) | Blocked from untrusted IP |
-| Direct SPO browsing (protected site) | Blocked from untrusted IP |
-| Direct SPO browsing (unprotected site) | No impact |
+| 💬 Teams chat and meetings | ✅ No impact |
+| 📁 Files tab (non-protected site) | ✅ No impact |
+| 📁 Files tab (protected site) | 🚫 Blocked from untrusted IP |
+| 🌐 Direct SPO browsing (protected site) | 🚫 Blocked from untrusted IP |
+| 🌐 Direct SPO browsing (unprotected site) | ✅ No impact |
 
-### Operational Consideration
+### ⚠️ Operational Consideration
 
 With Authentication Context, you tag the **sites to protect** — not the sites to open. If your tenant has hundreds of sites, you would need to tag all of them except the few opened to externals. **Any forgotten site has no IP restriction.**
 
@@ -124,7 +124,7 @@ This makes Authentication Context alone impractical at scale. It works best for 
 
 ---
 
-## Approach 2: SharePoint Advanced Management — Restricted Access Control
+## 🛡️ Approach 2: SharePoint Advanced Management — Restricted Access Control
 
 ### Concept
 
@@ -150,7 +150,7 @@ Then create a CA policy targeting the security group with IP restrictions. Only 
 
 Same as Authentication Context: restriction applies at the site level. Teams messaging and meetings are not affected, but file access to protected sites is.
 
-### Operational Consideration
+### ⚠️ Operational Consideration
 
 Same limitation as Authentication Context — this is a **per-site** control. You must enable RAC on every site you want to protect. Forgotten sites have no restriction. Use it for a small number of critical sites, not as a global strategy.
 
@@ -160,7 +160,7 @@ Same limitation as Authentication Context — this is a **per-site** control. Yo
 
 ---
 
-## Approach 3: App-Enforced Restrictions (View-Only Baseline)
+## 👁️ Approach 3: App-Enforced Restrictions (View-Only Baseline)
 
 ### Concept
 
@@ -192,11 +192,11 @@ User on untrusted IP accesses any SPO site
 
 | Action | Trusted IP | Untrusted IP |
 |---|---|---|
-| Teams chat and meetings | Full access | Full access |
-| Open files in Teams | Full access | View-only (web) |
-| Download files from Teams | Full access | Blocked |
-| Print/sync from Teams | Full access | Blocked |
-| Direct SPO browsing | Full access | View-only (web) |
+| 💬 Teams chat and meetings | ✅ Full access | ✅ Full access |
+| 📄 Open files in Teams | ✅ Full access | 👁️ View-only (web) |
+| ⬇️ Download files from Teams | ✅ Full access | 🚫 Blocked |
+| 🖨️ Print/sync from Teams | ✅ Full access | 🚫 Blocked |
+| 🌐 Direct SPO browsing | ✅ Full access | 👁️ View-only (web) |
 
 > This approach affects **all SharePoint sites globally**, including Teams file operations. It does not block access — it limits actions. This makes it ideal as a **baseline**.
 
@@ -206,7 +206,7 @@ User on untrusted IP accesses any SPO site
 
 ---
 
-## Approach 4: Defender for Cloud Apps — Session Policies
+## 🔬 Approach 4: Defender for Cloud Apps — Session Policies
 
 ### Concept
 
@@ -237,9 +237,9 @@ For **granular, per-action control**, Microsoft Defender for Cloud Apps provides
 
 ### Considerations
 
-- Sessions are routed through a **reverse proxy**, which can add latency
-- The most flexible approach, but also the most **complex to configure and maintain**
-- Can use **User Agent** or **App** filters to differentiate Teams vs. direct SPO browsing
+- ⏱️ Sessions are routed through a **reverse proxy**, which can add latency
+- 🧩 The most flexible approach, but also the most **complex to configure and maintain**
+- 🔎 Can use **User Agent** or **App** filters to differentiate Teams vs. direct SPO browsing
 
 ### Licensing
 
@@ -248,11 +248,11 @@ For **granular, per-action control**, Microsoft Defender for Cloud Apps provides
 
 ---
 
-## Recommended Strategy: Combine Approaches
+## 🎯 Recommended Strategy: Combine Approaches
 
 For large tenants, the most practical approach is a **3-layer strategy**:
 
-### Layer 1 — Global Baseline: App-Enforced Restrictions
+### 🟢 Layer 1 — Global Baseline: App-Enforced Restrictions
 
 Apply Approach 3 across all SharePoint Online:
 
@@ -261,7 +261,7 @@ Apply Approach 3 across all SharePoint Online:
 - Prevents data exfiltration while keeping content accessible
 - Teams file access works (view-only from untrusted IPs)
 
-### Layer 2 — Critical Sites: Authentication Context
+### 🔴 Layer 2 — Critical Sites: Authentication Context
 
 For the few sites that need a **total block** from untrusted IPs (not even view-only):
 
@@ -269,7 +269,7 @@ For the few sites that need a **total block** from untrusted IPs (not even view-
 - Only tag the **handful of high-security sites**
 - Much more manageable than tagging every site
 
-### Layer 3 — External Collaboration Sites
+### 🟡 Layer 3 — External Collaboration Sites
 
 Sites opened to B2B guests:
 
@@ -283,9 +283,9 @@ Contoso has 500 SharePoint sites:
 
 | Category | Count | Strategy | Behavior from untrusted IP |
 |---|---|---|---|
-| Standard internal sites | ~480 | Baseline only | View-only, no download |
-| High-security projects | ~10 | Auth Context + Baseline | Fully blocked |
-| External collaboration | ~10 | Baseline only (or excluded) | View-only or full access |
+| 🟢 Standard internal sites | ~480 | Baseline only | 👁️ View-only, no download |
+| 🔴 High-security projects | ~10 | Auth Context + Baseline | 🚫 Fully blocked |
+| 🟡 External collaboration | ~10 | Baseline only (or excluded) | 👁️ View-only or ✅ full access |
 
 Only **10 sites** need to be tagged with an Authentication Context. The other 490 are covered by the global baseline.
 
@@ -293,7 +293,7 @@ Only **10 sites** need to be tagged with an Authentication Context. The other 49
 
 ---
 
-## Comparison Summary
+## 📊 Comparison Summary
 
 | Criteria | Auth Context | SPO Advanced Mgmt | App-Enforced Restrictions | Defender for Cloud Apps |
 |---|---|---|---|---|
@@ -307,7 +307,7 @@ Only **10 sites** need to be tagged with an Authentication Context. The other 49
 
 ---
 
-## Considerations for External Collaboration (B2B)
+## 🌐 Considerations for External Collaboration (B2B)
 
 When opening SharePoint to external guests:
 
@@ -323,14 +323,14 @@ When opening SharePoint to external guests:
 
 ---
 
-## Best Practices
+## ✅ Best Practices
 
-- Start with **Report-Only mode** on all CA policies before enforcing
-- **Pilot with a small group** before broad deployment
-- Keep **named locations** (trusted IP ranges) documented and up to date
-- Separate sites for external collaboration from internal-only sites
-- **Monitor Sign-in logs** to verify policies apply as expected
-- Remember that B2B guests are subject to **both** your CA policies and their home tenant's cross-tenant access settings
+- 🧪 Start with **Report-Only mode** on all CA policies before enforcing
+- 👥 **Pilot with a small group** before broad deployment
+- 📍 Keep **named locations** (trusted IP ranges) documented and up to date
+- 🗂️ Separate sites for external collaboration from internal-only sites
+- 📊 **Monitor Sign-in logs** to verify policies apply as expected
+- 🤝 Remember that B2B guests are subject to **both** your CA policies and their home tenant's cross-tenant access settings
 
 ---
 
