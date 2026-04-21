@@ -11,7 +11,27 @@ This article covers everything you need to know: how it works under the hood, ho
 
 ## 🔍 How PCNS Works — The Full Picture
 
-Understanding the end-to-end flow is essential before diving into the deployment. Here's what happens when a user changes their password:
+Understanding the end-to-end flow is essential before diving into the deployment. Here's the big picture:
+
+```mermaid
+flowchart LR
+    A["👤 User changes\npassword"] --> B["🛡️ Domain\nController"]
+    B --> C["pcnsflt.dll\n(Password Filter)"]
+    C --> D["pcns.dat\n(Encrypted Queue)"]
+    D --> E["PCNSSVC\n(PCNS Service)"]
+    E -->|"Kerberos RPC\n(TCP 135 + dynamic)"| F["🔄 MIM Sync\nServer"]
+    F --> G["🎯 Target Systems\n(AD, SQL, LDAP...)"]
+
+    style A fill:#4CAF50,color:#fff
+    style B fill:#2196F3,color:#fff
+    style C fill:#FF9800,color:#fff
+    style D fill:#FF9800,color:#fff
+    style E fill:#FF9800,color:#fff
+    style F fill:#9C27B0,color:#fff
+    style G fill:#f44336,color:#fff
+```
+
+Here's what happens when a user changes their password:
 
 ### Step 1 — Password Change in Active Directory
 
@@ -58,6 +78,23 @@ The **PCNS Windows service** (`PCNSSVC`) monitors the queue file using the OS fi
 
 > ⚠️ **Security best practice:** Always add high-privileged accounts (Enterprise Admins, Domain Admins) to the exclusion group!
 
+Here's the decision logic on each DC:
+
+```mermaid
+flowchart TD
+    A["Password change\ndetected by filter"] --> B["Encrypted &\nqueued in pcns.dat"]
+    B --> C["PCNS Service\npicks up entry"]
+    C --> D{"User in\ninclusion group?"}
+    D -->|No| E["🚫 Discarded"]
+    D -->|Yes| F{"User in\nexclusion group?"}
+    F -->|Yes| G["🚫 Discarded\n+ Event logged"]
+    F -->|No| H["✅ Forwarded\nto MIM Sync"]
+
+    style E fill:#f44336,color:#fff
+    style G fill:#f44336,color:#fff
+    style H fill:#4CAF50,color:#fff
+```
+
 ### Step 4 — PCNS Sends the Password to MIM
 
 PCNS connects to MIM Sync using **Kerberos-authenticated RPC**:
@@ -94,6 +131,23 @@ When MIM receives the password notification:
 ### Step 6 — MIM Flows the Password to Target Systems
 
 On successful delivery, a record is added to `mms_tracking_entries_history` for audit purposes (user, target system, timestamp).
+
+```mermaid
+flowchart TD
+    A["MIM Sync receives\npassword from PCNS"] --> B["Lookup user in\nAD Connector Space\n(by GUID)"]
+    B --> C["Follow lineage\nto Metaverse"]
+    C --> D["Find target\nConnector Space objects"]
+    D --> E{"Target system\nreachable?"}
+    E -->|Yes| F["✅ Password set\ndirectly on target"]
+    E -->|No| G["🔒 Encrypted & stored\nin mms_tracking_entries"]
+    G --> H["Retry every 60s\n(max 10 attempts)"]
+    H --> E
+    F --> I["📝 Record added to\nmms_tracking_entries_history"]
+
+    style F fill:#4CAF50,color:#fff
+    style G fill:#FF9800,color:#fff
+    style I fill:#2196F3,color:#fff
+```
 
 ### 💡 What If MIM Fails Completely?
 
