@@ -161,6 +161,14 @@ Quick silent install:
 | TDE | Supported with MIM SP2+ |
 | AlwaysOn | Supported with MIM SP2+ (but `RegisterAllProvidersIP` must be **0** — cross-subnet failover not supported) |
 
+### Performance Tips
+
+| Recommendation | Why |
+|---|---|
+| 🗄️ **Separate disks for data and logs** | Put MDF files on one volume, LDF on another — avoids I/O contention and improves recoverability |
+| 🧠 **Set SQL Max Memory** | Leave at least 4 GB for the OS. E.g., on a 16 GB server: set SQL Max Memory to **12288 MB** (`sp_configure 'max server memory', 12288`) |
+| 📊 **Rebuild indexes regularly** | The MIM Sync database grows fast — schedule weekly index maintenance to prevent fragmentation |
+
 > 💡 The MIM Sync installer creates the database automatically. You don't need to create it manually. With MIM 2016 SP2+, you can customize the database name during installation.
 
 ---
