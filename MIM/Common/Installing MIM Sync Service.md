@@ -49,7 +49,6 @@ Install these on the MIM Sync server **before** running the MIM installer:
 | Software | Required For |
 |---|---|
 | .NET Framework 4.6 | MIM Sync Service |
-| .NET Framework 3.5 | MIM Service (if co-located) |
 | [Visual C++ 2013 Redistributable](https://www.microsoft.com/download/details.aspx?id=40784) | MIM Sync |
 | [SQL Server Native Client](https://www.microsoft.com/download/details.aspx?id=50402) | MIM Sync database connectivity |
 
@@ -69,27 +68,22 @@ Install these on the MIM Sync server **before** running the MIM installer:
 
 ### Create Service Accounts
 
-MIM needs several service accounts in Active Directory. Here's the full list:
+MIM Sync only needs a couple of service accounts:
 
 | Account | Purpose |
 |---|---|
-| `MIMINSTALL` | Installation account (local admin on MIM server) |
+| `MIMINSTALL` | Installation account (local admin on MIM Sync server, `sysadmin` on SQL) |
 | `MIMSync` | MIM Synchronization Service account |
-| `MIMService` | MIM Service account |
-| `MIMMA` | MIM Management Agent account |
-| `MIMSSPR` | Self-Service Password Reset account |
-| `SharePoint` | SharePoint app pool (if MIM Portal is installed) |
-| `SqlServer` | SQL Server service account |
-| `MIMPool` | MIM Portal IIS app pool |
 
-**PowerShell script to create them all:**
+> 💡 If SQL Server is not yet installed, you'll also need a `SqlServer` service account for the SQL instance.
+
+**PowerShell script:**
 
 ```powershell
 Import-Module ActiveDirectory
 $sp = ConvertTo-SecureString "YourStrongPassword!" -AsPlainText -Force
 
-# Create each account
-@("MIMINSTALL", "MIMMA", "MIMSync", "MIMService", "MIMSSPR", "SharePoint", "SqlServer", "MIMPool") | ForEach-Object {
+@("MIMINSTALL", "MIMSync") | ForEach-Object {
     New-ADUser -SamAccountName $_ -Name $_ -Enabled $true -PasswordNeverExpires $true
     Set-ADAccountPassword -Identity $_ -NewPassword $sp
 }
@@ -116,27 +110,10 @@ These groups control who can do what in MIM Sync:
 }
 
 # Add initial members to Admins
-Add-ADGroupMember -Identity MIMSyncAdmins -Members Administrator, MIMService, MIMINSTALL
+Add-ADGroupMember -Identity MIMSyncAdmins -Members Administrator, MIMINSTALL
 ```
 
-### Register SPNs
-
-SPNs are needed for Kerberos authentication:
-
-```cmd
-setspn -S FIMService/mimserver.contoso.com CONTOSO\MIMService
-setspn -S http/mim.contoso.com CONTOSO\MIMPool
-setspn -S http/passwordreset.contoso.com CONTOSO\MIMSSPR
-setspn -S http/passwordregistration.contoso.com CONTOSO\MIMSSPR
-```
-
-### Create DNS Records
-
-| Record | Type | Points to |
-|---|---|---|
-| `mim.contoso.com` | A | MIM server IP |
-| `passwordreset.contoso.com` | A | MIM server IP |
-| `passwordregistration.contoso.com` | A | MIM server IP |
+> 💡 **SPNs and DNS records** are not required for MIM Sync alone — they're only needed if you also install the MIM Service and Portal.
 
 ---
 
@@ -180,21 +157,16 @@ Quick silent install:
 
 ### Install Windows Features
 
+MIM Sync itself doesn't require IIS or web server features. You just need .NET 4.6 (included in Windows Server 2019+) and optionally RSAT tools:
+
 ```powershell
 Import-Module ServerManager
 
-Install-WindowsFeature Web-WebServer, `
-    Net-Framework-Features, `
-    RSAT-AD-PowerShell, `
-    Web-Mgmt-Tools, `
-    Application-Server, `
-    Windows-Identity-Foundation, `
-    Server-Media-Foundation, `
-    Xps-Viewer `
-    -IncludeAllSubFeature -Restart -Source "D:\Sources\SxS"
+Install-WindowsFeature Net-Framework-45-Core, `
+    RSAT-AD-PowerShell
 ```
 
-> 💡 The `-Source` parameter points to the Windows Server install media for .NET 3.5. Adjust the path to your SxS folder.
+> 💡 IIS, SharePoint, and web-related features are only needed for the **MIM Service & Portal** — not for MIM Sync standalone.
 
 ### Configure Local Security Policy
 
@@ -202,19 +174,11 @@ Open `secpol.msc` and configure these user rights:
 
 | Policy | Add these accounts |
 |---|---|
-| **Log on as a service** | `MIMSync`, `MIMMA`, `MIMService`, `SharePoint`, `SqlServer`, `MIMSSPR` |
-| **Deny access to this computer from the network** | `MIMSync`, `MIMService` |
-| **Deny log on locally** | `MIMSync`, `MIMService` |
+| **Log on as a service** | `MIMSync` |
+| **Deny access to this computer from the network** | `MIMSync` |
+| **Deny log on locally** | `MIMSync` |
 
 > 🔒 Denying local logon and network access for service accounts is a security best practice — these accounts should only run as services.
-
-### Unlock IIS Windows Authentication
-
-```powershell
-iisreset /STOP
-C:\Windows\System32\inetsrv\appcmd.exe unlock config /section:windowsAuthentication -commit:apphost
-iisreset /START
-```
 
 ---
 
@@ -386,7 +350,7 @@ flowchart TD
 | Service won't start | Service account doesn't have "Log on as a service" | Add it in Local Security Policy (`secpol.msc`) |
 | Can't open miisclient.exe | User not in `MIMSyncAdmins` group | Add your user and **sign out/in** |
 | RPC connectivity issues (PCNS, remote MAs) | Firewall rules not enabled | Re-run installer or manually open RPC ports |
-| .NET 3.5 installation fails | Missing Windows source files | Point to `SxS` folder on Windows install media |
+
 | Encryption key lost | No backup was made | 🚨 Not recoverable — must reinstall from scratch |
 
 ---
@@ -394,8 +358,7 @@ flowchart TD
 ## 🔒 Security Hardening Tips
 
 - 🔐 Use **Group Managed Service Accounts (gMSA)** when possible (MIM SP2+)
-- 🚫 Don't use the same account for MIM Sync and MIM Service
-- 🔄 Rotate service account passwords regularly — see [Change Passwords in MIM](Change%20Passwords%20in%20MIM.md)
+-  Rotate service account passwords regularly — see [Change Passwords in MIM](Change%20Passwords%20in%20MIM.md)
 - 📊 Enable **SQL TDE** (Transparent Data Encryption) for the MIM database
 - 🔒 Don't grant `sysadmin` to the MIM Sync service account — it only needs `db_owner` on its own database after installation
 - 🛡️ Keep "Deny log on locally" and "Deny access from network" policies active for service accounts
