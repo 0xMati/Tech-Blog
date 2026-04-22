@@ -70,18 +70,21 @@ Install these on the MIM Sync server **before** running the MIM installer:
 
 #### MIM Sync Service Account
 
-You need **one** dedicated service account to run the MIM Synchronization Service:
-
 | Account | Purpose |
 |---|---|
+| `MIMInstall` | Installation account — local admin on MIM Sync server, `sysadmin` on SQL. Use this to run the installer. |
 | `MIMSync` | Runs the FIMSynchronizationService Windows service |
+
+> 💡 Having a dedicated `MIMInstall` account is a best practice: it separates the installation privileges (`sysadmin`, local admin) from the runtime service account. After installation, `MIMInstall` can be locked down or disabled.
 
 ```powershell
 Import-Module ActiveDirectory
 $sp = ConvertTo-SecureString "YourStrongPassword!" -AsPlainText -Force
 
-New-ADUser -SamAccountName "MIMSync" -Name "MIMSync" -Enabled $true -PasswordNeverExpires $true
-Set-ADAccountPassword -Identity "MIMSync" -NewPassword $sp
+@("MIMInstall", "MIMSync") | ForEach-Object {
+    New-ADUser -SamAccountName $_ -Name $_ -Enabled $true -PasswordNeverExpires $true
+    Set-ADAccountPassword -Identity $_ -NewPassword $sp
+}
 ```
 
 > 🔐 In production, use strong unique passwords and store them in a vault (Azure Key Vault, KeePass, etc.). Don't use `PasswordNeverExpires` if your security policy requires rotation — see the [Change Passwords in MIM](Change%20Passwords%20in%20MIM.md) article instead.
@@ -99,9 +102,16 @@ Each Management Agent (MA) connects to a target system (Active Directory, SQL da
 
 > 💡 **One account per MA** is a best practice. Don't reuse the MIM Sync service account (`MIMSync`) as an MA connector account — it makes auditing a nightmare and violates least-privilege.
 
-### Create Security Groups
+### Create Security Groups (Optional but Recommended)
 
-These groups control who can do what in MIM Sync:
+The MIM Sync installer asks for 5 security groups. You have **two choices**:
+
+| Option | What happens |
+|---|---|
+| **Don't create them beforehand** | The installer creates them as **local groups** on the MIM Sync server. Fine for labs and single-server setups. |
+| **Create them in AD beforehand** | Use domain groups — required if you want to manage permissions centrally or have multiple admins. **You must prefix with `DOMAIN\` in the installer.** |
+
+If you go with domain groups, here's what to create:
 
 | Group | Purpose |
 |---|---|
@@ -112,13 +122,13 @@ These groups control who can do what in MIM Sync:
 | `MIMSyncPasswordSet` | Can perform password set/change operations via WMI |
 
 ```powershell
-# Create groups
+# Create domain groups
 @("MIMSyncAdmins", "MIMSyncOperators", "MIMSyncJoiners", "MIMSyncBrowse", "MIMSyncPasswordSet") | ForEach-Object {
     New-ADGroup -Name $_ -GroupCategory Security -GroupScope Global -SamAccountName $_
 }
 
 # Add initial members to Admins
-Add-ADGroupMember -Identity MIMSyncAdmins -Members Administrator
+Add-ADGroupMember -Identity MIMSyncAdmins -Members Administrator, MIMInstall
 ```
 
 > 💡 **SPNs and DNS records** are not required for MIM Sync alone — they're only needed if you also install the MIM Service and Portal.
@@ -147,7 +157,7 @@ Quick silent install:
 |---|---|
 | Instance | Default (MSSQLSERVER) or named |
 | Authentication | Windows Authentication |
-| sysadmin role | Add the account running the installer |
+| sysadmin role | Add the install account (`MIMInstall`) |
 | TDE | Supported with MIM SP2+ |
 | AlwaysOn | Supported with MIM SP2+ (but `RegisterAllProvidersIP` must be **0** — cross-subnet failover not supported) |
 
