@@ -68,28 +68,36 @@ Install these on the MIM Sync server **before** running the MIM installer:
 
 ### Create Service Accounts
 
-MIM Sync only needs a couple of service accounts:
+#### MIM Sync Service Account
+
+You need **one** dedicated service account to run the MIM Synchronization Service:
 
 | Account | Purpose |
 |---|---|
-| `MIMINSTALL` | Installation account (local admin on MIM Sync server, `sysadmin` on SQL) |
-| `MIMSync` | MIM Synchronization Service account |
-
-> 💡 If SQL Server is not yet installed, you'll also need a `SqlServer` service account for the SQL instance.
-
-**PowerShell script:**
+| `MIMSync` | Runs the FIMSynchronizationService Windows service |
 
 ```powershell
 Import-Module ActiveDirectory
 $sp = ConvertTo-SecureString "YourStrongPassword!" -AsPlainText -Force
 
-@("MIMINSTALL", "MIMSync") | ForEach-Object {
-    New-ADUser -SamAccountName $_ -Name $_ -Enabled $true -PasswordNeverExpires $true
-    Set-ADAccountPassword -Identity $_ -NewPassword $sp
-}
+New-ADUser -SamAccountName "MIMSync" -Name "MIMSync" -Enabled $true -PasswordNeverExpires $true
+Set-ADAccountPassword -Identity "MIMSync" -NewPassword $sp
 ```
 
 > 🔐 In production, use strong unique passwords and store them in a vault (Azure Key Vault, KeePass, etc.). Don't use `PasswordNeverExpires` if your security policy requires rotation — see the [Change Passwords in MIM](Change%20Passwords%20in%20MIM.md) article instead.
+
+#### Management Agent Accounts
+
+Each Management Agent (MA) connects to a target system (Active Directory, SQL database, LDAP, etc.) and needs its own service account with **just enough permissions** on that system. Plan these before you start creating MAs:
+
+| Example Account | Target System | Typical Permissions Needed |
+|---|---|---|
+| `svc-MIM-AD` | Active Directory | Read/Write on target OUs, Replicate Directory Changes (for delta imports) |
+| `svc-MIM-HR` | HR SQL Database | `db_datareader` (or `db_datawriter` if writeback) |
+| `svc-MIM-LDAP` | LDAP Directory | Read access (+ write if provisioning) |
+| `svc-MIM-Entra` | Entra ID (via Graph) | Application registration with appropriate Graph API permissions |
+
+> 💡 **One account per MA** is a best practice. Don't reuse the MIM Sync service account (`MIMSync`) as an MA connector account — it makes auditing a nightmare and violates least-privilege.
 
 ### Create Security Groups
 
@@ -110,7 +118,7 @@ These groups control who can do what in MIM Sync:
 }
 
 # Add initial members to Admins
-Add-ADGroupMember -Identity MIMSyncAdmins -Members Administrator, MIMINSTALL
+Add-ADGroupMember -Identity MIMSyncAdmins -Members Administrator
 ```
 
 > 💡 **SPNs and DNS records** are not required for MIM Sync alone — they're only needed if you also install the MIM Service and Portal.
@@ -139,7 +147,7 @@ Quick silent install:
 |---|---|
 | Instance | Default (MSSQLSERVER) or named |
 | Authentication | Windows Authentication |
-| sysadmin role | Add the MIM install account (`MIMINSTALL`) |
+| sysadmin role | Add the account running the installer |
 | TDE | Supported with MIM SP2+ |
 | AlwaysOn | Supported with MIM SP2+ (but `RegisterAllProvidersIP` must be **0** — cross-subnet failover not supported) |
 
