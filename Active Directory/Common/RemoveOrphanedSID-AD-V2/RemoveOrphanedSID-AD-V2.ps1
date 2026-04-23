@@ -121,7 +121,25 @@ param (
     [string]$ExportCsvPath
 )
 
+function Write-Section {
+    param([string]$Title)
+    Write-Host "" 
+    Write-Host ("=" * 78) -ForegroundColor Cyan
+    Write-Host ("  " + $Title) -ForegroundColor Cyan
+    Write-Host ("=" * 78) -ForegroundColor Cyan
+}
+
+function Write-Step {
+    param(
+        [string]$Label,
+        [string]$Value
+    )
+    Write-Host ("[" + $Label + "] " + $Value) -ForegroundColor Gray
+}
+
 # ── Initialisation ──────────────────────────────────────────────────────────
+Write-Section "PHASE 1 - INITIALIZATION"
+
 try {
     $RootDSE = Get-ADRootDSE -ErrorAction Stop
 }
@@ -187,21 +205,23 @@ else {
     Write-Host "Scanning: $TargetDN" -ForegroundColor Cyan
 }
 
-Write-Host "Object filter: $ObjectType" -ForegroundColor Cyan
-Write-Host "Known forest domain SIDs: $($AllForestDomainSIDs.Count)" -ForegroundColor Cyan
+Write-Step -Label "Target" -Value $TargetDN
+Write-Step -Label "Object filter" -Value $ObjectType
+Write-Step -Label "Known forest SIDs" -Value $AllForestDomainSIDs.Count
 
 if ($IncludeTrustedDomains) {
-    Write-Host "Mode: including orphaned SIDs from trusted domains" -ForegroundColor Cyan
+    Write-Step -Label "Mode" -Value "Including trusted domains"
 }
 else {
-    Write-Host "Mode: forest domain SIDs only" -ForegroundColor Cyan
+    Write-Step -Label "Mode" -Value "Forest domain SIDs only"
 }
 
 $TrustLookupFallbackCount = 0
 
 # ── Trust reachability check (when -IncludeTrustedDomains) ──────────────────
 if ($IncludeTrustedDomains) {
-    Write-Host "`nChecking trust reachability..." -ForegroundColor Cyan
+    Write-Section "PHASE 2 - TRUST REACHABILITY CHECK"
+    Write-Step -Label "Action" -Value "Checking trust reachability"
 
     try {
         $trusts = Get-ADTrust -Filter * -Properties securityIdentifier -ErrorAction Stop
@@ -222,12 +242,13 @@ if ($IncludeTrustedDomains) {
             # Get-ADDomain may fail on outbound-only trusts (no permission to query remote AD)
             # nltest /dsgetdc uses the DC locator — same mechanism AD uses for SID resolution
             $reachable = $false
-            $domainProbeError = $null
-            $domainProbe = Get-ADDomain -Identity $tName -ErrorAction SilentlyContinue -ErrorVariable domainProbeError
-            if ($domainProbe) {
-                $reachable = $true
+            try {
+                $domainProbe = Get-ADDomain -Identity $tName -ErrorAction Stop 2>$null
+                if ($domainProbe) {
+                    $reachable = $true
+                }
             }
-            else {
+            catch {
                 $TrustLookupFallbackCount++
                 try {
                     $null = nltest /dsgetdc:$tName 2>$null
@@ -277,7 +298,7 @@ if ($IncludeTrustedDomains) {
             }
         }
         else {
-            Write-Host "`nAll trusts are reachable." -ForegroundColor Green
+            Write-Host "All trusts are reachable." -ForegroundColor Green
         }
 
         if ($TrustLookupFallbackCount -gt 0) {
@@ -290,7 +311,8 @@ if ($IncludeTrustedDomains) {
 }
 
 # ── Collect all objects in a single LDAP query ──────────────────────────────
-Write-Host "`nRetrieving AD objects from '$TargetDN' ..." -ForegroundColor Cyan
+Write-Section "PHASE 3 - OBJECT DISCOVERY"
+Write-Step -Label "LDAP target" -Value $TargetDN
 
 $LDAPFilter = switch ($ObjectType) {
     'OUOnly'         { '(objectClass=organizationalUnit)' }
@@ -298,7 +320,7 @@ $LDAPFilter = switch ($ObjectType) {
     default          { '(objectClass=*)' }
 }
 
-Write-Host "LDAP filter: $LDAPFilter" -ForegroundColor Cyan
+Write-Step -Label "LDAP filter" -Value $LDAPFilter
 
 try {
     $ADObjects = @(Get-ADObject -LDAPFilter $LDAPFilter -SearchBase $TargetDN -SearchScope Subtree -ErrorAction Stop)
@@ -310,7 +332,10 @@ catch {
 }
 
 $TotalObjects = $ADObjects.Count
-Write-Host "Found $TotalObjects objects to analyse.`n" -ForegroundColor Cyan
+Write-Step -Label "Objects found" -Value $TotalObjects
+
+Write-Section "PHASE 4 - ACL ANALYSIS"
+Write-Step -Label "Action" -Value "Scanning ACLs and identifying orphaned SID ACEs"
 
 # ── Counters ────────────────────────────────────────────────────────────────
 $ObjectsScanned   = 0
@@ -391,7 +416,13 @@ foreach ($obj in $ADObjects) {
     $aclProviderPath = "AD:\$dn"
     $adsiEntry = $null
     $providerReadError = $null
-    $acl = Get-Acl -LiteralPath $aclProviderPath -ErrorAction SilentlyContinue -ErrorVariable providerReadError
+    $acl = $null
+    try {
+        $acl = Get-Acl -LiteralPath $aclProviderPath -ErrorAction Stop
+    }
+    catch {
+        $providerReadError = $_
+    }
 
     if (-not $acl) {
         try {
@@ -560,12 +591,39 @@ Write-Host   "| GUID fallback used: $($GuidFallbackCount.ToString().PadLeft(15))
 Write-Host   "| Errors            : $($ObjectsWithError.ToString().PadLeft(15)) |" -ForegroundColor $(if ($ObjectsWithError -gt 0) { 'Red' } else { 'Green' })
 Write-Host   "+======================================+" -ForegroundColor Cyan
 
+Write-Host "`nHow to read this summary:" -ForegroundColor Cyan
+Write-Host "- Objects scanned: total AD objects analyzed." -ForegroundColor Gray
+Write-Host "- Orphaned ACEs: ACL entries referencing unresolved SIDs." -ForegroundColor Gray
+Write-Host "- Current/Forest/Trusted domains: where those unresolved SIDs come from." -ForegroundColor Gray
+Write-Host "- ACEs removed / Objects modified: changes applied (0 in -List mode)." -ForegroundColor Gray
+Write-Host "- GUID fallback used: objects read via GUID method when provider path failed." -ForegroundColor Gray
+Write-Host "- Errors: objects that could not be processed." -ForegroundColor Gray
+
+Write-Section "PHASE 5 - EXECUTION RESULT"
+if ($ObjectsWithError -gt 0) {
+    Write-Host "Result: PARTIAL (completed with errors)" -ForegroundColor Red
+    Write-Step -Label "Interpretation" -Value "Some objects could not be processed. Review warnings and rerun if needed."
+}
+elseif ($OrphanedACEsFound -gt 0) {
+    Write-Host "Result: ACTION REQUIRED" -ForegroundColor Yellow
+    Write-Step -Label "Interpretation" -Value "Orphaned ACEs were detected. Validate results, then run -Remove -WhatIf before remediation."
+}
+else {
+    Write-Host "Result: CLEAN" -ForegroundColor Green
+    Write-Step -Label "Interpretation" -Value "No orphaned ACEs detected in scanned scope."
+}
+
 # ── Domain SID reference table ──────────────────────────────────────────────
 $separator = "+" + ("-" * 98) + "+"
 $colType = 14
 $colName = 28
 $colSID  = 48
 $colDir  = 14
+
+Write-Host "`nHow to read the domain/trust table:" -ForegroundColor Cyan
+Write-Host "- Forest Domain = domains that belong to the same forest." -ForegroundColor Gray
+Write-Host "- Trust = trust relationships returned by Get-ADTrust." -ForegroundColor Gray
+Write-Host "- A child domain may appear in BOTH sections (this is expected)." -ForegroundColor Gray
 
 Write-Host "`n$separator" -ForegroundColor Gray
 Write-Host ("| {0,-$colType} {1,-$colName} {2,-$colSID} {3,-$colDir}|" -f "TYPE", "NAME", "SID", "DIRECTION") -ForegroundColor Gray
@@ -619,4 +677,8 @@ Write-Host $separator -ForegroundColor Gray
 
 Stop-Transcript
 
-Write-Host "`nTranscript saved to: $LogPath" -ForegroundColor Gray
+Write-Section "COMPLETED"
+Write-Step -Label "Transcript" -Value $LogPath
+if ($ExportCsvPath) {
+    Write-Step -Label "CSV export" -Value $ExportCsvPath
+}
