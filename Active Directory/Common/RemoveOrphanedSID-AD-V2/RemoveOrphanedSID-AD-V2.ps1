@@ -41,6 +41,9 @@
     .PARAMETER LogPath
     Path to the transcript log file. Defaults to "C:\temp\RemoveOrphanedSID-AD-V2.txt".
 
+    .PARAMETER ExportCsvPath
+    Optional path to export orphaned SID results to CSV.
+
     .EXAMPLE
     .\RemoveOrphanedSID-AD-V2.ps1 -SearchBase "All" -List
     Lists orphaned SIDs in the current domain (report only).
@@ -65,6 +68,10 @@
     .\RemoveOrphanedSID-AD-V2.ps1 -SearchBase "OU=Users,DC=example,DC=com" -Remove -WhatIf
     Shows what would be changed without actually altering the ACLs.
 
+    .EXAMPLE
+    .\RemoveOrphanedSID-AD-V2.ps1 -SearchBase "All" -List -ObjectType OUOnly -ExportCsvPath "C:\temp\OrphanedSIDs.csv"
+    Lists orphaned SIDs and exports detailed results to CSV.
+
     .LINK
     www.alitajran.com/remove-orphaned-sids/
 
@@ -85,6 +92,9 @@
                          Fix: ACL read errors on DNs with special characters
     V2.11, 04/23/2026 - Fix: ACL provider path must use AD:\ prefix (not AD:)
                          Add: GUID-based ACL fallback for problematic DN parsing
+    V2.12, 04/23/2026 - Improve: reduce transcript noise and summarize GUID fallback usage
+                         Improve: trust reachability check without terminating errors
+                         Add: optional CSV export (-ExportCsvPath)
 #>
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'List')]
@@ -106,7 +116,9 @@ param (
 
     [switch]$IncludeTrustedDomains,
 
-    [string]$LogPath = "C:\temp\RemoveOrphanedSID-AD-V2.txt"
+    [string]$LogPath = "C:\temp\RemoveOrphanedSID-AD-V2.txt",
+
+    [string]$ExportCsvPath
 )
 
 # ── Initialisation ──────────────────────────────────────────────────────────
@@ -185,6 +197,8 @@ else {
     Write-Host "Mode: forest domain SIDs only" -ForegroundColor Cyan
 }
 
+$TrustLookupFallbackCount = 0
+
 # ── Trust reachability check (when -IncludeTrustedDomains) ──────────────────
 if ($IncludeTrustedDomains) {
     Write-Host "`nChecking trust reachability..." -ForegroundColor Cyan
@@ -208,13 +222,15 @@ if ($IncludeTrustedDomains) {
             # Get-ADDomain may fail on outbound-only trusts (no permission to query remote AD)
             # nltest /dsgetdc uses the DC locator — same mechanism AD uses for SID resolution
             $reachable = $false
-            try {
-                $null = Get-ADDomain -Identity $tName -ErrorAction Stop
+            $domainProbeError = $null
+            $domainProbe = Get-ADDomain -Identity $tName -ErrorAction SilentlyContinue -ErrorVariable domainProbeError
+            if ($domainProbe) {
                 $reachable = $true
             }
-            catch {
+            else {
+                $TrustLookupFallbackCount++
                 try {
-                    $nlResult = nltest /dsgetdc:$tName 2>&1
+                    $null = nltest /dsgetdc:$tName 2>$null
                     if ($LASTEXITCODE -eq 0) { $reachable = $true }
                 }
                 catch { }
@@ -263,6 +279,10 @@ if ($IncludeTrustedDomains) {
         else {
             Write-Host "`nAll trusts are reachable." -ForegroundColor Green
         }
+
+        if ($TrustLookupFallbackCount -gt 0) {
+            Write-Host "Info: nltest fallback used for $TrustLookupFallbackCount trust lookup(s)." -ForegroundColor DarkYellow
+        }
     }
     else {
         Write-Host "No trusts found." -ForegroundColor Yellow
@@ -298,6 +318,7 @@ $ObjectsWithError = 0
 $OrphanedACEsFound   = 0
 $OrphanedACEsRemoved = 0
 $ObjectsModified  = 0
+$GuidFallbackCount = 0
 $OrphanedResults  = [System.Collections.Generic.List[PSCustomObject]]::new()
 
 # ── Well-known SID prefixes (never orphaned) ───────────────────────────────
@@ -369,18 +390,24 @@ foreach ($obj in $ADObjects) {
     $aclWriteMode = 'Provider'
     $aclProviderPath = "AD:\$dn"
     $adsiEntry = $null
-    try {
-        $acl = Get-Acl -LiteralPath $aclProviderPath -ErrorAction Stop
-    }
-    catch {
+    $providerReadError = $null
+    $acl = Get-Acl -LiteralPath $aclProviderPath -ErrorAction SilentlyContinue -ErrorVariable providerReadError
+
+    if (-not $acl) {
         try {
             $guidPath = "LDAP://<GUID=$($obj.ObjectGUID)>"
             $adsiEntry = [ADSI]$guidPath
             $acl = $adsiEntry.ObjectSecurity
             $aclWriteMode = 'Guid'
+            $GuidFallbackCount++
         }
         catch {
-            Write-Warning "Cannot read ACL on '$dn': $_"
+            if ($providerReadError) {
+                Write-Warning "Cannot read ACL on '$dn'. Provider error: $providerReadError. GUID fallback error: $_"
+            }
+            else {
+                Write-Warning "Cannot read ACL on '$dn': $_"
+            }
             $ObjectsWithError++
             continue
         }
@@ -492,6 +519,26 @@ else {
     Write-Host "`nNo orphaned SIDs found." -ForegroundColor Green
 }
 
+# Optional CSV export
+if ($ExportCsvPath) {
+    try {
+        $exportDir = Split-Path -Path $ExportCsvPath -Parent
+        if ($exportDir -and -not (Test-Path -Path $exportDir)) {
+            New-Item -ItemType Directory -Path $exportDir -Force | Out-Null
+        }
+
+        $OrphanedResults |
+            Select-Object SID, Object, ACEs, Origin |
+            Sort-Object Origin, SID, Object |
+            Export-Csv -Path $ExportCsvPath -NoTypeInformation -Encoding UTF8
+
+        Write-Host "CSV export saved to: $ExportCsvPath" -ForegroundColor Gray
+    }
+    catch {
+        Write-Warning "Failed to export CSV to '$ExportCsvPath': $_"
+    }
+}
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 Write-Host "`n+======================================+" -ForegroundColor Cyan
 Write-Host   "|           SUMMARY REPORT             |" -ForegroundColor Cyan
@@ -509,6 +556,7 @@ Write-Host   "|   Forest domains  : $($forestDomainACEs.ToString().PadLeft(15)) 
 Write-Host   "|   Trusted domains : $($trustedDomainACEs.ToString().PadLeft(15)) |" -ForegroundColor $(if ($trustedDomainACEs -gt 0) { 'Magenta' } else { 'Green' })
 Write-Host   "| ACEs removed      : $($OrphanedACEsRemoved.ToString().PadLeft(15)) |" -ForegroundColor $(if ($OrphanedACEsRemoved -gt 0) { 'Red' } else { 'Green' })
 Write-Host   "| Objects modified  : $($ObjectsModified.ToString().PadLeft(15)) |" -ForegroundColor $(if ($ObjectsModified -gt 0) { 'Red' } else { 'Green' })
+Write-Host   "| GUID fallback used: $($GuidFallbackCount.ToString().PadLeft(15)) |" -ForegroundColor $(if ($GuidFallbackCount -gt 0) { 'DarkYellow' } else { 'Green' })
 Write-Host   "| Errors            : $($ObjectsWithError.ToString().PadLeft(15)) |" -ForegroundColor $(if ($ObjectsWithError -gt 0) { 'Red' } else { 'Green' })
 Write-Host   "+======================================+" -ForegroundColor Cyan
 

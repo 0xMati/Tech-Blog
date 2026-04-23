@@ -1,0 +1,443 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260423170043
+Username: CA-IM\UG-AD-BA-0001
+RunAs User: CA-IM\UG-AD-BA-0001
+Configuration Name: 
+Machine: WP017DCS10001 (Microsoft Windows NT 10.0.17763.0)
+Host Application: C:\WINDOWS\system32\WindowsPowerShell\v1.0\PowerShell_ISE.exe
+Process ID: 9632
+PSVersion: 5.1.17763.8510
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.17763.8510
+BuildVersion: 10.0.17763.8510
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is C:\temp\RemoveOrphanedSID-AD-V2.txt
+Scanning the current domain: DC=ca-im,DC=local
+Object filter: OUOnly
+Known forest domain SIDs: 8
+Mode: including orphaned SIDs from trusted domains
+
+Checking trust reachability...
+PS>TerminatingError(Get-ADDomain): "Unable to contact the server. This may be because this server does not exist, it is currently down, or it does not have the Active Directory Web Services running."
+PS>TerminatingError(Get-ADDomain): "Unable to contact the server. This may be because this server does not exist, it is currently down, or it does not have the Active Directory Web Services running."
+PS>TerminatingError(Get-ADDomain): "Unable to contact the server. This may be because this server does not exist, it is currently down, or it does not have the Active Directory Web Services running."
+PS>TerminatingError(Get-ADDomain): "Unable to contact the server. This may be because this server does not exist, it is currently down, or it does not have the Active Directory Web Services running."
+
++-----------------------------------------------------------------------------------------------------------+
+| TRUST                        SID                                              DIRECTION      STATUS      |
++-----------------------------------------------------------------------------------------------------------+
+| root.local                   S-1-5-21-3201636886-676921339-1449835306         BiDirectional
+Reachable   |
+| CAI.DEV                      S-1-5-21-2062342367-2282828091-650694523         Inbound
+Reachable   |
+| CAI.RDS                      S-1-5-21-1841955758-934404901-279747497          Inbound
+Reachable   |
+| CAI.PRD                      S-1-5-21-4238424486-3453949585-1389219055        Inbound
+Reachable   |
+| CAI.RCT                      S-1-5-21-1530476278-651762207-3604351732         Inbound
+Reachable   |
++-----------------------------------------------------------------------------------------------------------+
+
+All trusts are reachable.
+
+Retrieving AD objects from 'DC=ca-im,DC=local' ...
+LDAP filter: (objectClass=organizationalUnit)
+Found 250 objects to analyse.
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Domain Controllers,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes Fixes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Administration du domaine,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CA-ADM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=IT-ADM,OU=CA-ADM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=IT-ADM-GROUPS,OU=IT-ADM,OU=CA-ADM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PKI,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes Service,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Administrateurs Serveurs,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes Acces Ressources,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Administrateurs PdT,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Administrateurs Applications,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=_Ressources,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Utilisateurs CITRIX,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SERVICES,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=KERBEROS,OU=Postes Fixes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes Projets,OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GroupesBAlsGeneriques,OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes en attente de suppression,OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes SharePoint,OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Portables,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven_VALAPP,OU=Portables,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes Evergreen,OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven,OU=Portables,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven_VDI,OU=Postes Fixes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes Internet,OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes Commun,OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes Delegation,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=BAL generiques,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GU,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes Nominatifs,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GROUPS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Delegation AD,OU=Groupes,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven_Passage,OU=Postes Fixes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=_GroupesMigrés,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ACCOUNTS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes Prestataires,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes Non Nominatifs,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven_VALAPP,OU=Postes Fixes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven,OU=Postes Fixes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Utilisateurs SILCA,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQL,OU=Comptes Service,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes_PRU_W7,OU=WindowsSeven,OU=Postes Fixes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Unix,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=HorsGPO,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=MID,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Autres,OU=Groupes,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Citrix,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Thetra,OU=Citrix,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=TEST_VALIDATION,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Prd,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Infra,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven_Pret,OU=Portables,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Droits_SQL,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hors mise en veille,OU=WindowsSeven,OU=Postes Fixes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=4D,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CESAME,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CONTRATHEQUE,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=FORTIGATE,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Cesame,OU=Citrix,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=COGNOS,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=DEX,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Integration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Utilisateurs,OU=Integration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Portables,OU=Integration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven,OU=Portables,OU=Integration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven,OU=Utilisateurs,OU=Integration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes fixes,OU=Integration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WindowsSeven,OU=Postes fixes,OU=Integration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=COGNOS,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=DEX,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=NAS,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=NAS,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SERVICES,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes de Tests,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ABEL_ECASH,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes à supprimer,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_PDT_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Evergreen,OU=OU_PDT_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes_ALD,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Portables,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hors mise en veille,OU=WindowsSeven,OU=Portables,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hors mise en veille,OU=Portables,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_Groupes,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groupes Metiers,OU=_GroupesBureautiques,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes Fixes,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH14,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CAINAS,OU=GROUPS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=IT-OPS,OU=CA-ADM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=IT-OPS-ACCOUNTS,OU=IT-OPS,OU=CA-ADM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hors mise en veille,OU=Postes Fixes,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Managed Service Accounts,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes de prets,OU=Portables,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQL,OU=Managed Service Accounts,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Salle de reunion,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OPI,OU=Comptes Service,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes kerberos,OU=Comptes Service,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Comptes ADML,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SIGMA,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PARTENAIRES,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hors_Gpo,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=_0_A supprimer script,OU=Comptes à supprimer,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hors chiffrement USB,OU=Portables,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=COMPUTERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=DKP,OU=COMPUTERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=LPP,OU=COMPUTERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=TBT,OU=COMPUTERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=DEV,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=DMZ,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=INF,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=LNX,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PRD,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=RCT,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WKS,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=IT-ADM-ACCOUNTS,OU=IT-ADM,OU=CA-ADM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=IT-OPS-GROUPS,OU=IT-OPS,OU=CA-ADM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=COMPUTERS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CONTACTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PRINTERS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SERVERS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQL,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SEIITRA,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Application,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes Tablettes,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GROUPES_TRUST_AUTH_SELECTIVE,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH44,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CITRIX,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GENERIC,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH31,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH33,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH35,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH66,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH76,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=VPN,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH09,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hors chiffrement USB,OU=Postes Fixes,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH69,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=F5,OU=Comptes Service,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=AIRWATCH,OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes_PRU,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes virtuels,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CA_IMMO_W10,OU=Postes virtuels,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes virtuels pps,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CR44,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WSO,OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SentinelOne,OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OPNSEC,OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Dev,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=R7,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=USERCUBE,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes_Durcis,OU=Portables,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Postes_Durcis,OU=Postes Fixes,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=AZURE,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=AZURE,OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=NAS,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CAI,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Application,OU=SQL,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Citrix,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=INF,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=AZURE,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=AZURE,OU=GU,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ADML,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=VDI_Nutanix,OU=Postes virtuels,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=TENABLE,OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PRX,OU=OU_Serveurs,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_Serveurs SIIV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Application,OU=OU_Serveurs SIIV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQL,OU=OU_Serveurs SIIV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=RED01_DELEGATIONS,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GROUPS_TRUST_AUTH_SELECTIVE,OU=RED01_DELEGATIONS,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GROUPS_AD_DELEGATION,OU=RED01_DELEGATIONS,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PowerBI,OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=INTERNES,OU=USERCUBE,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=EXTERNES,OU=USERCUBE,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=M365_SHAREDMAILBOX,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ADML,OU=USERCUBE,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=TLD,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=TMP account,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=LNX,OU=TLD,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=MAC,OU=TLD,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=WIN,OU=TLD,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=CHECK-TO-DELETE,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH25,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH64,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=COMMUN,OU=NAS,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PROJETS,OU=NAS,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=METIERS,OU=NAS,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=COMMUN,OU=NAS,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PROJET,OU=NAS,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=METIERS,OU=NAS,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH73,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH45,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=NAS,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=VIDES,OU=_GroupesMigrés,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH67,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH06,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=M365_ROOMMAILBOX,OU=Services,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hors_Gpo_test,OU=Hors_Gpo,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Windows_11_MoWE,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Desktop,OU=Windows_11_MoWE,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Laptop,OU=Windows_11_MoWE,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Virtual,OU=Windows_11_MoWE,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Tablet,OU=Windows_11_MoWE,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Hybridation_Test,OU=Portables,OU=Windows 10,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQH84,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OLD,OU=TLD,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Master,OU=Virtual,OU=Windows_11_MoWE,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ADMINISTRATEURS_AD,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ADMINISTRATEURS_SRV,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ADMINISTRATEURS_PDT,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_Serveurs-FR,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=ADTeam,OU=OU_Serveurs-FR,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=AEP,OU=ADTeam,OU=OU_Serveurs-FR,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=MIM,OU=ADTeam,OU=OU_Serveurs-FR,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=GROUPES_DELEGATION_AD,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PKI,OU=ADTeam,OU=OU_Serveurs-FR,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Application,OU=OU_Serveurs-FR,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=SQL,OU=OU_Serveurs-FR,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OU_PAM-SLV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PSO,OU=Groups,OU=OU_PAM-SLV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Groups,OU=OU_PAM-SLV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Accounts,OU=OU_PAM-SLV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=UG,OU=Accounts,OU=OU_PAM-SLV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=UG,OU=Groups,OU=OU_PAM-SLV,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=No_Sleep,OU=Laptop,OU=Windows_11_MoWE,OU=OU_Postes de travail,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=OPNSEC,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PKI,OU=Comptes Service,OU=Administration,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=Application,OU=SQL,OU=OU_Serveurs-FR,DC=ca-im,DC=local' because it does not exist."
+PS>TerminatingError(Get-Acl): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find path '//RootDSE/OU=PKI,OU=Applicatifs,OU=OU_Groupes,DC=ca-im,DC=local' because it does not exist."
+
++---ORPHANED SIDs: TRUSTED DOMAINS (161 ACEs)---------------------------
++
+  SID: S-1-5-21-2658826258-2671744356-2803098037-4689  (115 ACEs on 74 objects)
+    -> OU=IT-ADM-GROUPS,OU=IT-ADM,OU=CA-ADM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SERVICES,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=GU,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=GROUPS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=ACCOUNTS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=NAS,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=NAS,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=SERVICES,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH14,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=CAINAS,OU=GROUPS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=IT-OPS,OU=CA-ADM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=IT-OPS-ACCOUNTS,OU=IT-OPS,OU=CA-ADM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=PARTENAIRES,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=COMPUTERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=DKP,OU=COMPUTERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=LPP,OU=COMPUTERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=TBT,OU=COMPUTERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=DEV,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=DMZ,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=INF,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=LNX,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=PRD,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=RCT,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=WKS,OU=SERVERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=IT-ADM-ACCOUNTS,OU=IT-ADM,OU=CA-ADM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=IT-OPS-GROUPS,OU=IT-OPS,OU=CA-ADM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=COMPUTERS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=CONTACTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=PRINTERS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SERVERS,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SEIITRA,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH44,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=CITRIX,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=GENERIC,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH31,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH33,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH35,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH66,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH76,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=VPN,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH09,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SQH69,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=CR44,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=USERCUBE,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=AZURE,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=CAI,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (2 ACEs)
+    -> OU=AZURE,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=AZURE,OU=GU,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=ADML,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=INTERNES,OU=USERCUBE,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=EXTERNES,OU=USERCUBE,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=ADML,OU=USERCUBE,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=TMP account,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=CHECK-TO-DELETE,OU=__DISABLED,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=SQH25,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=SQH64,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=COMMUN,OU=NAS,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=PROJETS,OU=NAS,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=METIERS,OU=NAS,OU=GL,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=COMMUN,OU=NAS,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=PROJET,OU=NAS,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=METIERS,OU=NAS,OU=GG,OU=GROUPS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=SQH73,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=SQH45,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=SQH67,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=SQH06,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+    -> OU=SQH84,OU=ACCOUNTS,OU=CA-IM,DC=ca-im,DC=local (1 ACEs)
+
+  SID: S-1-5-21-2658826258-2671744356-2803098037-45203  (44 ACEs on 22 objects)
+    -> OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Citrix,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Thetra,OU=Citrix,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=TEST_VALIDATION,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Prd,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Infra,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Droits_SQL,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=4D,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=CESAME,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=CONTRATHEQUE,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=FORTIGATE,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Cesame,OU=Citrix,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=COGNOS,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=DEX,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=COGNOS,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=DEX,OU=Groupes_users_applicatifs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=ABEL_ECASH,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=SIGMA,OU=Groupes_admin_serveurs,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=Dev,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+    -> OU=R7,OU=OU_Serveurs_Toulouse,DC=ca-im,DC=local (2 ACEs)
+
+  SID: S-1-5-21-2658826258-2671744356-2803098037-51171  (2 ACEs on 1 objects)
+    -> OU=_0_A supprimer script,OU=Comptes à supprimer,OU=WindowsSeven,OU=Utilisateurs CA-IM,OU=Services,DC=ca-im,DC=local (2 ACEs)
+
++------------------------------------------------------------------------+
+
++======================================+
+|           SUMMARY REPORT             |
++======================================+
+| Objects scanned   :             250 |
+| Orphaned ACEs     :             161 |
+|   Current domain  :               0 |
+|   Forest domains  :               0 |
+|   Trusted domains :             161 |
+| ACEs removed      :               0 |
+| Objects modified  :               0 |
+| Errors            :               0 |
++======================================+
+
++--------------------------------------------------------------------------------------------------+
+| TYPE           NAME                         SID                                              DIRECTION     |
++--------------------------------------------------------------------------------------------------+
+| Current Domain CA-IM                        S-1-5-21-2858127297-2619540300-4225368187        -             |
+| Forest Domain  CA-SA                        S-1-5-21-1510899893-988598865-360405679          -             |
+| Forest Domain  CA-TITRES                    S-1-5-21-565406647-2532240145-722417507          -             |
+| Forest Domain  PARTENAIRES                  S-1-5-21-2997242644-1048803884-2836527085        -             |
+| Forest Domain  PRODGRP                      S-1-5-21-640197331-27612366-2683114618           -             |
+| Forest Domain  ROOT                         S-1-5-21-3201636886-676921339-1449835306         -             |
+| Forest Domain  SEL                          S-1-5-21-3548776830-1611867764-920565247         -             |
+| Forest Domain  TELIP                        S-1-5-21-27823576-1610678004-1597637276          -             |
++--------------------------------------------------------------------------------------------------+
+| Trust          root.local                   S-1-5-21-3201636886-676921339-1449835306         BiDirectional |
+| Trust          CAI.DEV                      S-1-5-21-2062342367-2282828091-650694523         Inbound       |
+| Trust          CAI.RDS                      S-1-5-21-1841955758-934404901-279747497          Inbound       |
+| Trust          CAI.PRD                      S-1-5-21-4238424486-3453949585-1389219055        Inbound       |
+| Trust          CAI.RCT                      S-1-5-21-1530476278-651762207-3604351732         Inbound       |
++--------------------------------------------------------------------------------------------------+
+**********************
+Windows PowerShell transcript end
+End time: 20260423170340
+**********************
