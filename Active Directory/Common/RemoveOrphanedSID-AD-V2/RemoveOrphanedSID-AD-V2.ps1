@@ -83,6 +83,8 @@
                          Add: -ForestWide switch
                          Fix: collect all forest domain SIDs (child domains)
                          Fix: ACL read errors on DNs with special characters
+    V2.11, 04/23/2026 - Fix: ACL provider path must use AD:\ prefix (not AD:)
+                         Add: GUID-based ACL fallback for problematic DN parsing
 #>
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'List')]
@@ -363,15 +365,25 @@ foreach ($obj in $ADObjects) {
             -PercentComplete $pct -CurrentOperation $dn
     }
 
-    # Read ACL - use LiteralPath and escape forward slashes in DN
-    $adPath = "AD:" + ($dn -replace '/', '\/')
+    # Read ACL. Prefer AD provider path, fallback to GUID binding for tricky DNs.
+    $aclWriteMode = 'Provider'
+    $aclProviderPath = "AD:\$dn"
+    $adsiEntry = $null
     try {
-        $acl = Get-Acl -LiteralPath $adPath -ErrorAction Stop
+        $acl = Get-Acl -LiteralPath $aclProviderPath -ErrorAction Stop
     }
     catch {
-        Write-Warning "Cannot read ACL on '$dn': $_"
-        $ObjectsWithError++
-        continue
+        try {
+            $guidPath = "LDAP://<GUID=$($obj.ObjectGUID)>"
+            $adsiEntry = [ADSI]$guidPath
+            $acl = $adsiEntry.ObjectSecurity
+            $aclWriteMode = 'Guid'
+        }
+        catch {
+            Write-Warning "Cannot read ACL on '$dn': $_"
+            $ObjectsWithError++
+            continue
+        }
     }
 
     # Enumerate ACEs safely (some ACEs may have corrupt/unsupported formats)
@@ -428,7 +440,13 @@ foreach ($obj in $ADObjects) {
     # Write back modified ACL
     if ($modified) {
         try {
-            Set-Acl -LiteralPath $adPath -AclObject $acl -ErrorAction Stop
+            if ($aclWriteMode -eq 'Provider') {
+                Set-Acl -LiteralPath $aclProviderPath -AclObject $acl -ErrorAction Stop
+            }
+            else {
+                $adsiEntry.ObjectSecurity = $acl
+                $adsiEntry.CommitChanges()
+            }
             Write-Host "Orphaned SID(s) removed on $dn" -ForegroundColor Red
             $ObjectsModified++
         }
