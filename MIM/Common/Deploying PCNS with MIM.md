@@ -227,7 +227,64 @@ msiexec.exe /i "C:\PCNS\x64\Password Change Notification Service.msi"
 
 > 💡 For large environments, you can use **SCCM/SMS** to deploy the MSI remotely to all DCs.
 
-After installation, you'll find a PCNS service object created in the **domain partition** of Active Directory.
+After installation, two components are deployed on the DC:
+
+| Component | What it is | Location |
+|---|---|---|
+| `pcnsflt.dll` | Password filter DLL loaded by `lsass.exe` — intercepts password changes | `C:\Windows\System32\pcnsflt.dll` |
+| `PCNSSVC` | Windows service (`pcnssvc.exe`) — sends queued passwords to MIM Sync via RPC | `C:\Program Files\Microsoft Password Change Notification\pcnssvc.exe` |
+
+You'll also find a PCNS service object created in the **domain partition** of Active Directory.
+
+> 💡 Despite its name ("Password Change Notification **Service**"), PCNS is actually **two things**: a password filter DLL (loaded by LSA at boot) AND a Windows service. Both are required.
+
+#### 🚨 Error 25011 — "SetInfo() Access Denied" on older DCs
+
+If you get this error during installation:
+
+```
+Error 25011. The Microsoft Identity Manager Password Change Notification Service
+Setup Wizard failed calling SetInfo() on the Active Directory object
+LDAP://CN=System,DC=contoso,DC=com. Access is denied.
+```
+
+This typically happens on **Windows Server 2008 R2** DCs where the MIM 2016 PCNS MSI isn't fully compatible. The first DC (running a newer OS) creates the config in `CN=System` just fine, but the MSI fails on older DCs when it tries to update that same config.
+
+**Workaround — Manual installation on the legacy DC:**
+
+Since the config in `CN=System` is already replicated from the first DC, you only need the filter DLL and the service:
+
+```cmd
+:: 1. Copy files from a DC where PCNS is already installed
+copy "\\DC-OK\C$\Windows\System32\pcnsflt.dll" "C:\Windows\System32\pcnsflt.dll"
+mkdir "C:\Program Files\Microsoft Password Change Notification"
+copy "\\DC-OK\C$\Program Files\Microsoft Password Change Notification\*" "C:\Program Files\Microsoft Password Change Notification\"
+```
+
+```powershell
+# 2. Register the password filter
+$key = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+$current = [string[]](Get-ItemProperty $key)."Notification Packages"
+$current += "PCNSFLT"
+Set-ItemProperty $key -Name "Notification Packages" -Value $current
+```
+
+```cmd
+:: 3. Create the Windows service
+sc create PCNSSVC binPath= "C:\Program Files\Microsoft Password Change Notification\pcnssvc.exe" start= auto DisplayName= "Password Change Notification Service"
+sc description PCNSSVC "Enables notification of Active Directory password changes to target systems."
+```
+
+```powershell
+# 4. Reboot the DC
+Restart-Computer -Force
+
+# 5. After reboot — verify
+Get-Service PCNSSVC | Select-Object Name, Status, StartType
+(Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa")."Notification Packages"
+```
+
+> ⚠️ Windows Server 2008 R2 is out of support. Plan to migrate these DCs to 2019/2022.
 
 ### Step 3 — Register the SPN for the MIM Sync Account
 
@@ -454,15 +511,31 @@ Value: `EventLogLevel` (REG_DWORD)
 
 ### AD MA — Enforce Password Policy
 
-To make the AD MA verify password history before resetting a password:
+To make the AD MA enforce the **full password policy** of the target domain when setting passwords:
 
 Registry key: `HKLM\SYSTEM\CurrentControlSet\Services\FIMSynchronizationService\Parameters\PerMAInstance\<MA name>`
 Value: `ADMAEnforcePasswordPolicy` (REG_DWORD)
 
-| Value | Behavior |
+| Value | API Used | Behavior |
+|---|---|---|
+| 0 (or absent) | `NetUserSetPassword` | **Admin reset** — bypasses all policy checks (default) |
+| 1 | `NetUserChangePassword` | **User change** — the target DC enforces the full password policy ✅ |
+
+When set to **1**, the target domain controller will check:
+
+| Check | Enforced? |
 |---|---|
-| 1 | Verify password history before reset ✅ |
-| 0 (or absent) | No verification (default) |
+| ✅ Password history | Yes |
+| ✅ Minimum length | Yes |
+| ✅ Complexity requirements | Yes |
+| ✅ Minimum password age | Yes |
+| ✅ Fine-Grained Password Policy (FGPP) | Yes |
+
+> 🚨 **Cross-domain scenario:** If the target domain has **stricter** password requirements than the source, users may unknowingly end up with desynchronized passwords. Their password change succeeds on the source but gets **rejected** on the target — and they won't know about it.
+>
+> **Best practice:** Align the source domain's password policy to be **at least as strict** as the most restrictive target. Use Fine-Grained Password Policies (FGPP) on the source to enforce stronger rules on synchronized users without impacting everyone.
+
+> ⚠️ **Side effect of minimum password age:** If the target enforces a minimum age (e.g., 1 day), a user who changes their password twice in quick succession will see the second change **rejected** on the target. This is rarely an issue in practice but worth knowing.
 
 ### PCNS Service Startup Timeout
 
@@ -547,6 +620,20 @@ No data loss — passwords keep queuing on each DC. When MIM comes back up, PCNS
 ### Password Filter Coexistence
 
 `pcnsflt.dll` can coexist with other password filters on the DC (e.g., third-party password policy enforcers). Just make sure all filters are properly registered in the LSA registry key.
+
+### 0x80004005 with "Unlock Locked Accounts" Enabled
+
+If password sync works fine but fails with `0x80004005` (E_FAIL) when **"Unlock locked accounts when resetting passwords"** is checked in Target Settings, the MA connector account is missing the **Write `lockoutTime`** permission on the target OUs.
+
+**Fix — Grant Write lockoutTime:**
+
+```cmd
+dsacls "OU=Users,DC=contoso,DC=com" /I:S /G "CONTOSO\svc-MIM-AD:WP;lockoutTime;user"
+```
+
+Or via GUI: ADUC → target OU → Security → Advanced → add the MA account with **Write `lockoutTime`** on Descendant User objects.
+
+> 💡 This is easy to miss — everyone remembers to grant **Reset Password**, but forgets about `lockoutTime`. Without it, MIM can change the password but can't unlock the account, which throws `0x80004005`.
 
 ---
 
