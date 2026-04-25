@@ -378,6 +378,30 @@ Recommended settings:
 
 The exact sharing choice depends on the governance model, but the separation must be explicit.
 
+To configure Teams guest access per Team:
+
+```powershell
+# Disable guest access on an internal Team
+Set-Team -GroupId <InternalTeamGroupId> -AllowToAddGuest $false
+
+# Enable guest access on an external collaboration Team
+Set-Team -GroupId <ExternalTeamGroupId> -AllowToAddGuest $true
+```
+
+To configure SharePoint sharing at the site level:
+
+```powershell
+Connect-SPOService -Url https://contoso-admin.sharepoint.com
+
+# Internal site - no external sharing
+Set-SPOSite -Identity https://contoso.sharepoint.com/sites/InternalProject `
+    -SharingCapability Disabled
+
+# External collaboration site - existing guests only
+Set-SPOSite -Identity https://contoso.sharepoint.com/sites/PartnerProject `
+    -SharingCapability ExistingExternalUserSharingOnly
+```
+
 ### Step 2 - Create Authentication Contexts
 
 Create at least:
