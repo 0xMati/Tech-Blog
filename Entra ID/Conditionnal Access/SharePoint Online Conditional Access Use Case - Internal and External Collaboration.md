@@ -27,12 +27,12 @@ The difficult part is not knowing those features exist. The difficult part is co
 
 The objective is a mix of business enablement and security controls. The table below describes the expected behavior for each user type, location, and workload.
 
-> `*blocked*` indicates scenarios that a naive "block internal / allow external" design fails to cover correctly, and that the recommended architecture is specifically designed to address.
+> Les cases 🚫 sur les lignes "Internal user / Non-trusted IP" pour les fichiers et sites externes indiquent les scénarios qu'un design "block internal / allow external" ne couvre pas correctement, et que l'architecture recommandée est précisément conçue pour adresser.
 
 | User type | IP | Teams Chat (1:1, Group, Meeting) | Internal Team — Chat | External Team — Chat | Internal Team — Files | External Team — Files | Internal SPO Site | External SPO Site |
 |---|---|---|---|---|---|---|---|---|
 | Internal user | Trusted IP | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Internal user | Non-trusted IP | ✅ | ✅ | ✅ | 🚫 | `*blocked*` | 🚫 | `*blocked*` |
+| Internal user | Non-trusted IP | ✅ | ✅ | ✅ | 🚫 | 🚫 | 🚫 | 🚫 |
 | Guest (external) | Non-trusted IP | ✅ | 🚫 | ✅ | 🚫 | ✅ | 🚫 | ✅ |
 
 The key design constraints that follow from this table:
