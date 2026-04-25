@@ -296,16 +296,19 @@ Result:
 
 - internal users on non-trusted IPs are blocked from external collaboration files and sites.
 
-#### Policy C - Guests on external collaboration sites
+#### Policy C - Guests allowed on external collaboration sites
 
 - Target resource: Authentication Context `AC-ExternalCollabSites`
 - Users: guests and external users
+- **No location condition** — guests must be allowed regardless of IP
 - Grant: allow, optionally with MFA
+
+> ⚠️ Do not add an IP-based location condition to this policy. The whole point is that guests can access external collaboration spaces even from non-trusted IPs. If you restrict Policy C to trusted locations, you break the guest scenario entirely.
 
 Result:
 
 - guests can still access the external collaboration spaces they were invited to,
-- while internal non-trusted users can be blocked from the same site.
+- while internal non-trusted users are blocked from the same site by Policy B.
 
 ### 🛡️ Optional Layer 4 - App-Enforced Restrictions as Baseline
 
