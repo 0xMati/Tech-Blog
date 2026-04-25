@@ -344,14 +344,18 @@ The design maps back to business outcomes like this:
 | Internal user on trusted IP -> internal Teams chat | Allowed | Teams native behavior |
 | Internal user on trusted IP -> internal Teams files | Allowed | Normal SharePoint access |
 | Internal user on non-trusted IP -> internal Teams chat | Allowed | Not targeted by SharePoint CA |
-| Internal user on non-trusted IP -> internal Teams files | Blocked | Authentication Context + CA for members |
-| Internal user on non-trusted IP -> internal SharePoint site | Blocked | Authentication Context + CA for members |
-| Guest on non-trusted IP -> external Teams chat | Allowed | Guest allowed on Team |
-| Guest on non-trusted IP -> external Teams files | Allowed | Guest CA policy on external collaboration sites |
-| Guest on non-trusted IP -> external SharePoint site | Allowed | Guest CA policy on external collaboration sites |
-| Internal user on non-trusted IP -> external Teams files | Blocked | Authentication Context + CA for internal members |
-| Internal user on non-trusted IP -> external SharePoint site | Blocked | Authentication Context + CA for internal members |
+| Internal user on non-trusted IP -> internal Teams files | Blocked | Authentication Context + CA Policy A |
+| Internal user on non-trusted IP -> internal SharePoint site | Blocked | Authentication Context + CA Policy A |
+| Internal user on non-trusted IP -> external Teams files | Blocked | Authentication Context + CA Policy B |
+| Internal user on non-trusted IP -> external SharePoint site | Blocked | Authentication Context + CA Policy B |
+| Guest -> internal Teams chat | Blocked | Teams guest access disabled on internal Teams (`AllowToAddGuest $false`) |
+| Guest -> internal Teams files | Blocked | SPO sharing disabled on internal sites (`SharingCapability Disabled`) |
+| Guest -> internal SharePoint site | Blocked | SPO sharing disabled on internal sites (`SharingCapability Disabled`) |
+| Guest on non-trusted IP -> external Teams chat | Allowed | Guest enabled on external Teams |
+| Guest on non-trusted IP -> external Teams files | Allowed | CA Policy C on `AC-ExternalCollabSites` |
+| Guest on non-trusted IP -> external SharePoint site | Allowed | CA Policy C on `AC-ExternalCollabSites` |
 
+Note that the guest blocking on internal content (rows 8–10) is not enforced by Conditional Access policies. It is enforced entirely by the collaboration model settings defined in Step 1. No CA policy is needed for those scenarios — if guests are not members of the Team and have no sharing permission on the site, they simply cannot access the content.  
 This is exactly the scenario the simpler `AllowFullAccess` model cannot express properly.
 
 ---
@@ -431,6 +435,8 @@ You can also use sensitivity labels with Sites and Groups scope if you prefer a 
 - Optional: require MFA
 
 This split between members and guests is what removes the residual gap.
+
+> **Note on guest blocking for internal content**: there is no Conditional Access policy needed to block guests from internal sites or Teams. That is handled entirely by the collaboration model settings from Step 1: `SharingCapability Disabled` prevents guests from ever being granted SPO access on internal sites, and `AllowToAddGuest $false` prevents guests from being added to internal Teams. A guest who has no membership and no sharing permission simply cannot reach the Authentication Context challenge. No CA policy is needed.
 
 ### Step 5 - Optional Global Baseline with App-Enforced Restrictions
 
