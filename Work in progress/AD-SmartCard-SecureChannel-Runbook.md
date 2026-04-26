@@ -64,3 +64,50 @@ Date: 2026-04-26
 Regle de decision:
 - Si la ligne 1 est No, rester en filiere PKI/KDC.
 - Si la ligne 1 est Yes mais lignes 3-4 sont No, rester en filiere trust machine.
+
+---
+
+## 5) Tests avances (niveau 2/3)
+
+| ID | Ce qu on teste | Ou | Commande | Equivalent GUI | Verifier precisement | Attendu | Si KO |
+|---|---|---|---|---|---|---|---|
+| E1 | Connectivite ports AD/Kerberos vers DC | Poste KO et poste sain | Test-NetConnection <DC_FQDN> -Port 88 ; Test-NetConnection <DC_FQDN> -Port 389 ; Test-NetConnection <DC_FQDN> -Port 445 ; Test-NetConnection <DC_FQDN> -Port 53 | PortQryUI / Firewall logs | 88, 389, 445, 53 joignables | TcpTestSucceeded=True | Corriger firewall/ACL reseau |
+| E2 | Difference horaire poste vs DC | Poste | w32tm /monitor /computers:<DC1>,<DC2> ; w32tm /query /status | timedate.cpl + Event Viewer Time-Service | Offset faible, source NTP stable | Offset acceptable Kerberos | Corriger NTP hierarchy, resync |
+| E3 | Cache Kerberos stale | Poste KO | klist ; klist purge | Event Viewer Security/Kerberos | Tickets anciens ou invalides | Nouveau TGT/TGS apres relogon | Purger, relogon, retester |
+| E4 | Cache Kerberos SYSTEM (machine) | Poste KO (admin) | klist -li 0x3e7 ; klist -li 0x3e7 purge | Pas d equivalent GUI fiable | Tickets machine du compte ordinateur | Tickets regenes apres reboot | Reboot + retest secure channel |
+| E5 | Etat service Netlogon/KDC | DC et postes | sc query netlogon ; sc query kdc | services.msc | Services Running, demarrage auto | Running | Redemarrer service, verifier dependances |
+| E6 | Canaux de logs Netlogon detail | Poste KO / DC | nltest /dbflag:0x2080ffff | Event Viewer > System | Traces Netlogon detaillees pendant echec trust | Cause explicite dans logs | Retirer debug ensuite: nltest /dbflag:0x0 |
+| E7 | Verif GPO ordinateur/utilisateur | Poste KO | gpresult /h C:\Temp\gpresult.html | rsop.msc + fichier HTML | Erreurs de ciblage DC, LDAP, SMB, auth | GPO complete sans erreurs DC | Traiter DNS/DC locator/SMB trust |
+| E8 | Validation CRL depuis contexte SYSTEM | DC | psexec -s cmd /c certutil -urlfetch -verify <DCcert.cer> | Task Scheduler (run as SYSTEM) | Difference User vs SYSTEM pour acces CDP/CRL | Meme resultat OK en SYSTEM | Corriger proxy/firewall compte machine |
+| E9 | Verif parametres de durcissement mapping cert | DC | reg query HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v StrongCertificateBindingEnforcement ; reg query HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v CertificateBackdating | regedit | Niveau enforcement et compatibilite mapping | Valeurs conformes a la strategie | Ajuster politique/mapping certificats |
+| E10 | Coherence multi-DC du cert KDC | Chaque DC | certutil -store my ; certutil -dcinfo verify | certlm.msc sur chaque DC | Tous les DC ont cert valide equivalent + meme sante revocation | Resultat homogene sur tous DC | Corriger DC discrepants |
+
+---
+
+## 6) Collecte de preuves pour RCA (Root Cause Analysis)
+
+| Axe | Quoi collecter | Ou | Comment | Pourquoi |
+|---|---|---|---|---|
+| KDC | Evenements KDC Operational autour du test | DC | Export EVTX ou Get-WinEvent filtre temps | Identifier cause precise PKINIT/mapping |
+| CAPI2 | Evenements chain/revocation | DC | Export CAPI2 Operational | Prouver cause revocation/CDP/AIA |
+| Netlogon | Traces secure channel | Poste KO + DC | System log + debug dbflag temporaire | Isoler cause trust machine |
+| PKI | Etat PKIView capture | PKI admin station | Screenshot + date/heure | Justifier sante CRL/delta |
+| Config | DNS/NTP config poste | Poste KO | ipconfig /all + w32tm outputs | Exclure causes infra de base |
+
+---
+
+## 7) Non-regression apres correction
+
+| Test | Ou | Methode | Attendu |
+|---|---|---|---|
+| Smart card login sur poste sain | Poste sain | Logoff/login smart card | OK |
+| Smart card login sur poste repare | Poste repare | Logoff/login smart card | OK |
+| Secure channel poste 1 | Poste 1 | Test-ComputerSecureChannel -Verbose | True |
+| Secure channel poste 2 | Poste 2 | Test-ComputerSecureChannel -Verbose | True |
+| GPO refresh | Postes 1/2 | gpupdate /force | Pas d erreur DC |
+| DC locator | Postes 1/2 | nltest /dsgetdc:<domaine> | DC trouve |
+| Verification apres reboot | DC + postes | Reboot puis retest A/B/C | Toujours OK |
+| Verification J+1 | Echantillon de postes | Meme matrice minimale | Toujours OK |
+
+Note:
+- Si tout est OK juste apres correction mais KO apres reboot/J+1, suspecter un probleme de replication (AD/DNS/CRL) ou d heterogeneite multi-DC.
