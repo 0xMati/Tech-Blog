@@ -176,6 +176,49 @@ Objectif: retablir la relation de confiance machine/DC.
 	- GUI: `certlm.msc` sur chaque DC
 	- Pourquoi: detecter heterogeneite entre DC
 
+- [ ] Comparatif poste sain vs poste en echec [Cible: poste sain + poste en echec]
+	- Commandes:
+		- `ipconfig /all`
+		- `w32tm /query /status`
+		- `klist`
+		- `sc query netlogon`
+		- `gpresult /r`
+	- GUI: `ncpa.cpl`, `timedate.cpl`, `services.msc`, `rsop.msc`
+	- Pourquoi: isoler la premiere difference technique reelle entre un poste qui marche et un poste qui casse
+
+- [ ] Verification replication AD [Cible: DC]
+	- Commandes:
+		- `repadmin /replsummary`
+		- `repadmin /showrepl`
+	- GUI: `dssite.msc` (Sites and Services)
+	- Pourquoi: detecter un DC en retard ou en echec de replication qui provoque des comportements incoherents
+
+- [ ] Verification sante DNS AD [Cible: DC]
+	- Commande: `dcdiag /test:DNS /v`
+	- GUI: `dnsmgmt.msc` + Event Viewer DNS Server
+	- Pourquoi: valider enregistrements SRV et resolution AD, souvent causes racines cachees
+
+- [ ] Test force sur DC specifique [Cible: poste sain + poste en echec]
+	- Commandes:
+		- `nltest /server:<POSTE> /sc_reset:<domaine>\<DC_NETBIOS>`
+		- `nltest /server:<POSTE> /dsgetdc:<domaine> /force`
+	- GUI: pas de GUI simple
+	- Pourquoi: verifier si le probleme est global domaine ou limite a un DC particulier
+
+- [ ] Correlation test smart card client + DC [Cible: poste sain + DC]
+	- Commandes:
+		- (client) tentative logon smart card
+		- (DC) `Get-WinEvent` KDC/CAPI2 sur la meme minute
+	- GUI: Event Viewer client et DC ouverts en parallele
+	- Pourquoi: prouver precisement ou la chaine casse (client, mapping KDC, revocation, certificat)
+
+- [ ] Verification middleware / minidriver YubiKey [Cible: poste sain + poste en echec]
+	- Commandes:
+		- `certutil -scinfo`
+		- `Get-PnpDevice | findstr /i yubikey`
+	- GUI: Device Manager + YubiKey Manager
+	- Pourquoi: eliminer un probleme poste local (driver/KSP) qui peut mimer un probleme AD
+
 ---
 
 ## 5) Collecte technique minimale (pendant le troubleshooting)
