@@ -2,144 +2,204 @@
 
 Date: 2026-04-26
 
-## 1) Vue globale
+Ce document est une checklist de troubleshooting pur, utilisee en live pendant l investigation.
 
-| Phase | Probleme cible | Objectif | Machine | Outils | Critere de sortie |
-|---|---|---|---|---|---|
-| 1 | PKI/KDC smart card | Prouver que le domaine peut a nouveau authentifier en carte a puce | DC + 1 poste sain | certutil, Event Viewer, PKIView | Smart card OK sur poste sain + logs KDC propres |
-| 2 | Secure channel postes inactifs | Retablir trust machine/DC | 2 postes en echec | Test-ComputerSecureChannel, nltest, GPO | Secure channel = True + gpupdate OK |
-| 3 | Validation croisee | Verifier la stabilite globale | DC + 1 poste repare | Login smart card + logs | Smart card OK sur poste repare |
-
----
-
-## 2) Runbook detaille (commande + GUI + verification + action)
-
-| ID | Ce qu on teste | Ou (machine + console) | Commande | Equivalent GUI | Verifier precisement | Attendu | Si KO |
-|---|---|---|---|---|---|---|---|
-| A1 | Certificat DC exploitable KDC | DC, PowerShell admin | certutil -store my | certlm.msc > Personal > Certificates | Cert non expire, cle privee presente, EKU coherent (KDC/Smart Card/Kerberos selon template), chaine complete | Cert DC valide | Reenroler cert DC, verifier template et auto-enrollment |
-| A2 | Sante revocation cote DC | DC, CMD admin | certutil -dcinfo verify | Event Viewer (KDC/Kerberos) + details cert | Plus d erreur revocation offline, pas d erreur selection cert KDC | Verification OK | Corriger CRL/delta, AIA/CDP, republier CRL |
-| A3 | Coherence CRL/delta | DC, MMC | (outil principal GUI) | pkiview.msc | Tous les points CDP/AIA en vert, base CRL/delta coherentes, dates valides | PKIView sans alerte critique | Republier CRL + delta, verifier replication LDAP/HTTP |
-| A4 | Validation chaine/revocation cert DC | DC, CMD admin | certutil -urlfetch -verify <DCcert.cer> | Ouvrir le certificat > Certification Path | Chaque maillon valide, CDP joignables, pas d echec revocation | Verify OK | Corriger publication CRL/CDP et intermediaires |
-| A5 | NTAuth correct | DC, CMD admin | certutil -enterprise -viewstore NTAuth | ADSIEdit / PKI MMC | CA emettrice smart card presente dans NTAuth | CA presente | Publier la CA dans NTAuth |
-| A6 | Stores Root/CA entreprise | DC, CMD admin | certutil -store -enterprise root puis ... ca | certlm.msc > Trusted Root / Intermediate | Racine + intermediaires attendus presents | Chaine trust OK | Importer certs manquants (GPO/enterprise store) |
-| A7 | Logs KDC pendant test smart card | DC, Event Viewer | Get-WinEvent -LogName "Microsoft-Windows-Kerberos-Key-Distribution-Center/Operational" -MaxEvents 200 | Event Viewer > KDC Operational | Erreurs mapping/cert/revocation au timestamp du test | Pas d erreur bloquante | Corriger selon ID evenement |
-| A8 | Logs crypto detailles | DC, Event Viewer | Get-WinEvent -LogName "Microsoft-Windows-CAPI2/Operational" -MaxEvents 200 | Event Viewer > CAPI2 Operational | Erreurs de build chaine, fetch CRL, AIA/CDP | CAPI2 propre | Corriger path confiance/revocation |
-| B1 | DNS client AD correct | Poste sain, CMD admin | ipconfig /all | ncpa.cpl > IPv4 DNS | DNS vers serveurs AD uniquement, suffixe domaine correct | DNS AD correct | Corriger DNS client, vider cache DNS |
-| B2 | Decouverte DC via DNS | Poste sain, CMD admin | nslookup -type=srv _ldap._tcp.dc._msdcs.<domaine> | DNS Manager cote serveur | SRV renvoient les DC attendus | Resolution OK | Corriger SRV/zone DNS |
-| B3 | DC locator | Poste sain, CMD admin | nltest /dsgetdc:<domaine> | Test UNC \\<domaine>\SYSVOL et \\<DC>\NETLOGON | DC trouve, site correct, accessibilite | DC trouve | Verifier reseau/firewall/DNS/site AD |
-| B4 | Time sync Kerberos | Poste sain, CMD admin | w32tm /query /status | timedate.cpl | Source NTP correcte, offset faible | Heure coherente | w32tm /resync |
-| B5 | Test smart card reel | Poste sain, ecran logon | (action utilisateur) | Ecran de connexion Windows | Login smart card reussi + correlation logs DC | Login OK | Revenir bloc A |
-| C1 | Etat secure channel poste KO | Poste KO, PowerShell admin | Test-ComputerSecureChannel -Verbose | Event Viewer System + symptomes GPO | True/False + message detaille | True | Passer en reparation trust |
-| C2 | Verif trust Netlogon | Poste KO, CMD admin | nltest /sc_verify:<domaine> | Event Viewer System (Netlogon) | Secure channel verifie avec DC | Success | Verifier DNS/time/DC locator puis reparer trust |
-| C3 | Test politique domaine | Poste KO, CMD admin | gpupdate /force | rsop.msc | Plus d erreur pas de DC joignable | Succes | Continuer diag DNS/DC/trust |
-| C4 | Reparation secure channel | Poste KO, PowerShell admin | Test-ComputerSecureChannel -Repair -Credential <DOM\\Admin> | Pas d equivalent GUI direct | Repair completed + reboot | Secure channel retabli | Enchainer reset password machine |
-| C5 | Reset password machine | Poste KO, PowerShell admin | Reset-ComputerMachinePassword -Server <DC_FQDN> -Credential <DOM\\Admin> | ADUC (approche indirecte) | Apres reboot, trust stable | True apres reboot | Rejoin complet domaine |
-| C6 | Rejoin domaine (dernier recours) | Poste KO, GUI ou PS | (GUI recommande) | sysdm.cpl > Computer Name > Change | Sortie domaine, reboot, rejoin, reboot, objet AD propre | Domaine + GPO OK | Recreer objet AD ordinateur, revalider DNS/time |
-| D1 | Certificat YubiKey lisible | Poste test, CMD admin | certutil -scinfo | Middleware YubiKey / certmgr user | Cert present, PIN ok, lecture smart card ok | Lecture OK | Verifier middleware/driver/carte |
-| D2 | Cert utilisateur/mapping | Poste test, CMD admin | certutil -store user my | certmgr.msc (Current User\Personal) | UPN/SAN, EKU smart card, chaine valide | Cert conforme | Reenroler cert utilisateur / corriger mapping |
+Regles de travail:
+- Une seule variable changee a la fois.
+- Un test = un resultat = une interpretation = une action.
+- Pas de remediation lourde sans preuve technique.
 
 ---
 
-## 3) Decision rapide (branching)
+## 1) Preparatifs de session
 
-| Situation observee | Conclusion | Prochaine action |
-|---|---|---|
-| Smart card echoue sur poste sain | Probleme prioritaire PKI/KDC domaine | Rester sur A1-A8 |
-| Smart card OK sur poste sain, mais 2 postes KO | Probleme majoritairement trust machine/DNS/time | Executer C1-C6 |
-| Secure channel repare mais smart card KO | Deux incidents existent en parallele | Traiter PKI/KDC puis revalider |
-| Tout passe sauf mapping cert | Sujet mapping/cert policy specifique | Focus D1-D2 + evenements KDC |
-
----
-
-## 4) Troubleshoot Decision Matrix (base de travail journee)
-
-Objectif de cette section:
-- rester en mode diagnostic pur,
-- eviter de corriger trop tot sans preuve,
-- converger vite vers la cause racine.
-
-Regle de conduite:
-- Ne changer qu une variable a la fois.
-- Apres chaque test, noter resultat + interpretation + action suivante.
-- Ne passer en remediation que si la cause probable est suffisamment confirmee.
-
-| Symptome observe | Tests a lancer (ordre strict) | Ce que le resultat signifie | Cause probable | Action suivante |
-|---|---|---|---|---|
-| Smart card KO sur poste sain | A1 -> A2 -> A3 -> A4 -> A7 -> A8 -> D2 | Si A1/A2/A3/A4 KO, blocage PKI/KDC. Si A7 KO avec mapping, blocage mapping cert utilisateur | Cert DC/KDC, revocation CRL/delta, mapping cert | Corriger PKI/KDC ou mapping avant de toucher aux postes KO |
-| Smart card KO seulement sur postes KO | B1 -> B2 -> B3 -> B4 -> C1 -> C2 | Si B1-B4 KO, probleme infra locale. Si C1/C2 KO, trust machine casse | DNS/time/DC locator ou secure channel | Corriger infra locale puis reparer secure channel |
-| Test-ComputerSecureChannel=False | C1 -> C2 -> C4 -> C5 -> C6 | Si C4/C5 reussit, pas besoin de rejoin. Si echec persistant, rejoin requis | Secret machine desynchronise / trust machine | Reparer, reboot, revalider C1/C3 |
-| gpupdate /force: pas de DC | B1 -> B2 -> B3 -> E1 -> C1 | Si ports/DC locator KO: reseau/DNS. Si reseau OK et C1 KO: trust machine | DNS, ACL reseau, trust | Corriger connectivite puis trust |
-| Certutil revocation offline | A2 -> A3 -> A4 -> E8 | Si E8 KO mais A4 OK en user, probleme contexte SYSTEM | CRL/CDP accessibles en user mais pas SYSTEM | Corriger proxy/firewall/system context |
-| Resultats differents selon DC | E10 + A7 sur chaque DC | Heterogeneite inter-DC | Cert KDC ou CRL non homogene | Aligner config/cert/CRL sur tous les DC |
-| Tout semble OK puis rechute apres reboot | E2 -> E10 -> C1/C2 -> A7 | Si rechute periodique, suspect replication/rotation cert/CRL | Replication AD/DNS/PKI incomplete | Verifier replication et coherence multi-DC |
-
-Boucle de travail recommandee:
-1. Observer le symptome exact.
-2. Lancer les tests de la ligne correspondante.
-3. Interpreter selon la colonne "Ce que le resultat signifie".
-4. Executer une seule action corrective.
-5. Rejouer le test initial (meme machine, meme scenario).
-6. Si non concluant, passer a la ligne suivante du tableau.
+- [ ] Choisir les machines de reference:
+	- [ ] 1 DC impacte
+	- [ ] 1 poste sain (secure channel OK)
+	- [ ] 2 postes en echec
+- [ ] Verifier les acces:
+	- [ ] droits admin local sur postes
+	- [ ] droits admin sur DC
+	- [ ] acces Event Viewer DC
+	- [ ] acces PKIView
+- [ ] Ouvrir les consoles GUI:
+	- [ ] Event Viewer (KDC Operational, CAPI2, System)
+	- [ ] certlm.msc sur DC
+	- [ ] services.msc (DC + postes)
+	- [ ] pkiview.msc
 
 ---
 
-## 5) Checklist finale Go/No-Go
+## 2) Etape prioritaire: valider PKI/KDC avant tout
 
-| Controle | Statut |
-|---|---|
-| Smart card OK sur poste sain | Yes/No |
-| Plus d erreur KDC/revocation cote DC pendant test | Yes/No |
-| Poste 1 secure channel True + gpupdate OK | Yes/No |
-| Poste 2 secure channel True + gpupdate OK | Yes/No |
-| Smart card OK sur au moins un poste repare | Yes/No |
+Objectif: prouver que la smart card peut fonctionner sur un poste sain.
 
-Regle de decision:
-- Si la ligne 1 est No, rester en filiere PKI/KDC.
-- Si la ligne 1 est Yes mais lignes 3-4 sont No, rester en filiere trust machine.
+- [ ] Verifier certificat DC utilisable KDC
+	- Commande: `certutil -store my`
+	- GUI: `certlm.msc > Personal > Certificates`
+	- Verifier: cert non expire, cle privee, EKU coherent, chaine complete
+	- Si KO: reenroler cert DC et verifier template
+
+- [ ] Verifier revocation et sante KDC
+	- Commande: `certutil -dcinfo verify`
+	- GUI: Event Viewer KDC/Kerberos
+	- Verifier: plus d erreur revocation offline
+	- Si KO: corriger CRL/delta/AIA/CDP
+
+- [ ] Verifier coherence CRL/delta
+	- Commande: pas necessaire (outil GUI principal)
+	- GUI: `pkiview.msc`
+	- Verifier: CDP/AIA en vert, dates valides, coherence base/delta
+	- Si KO: republier CRL + delta, verifier replication
+
+- [ ] Verifier chaine/revocation du cert DC
+	- Commande: `certutil -urlfetch -verify <DCcert.cer>`
+	- GUI: Ouvrir cert > Certification Path
+	- Verifier: chaque maillon valide
+	- Si KO: corriger stores Root/CA + publication CRL
+
+- [ ] Verifier NTAuth
+	- Commande: `certutil -enterprise -viewstore NTAuth`
+	- GUI: PKI MMC / ADSIEdit
+	- Verifier: CA smart card presente
+	- Si KO: publier CA dans NTAuth
+
+- [ ] Capturer erreurs KDC/CAPI2 pendant un test smart card
+	- Commandes:
+		- `Get-WinEvent -LogName "Microsoft-Windows-Kerberos-Key-Distribution-Center/Operational" -MaxEvents 200`
+		- `Get-WinEvent -LogName "Microsoft-Windows-CAPI2/Operational" -MaxEvents 200`
+	- GUI: Event Viewer (KDC Operational + CAPI2)
+	- Verifier: erreur de mapping, revocation, cert KDC
+	- Si KO: corriger d abord ce bloc avant de toucher aux postes KO
+
+Decision immediate:
+- Si smart card KO sur poste sain -> rester en bloc PKI/KDC.
+- Si smart card OK sur poste sain -> passer au bloc secure channel.
 
 ---
 
-## 6) Tests avances (niveau 2/3)
+## 3) Troubleshoot postes en echec (secure channel)
 
-| ID | Ce qu on teste | Ou | Commande | Equivalent GUI | Verifier precisement | Attendu | Si KO |
-|---|---|---|---|---|---|---|---|
-| E1 | Connectivite ports AD/Kerberos vers DC | Poste KO et poste sain | Test-NetConnection <DC_FQDN> -Port 88 ; Test-NetConnection <DC_FQDN> -Port 389 ; Test-NetConnection <DC_FQDN> -Port 445 ; Test-NetConnection <DC_FQDN> -Port 53 | PortQryUI / Firewall logs | 88, 389, 445, 53 joignables | TcpTestSucceeded=True | Corriger firewall/ACL reseau |
-| E2 | Difference horaire poste vs DC | Poste | w32tm /monitor /computers:<DC1>,<DC2> ; w32tm /query /status | timedate.cpl + Event Viewer Time-Service | Offset faible, source NTP stable | Offset acceptable Kerberos | Corriger NTP hierarchy, resync |
-| E3 | Cache Kerberos stale | Poste KO | klist ; klist purge | Event Viewer Security/Kerberos | Tickets anciens ou invalides | Nouveau TGT/TGS apres relogon | Purger, relogon, retester |
-| E4 | Cache Kerberos SYSTEM (machine) | Poste KO (admin) | klist -li 0x3e7 ; klist -li 0x3e7 purge | Pas d equivalent GUI fiable | Tickets machine du compte ordinateur | Tickets regenes apres reboot | Reboot + retest secure channel |
-| E5 | Etat service Netlogon/KDC | DC et postes | sc query netlogon ; sc query kdc | services.msc | Services Running, demarrage auto | Running | Redemarrer service, verifier dependances |
-| E6 | Canaux de logs Netlogon detail | Poste KO / DC | nltest /dbflag:0x2080ffff | Event Viewer > System | Traces Netlogon detaillees pendant echec trust | Cause explicite dans logs | Retirer debug ensuite: nltest /dbflag:0x0 |
-| E7 | Verif GPO ordinateur/utilisateur | Poste KO | gpresult /h C:\Temp\gpresult.html | rsop.msc + fichier HTML | Erreurs de ciblage DC, LDAP, SMB, auth | GPO complete sans erreurs DC | Traiter DNS/DC locator/SMB trust |
-| E8 | Validation CRL depuis contexte SYSTEM | DC | psexec -s cmd /c certutil -urlfetch -verify <DCcert.cer> | Task Scheduler (run as SYSTEM) | Difference User vs SYSTEM pour acces CDP/CRL | Meme resultat OK en SYSTEM | Corriger proxy/firewall compte machine |
-| E9 | Verif parametres de durcissement mapping cert | DC | reg query HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v StrongCertificateBindingEnforcement ; reg query HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v CertificateBackdating | regedit | Niveau enforcement et compatibilite mapping | Valeurs conformes a la strategie | Ajuster politique/mapping certificats |
-| E10 | Coherence multi-DC du cert KDC | Chaque DC | certutil -store my ; certutil -dcinfo verify | certlm.msc sur chaque DC | Tous les DC ont cert valide equivalent + meme sante revocation | Resultat homogene sur tous DC | Corriger DC discrepants |
+Objectif: retablir la relation de confiance machine/DC.
+
+- [ ] Verifier DNS client AD
+	- Commande: `ipconfig /all`
+	- GUI: `ncpa.cpl` (DNS IPv4)
+	- Verifier: DNS AD uniquement
+	- Si KO: corriger DNS puis retester
+
+- [ ] Verifier DC locator
+	- Commandes:
+		- `nslookup -type=srv _ldap._tcp.dc._msdcs.<domaine>`
+		- `nltest /dsgetdc:<domaine>`
+	- GUI: DNS Manager + test `\\<domaine>\SYSVOL`
+	- Verifier: DC trouve et joignable
+	- Si KO: corriger DNS/reseau/site AD
+
+- [ ] Verifier synchronisation horaire
+	- Commande: `w32tm /query /status`
+	- GUI: `timedate.cpl`
+	- Verifier: offset faible
+	- Si KO: resync temps
+
+- [ ] Verifier secure channel
+	- Commandes:
+		- `Test-ComputerSecureChannel -Verbose`
+		- `nltest /sc_verify:<domaine>`
+	- GUI: Event Viewer System (Netlogon)
+	- Verifier: secure channel True
+	- Si KO: lancer reparation
+
+- [ ] Reparer secure channel (sans rejoin d abord)
+	- Commandes:
+		- `Test-ComputerSecureChannel -Repair -Credential <DOM\\Admin>`
+		- `Reset-ComputerMachinePassword -Server <DC_FQDN> -Credential <DOM\\Admin>`
+	- GUI: pas d equivalent direct fiable
+	- Verifier: reboot puis secure channel True
+	- Si KO: faire rejoin propre
+
+- [ ] Rejoin domaine (dernier recours)
+	- Commande: optionnel
+	- GUI: `sysdm.cpl > Computer Name > Change`
+	- Verifier: domaine OK apres reboot + objet AD propre
+	- Si KO: recreer objet ordinateur et revalider DNS/time
 
 ---
 
-## 7) Collecte de preuves pour RCA (Root Cause Analysis)
+## 4) Tests avances (si causes non evidentes)
 
-| Axe | Quoi collecter | Ou | Comment | Pourquoi |
-|---|---|---|---|---|
-| KDC | Evenements KDC Operational autour du test | DC | Export EVTX ou Get-WinEvent filtre temps | Identifier cause precise PKINIT/mapping |
-| CAPI2 | Evenements chain/revocation | DC | Export CAPI2 Operational | Prouver cause revocation/CDP/AIA |
-| Netlogon | Traces secure channel | Poste KO + DC | System log + debug dbflag temporaire | Isoler cause trust machine |
-| PKI | Etat PKIView capture | PKI admin station | Screenshot + date/heure | Justifier sante CRL/delta |
-| Config | DNS/NTP config poste | Poste KO | ipconfig /all + w32tm outputs | Exclure causes infra de base |
+- [ ] Connectivite ports AD/Kerberos
+	- Commande:
+		- `Test-NetConnection <DC_FQDN> -Port 88`
+		- `Test-NetConnection <DC_FQDN> -Port 389`
+		- `Test-NetConnection <DC_FQDN> -Port 445`
+		- `Test-NetConnection <DC_FQDN> -Port 53`
+	- GUI: PortQryUI / firewall logs
+	- Pourquoi: eliminer blocage reseau L4
+
+- [ ] Cache Kerberos utilisateur et SYSTEM
+	- Commandes:
+		- `klist`
+		- `klist purge`
+		- `klist -li 0x3e7`
+		- `klist -li 0x3e7 purge`
+	- GUI: pas de GUI fiable
+	- Pourquoi: eliminer tickets stale
+
+- [ ] Services Netlogon/KDC
+	- Commande: `sc query netlogon` ; `sc query kdc`
+	- GUI: `services.msc`
+	- Pourquoi: verifier etat service et demarrage
+
+- [ ] Debug Netlogon temporaire
+	- Commande: `nltest /dbflag:0x2080ffff`
+	- GUI: Event Viewer System
+	- Pourquoi: obtenir detail cause trust
+	- Cleanup obligatoire: `nltest /dbflag:0x0`
+
+- [ ] Validation CRL en contexte SYSTEM
+	- Commande: `psexec -s cmd /c certutil -urlfetch -verify <DCcert.cer>`
+	- GUI: Task Scheduler (Run as SYSTEM)
+	- Pourquoi: detecter ecart User vs SYSTEM
+
+- [ ] Verifier durcissement mapping certificat
+	- Commandes:
+		- `reg query HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v StrongCertificateBindingEnforcement`
+		- `reg query HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v CertificateBackdating`
+	- GUI: `regedit`
+	- Pourquoi: confirmer niveau enforcement PKINIT/mapping
+
+- [ ] Verifier coherence multi-DC
+	- Commandes:
+		- `certutil -store my`
+		- `certutil -dcinfo verify`
+	- GUI: `certlm.msc` sur chaque DC
+	- Pourquoi: detecter heterogeneite entre DC
 
 ---
 
-## 8) Non-regression apres correction
+## 5) Collecte technique minimale (pendant le troubleshooting)
 
-| Test | Ou | Methode | Attendu |
-|---|---|---|---|
-| Smart card login sur poste sain | Poste sain | Logoff/login smart card | OK |
-| Smart card login sur poste repare | Poste repare | Logoff/login smart card | OK |
-| Secure channel poste 1 | Poste 1 | Test-ComputerSecureChannel -Verbose | True |
-| Secure channel poste 2 | Poste 2 | Test-ComputerSecureChannel -Verbose | True |
-| GPO refresh | Postes 1/2 | gpupdate /force | Pas d erreur DC |
-| DC locator | Postes 1/2 | nltest /dsgetdc:<domaine> | DC trouve |
-| Verification apres reboot | DC + postes | Reboot puis retest A/B/C | Toujours OK |
-| Verification J+1 | Echantillon de postes | Meme matrice minimale | Toujours OK |
+- [ ] Export logs KDC Operational (DC)
+- [ ] Export logs CAPI2 Operational (DC)
+- [ ] Export logs System/Netlogon (poste KO + DC)
+- [ ] Capture PKIView
+- [ ] Capture `ipconfig /all` et `w32tm /query /status` sur poste KO
 
-Note:
-- Si tout est OK juste apres correction mais KO apres reboot/J+1, suspecter un probleme de replication (AD/DNS/CRL) ou d heterogeneite multi-DC.
+But: pouvoir prouver la cause racine et eviter les hypotheses non verifiees.
+
+---
+
+## 6) Validation finale et non-regression
+
+- [ ] Smart card login OK sur poste sain
+- [ ] Smart card login OK sur au moins un poste repare
+- [ ] Poste 1: `Test-ComputerSecureChannel -Verbose` = True
+- [ ] Poste 2: `Test-ComputerSecureChannel -Verbose` = True
+- [ ] `gpupdate /force` OK sur postes repares
+- [ ] `nltest /dsgetdc:<domaine>` OK sur postes repares
+- [ ] Verification apres reboot: toujours OK
+- [ ] Verification J+1: toujours OK
+
+Si rechute apres reboot/J+1:
+- suspecter replication AD/DNS/PKI ou heterogeneite multi-DC.
