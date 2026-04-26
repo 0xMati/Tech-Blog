@@ -1,9 +1,8 @@
 # AD SmartCard and Secure Channel Incident Runbook
 
 Date: 2026-04-26
-Audience: Ops / AD / PKI / Support
 
-## 1) Vue globale (pilotage de seance)
+## 1) Vue globale
 
 | Phase | Probleme cible | Objectif | Machine | Outils | Critere de sortie |
 |---|---|---|---|---|---|
