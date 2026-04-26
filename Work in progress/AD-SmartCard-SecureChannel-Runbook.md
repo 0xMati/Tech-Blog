@@ -13,16 +13,16 @@ Regles de travail:
 
 ## 1) Preparatifs de session
 
-- [ ] Choisir les machines de reference:
+- [ ] Choisir les machines de reference [Cible: session]
 	- [ ] 1 DC impacte
 	- [ ] 1 poste sain (secure channel OK)
 	- [ ] 2 postes en echec
-- [ ] Verifier les acces:
+- [ ] Verifier les acces [Cible: DC + postes]
 	- [ ] droits admin local sur postes
 	- [ ] droits admin sur DC
 	- [ ] acces Event Viewer DC
 	- [ ] acces PKIView
-- [ ] Ouvrir les consoles GUI:
+- [ ] Ouvrir les consoles GUI [Cible: DC + postes]
 	- [ ] Event Viewer (KDC Operational, CAPI2, System)
 	- [ ] certlm.msc sur DC
 	- [ ] services.msc (DC + postes)
@@ -34,37 +34,37 @@ Regles de travail:
 
 Objectif: prouver que la smart card peut fonctionner sur un poste sain.
 
-- [ ] Verifier certificat DC utilisable KDC
+- [ ] Verifier certificat DC utilisable KDC [Cible: DC]
 	- Commande: `certutil -store my`
 	- GUI: `certlm.msc > Personal > Certificates`
 	- Verifier: cert non expire, cle privee, EKU coherent, chaine complete
 	- Si KO: reenroler cert DC et verifier template
 
-- [ ] Verifier revocation et sante KDC
+- [ ] Verifier revocation et sante KDC [Cible: DC]
 	- Commande: `certutil -dcinfo verify`
 	- GUI: Event Viewer KDC/Kerberos
 	- Verifier: plus d erreur revocation offline
 	- Si KO: corriger CRL/delta/AIA/CDP
 
-- [ ] Verifier coherence CRL/delta
+- [ ] Verifier coherence CRL/delta [Cible: DC/PKI]
 	- Commande: pas necessaire (outil GUI principal)
 	- GUI: `pkiview.msc`
 	- Verifier: CDP/AIA en vert, dates valides, coherence base/delta
 	- Si KO: republier CRL + delta, verifier replication
 
-- [ ] Verifier chaine/revocation du cert DC
+- [ ] Verifier chaine/revocation du cert DC [Cible: DC]
 	- Commande: `certutil -urlfetch -verify <DCcert.cer>`
 	- GUI: Ouvrir cert > Certification Path
 	- Verifier: chaque maillon valide
 	- Si KO: corriger stores Root/CA + publication CRL
 
-- [ ] Verifier NTAuth
+- [ ] Verifier NTAuth [Cible: DC/PKI]
 	- Commande: `certutil -enterprise -viewstore NTAuth`
 	- GUI: PKI MMC / ADSIEdit
 	- Verifier: CA smart card presente
 	- Si KO: publier CA dans NTAuth
 
-- [ ] Capturer erreurs KDC/CAPI2 pendant un test smart card
+- [ ] Capturer erreurs KDC/CAPI2 pendant un test smart card [Cible: DC + poste sain]
 	- Commandes:
 		- `Get-WinEvent -LogName "Microsoft-Windows-Kerberos-Key-Distribution-Center/Operational" -MaxEvents 200`
 		- `Get-WinEvent -LogName "Microsoft-Windows-CAPI2/Operational" -MaxEvents 200`
@@ -82,13 +82,13 @@ Decision immediate:
 
 Objectif: retablir la relation de confiance machine/DC.
 
-- [ ] Verifier DNS client AD
+- [ ] Verifier DNS client AD [Cible: poste en echec]
 	- Commande: `ipconfig /all`
 	- GUI: `ncpa.cpl` (DNS IPv4)
 	- Verifier: DNS AD uniquement
 	- Si KO: corriger DNS puis retester
 
-- [ ] Verifier DC locator
+- [ ] Verifier DC locator [Cible: poste en echec]
 	- Commandes:
 		- `nslookup -type=srv _ldap._tcp.dc._msdcs.<domaine>`
 		- `nltest /dsgetdc:<domaine>`
@@ -96,13 +96,13 @@ Objectif: retablir la relation de confiance machine/DC.
 	- Verifier: DC trouve et joignable
 	- Si KO: corriger DNS/reseau/site AD
 
-- [ ] Verifier synchronisation horaire
+- [ ] Verifier synchronisation horaire [Cible: poste en echec]
 	- Commande: `w32tm /query /status`
 	- GUI: `timedate.cpl`
 	- Verifier: offset faible
 	- Si KO: resync temps
 
-- [ ] Verifier secure channel
+- [ ] Verifier secure channel [Cible: poste en echec]
 	- Commandes:
 		- `Test-ComputerSecureChannel -Verbose`
 		- `nltest /sc_verify:<domaine>`
@@ -110,7 +110,7 @@ Objectif: retablir la relation de confiance machine/DC.
 	- Verifier: secure channel True
 	- Si KO: lancer reparation
 
-- [ ] Reparer secure channel (sans rejoin d abord)
+- [ ] Reparer secure channel (sans rejoin d abord) [Cible: poste en echec]
 	- Commandes:
 		- `Test-ComputerSecureChannel -Repair -Credential <DOM\\Admin>`
 		- `Reset-ComputerMachinePassword -Server <DC_FQDN> -Credential <DOM\\Admin>`
@@ -118,7 +118,7 @@ Objectif: retablir la relation de confiance machine/DC.
 	- Verifier: reboot puis secure channel True
 	- Si KO: faire rejoin propre
 
-- [ ] Rejoin domaine (dernier recours)
+- [ ] Rejoin domaine (dernier recours) [Cible: poste en echec + AD]
 	- Commande: optionnel
 	- GUI: `sysdm.cpl > Computer Name > Change`
 	- Verifier: domaine OK apres reboot + objet AD propre
@@ -128,7 +128,7 @@ Objectif: retablir la relation de confiance machine/DC.
 
 ## 4) Tests avances (si causes non evidentes)
 
-- [ ] Connectivite ports AD/Kerberos
+- [ ] Connectivite ports AD/Kerberos [Cible: poste sain + poste en echec vers DC]
 	- Commande:
 		- `Test-NetConnection <DC_FQDN> -Port 88`
 		- `Test-NetConnection <DC_FQDN> -Port 389`
@@ -137,7 +137,7 @@ Objectif: retablir la relation de confiance machine/DC.
 	- GUI: PortQryUI / firewall logs
 	- Pourquoi: eliminer blocage reseau L4
 
-- [ ] Cache Kerberos utilisateur et SYSTEM
+- [ ] Cache Kerberos utilisateur et SYSTEM [Cible: poste en echec]
 	- Commandes:
 		- `klist`
 		- `klist purge`
@@ -146,30 +146,30 @@ Objectif: retablir la relation de confiance machine/DC.
 	- GUI: pas de GUI fiable
 	- Pourquoi: eliminer tickets stale
 
-- [ ] Services Netlogon/KDC
+- [ ] Services Netlogon/KDC [Cible: DC + poste en echec]
 	- Commande: `sc query netlogon` ; `sc query kdc`
 	- GUI: `services.msc`
 	- Pourquoi: verifier etat service et demarrage
 
-- [ ] Debug Netlogon temporaire
+- [ ] Debug Netlogon temporaire [Cible: poste en echec + DC]
 	- Commande: `nltest /dbflag:0x2080ffff`
 	- GUI: Event Viewer System
 	- Pourquoi: obtenir detail cause trust
 	- Cleanup obligatoire: `nltest /dbflag:0x0`
 
-- [ ] Validation CRL en contexte SYSTEM
+- [ ] Validation CRL en contexte SYSTEM [Cible: DC]
 	- Commande: `psexec -s cmd /c certutil -urlfetch -verify <DCcert.cer>`
 	- GUI: Task Scheduler (Run as SYSTEM)
 	- Pourquoi: detecter ecart User vs SYSTEM
 
-- [ ] Verifier durcissement mapping certificat
+- [ ] Verifier durcissement mapping certificat [Cible: DC]
 	- Commandes:
 		- `reg query HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v StrongCertificateBindingEnforcement`
 		- `reg query HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v CertificateBackdating`
 	- GUI: `regedit`
 	- Pourquoi: confirmer niveau enforcement PKINIT/mapping
 
-- [ ] Verifier coherence multi-DC
+- [ ] Verifier coherence multi-DC [Cible: tous les DC]
 	- Commandes:
 		- `certutil -store my`
 		- `certutil -dcinfo verify`
@@ -180,11 +180,11 @@ Objectif: retablir la relation de confiance machine/DC.
 
 ## 5) Collecte technique minimale (pendant le troubleshooting)
 
-- [ ] Export logs KDC Operational (DC)
-- [ ] Export logs CAPI2 Operational (DC)
-- [ ] Export logs System/Netlogon (poste KO + DC)
-- [ ] Capture PKIView
-- [ ] Capture `ipconfig /all` et `w32tm /query /status` sur poste KO
+- [ ] Export logs KDC Operational [Cible: DC]
+- [ ] Export logs CAPI2 Operational [Cible: DC]
+- [ ] Export logs System/Netlogon [Cible: poste en echec + DC]
+- [ ] Capture PKIView [Cible: PKI/DC]
+- [ ] Capture `ipconfig /all` et `w32tm /query /status` [Cible: poste en echec]
 
 But: pouvoir prouver la cause racine et eviter les hypotheses non verifiees.
 
@@ -192,14 +192,14 @@ But: pouvoir prouver la cause racine et eviter les hypotheses non verifiees.
 
 ## 6) Validation finale et non-regression
 
-- [ ] Smart card login OK sur poste sain
-- [ ] Smart card login OK sur au moins un poste repare
-- [ ] Poste 1: `Test-ComputerSecureChannel -Verbose` = True
-- [ ] Poste 2: `Test-ComputerSecureChannel -Verbose` = True
-- [ ] `gpupdate /force` OK sur postes repares
-- [ ] `nltest /dsgetdc:<domaine>` OK sur postes repares
-- [ ] Verification apres reboot: toujours OK
-- [ ] Verification J+1: toujours OK
+- [ ] Smart card login OK [Cible: poste sain]
+- [ ] Smart card login OK [Cible: au moins un poste repare]
+- [ ] `Test-ComputerSecureChannel -Verbose` = True [Cible: poste 1 en echec]
+- [ ] `Test-ComputerSecureChannel -Verbose` = True [Cible: poste 2 en echec]
+- [ ] `gpupdate /force` OK [Cible: postes repares]
+- [ ] `nltest /dsgetdc:<domaine>` OK [Cible: postes repares]
+- [ ] Verification apres reboot: toujours OK [Cible: DC + postes testes]
+- [ ] Verification J+1: toujours OK [Cible: echantillon postes + au moins 1 DC]
 
 Si rechute apres reboot/J+1:
 - suspecter replication AD/DNS/PKI ou heterogeneite multi-DC.
