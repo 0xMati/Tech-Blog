@@ -51,7 +51,39 @@ Date: 2026-04-26
 
 ---
 
-## 4) Checklist finale Go/No-Go
+## 4) Troubleshoot Decision Matrix (base de travail journee)
+
+Objectif de cette section:
+- rester en mode diagnostic pur,
+- eviter de corriger trop tot sans preuve,
+- converger vite vers la cause racine.
+
+Regle de conduite:
+- Ne changer qu une variable a la fois.
+- Apres chaque test, noter resultat + interpretation + action suivante.
+- Ne passer en remediation que si la cause probable est suffisamment confirmee.
+
+| Symptome observe | Tests a lancer (ordre strict) | Ce que le resultat signifie | Cause probable | Action suivante |
+|---|---|---|---|---|
+| Smart card KO sur poste sain | A1 -> A2 -> A3 -> A4 -> A7 -> A8 -> D2 | Si A1/A2/A3/A4 KO, blocage PKI/KDC. Si A7 KO avec mapping, blocage mapping cert utilisateur | Cert DC/KDC, revocation CRL/delta, mapping cert | Corriger PKI/KDC ou mapping avant de toucher aux postes KO |
+| Smart card KO seulement sur postes KO | B1 -> B2 -> B3 -> B4 -> C1 -> C2 | Si B1-B4 KO, probleme infra locale. Si C1/C2 KO, trust machine casse | DNS/time/DC locator ou secure channel | Corriger infra locale puis reparer secure channel |
+| Test-ComputerSecureChannel=False | C1 -> C2 -> C4 -> C5 -> C6 | Si C4/C5 reussit, pas besoin de rejoin. Si echec persistant, rejoin requis | Secret machine desynchronise / trust machine | Reparer, reboot, revalider C1/C3 |
+| gpupdate /force: pas de DC | B1 -> B2 -> B3 -> E1 -> C1 | Si ports/DC locator KO: reseau/DNS. Si reseau OK et C1 KO: trust machine | DNS, ACL reseau, trust | Corriger connectivite puis trust |
+| Certutil revocation offline | A2 -> A3 -> A4 -> E8 | Si E8 KO mais A4 OK en user, probleme contexte SYSTEM | CRL/CDP accessibles en user mais pas SYSTEM | Corriger proxy/firewall/system context |
+| Resultats differents selon DC | E10 + A7 sur chaque DC | Heterogeneite inter-DC | Cert KDC ou CRL non homogene | Aligner config/cert/CRL sur tous les DC |
+| Tout semble OK puis rechute apres reboot | E2 -> E10 -> C1/C2 -> A7 | Si rechute periodique, suspect replication/rotation cert/CRL | Replication AD/DNS/PKI incomplete | Verifier replication et coherence multi-DC |
+
+Boucle de travail recommandee:
+1. Observer le symptome exact.
+2. Lancer les tests de la ligne correspondante.
+3. Interpreter selon la colonne "Ce que le resultat signifie".
+4. Executer une seule action corrective.
+5. Rejouer le test initial (meme machine, meme scenario).
+6. Si non concluant, passer a la ligne suivante du tableau.
+
+---
+
+## 5) Checklist finale Go/No-Go
 
 | Controle | Statut |
 |---|---|
@@ -67,7 +99,7 @@ Regle de decision:
 
 ---
 
-## 5) Tests avances (niveau 2/3)
+## 6) Tests avances (niveau 2/3)
 
 | ID | Ce qu on teste | Ou | Commande | Equivalent GUI | Verifier precisement | Attendu | Si KO |
 |---|---|---|---|---|---|---|---|
@@ -84,7 +116,7 @@ Regle de decision:
 
 ---
 
-## 6) Collecte de preuves pour RCA (Root Cause Analysis)
+## 7) Collecte de preuves pour RCA (Root Cause Analysis)
 
 | Axe | Quoi collecter | Ou | Comment | Pourquoi |
 |---|---|---|---|---|
@@ -96,7 +128,7 @@ Regle de decision:
 
 ---
 
-## 7) Non-regression apres correction
+## 8) Non-regression apres correction
 
 | Test | Ou | Methode | Attendu |
 |---|---|---|---|
