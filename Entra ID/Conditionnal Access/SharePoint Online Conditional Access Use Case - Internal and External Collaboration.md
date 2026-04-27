@@ -326,23 +326,25 @@ Add this layer only if you also need advanced session behavior like:
 
 ## 6. ✅ Scenario Mapping
 
+This section is not the step-by-step configuration procedure. It is the control matrix that maps each business scenario to the mechanism that enforces it. The actual implementation steps are in Section 7.
+
 Let's map the architecture back to the target matrix and verify it covers everything:
 
-| Scenario | Expected result | Main control |
-|---|---|---|
-| Internal user on trusted IP -> internal Teams chat | ✅ | Teams native behavior |
-| Internal user on trusted IP -> internal Teams files | ✅ | Normal SharePoint access |
-| Internal user on non-trusted IP -> internal Teams chat | ✅ | Not targeted by SharePoint CA |
-| Internal user on non-trusted IP -> internal Teams files | 🚫 | Authentication Context + CA Policy A |
-| Internal user on non-trusted IP -> internal SharePoint site | 🚫 | Authentication Context + CA Policy A |
-| Internal user on non-trusted IP -> external Teams files | 🚫 | Authentication Context + CA Policy B |
-| Internal user on non-trusted IP -> external SharePoint site | 🚫 | Authentication Context + CA Policy B |
-| Guest -> internal Teams chat | 🚫 | Teams guest access disabled on internal Teams (`AllowToAddGuest $false`) |
-| Guest -> internal Teams files | 🚫 | SPO sharing disabled on internal sites (`SharingCapability Disabled`) |
-| Guest -> internal SharePoint site | 🚫 | SPO sharing disabled on internal sites (`SharingCapability Disabled`) |
-| Guest on non-trusted IP -> external Teams chat | ✅ | Guest enabled on external Teams |
-| Guest on non-trusted IP -> external Teams files | ✅ | CA Policy C on `AC-ExternalCollabSites` |
-| Guest on non-trusted IP -> external SharePoint site | ✅ | CA Policy C on `AC-ExternalCollabSites` |
+| No. | Scenario | Expected result | Main control | CA implementation detail |
+|---|---|---|---|---|
+| 1 | Internal user on trusted IP -> internal Teams chat | ✅ | Teams native behavior | No SharePoint CA involved. Teams messaging is not targeted by the SharePoint Authentication Context policies. |
+| 2 | Internal user on trusted IP -> internal Teams files | ✅ | Normal SharePoint access | `AC-InternalSites` is present on the site, but CA Policy A excludes trusted locations, so access is allowed. |
+| 3 | Internal user on non-trusted IP -> internal Teams chat | ✅ | Not targeted by SharePoint CA | No SharePoint CA involved. Teams chat stays outside the SharePoint access control path. |
+| 4 | Internal user on non-trusted IP -> internal Teams files | 🚫 | Authentication Context + CA Policy A | The underlying SharePoint site is tagged with `AC-InternalSites`. CA Policy A targets internal members on untrusted locations and blocks access. |
+| 5 | Internal user on non-trusted IP -> internal SharePoint site | 🚫 | Authentication Context + CA Policy A | Same logic as row 4: `AC-InternalSites` on the site + CA Policy A block for internal members outside trusted IPs. |
+| 6 | Internal user on non-trusted IP -> external Teams files | 🚫 | Authentication Context + CA Policy B | The external collaboration site is tagged with `AC-ExternalCollabSites`. CA Policy B targets internal members on untrusted locations and blocks file access. |
+| 7 | Internal user on non-trusted IP -> external SharePoint site | 🚫 | Authentication Context + CA Policy B | Same logic as row 6: `AC-ExternalCollabSites` + CA Policy B block for internal members outside trusted IPs. |
+| 8 | Guest -> internal Teams chat | 🚫 | Teams guest access disabled on internal Teams (`AllowToAddGuest $false`) | No Conditional Access policy is needed. The guest cannot be added to the internal Team in the first place. |
+| 9 | Guest -> internal Teams files | 🚫 | SPO sharing disabled on internal sites (`SharingCapability Disabled`) | No Conditional Access policy is needed. The internal SharePoint site does not allow guest sharing, so the guest never reaches the Authentication Context challenge. |
+| 10 | Guest -> internal SharePoint site | 🚫 | SPO sharing disabled on internal sites (`SharingCapability Disabled`) | Same logic as row 9: the guest has no valid sharing path to the site, so access is blocked before CA evaluation. |
+| 11 | Guest on non-trusted IP -> external Teams chat | ✅ | Guest enabled on external Teams | No SharePoint CA involved for the chat workload. Guest access is allowed at the Team configuration level. |
+| 12 | Guest on non-trusted IP -> external Teams files | ✅ | CA Policy C on `AC-ExternalCollabSites` | The site is tagged with `AC-ExternalCollabSites`. CA Policy C targets guests and external users and deliberately has no location condition, so guest access is allowed. |
+| 13 | Guest on non-trusted IP -> external SharePoint site | ✅ | CA Policy C on `AC-ExternalCollabSites` | Same logic as row 12: `AC-ExternalCollabSites` + CA Policy C allow for guests regardless of IP, optionally with MFA. |
 
 > 💡 **Rows 8–10 (guest blocking on internal content)** are not enforced by Conditional Access policies at all. They're handled entirely by the collaboration model settings in Step 1. If a guest has no Team membership and no sharing permission on the site, they simply can't reach the Authentication Context challenge — no CA policy needed.
 
