@@ -429,32 +429,46 @@ You can also use sensitivity labels with Sites and Groups scope if you prefer a 
 
 ### Step 4 - Create Conditional Access Policies 🔐
 
-#### CA Policy A - Internal members blocked on internal sites from untrusted locations
+#### CA Policy A - InternalProject Sites - Block Untrusted
 
 - Target resource: `AC-InternalSites`
 - Users: internal members
 - Locations: any, excluding trusted IPs
 - Grant: block
 
-#### CA Policy B - Internal members blocked on external collaboration sites from untrusted locations
+#### CA Policy B - PartnerProject Sites - Block Untrusted
 
 - Target resource: `AC-ExternalCollabSites`
 - Users: internal members
 - Locations: any, excluding trusted IPs
 - Grant: block
 
-#### CA Policy C - Guests allowed on external collaboration sites
+> ⚠️ **Important**: Policy B is NOT optional. This policy is critical to prevent internal members on non-trusted IPs from accessing external collaboration sites. Without it, the scenario matrix gap persists: external sites would remain fully accessible to all internal users, regardless of location. This policy is what allows guests to collaborate while restricting internal untrusted users on the same resource.
+
+#### CA Policy C - PartnerProject Sites - Require MFA Guests
 
 - Target resource: `AC-ExternalCollabSites`
 - Users: guests and external users
+- **No location condition** — guests must be allowed from any IP
 - Grant: allow
-- Optional: require MFA
+- Session controls: optionally require MFA
 
 This split between members and guests is what removes the residual gap.
 
 > **Note on guest blocking for internal content**: there is no Conditional Access policy needed to block guests from internal sites or Teams. That is handled entirely by the collaboration model settings from Step 1: `SharingCapability Disabled` prevents guests from ever being granted SPO access on internal sites, and `AllowToAddGuest $false` prevents guests from being added to internal Teams. A guest who has no membership and no sharing permission simply cannot reach the Authentication Context challenge. No CA policy is needed.
 
-### Step 5 - Optional Global Baseline with App-Enforced Restrictions 🛡️
+### Step 5 - Verify and Test 🧪
+
+After creating and enabling all three policies:
+
+1. Test each scenario from the matrix (section 6) in a fresh browser session.
+2. If a policy does not apply immediately despite being enabled:
+   - Revoke active sessions for the test user in Entra ID.
+   - Wait 1-2 minutes for the revocation to propagate.
+   - Test again in a fresh browser window or private mode.
+   - Cached tokens can sometimes mask new policy evaluations, and revoking forces a fresh token acquisition.
+
+### Step 6 - Optional Global Baseline with App-Enforced Restrictions 🛡️
 
 If you want a generic web-only restriction for unmanaged or untrusted contexts:
 
