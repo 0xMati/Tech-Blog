@@ -354,6 +354,17 @@ This is exactly the full scenario matrix that the simpler `AllowFullAccess` mode
 
 ## 7. 🛠️ Configuration Walkthrough
 
+### ⚙️ Choice Point: All Sites or Selective Protection?
+
+This architecture can be deployed two ways:
+
+1. **All-sites approach**: Mark every SharePoint site with an Authentication Context (either `AC-InternalSites` or `AC-ExternalCollabSites`). This ensures every site is governed by one of the three policies (A, B, or C).
+2. **Selective approach**: Mark only sensitive or collaboration-critical sites. Other sites remain untagged and inherit a tenant-wide baseline — which you must define separately (e.g., MFA for all users, or App-Enforced Restrictions for web-only access).
+
+Choose based on your governance model. The selective approach is lighter but requires you to establish a clear baseline for unmarked sites.
+
+---
+
 ### Step 1 - Classify Sites and Teams 🗂️
 
 Start by creating two clear categories:
