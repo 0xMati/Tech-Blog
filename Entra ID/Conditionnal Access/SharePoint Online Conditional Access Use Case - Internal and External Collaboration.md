@@ -607,7 +607,7 @@ If instead you build around:
 - separate CA policies for members and guests,
 - an optional global SharePoint baseline,
 
-then the full scenario matrix becomes straightforward to express — and maintain.
+Then the full scenario matrix becomes straightforward to express — and maintain.
 
 That is the design pattern behind protecting SharePoint without breaking Teams.
 
