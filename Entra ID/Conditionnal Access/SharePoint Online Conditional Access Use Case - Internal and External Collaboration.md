@@ -310,6 +310,14 @@ Result:
 - guests can still access the external collaboration spaces they were invited to,
 - while internal non-trusted users are blocked from the same site by Policy B.
 
+> ⚠️ **Design constraint: Authentication Context is step-up, not step-down**
+>
+> Authentication Context lets you enforce stricter controls on selected sites, but it cannot relax a stricter tenant-wide SharePoint baseline for a specific site.
+>
+> If your baseline CA policy requires compliant or hybrid-joined devices for SharePoint Online, you can't use Authentication Context or Defender for Cloud Apps session controls to make a single site accessible from unmanaged devices.
+>
+> To allow one less-restricted site, you must redesign the model: broader baseline + stricter targeted controls on other sites.
+
 ### 🛡️ Optional Layer 4 - App-Enforced Restrictions as Baseline
 
 If you want a web-only posture for generic SharePoint access from untrusted locations, App-Enforced Restrictions still fit well here — as a baseline safety net, not the main control.
@@ -479,6 +487,8 @@ After creating and enabling all three policies:
    - Test again in a fresh browser window or private mode.
    - Cached tokens can sometimes mask new policy evaluations, and revoking forces a fresh token acquisition.
 
+> **Note on CAE and network changes**: Continuous Access Evaluation (CAE) can trigger Conditional Access reevaluation when network conditions change, but behavior depends on client and resource support. Sign-in frequency is a separate periodic reauthentication control and does not replace CAE. If policy behavior seems inconsistent after a network change, validate with a fresh browser session and, if needed, revoke active sessions for the test user.
+
 ### Step 6 - Optional Global Baseline with App-Enforced Restrictions 🛡️
 
 If you want a generic web-only restriction for unmanaged or untrusted contexts:
@@ -538,6 +548,43 @@ Quick reference when someone asks which control to use:
   - Teams file access,
   - Teams chat access.
 
+> ⚠️ **Important behavior note: unsupported clients vs real coverage gaps**
+>
+> In most Microsoft-documented limitations, when Authentication Context cannot be processed correctly, behavior is **fail-closed**:
+>
+> - access is blocked (`access denied`), or
+> - challenge flow fails and access is rejected.
+>
+> This is usually **not** a silent bypass. The bigger risk is often elsewhere:
+>
+> - **Availability/functional risk**: legitimate business scenarios break because the client or feature is unsupported.
+> - **Design risk**: you believe content is protected, but some sites or flows are not covered because they are untagged or not targeted by an active policy.
+>
+> Practical rule:
+>
+> - unsupported client on a protected site -> typically a user-facing incident (blocked access),
+> - incorrect scoping (site not tagged / no linked policy) -> actual security coverage risk.
+>
+> Related design rule:
+>
+> - Authentication Context can add requirements to selected sites (step-up),
+> - it cannot remove stricter grant requirements already enforced by a broader SharePoint baseline policy.
+>
+> Microsoft references:
+>
+> - SharePoint Authentication Context limitations: [Conditional access policy - Limitations](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)
+> - Purview dependencies for the Authentication Context option: [More information about the dependencies for the authentication context option](https://learn.microsoft.com/en-us/purview/sensitivity-labels-teams-groups-sites#more-information-about-the-dependencies-for-the-authentication-context-option)
+
+### Known Constraints Checklist
+
+- Authentication Context cannot be applied to the SharePoint root site (`https://tenant.sharepoint.com`).
+- Authentication contexts used by labels must be created, configured, and **published to apps** in Entra.
+- Label-based Conditional Access settings don't auto-validate dependencies; missing dependencies can result in no effective enforcement.
+- If a label setting is less restrictive than an existing tenant-level baseline, the tenant-level setting takes precedence.
+- Plan for propagation delays and token timing effects; retesting often requires a fresh sign-in.
+- Validate supported clients and feature paths explicitly (web, desktop, mobile, sync, Outlook, Teams file workflows).
+- Treat unsupported-client outcomes as availability risk; treat incorrect site/policy scoping as security coverage risk.
+
 ---
 
 ## 11. 🎯 Final Takeaway
@@ -570,6 +617,8 @@ That is the design pattern behind protecting SharePoint without breaking Teams.
 
 - [Authentication Context in Conditional Access](https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-cloud-apps#authentication-context)
 - [SharePoint integration with Authentication Context](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example)
+- [SharePoint Authentication Context limitations](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)
+- [Purview dependencies for Authentication Context](https://learn.microsoft.com/en-us/purview/sensitivity-labels-teams-groups-sites#more-information-about-the-dependencies-for-the-authentication-context-option)
 - [Control access from unmanaged devices](https://learn.microsoft.com/en-us/sharepoint/control-access-from-unmanaged-devices)
 - [Restricted Access Control in SharePoint Advanced Management](https://learn.microsoft.com/en-us/sharepoint/restricted-access-control)
 - [Session policies in Defender for Cloud Apps](https://learn.microsoft.com/en-us/defender-cloud-apps/session-policy-aad)
