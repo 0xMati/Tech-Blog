@@ -9,16 +9,16 @@ In this post we'll cover what Windows LAPS is, why you need it, how to deploy it
 
 ---
 
-## � Table of Contents
+## Table of Contents
 
 - [📖 What Is Windows LAPS?](#-what-is-windows-laps)
 - [🎯 Why Use Windows LAPS?](#-why-use-windows-laps)
 - [🛠️ Prerequisites](#️-prerequisites)
 - [🚀 Deployment – Step by Step (Active Directory)](#-deployment--step-by-step-active-directory)
-  - [Step 1 — Update the AD Schema](#step-1--update-the-ad-schema)
-  - [Step 2 — Set Permissions on the OU](#step-2--set-permissions-on-the-ou)
-  - [Step 3 — Configure the LAPS Policy via GPO](#step-3--configure-the-laps-policy-via-gpo)
-  - [Step 4 — Verify Deployment](#step-4--verify-deployment)
+    - [Step 1 — Update the AD Schema](#step-1--update-the-ad-schema)
+    - [Step 2 — Set Permissions on the OU](#step-2--set-permissions-on-the-ou)
+    - [Step 3 — Configure the LAPS Policy via GPO](#step-3--configure-the-laps-policy-via-gpo)
+    - [Step 4 — Verify Deployment](#step-4--verify-deployment)
     - [Step 5 — Manage DSRM Password on Domain Controllers](#step-5--manage-dsrm-password-on-domain-controllers)
 - [☁️ Deployment – Entra ID & Intune](#️-deployment--entra-id--intune)
 - [🔄 Migrating from Legacy LAPS to Windows LAPS](#-migrating-from-legacy-laps-to-windows-laps)
@@ -167,13 +167,70 @@ Configure the following settings:
 | **Enable password encryption** | Enabled | Encrypts the password stored in AD using CNG/DPAPI-NG so that only authorized principals can decrypt it. Without this, the password is stored in clear text in the `msLAPS-Password` attribute. | Requires 2016 DFL. Highly recommended |
 | **Configure authorized password decryptors** | `CONTOSO\LAPS-Password-Readers` | Defines which AD principal (user or group) can decrypt encrypted passwords. This setting has effect only when encryption is enabled. If disabled or not configured, encrypted passwords are decryptable by Domain Admins. | Use a domain-qualified name, UPN, or SID string. Do not use quotes or parentheses. The principal must be resolvable by managed devices. Ignored for DSRM backup on DCs (Domain Admins apply by design). |
 | **Configure automatic account management** | Enabled | When enabled, LAPS automatically creates and manages a local admin account with a random name. This avoids relying on the built-in Administrator (RID 500) which is a well-known target. The account name is randomly generated and rotated. | New in recent updates. Alternative to built-in admin |
-| **Enable password backup for DSRM accounts** | Enabled | Allows LAPS to also manage and rotate the Directory Services Restore Mode (DSRM) password on Domain Controllers. Useful for securing DC recovery credentials. | Only applies to DCs |
+| **Enable password backup for DSRM accounts** | Depends on scope: Enabled for DC GPO, Disabled/Not Configured for member GPO | Allows LAPS to also manage and rotate the Directory Services Restore Mode (DSRM) password on Domain Controllers. Useful for securing DC recovery credentials. | Only applies to DCs |
 | **Configure size of encrypted password history** | 0 | Number of previously encrypted passwords to retain in AD. Useful for disaster recovery scenarios where you may need an older password. Set to 0 if you don't need history. | Requires encryption enabled |
 | **Do not allow password expiration time longer than required by policy** | Enabled | Prevents the password expiration time from being extended beyond the configured maximum age. Ensures that passwords are always rotated within the policy-defined interval, even if someone manually sets a later expiry. | Enforces consistent rotation |
 | **Post-authentication actions** | Reset password and logoff | Defines what happens after the LAPS password has been retrieved and used. Options: do nothing, reset password only, reset + logoff, or reset + reboot. Prevents stale admin sessions from lingering. | After admin usage, rotate and kill sessions |
 | **Post-authentication reset delay** | 8 hours | Grace period (in hours) after a password is retrieved before the post-authentication action kicks in. Gives the admin time to finish their work before the password is rotated and sessions are terminated. | Grace period after password retrieval |
 
-Link the GPO to the target OU(s).
+Recommended deployment model: use two GPOs.
+
+1. One GPO for member devices (workstations and member servers)
+2. One dedicated GPO for Domain Controllers (DSRM scenario)
+
+#### Recommended GPO Parameters - Members (Workstations/Member Servers)
+
+Link this GPO to your member-device OUs (for example `OU=Workstations` and `OU=Servers`).
+
+| Setting | Recommended Value |
+|---|---|
+| **Configure password backup directory** | Active Directory (or Azure AD for cloud-managed devices) |
+| **Password Settings** | Complexity: Large + small + numbers + specials, Length: 20+, Age: 30 days |
+| **Name of administrator account to manage** | Blank (RID 500) or your managed local admin name |
+| **Enable password encryption** | Enabled |
+| **Configure authorized password decryptors** | Dedicated group, for example `CONTOSO\LAPS-Password-Readers` |
+| **Configure automatic account management** | Optional, based on security baseline |
+| **Configure size of encrypted password history** | 0 (or >0 if your recovery process requires history) |
+| **Do not allow password expiration time longer than required by policy** | Enabled |
+| **Post-authentication actions** | Reset password and logoff |
+| **Post-authentication reset delay** | 8 hours |
+| **Enable password backup for DSRM accounts** | Disabled or Not Configured |
+
+#### Recommended GPO Parameters - Domain Controllers (DSRM)
+
+Link this dedicated GPO only to `OU=Domain Controllers`.
+
+| Setting | Recommended Value |
+|---|---|
+| **Configure password backup directory** | Active Directory |
+| **Password Settings** | Complexity: Large + small + numbers + specials, Length: 20+, Age aligned with Tier-0 policy |
+| **Enable password encryption** | Enabled |
+| **Enable password backup for DSRM accounts** | Enabled |
+| **Configure size of encrypted password history** | 0 (or according to recovery policy) |
+| **Do not allow password expiration time longer than required by policy** | Enabled |
+| **Post-authentication actions** | Reset password and logoff |
+| **Post-authentication reset delay** | Shorter delay may be required for Tier-0 posture |
+
+Note for DCs: **Configure authorized password decryptors** does not control DSRM secret decryption. For DSRM on DCs, decryption defaults to Domain Admins by design.
+
+#### Quick Matrix - Members vs Domain Controllers
+
+Use this as a practical checklist during design and deployment reviews.
+
+| Parameter | Members (Workstations/Member Servers) | Domain Controllers (DSRM) | Why it matters |
+|---|---|---|---|
+| **Configure password backup directory** | Active Directory (or Azure AD for cloud-managed devices) | Active Directory | Defines where the secret is stored. For DSRM on DCs, AD is the operational model. |
+| **Password Settings** | Strong baseline (20+ chars, full complexity, periodic rotation) | Tier-0 baseline, often stricter rotation window | Aligns password strength and rotation with risk level. |
+| **Name of administrator account to manage** | Built-in admin (RID 500) or managed custom local admin | Not typically the main control for DSRM scenario | Clarifies target account scope to avoid policy drift. |
+| **Enable password encryption** | Enabled | Enabled | Prevents clear-text exposure in directory attributes. |
+| **Configure authorized password decryptors** | Dedicated reader group (or SID/UPN), resolvable by devices | Ignored for DSRM secret decryption | Critical distinction: valid for non-DSRM local admin secrets, not for DSRM on DCs. |
+| **Enable password backup for DSRM accounts** | Disabled or Not Configured | Enabled | Avoids unnecessary DSRM behavior on members and activates DSRM management on DCs. |
+| **Configure size of encrypted password history** | 0 by default (increase only with recovery need) | 0 or per recovery policy | Balances forensic/recovery needs with data minimization. |
+| **Do not allow password expiration time longer than required by policy** | Enabled | Enabled | Enforces maximum age and prevents accidental extension. |
+| **Post-authentication actions** | Reset password and logoff | Reset password and logoff | Reduces residual privileged session risk after password retrieval. |
+| **Post-authentication reset delay** | Typically 8 hours | Usually shorter for Tier-0 posture | Defines the exposure window after password use. |
+
+> 💡 **Remember**: for DSRM on Domain Controllers, decryption defaults to Domain Admins by design, even if a custom decryptor is configured.
 
 ---
 
@@ -210,9 +267,12 @@ Recommended approach:
 1. Create a dedicated GPO for DCs (for example `GPO-LAPS-DC-DSRM`)
 2. Link it to `OU=Domain Controllers,DC=contoso,DC=com`
 3. In that GPO, configure at least:
-   - **Configure password backup directory** = Active Directory
-   - **Enable password encryption** = Enabled
-   - **Enable password backup for DSRM accounts** = Enabled
+    - **Configure password backup directory** = Active Directory
+    - **Password Settings** = complexity/length/age aligned with Tier-0 standard
+    - **Enable password encryption** = Enabled
+    - **Enable password backup for DSRM accounts** = Enabled
+    - **Do not allow password expiration time longer than required by policy** = Enabled
+    - **Post-authentication actions** = Reset password and logoff
 
 For non-DSRM local admin passwords, if you configure **Configure authorized password decryptors**, use one of these formats and do not add quotes or parentheses:
 
@@ -439,13 +499,19 @@ This adds the new `msLAPS-*` attributes alongside the existing `ms-Mcs-*` attrib
 On your pilot machines, **uninstall the Legacy LAPS CSE** (the MSI). This is what triggers emulation mode:
 
 ```powershell
-# Uninstall Legacy LAPS MSI on a pilot machine
-$laps = Get-CimInstance -ClassName Win32_Product | Where-Object { $_.Name -like "*Local Administrator Password Solution*" }
-if ($laps) {
-    Start-Process msiexec.exe -ArgumentList "/x $($laps.IdentifyingNumber) /qn" -Wait
+# Uninstall Legacy LAPS MSI on a pilot machine (avoid Win32_Product)
+$app = Get-ItemProperty `
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*", `
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" `
+    -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName -like "*Local Administrator Password Solution*" } |
+    Select-Object -First 1
+
+if ($app -and $app.PSChildName -match '^\{[0-9A-Fa-f-]+\}$') {
+    Start-Process msiexec.exe -ArgumentList "/x $($app.PSChildName) /qn" -Wait
     Write-Host "Legacy LAPS CSE uninstalled."
 } else {
-    Write-Host "Legacy LAPS CSE not found."
+    Write-Host "Legacy LAPS CSE not found (or non-MSI uninstall metadata)."
 }
 ```
 
@@ -462,7 +528,7 @@ Or use your software deployment tool (SCCM, Intune) to remove it from pilot mach
 On your pilot machines:
 
 1. Ensure the April 2023 (or later) cumulative update is installed
-2. Apply the new GPO
+2. Apply the existing Legacy LAPS GPO for emulation validation (or a dedicated pilot native Windows LAPS GPO if you are validating native mode)
 3. Run `gpupdate /force`
 4. Check the LAPS event log:
 
@@ -516,9 +582,17 @@ After all machines have transitioned:
 2. **Uninstall the Legacy LAPS CSE** (MSI) from all clients:
 
 ```powershell
-# Find and uninstall Legacy LAPS MSI (example)
-$laps = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like "*Local Administrator Password Solution*" }
-if ($laps) { $laps.Uninstall() }
+# Find and uninstall Legacy LAPS MSI (example, avoid Win32_Product)
+$app = Get-ItemProperty `
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*", `
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" `
+    -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName -like "*Local Administrator Password Solution*" } |
+    Select-Object -First 1
+
+if ($app -and $app.PSChildName -match '^\{[0-9A-Fa-f-]+\}$') {
+    Start-Process msiexec.exe -ArgumentList "/x $($app.PSChildName) /qn" -Wait
+}
 ```
 
 Or via your software deployment tool (SCCM, Intune, etc.).
