@@ -261,6 +261,7 @@ Important behavior by design:
 - The **Configure authorized password decryptors** setting is ignored for DSRM password backup on Domain Controllers.
 - In DSRM scenario, decryption defaults to the Domain Admins group of the DC domain.
 - So a non-Domain Admin account being unable to decrypt DSRM is expected behavior.
+- Delegating DSRM password decryption to non-Domain-Admin accounts isn't supported by design.
 
 Recommended approach:
 
