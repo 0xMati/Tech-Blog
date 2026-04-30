@@ -19,6 +19,7 @@ In this post we'll cover what Windows LAPS is, why you need it, how to deploy it
   - [Step 2 — Set Permissions on the OU](#step-2--set-permissions-on-the-ou)
   - [Step 3 — Configure the LAPS Policy via GPO](#step-3--configure-the-laps-policy-via-gpo)
   - [Step 4 — Verify Deployment](#step-4--verify-deployment)
+    - [Step 5 — Manage DSRM Password on Domain Controllers](#step-5--manage-dsrm-password-on-domain-controllers)
 - [☁️ Deployment – Entra ID & Intune](#️-deployment--entra-id--intune)
 - [🔄 Migrating from Legacy LAPS to Windows LAPS](#-migrating-from-legacy-laps-to-windows-laps)
   - [Step 1 — Verify Current Legacy LAPS Deployment](#step-1--verify-current-legacy-laps-deployment)
@@ -164,7 +165,7 @@ Configure the following settings:
 | **Password Settings** | Complexity: Large letters + small letters + numbers + specials, Length: 20+, Age: 30 days | Controls password complexity, length, and rotation frequency. A longer, more complex password reduces brute-force risk. Age defines how often the password is automatically rotated. | Adjust to your security baseline |
 | **Name of administrator account to manage** | *(leave blank for built-in admin, or specify a custom account name)* | Specifies which local account LAPS manages. If left blank, LAPS targets the built-in Administrator (RID 500) regardless of its display name. | If you renamed the built-in admin, specify the name |
 | **Enable password encryption** | Enabled | Encrypts the password stored in AD using CNG/DPAPI-NG so that only authorized principals can decrypt it. Without this, the password is stored in clear text in the `msLAPS-Password` attribute. | Requires 2016 DFL. Highly recommended |
-| **Configure authorized password decryptors** | `CONTOSO\LAPS-Password-Readers` | Defines which AD principal (user or group) can decrypt the encrypted password. Only relevant when encryption is enabled. | Group authorized to decrypt passwords |
+| **Configure authorized password decryptors** | `CONTOSO\LAPS-Password-Readers` | Defines which AD principal (user or group) can decrypt encrypted passwords. This setting has effect only when encryption is enabled. If disabled or not configured, encrypted passwords are decryptable by Domain Admins. | Use a domain-qualified name, UPN, or SID string. Do not use quotes or parentheses. The principal must be resolvable by managed devices. Ignored for DSRM backup on DCs (Domain Admins apply by design). |
 | **Configure automatic account management** | Enabled | When enabled, LAPS automatically creates and manages a local admin account with a random name. This avoids relying on the built-in Administrator (RID 500) which is a well-known target. The account name is randomly generated and rotated. | New in recent updates. Alternative to built-in admin |
 | **Enable password backup for DSRM accounts** | Enabled | Allows LAPS to also manage and rotate the Directory Services Restore Mode (DSRM) password on Domain Controllers. Useful for securing DC recovery credentials. | Only applies to DCs |
 | **Configure size of encrypted password history** | 0 | Number of previously encrypted passwords to retain in AD. Useful for disaster recovery scenarios where you may need an older password. Set to 0 if you don't need history. | Requires encryption enabled |
@@ -191,6 +192,56 @@ Get-LapsADPassword -Identity "YOURPC01" -AsPlainText
 ```
 
 Or from the **Active Directory Users and Computers** console → computer object → **LAPS** tab.
+
+---
+
+### Step 5 — Manage DSRM Password on Domain Controllers
+
+Yes, for DSRM you should apply a GPO to Domain Controllers, not only to workstations.
+
+Important behavior by design:
+
+- The **Configure authorized password decryptors** setting is ignored for DSRM password backup on Domain Controllers.
+- In DSRM scenario, decryption defaults to the Domain Admins group of the DC domain.
+- So a non-Domain Admin account being unable to decrypt DSRM is expected behavior.
+
+Recommended approach:
+
+1. Create a dedicated GPO for DCs (for example `GPO-LAPS-DC-DSRM`)
+2. Link it to `OU=Domain Controllers,DC=contoso,DC=com`
+3. In that GPO, configure at least:
+   - **Configure password backup directory** = Active Directory
+   - **Enable password encryption** = Enabled
+   - **Enable password backup for DSRM accounts** = Enabled
+
+For non-DSRM local admin passwords, if you configure **Configure authorized password decryptors**, use one of these formats and do not add quotes or parentheses:
+
+- `contoso\LAPSAdmins`
+- `lapsadmins@contoso.com`
+- `S-1-5-21-2127521184-1604012920-1887927527-35197`
+
+Then delegate permissions on the Domain Controllers OU:
+
+```powershell
+Set-LapsADComputerSelfPermission -Identity "OU=Domain Controllers,DC=contoso,DC=com" -Verbose
+
+Find-LapsADExtendedRights -Identity "OU=Domain Controllers,DC=contoso,DC=com" -Verbose
+```
+
+Validation checklist:
+
+1. On a DC, confirm policy application (`gpresult /h`) and verify the LAPS policy values.
+2. Trigger policy refresh (`gpupdate /force`) and check `Microsoft-Windows-LAPS/Operational`.
+3. Test retrieval and expected access model:
+
+    - DSRM secret decryption: validate with a Domain Admin account
+    - Non-DA decryptor groups are valid for non-DSRM local admin password scenarios, not for DSRM on DCs
+
+```powershell
+Get-LapsADPassword -Identity "DC01" -AsPlainText
+```
+
+Reference: https://go.microsoft.com/fwlink/?linkid=2188435
 
 ---
 
