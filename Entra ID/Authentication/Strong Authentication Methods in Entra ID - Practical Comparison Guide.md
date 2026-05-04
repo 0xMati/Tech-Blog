@@ -1,5 +1,5 @@
 # Strong Authentication Methods in Entra ID
-**Practical guide: what to choose, why, and when (without marketing fluff)**
+**Practical guide: what to choose, why, and when (without marketing fluff) 🔐**
 Published: 2026-05-04
 
 ---
@@ -8,11 +8,11 @@ Published: 2026-05-04
 
 Short version:
 
-- Priority 1: **Phishing-resistant MFA** (FIDO2/Passkeys, Windows Hello for Business, CBA)
-- Priority 2: **Microsoft Authenticator push** (with number matching)
-- Priority 3: **TOTP** (useful, but more vulnerable to phishing)
-- Keep to an absolute minimum: **SMS/Voice** (temporary fallback, not a strategy)
-- **Temporary Access Pass (TAP)**: excellent for bootstrap/onboarding, not for daily use
+- 🛡️ Priority 1: **Phishing-resistant MFA** (FIDO2/Passkeys, Windows Hello for Business, CBA)
+- 📲 Priority 2: **Microsoft Authenticator push** (with number matching)
+- 🔢 Priority 3: **TOTP** (useful, but more vulnerable to phishing)
+- ⚠️ Keep to an absolute minimum: **SMS/Voice** (temporary fallback, not a strategy)
+- 🚀 **Temporary Access Pass (TAP)**: excellent for bootstrap/onboarding, not for daily use
 
 ---
 
@@ -26,6 +26,8 @@ Two users can both be "doing MFA", but:
 - the other uses an SMS code that can be intercepted.
 
 Both are technically MFA. Security-wise, they are not the same game.
+
+Think of it like gaming gear: both setups can "run the game", but one is ultra settings at 120 FPS and the other is lagging at 18 FPS.
 
 The goal of a solid Entra ID design is to:
 
@@ -49,13 +51,33 @@ The goal of a solid Entra ID design is to:
 
 ---
 
+## 2.1 Visual map: strength ladder at a glance
+
+```mermaid
+flowchart TB
+	A[Phishing-resistant tier<br/>FIDO2/Passkeys<br/>WHfB<br/>CBA] --> B[Strong mainstream tier<br/>Microsoft Authenticator Push]
+	B --> C[Backup tier<br/>OATH TOTP]
+	C --> D[Temporary bootstrap tier<br/>TAP]
+	D --> E[Legacy fallback tier<br/>SMS / Voice OTP]
+
+	style A fill:#daf5d8,stroke:#2a7f3b,stroke-width:2px
+	style B fill:#e8f3ff,stroke:#2f6db3,stroke-width:2px
+	style C fill:#fff4d8,stroke:#a87200,stroke-width:2px
+	style D fill:#f7e8ff,stroke:#7c3fb2,stroke-width:2px
+	style E fill:#ffe4e4,stroke:#b23b3b,stroke-width:2px
+```
+
+If you remember only one thing: move up the ladder for sensitive access, and keep lower tiers as controlled exceptions.
+
+---
+
 ## 3. Method-by-method details (field reality edition)
 
 ### 3.1 FIDO2 Security Keys and Passkeys
 
 ### Why it is great
 
-- Native phishing resistance
+- Native phishing resistance 🛡️
 - No password entry
 - Excellent for privileged accounts
 
@@ -152,7 +174,7 @@ The goal of a solid Entra ID design is to:
 
 ### Why it is excellent
 
-- Ideal bootstrap to move users into passwordless flows
+- Ideal bootstrap to move users into passwordless flows 🚀
 - Supports recovery without bypassing security controls
 
 ### What hurts
@@ -176,7 +198,7 @@ The goal of a solid Entra ID design is to:
 
 ### What hurts
 
-- Weaker security compared to modern methods
+- Weaker security compared to modern methods ⚠️
 - Vulnerable to SIM swap and telecom attacks
 
 ### Best fit
@@ -201,6 +223,8 @@ Use this simple rule:
 4. Keep TOTP as a limited backup.
 5. Reduce SMS/Voice to strict minimum.
 6. Use TAP for onboarding/recovery, never as a permanent method.
+
+Bonus reality check: if your strongest method is optional, users will discover the weakest one in record time.
 
 ---
 
@@ -243,4 +267,4 @@ If you want one practical north star:
 - keep weaker methods as exceptions,
 - treat onboarding/recovery as first-class security operations.
 
-That is where Entra ID moves from checkbox MFA to production-grade strong authentication.
+That is where Entra ID moves from checkbox MFA to production-grade strong authentication. 🎯
