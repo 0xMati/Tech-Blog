@@ -428,24 +428,32 @@ Because telecom channels can be intercepted or socially engineered, this method 
 
 ## 4. How to choose without regretting it in 6 months 🧭
 
-→ Use this simple rule:
+→ Decision principle: **target phishing-resistant (AAL3) by default**, and treat weaker methods as temporary states with exit dates.
 
-- The more sensitive the resource, the more phishing-resistant the method must be.
-- The more privileged the user, the rarer the exception should be.
-- The weaker the method, the smaller and more temporary its scope should be.
+### 4.1 Fast decision model (use this in architecture reviews)
 
-A fourth dimension often overlooked: **device posture as a Trusted Signal**. In a mature Conditional Access design, trust is not just placed in what the user knows or has — it is also placed in the device they are using, its compliance state, and the context of the access request. A phishing-resistant method on an unmanaged device is stronger than SMS, but weaker than the same method on a TPM-equipped, Intune-compliant device. This compound evaluation — user + method + device + context — is what Conditional Access Trusted Signals enable. See section 6 for the full treatment.
+1. **Set the default**: for new access policies, default to phishing-resistant methods.
+2. **Classify populations and resources**: privileged users and sensitive workloads get AAL3 immediately.
+3. **Allow transition only with controls**: if AAL2 is temporarily required, define scope, owner, and retirement date.
+4. **Bind method + device + context**: enforce Authentication Strength with Conditional Access Trusted Signals.
 
-### Pragmatic rollout order
+### 4.2 Why teams regret their first rollout
 
-1. Enable and enforce Microsoft Authenticator (number matching, consistent geo controls when relevant).
-2. Deploy WHfB for managed internal devices.
-3. Target FIDO2/Passkeys for admins and high-risk populations.
-4. Keep TOTP as a limited backup.
-5. Reduce SMS/Voice to strict minimum.
-6. Use TAP for onboarding/recovery, never as a permanent method.
+- They deploy "Require MFA" and assume all MFA has equivalent strength.
+- They keep fallback methods open-ended, with no migration timeline.
+- They separate identity policy from device posture and contextual risk.
 
-→ Bonus reality check: if your strongest method is optional, users will discover the weakest one in record time.
+### 4.3 Pragmatic rollout order
+
+1. Define Authentication Strength policy tiers and make AAL3 the default target state.
+2. Enforce AAL3 immediately for admin portals, PIM, and high-impact applications.
+3. Scale AAL3 on managed Windows endpoints with WHfB.
+4. Extend AAL3 to broader and cross-platform populations with FIDO2/passkeys (including Authenticator passkeys where supported).
+5. Keep Authenticator push/phone sign-in (AAL2) as controlled transition paths with dated migration plans.
+6. Keep TOTP as constrained backup; keep SMS/Voice as emergency fallback only.
+7. Use TAP for onboarding and recovery, with short validity and strict issuance controls.
+
+→ Bonus reality check: if your strongest method is optional, users will converge on the weakest allowed path.
 
 ---
 
