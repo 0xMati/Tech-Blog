@@ -19,7 +19,11 @@ Short version you can use in a client discussion:
 	- Require number matching
 	- This is MFA, not strict passwordless
 	- Security level: **AAL2** (good mainstream default)
-	- **Authenticator phone sign-in** is a separate passwordless mode (not FIDO2)
+
+- 📱 **Priority 2bis: Authenticator phone sign-in (passwordless app)**
+	- Passwordless user flow in the Authenticator app
+	- Security level: **AAL2**
+	- Not FIDO2 and not phishing-resistant at the same level as WHfB/FIDO2/CBA
 
 - 🔢 **Priority 3: OATH TOTP**
 	- Useful fallback when needed
