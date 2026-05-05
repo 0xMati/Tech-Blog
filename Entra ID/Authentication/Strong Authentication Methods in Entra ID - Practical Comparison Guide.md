@@ -481,12 +481,17 @@ A common mistake: treating authentication as a single gate. In Entra ID, the tru
 
 ## 5. Example matrix: method by population 👥
 
-| Population | Primary method | Secondary method | Avoid |
-|---|---|---|---|
-| Cloud/tenant admins | FIDO2 or WHfB | Authenticator push | SMS/Voice |
-| Internal managed users | WHfB | Authenticator push | SMS as default method |
-| External users/B2B | Based on cross-tenant trust + Authentication Strength | Authenticator/TOTP based on partner policy | Untracked exceptions |
-| Field teams without corporate smartphone | Hardware TOTP or FIDO2 | TAP for recovery | Full dependency on SMS |
+Use this matrix to map populations to methods in your Authentication Strength and Conditional Access policies. Every non-AAL3 cell is a transition state, not a permanent configuration.
+
+| Population | AAL target | Primary method | Transition/fallback | Avoid | Key deployment note |
+|---|---|---|---|---|---|
+| 👑 **Cloud/tenant admins** | **AAL3 now** | FIDO2 or WHfB | Authenticator push (temporary, scoped) | SMS/Voice, no exceptions | First population to enforce phishing-resistant; no grace period |
+| 💻 **Internal users on managed Windows devices** | **AAL3 target** | WHfB | FIDO2/Passkeys for shared or non-Windows use | SMS as default method | WHfB rollout tied to device compliance program |
+| 📱 **Internal users on unmanaged or mobile-first devices** | **AAL2 → AAL3** | Authenticator push or phone sign-in | FIDO2/Passkeys as devices onboard | SMS/Voice | Define device onboarding path to unlock AAL3 over time |
+| 🌐 **External users / B2B partners** | **AAL2 minimum** | Based on cross-tenant trust + Authentication Strength policy | Authenticator/TOTP per partner policy | Untracked exceptions, no enforcement | Negotiate Authentication Strength at federation boundary |
+| 🏭 **Field teams / shared workstations** | **AAL3 where possible** | FIDO2 hardware key (portable, shared-safe) | OATH hardware token (if FIDO2 not deployable) | Full dependency on SMS | Hardware key is often the right answer here; plan stock and replacement |
+| 🆕 **New joiners / day-1 users** | Contextual | TAP (bootstrap only) | → WHfB or FIDO2 after enrollment | TAP as a permanent method | TAP validity ≤ 24h; enrollment must be completed before expiry |
+| 🔒 **Break-glass / emergency accounts** | **AAL3 always** | FIDO2 hardware key (dedicated, stored securely) | None | Any MFA-bypass pattern | Monitored 24/7; separate key per account stored in physical safe |
 
 ---
 
