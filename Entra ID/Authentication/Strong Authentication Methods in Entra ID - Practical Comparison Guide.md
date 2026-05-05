@@ -8,34 +8,22 @@ Published: 2026-05-04
 
 Short version you can use in a client discussion:
 
-- 🛡️ **Priority 1: Phishing-resistant MFA**
+- 🛡️ **Priority 1: Phishing-resistant methods (target state)**
 	- FIDO2/Passkeys
 	- Windows Hello for Business
 	- Certificate-Based Authentication (CBA)
 	- Security level: **AAL3**
 
-
-- 📲 **Priority 2: Microsoft Authenticator push**
-	- Require number matching
-	- This is MFA, not strict passwordless
-	- Security level: **AAL2** (good mainstream default)
-
-- 📱 **Priority 2bis: Authenticator phone sign-in (passwordless app)**
-	- Passwordless user flow in the Authenticator app
+- 📲 **Priority 2: Strong mainstream methods (transition state)**
+	- Microsoft Authenticator push (number matching)
+	- Authenticator phone sign-in (passwordless app, not FIDO2)
+	- OATH TOTP as fallback only
 	- Security level: **AAL2**
-	- Not FIDO2 and not phishing-resistant at the same level as WHfB/FIDO2/CBA
 
-- 🔢 **Priority 3: OATH TOTP**
-	- Useful fallback when needed
-	- Security level: **AAL2** (more phishable than push/passwordless)
-
-- ⚠️ **SMS/Voice should stay exceptional**
-	- Security level: **AAL1**
-	- Keep only as temporary fallback, with an exit plan
-
-- 🚀 **Temporary Access Pass (TAP)**
-	- Great for onboarding and account recovery
-	- Not a daily sign-in method
+- 🚀 **Priority 3: Bootstrap and legacy fallback (exception state)**
+	- Temporary Access Pass (TAP) for onboarding and recovery only
+	- SMS/Voice only as tightly controlled emergency fallback
+	- Security level: TAP is contextual, SMS/Voice is **AAL1**
 
 - 🔧 **Design lever to insist on**
 	- Use **Authentication Strength** in Conditional Access
