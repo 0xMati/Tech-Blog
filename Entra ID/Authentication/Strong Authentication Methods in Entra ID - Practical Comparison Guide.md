@@ -94,7 +94,7 @@ In Entra ID, **phishing-resistant MFA** is not just a label. It is an actual con
 
 Much more defensible than one global "require MFA" switch.
 
-#### **Where does AAL3 fit?**
+#### <u>**What is AAL, and where does AAL3 fit?**</u>
 
 **AAL** (Authenticator Assurance Level) comes from NIST SP 800-63B — widely used in audits and regulated environments:
 
