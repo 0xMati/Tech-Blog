@@ -9,32 +9,34 @@ Published: 2026-05-04
 Short version you can use in a client discussion:
 
 - 🛡️ **Priority 1: Phishing-resistant MFA**
-- FIDO2/Passkeys, Windows Hello for Business, CBA
-- Security level: **AAL3**
+	- FIDO2/Passkeys
+	- Windows Hello for Business
+	- Certificate-Based Authentication (CBA)
+	- Security level: **AAL3**
 
 - 📲 **Priority 2: Microsoft Authenticator push**
-- Require number matching
-- Security level: **AAL2** (good mainstream default)
+	- Require number matching
+	- Security level: **AAL2** (good mainstream default)
 
 - 🔢 **Priority 3: OATH TOTP**
-- Useful fallback when needed
-- Security level: **AAL2** (more phishable than push/passwordless)
+	- Useful fallback when needed
+	- Security level: **AAL2** (more phishable than push/passwordless)
 
 - ⚠️ **SMS/Voice should stay exceptional**
-- Security level: **AAL1**
-- Keep only as temporary fallback, with an exit plan
+	- Security level: **AAL1**
+	- Keep only as temporary fallback, with an exit plan
 
 - 🚀 **Temporary Access Pass (TAP)**
-- Great for onboarding and account recovery
-- Not a daily sign-in method
+	- Great for onboarding and account recovery
+	- Not a daily sign-in method
 
 - 🔧 **Design lever to insist on**
-- Use **Authentication Strength** in Conditional Access
-- "Require MFA" alone is not precise enough
+	- Use **Authentication Strength** in Conditional Access
+	- "Require MFA" alone is not precise enough
 
 - 🔑 **Passwordless key message**
-- Passwordless does not delete the password in the directory
-- Password expiry policies must be aligned to avoid incidents
+	- Passwordless does not delete the password in the directory
+	- Password expiry policies must be aligned to avoid incidents
 
 ---
 
