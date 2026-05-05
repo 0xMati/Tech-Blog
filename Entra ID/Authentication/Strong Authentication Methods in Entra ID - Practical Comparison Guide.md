@@ -8,11 +8,13 @@ Published: 2026-05-04
 
 Short version:
 
-- 🛡️ Priority 1: **Phishing-resistant MFA** (FIDO2/Passkeys, Windows Hello for Business, CBA)
-- 📲 Priority 2: **Microsoft Authenticator push** (with number matching)
-- 🔢 Priority 3: **TOTP** (useful, but more vulnerable to phishing)
-- ⚠️ Keep to an absolute minimum: **SMS/Voice** (temporary fallback, not a strategy)
-- 🚀 **Temporary Access Pass (TAP)**: excellent for bootstrap/onboarding, not for daily use
++ 🛡️ Priority 1: **Phishing-resistant MFA** (FIDO2/Passkeys, Windows Hello for Business, CBA) — this is AAL3
++ 📲 Priority 2: **Microsoft Authenticator push** (with number matching) — AAL2, good mainstream default
++ 🔢 Priority 3: **TOTP** (useful, but more vulnerable to phishing) — AAL2 fallback only
++ ⚠️ Keep to an absolute minimum: **SMS/Voice** (temporary fallback, not a strategy) — AAL1
++ 🚀 **Temporary Access Pass (TAP)**: excellent for bootstrap/onboarding, not for daily use
++ 🔧 **Authentication Strength** in Conditional Access is the lever that enforces the right method for the right resource — "require MFA" alone is not enough
++ 🔑 **Passwordless ≠ password deleted**: the password stays in the directory, and expiry policies must be adjusted or they will eventually break things
 
 ---
 
@@ -295,6 +297,8 @@ Use this simple rule:
 - The more privileged the user, the rarer the exception should be.
 - The weaker the method, the smaller and more temporary its scope should be.
 
+A fourth dimension often overlooked: **device posture as a Trusted Signal**. In a mature Conditional Access design, trust is not just placed in what the user knows or has — it is also placed in the device they are using, its compliance state, and the context of the access request. A phishing-resistant method on an unmanaged device is stronger than SMS, but weaker than the same method on a TPM-equipped, Intune-compliant device. This compound evaluation — user + method + device + context — is what Conditional Access Trusted Signals enable. See section 6 for the full treatment.
+
 ### Pragmatic rollout order
 
 1. Enable and enforce Microsoft Authenticator (number matching, consistent geo controls when relevant).
@@ -319,20 +323,7 @@ Bonus reality check: if your strongest method is optional, users will discover t
 
 ---
 
-## 6. Entra ID implementation checklist ✅
-
-- 🔄 Verify Authentication Methods migration status is fully modern and complete
-- 🧹 Clean up remaining legacy MFA options
-- 🧱 Define clear Authentication Strengths (standard vs phishing-resistant)
-- 🔗 Map the right strengths to the right Conditional Access policies
-- 🛡️ Protect sensitive user actions (MFA registration, device registration)
-- 🆘 Define a recovery process (TAP, identity verification, time limits)
-- 🚨 Implement tightly controlled break-glass exclusions
-- 📈 Monitor sign-in logs and authentication method changes
-
----
-
-## 7. Passwordless ≠ Password Removed from the Directory 🔑
+## 6. Passwordless ≠ Password Removed from the Directory 🔑
 
 One of the most persistent misconceptions in passwordless deployments: **going passwordless does not delete the user's password**.
 
@@ -376,6 +367,19 @@ A Conditional Access policy that enforces phishing-resistant MFA and requires a 
 - 🆘 Document and test the fallback path — what happens when WHfB or FIDO2 is unavailable?
 - 🔄 Use TAP as the recovery method, not the old password
 - 📋 Communicate clearly to users: they may still have a password in the system, but it is no longer their authentication method
+
+---
+
+## 7. Entra ID implementation checklist ✅
+
+- 🔄 Verify Authentication Methods migration status is fully modern and complete
+- 🧹 Clean up remaining legacy MFA options
+- 🧱 Define clear Authentication Strengths (standard vs phishing-resistant)
+- 🔗 Map the right strengths to the right Conditional Access policies
+- 🛡️ Protect sensitive user actions (MFA registration, device registration)
+- 🆘 Define a recovery process (TAP, identity verification, time limits)
+- 🚨 Implement tightly controlled break-glass exclusions
+- 📈 Monitor sign-in logs and authentication method changes
 
 ---
 
