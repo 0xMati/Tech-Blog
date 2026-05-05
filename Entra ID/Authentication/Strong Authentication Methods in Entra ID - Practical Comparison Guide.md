@@ -113,8 +113,9 @@ Much more defensible than one global "require MFA" switch.
 → **Boss-level recommendation** 🕹️
 
 - Use **Authentication Strength** in *every* critical Conditional Access policy
-- **Reserve** phishing-resistant/AAL3 for *privileged access, sensitive data, high-impact applications*
-- **Keep** weaker methods as *controlled transition paths*, not permanent endpoints
+- **Target AAL3** everywhere as your long-term goal — phishing-resistant is the objective
+- **At minimum**, enforce AAL3 for *privileged access, sensitive data, high-impact applications* today
+- **Keep** weaker methods as *controlled transition paths*, with explicit migration timelines off them
 
 ---
 
