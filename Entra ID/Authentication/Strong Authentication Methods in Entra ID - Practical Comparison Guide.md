@@ -68,53 +68,53 @@ That is the shift from checkbox security to decision-grade security.
 
 ### 1.1 Authentication Strength, Phishing-Resistant MFA, and AAL3 🏛️
 
-→ Core idea: this is where strategy becomes enforceable policy.
+→ **Core idea:** this is where strategy becomes enforceable policy.
 
-In Entra ID, phishing-resistant MFA is not just a label. It is an actual control you can enforce with Authentication Strength in Conditional Access.
+In Entra ID, **phishing-resistant MFA** is not just a label. It is an actual control you can enforce: **Authentication Strength** in Conditional Access.
 
-Why it matters:
+**Why it matters:**
 
-- A single global MFA baseline protects low-risk and high-risk workloads the same way, which is rarely acceptable
-- Privileged accounts without phishing-resistant requirements stay exposed to high-impact takeover paths
-- If method strength is not explicit in policy, exceptions slowly become the norm
+- A single global MFA baseline protects low-risk *and* high-risk workloads the same way → **rarely acceptable**
+- Privileged accounts without **phishing-resistant requirements** stay exposed to takeover paths → **high impact**
+- If method strength is not explicit in policy, exceptions slowly become the norm → **policy drift**
 
-Authentication Strength lets you bind accepted methods to each scenario. Microsoft provides three built-in levels:
+**Authentication Strength** lets you bind accepted methods to each scenario. Microsoft provides three built-in levels:
 
 | Strength | What it requires |
 |---|---|
-| Multifactor authentication | Any MFA combination, including SMS + password |
-| Passwordless MFA | Passwordless methods such as WHfB, FIDO2, and certificate-based options |
-| Phishing-resistant MFA | FIDO2, WHfB, or CBA only, with no replayable shared secret |
+| **Multifactor authentication** | Any MFA combination, including SMS + password |
+| **Passwordless MFA** | Passwordless methods: WHfB, FIDO2, certificate-based |
+| **Phishing-resistant MFA** | FIDO2, WHfB, or CBA only — *no replayable shared secret* |
 
-→ Governance pattern that works
+→ **Governance pattern that works**
 
-- Privileged operations and admin portals: require phishing-resistant MFA
-- Standard business apps: allow strong mainstream methods when justified
-- Transitional/legacy flows: allow tightly scoped exceptions with expiry and review
+- **Privileged operations & admin portals:** require phishing-resistant MFA
+- **Standard business apps:** allow strong mainstream methods *where justified*
+- **Transitional/legacy flows:** allow tightly scoped exceptions *with expiry and review*
 
-That model is far more defensible than one global require MFA switch.
+Much more defensible than one global "require MFA" switch.
 
-**Where does AAL3 fit?**
+#### **Where does AAL3 fit?**
 
-AAL (Authenticator Assurance Level) comes from NIST SP 800-63B and is widely used in audits and regulated environments:
+**AAL** (Authenticator Assurance Level) comes from NIST SP 800-63B — widely used in audits and regulated environments:
 
 | Level | Description | Typical methods |
 |---|---|---|
-| AAL1 | Single factor, minimal assurance | Password alone |
-| AAL2 | MFA, moderate assurance | Authenticator push, TOTP + password |
-| AAL3 | Hardware-bound, phishing-resistant authenticator | FIDO2, WHfB with TPM, smartcard/CBA |
+| **AAL1** | Single factor, minimal | Password alone |
+| **AAL2** | MFA, moderate | Authenticator push, TOTP + password |
+| **AAL3** | *Hardware-bound, phishing-resistant* | FIDO2, WHfB with TPM, smartcard/CBA |
 
-→ Quick translation 🔄
+→ **Quick translation** 🔄
 
-- Microsoft wording: phishing-resistant MFA
-- Compliance wording: AAL3
-- Practical meaning: same security objective, different vocabulary
+- Microsoft wording: **phishing-resistant MFA**
+- Compliance wording: **AAL3**
+- Practical meaning: *same security objective, different vocabulary*
 
-→ Boss-level recommendation 🕹️
+→ **Boss-level recommendation** 🕹️
 
-- Use Authentication Strength in every critical Conditional Access policy
-- Reserve phishing-resistant/AAL3 for privileged access, sensitive data, and high-impact applications
-- Keep weaker methods as transition paths, not permanent endpoints
+- Use **Authentication Strength** in *every* critical Conditional Access policy
+- **Reserve** phishing-resistant/AAL3 for *privileged access, sensitive data, high-impact applications*
+- **Keep** weaker methods as *controlled transition paths*, not permanent endpoints
 
 ---
 
