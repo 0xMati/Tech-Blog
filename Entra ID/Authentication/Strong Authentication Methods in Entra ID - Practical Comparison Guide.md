@@ -6,15 +6,35 @@ Published: 2026-05-04
 
 ## TL;DR ⚡ (for busy admins)
 
-Short version:
+Short version you can use in a client discussion:
 
-+ 🛡️ Priority 1: **Phishing-resistant MFA** (FIDO2/Passkeys, Windows Hello for Business, CBA) — this is AAL3
-+ 📲 Priority 2: **Microsoft Authenticator push** (with number matching) — AAL2, good mainstream default
-+ 🔢 Priority 3: **TOTP** (useful, but more vulnerable to phishing) — AAL2 fallback only
-+ ⚠️ Keep to an absolute minimum: **SMS/Voice** (temporary fallback, not a strategy) — AAL1
-+ 🚀 **Temporary Access Pass (TAP)**: excellent for bootstrap/onboarding, not for daily use
-+ 🔧 **Authentication Strength** in Conditional Access is the lever that enforces the right method for the right resource — "require MFA" alone is not enough
-+ 🔑 **Passwordless ≠ password deleted**: the password stays in the directory, and expiry policies must be adjusted or they will eventually break things
+- 🛡️ **Priority 1: Phishing-resistant MFA**
+- FIDO2/Passkeys, Windows Hello for Business, CBA
+- Security level: **AAL3**
+
+- 📲 **Priority 2: Microsoft Authenticator push**
+- Require number matching
+- Security level: **AAL2** (good mainstream default)
+
+- 🔢 **Priority 3: OATH TOTP**
+- Useful fallback when needed
+- Security level: **AAL2** (more phishable than push/passwordless)
+
+- ⚠️ **SMS/Voice should stay exceptional**
+- Security level: **AAL1**
+- Keep only as temporary fallback, with an exit plan
+
+- 🚀 **Temporary Access Pass (TAP)**
+- Great for onboarding and account recovery
+- Not a daily sign-in method
+
+- 🔧 **Design lever to insist on**
+- Use **Authentication Strength** in Conditional Access
+- "Require MFA" alone is not precise enough
+
+- 🔑 **Passwordless key message**
+- Passwordless does not delete the password in the directory
+- Password expiry policies must be aligned to avoid incidents
 
 ---
 
