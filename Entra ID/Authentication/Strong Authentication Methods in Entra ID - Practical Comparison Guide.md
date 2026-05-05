@@ -98,11 +98,11 @@ Much more defensible than one global "require MFA" switch.
 
 **AAL** (Authenticator Assurance Level) comes from NIST SP 800-63B — widely used in audits and regulated environments:
 
-| Level | Description | Typical methods |
-|---|---|---|
-| **AAL1** | Single factor, minimal | Password alone |
-| **AAL2** | MFA, moderate | Authenticator push, TOTP + password |
-| **AAL3** | *Hardware-bound, phishing-resistant* | FIDO2, WHfB with TPM, smartcard/CBA |
+| Level | Assurance grade | Actual methods | Use case |
+|---|---|---|---|
+| 🔴 **AAL1** | Single factor, **minimal** | 🔐 **Password** alone<br>📞 **SMS / Voice OTP** | Legacy baseline only |
+| 🟡 **AAL2** | MFA, **moderate** | 📱 **Authenticator push** (number matching)<br>📱 **Authenticator phone sign-in** (passwordless)<br>⏱️ **OATH TOTP** + password<br>🎟️ **TAP** (temporary context) | General user population, transition phase |
+| 🟢 **AAL3** | 🛡️ **Hardware-bound, phishing-resistant** | 🔑 **FIDO2 / Passkeys**<br>💻 **Windows Hello for Business** (TPM + PIN/biometrics)<br>📜 **Certificate-Based Auth** (CBA) | Admins, privileged access, sensitive workloads |
 
 → **Quick translation** 🔄
 
