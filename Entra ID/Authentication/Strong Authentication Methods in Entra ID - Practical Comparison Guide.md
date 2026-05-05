@@ -46,7 +46,7 @@ In Entra ID, two users can both "pass MFA" and still be in totally different ris
 - User A signs in with WHfB or FIDO2 (phishing-resistant) 🛡️
 - User B signs in with SMS OTP (interceptable, weaker) ⚠️
 
-Same MFA checkbox, different blast radius.
+=> Same MFA checkbox, different blast radius.
 
 So a strong authentication strategy should always answer 4 questions:
 
