@@ -517,13 +517,40 @@ Every 4 hours (approximately), the WAM broker:
 
 ### 3.1 🗝️ Key material model
 
-WHfB uses a layered key model inside the Windows Hello container architecture.
+WHfB uses a **layered chain of keys** inside the Windows Hello container architecture. Each layer protects the one below it.
 
 | Element | Purpose | Lifetime |
 |---|---|---|
 | 🔒 Protector key(s) | Bound to local gesture unlock method | Changes with gesture lifecycle |
-| 🔑 Authentication key | Core key used to unlock identity key material | Long-lived (regenerated on reset events) |
-| 🎼 User identity key(s) | Used for IdP authentication/signing operations | Long-lived, trust-model dependent |
+| 🔑 Authentication key | Intermediate key-encryption-key (KEK): unlocked by the Protector key, used to authorize access to the User identity key | Long-lived (regenerated on reset events) |
+| 🎼 User identity key(s) | The actual signing key used for IdP challenge-response; its public half is registered in Entra ID/AD | Long-lived, trust-model dependent |
+
+#### 🔗 How the chain works — step by step
+
+```text
+  User enters PIN or biometric gesture
+     │
+     ▼
+  Protector key (TPM, per gesture method)
+  └─ derived/bound to the PIN value or biometric template
+   └─ UNLOCKS
+     │
+     ▼
+  Authentication key (TPM)
+  └─ this is a Key-Encryption-Key (KEK)
+   └─ its only job: authorize access to the layer below
+   └─ never sent to Entra ID / AD
+   └─ AUTHORIZES USE OF
+     │
+     ▼
+  User identity key — private half (TPM, never exported)
+  └─ this is what SIGNS the challenge sent by the IdP
+   └─ the public half was registered with Entra ID during enrollment
+```
+
+> 💡 **Analogy:** Think of a safe inside a safe inside a safe. The PIN unlocks the outer safe (Protector key). Inside is a master key (Authentication key). That master key opens the inner safe containing the actual signing key (User identity key). An attacker who captures the signed challenge has only the *output* of the innermost safe — they have no path back to any key.
+
+> ⚠️ The **Authentication key** is NOT used directly for IdP authentication. It is an internal intermediate key whose sole purpose is to protect the User identity key at rest. If you reset your PIN, the Authentication key is regenerated — which forces re-protection of the identity key with the new protector.
 
 ### 3.2 🛡️ TPM role (what TPM really adds)
 
@@ -544,6 +571,55 @@ At sign-in, the server receives **proof artifacts, not secrets**:
 > ❌ Private key → not transmitted  
 > ❌ PIN → not transmitted  
 > ❌ Raw biometric data → not transmitted
+
+---
+
+### 3.4 🗄️ Private key vs Public key vs msDS-KeyCredentialLink — differences and storage
+
+Three concepts that are closely related but each play a distinct role.
+
+#### 🔒 Private key
+
+- **What it is:** The secret half of the asymmetric key pair.
+- **Where it lives:** Inside the TPM of the endpoint, in the Windows Hello container. It **never leaves**.
+- **What it does:** Signs the challenge sent by the IdP during every authentication. This signature is the proof of possession.
+- **Who can use it:** Only a process authorized by the local gesture (PIN or biometrics). Not exportable, not accessible remotely.
+
+#### 🔓 Public key
+
+- **What it is:** The non-secret half of the same key pair. Mathematically linked to the private key, but knowing the public key tells you nothing about the private key.
+- **Where it lives:** Registered with Entra ID during enrollment and stored in the user's **KeyCredential** record in the Entra directory.
+- **What it does:** Allows Entra ID to verify that the signature it receives was produced by the correct private key — without ever seeing the private key itself.
+- **Who sees it:** Entra ID, and in hybrid scenarios also AD (see below). It is designed to be non-secret.
+
+```text
+Entra ID — user object
+└─ KeyCredential record
+   ├─ KeyId        → unique identifier for this credential
+   ├─ PublicKey    → the actual RSA/EC public key bytes
+   ├─ DeviceId     → which device this key was registered from
+   ├─ CreationTime → when it was enrolled
+   ├─ Usage        → "sign" (authentication)
+   └─ Source       → "AzureAD" or "AD" depending on sync direction
+```
+
+#### 🗂️ msDS-KeyCredentialLink
+
+- **What it is:** An attribute on the **Active Directory user object** (on-prem AD) that stores the same public key information.
+- **Where it lives:** On the AD user object in the on-prem domain controller.
+- **How it gets there:** In hybrid deployments, **Entra Connect** syncs the public key registered in Entra ID down to this AD attribute (within the normal sync interval).
+- **What it does:** Allows the **on-prem KDC** (Key Distribution Center on the domain controller) to verify WHfB authentication for on-prem resources — without contacting Entra ID. In **Key trust** model specifically, the KDC reads this attribute directly during PKINIT.
+- **Who reads it:** The AD KDC during Kerberos authentication in hybrid scenarios.
+
+#### Summary table
+
+| Element | Lives where | Seen by | Role |
+|---|---|---|---|
+| 🔒 Private key | TPM on endpoint | Nobody (never exported) | Signs every challenge |
+| 🔓 Public key | Entra ID (KeyCredential) | Entra ID / DRS | Verifies signatures for cloud auth |
+| 🗂️ msDS-KeyCredentialLink | AD user object (on-prem DC) | On-prem KDC | Verifies signatures for on-prem Kerberos (key trust) |
+
+> 💡 **Simple mental model:** The private key is the pen that signs. The public key (in Entra ID) is the signature sample on file. The `msDS-KeyCredentialLink` is a copy of that signature sample filed in the on-prem office. The pen never leaves the safe.
 
 ---
 
@@ -592,6 +668,24 @@ User enters PIN or performs biometric gesture.
 | ❌ Public key | Not secret, useless without private key |
 | ❌ Signed challenge | Bound to one nonce + freshness window |
 | ❌ Previous auth exchange | Server rejects reused/expired challenge |
+
+#### 🔁 Is this the same as FIDO2 origin binding?
+
+Related but not identical. There are **two distinct protection mechanisms** — both WHfB and FIDO2 use nonce freshness, but origin binding is a FIDO2/WebAuthn-specific concept.
+
+| Protection mechanism | WHfB (OS-level logon) | FIDO2 / WebAuthn (browser) |
+|---|---|---|
+| **Nonce freshness (anti-replay)** | ✅ Yes — signed challenge includes a nonce that expires and cannot be reused | ✅ Yes — same principle |
+| **Origin binding (anti-AiTM)** | ⚠️ Not at the browser level — WHfB logon is an OS/protocol-level operation, not a WebAuthn browser API call | ✅ Yes — the browser's current URL (origin) is cryptographically included in the signed data. A proxy on `evil-login.com` fails because the origin doesn't match `login.microsoftonline.com` |
+| **Device binding (anti-AiTM)** | ✅ Yes — the `device_id` is part of the signed payload; the private key is TPM-bound to a specific device; an attacker would need to physically compromise the device | ✅ Yes — the key is bound to the authenticator hardware |
+
+**What this means in practice:**
+
+- 🖥️ **WHfB OS logon** (PIN at lock screen → PRT → Kerberos): protected against replay by nonce freshness, and protected against AiTM by **device binding** (you need the physical TPM). There is no concept of browser origin here because the browser is not involved.
+
+- 🌐 **WHfB as a WebAuthn platform authenticator** (used in a browser to sign in to a website): origin binding **does apply**, exactly like for FIDO2. The browser includes the current URL origin in the signed data, and WHfB refuses to sign if the origin doesn't match the registered Relying Party. This scenario is identical to the AiTM-proof behavior described in the FIDO2/Authenticator passkey article.
+
+> 💡 **Short version:** The nonce-based anti-replay is the same concept in both. The origin binding ("evil-login.com cannot impersonate login.microsoft.com") is FIDO2/WebAuthn-specific and applies to WHfB only when used as a **browser authenticator** — not during the Windows OS logon flow. In OS logon, the equivalent protection is TPM + device binding.
 
 ### 5.4 🎫 Token and session implications
 
@@ -663,6 +757,123 @@ So *"TPM + PIN + biometrics simultaneously"* must be clarified as either:
 - ✅ **Architectural presence requirement** (valid — you can enforce all three exist)
 - ❌ **Sequential prompt requirement** (not native WHfB behavior)
 
+### 7.4 🧠 Why forcing PIN + biometrics together usually adds little value
+
+This is the part that often sounds stronger on paper than it is in practice.
+
+#### The core reason
+
+In WHfB, the real security boundary is primarily:
+
+- 🖥️ **Possession of the device**
+- 🔒 **Possession of the TPM-bound private key**
+- 🙋 **Local user verification** to authorize use of that key
+
+PIN and biometrics both serve the **same job** in the flow: they are local user-verification gates that unlock use of the same private key.
+
+They do **not** create two independent remote authentication events.
+They do **not** register two different cryptographic proofs at Entra ID.
+They do **not** give the server two separate signatures to validate.
+
+From the server point of view, the outcome is still:
+
+- device-bound key proved possession,
+- challenge signed once,
+- policy evaluated once.
+
+So adding a second local gesture usually adds **friction much more than assurance**.
+
+#### What extra security do you actually get?
+
+If you require both PIN **and** biometrics sequentially, the only thing you really add is:
+
+- an extra local hurdle for someone who already has the device in hand, and
+- who can already satisfy one unlock gesture.
+
+That helps only in a narrow subset of scenarios, for example:
+
+- an attacker has the physical laptop,
+- the attacker can coerce or bypass one local factor,
+- but cannot satisfy the second one.
+
+That is a much narrower threat than the main enterprise goal of WHfB, which is usually:
+
+- stop password theft,
+- stop replay,
+- stop phishable MFA,
+- strongly bind authentication to device + TPM.
+
+For those main goals, **TPM + one strong local gesture is already doing the important work**.
+
+#### Why the intuition is misleading
+
+People often map it like this:
+
+- TPM = something you have
+- PIN = something you know
+- biometrics = something you are
+
+That mapping is valid at a taxonomy level, but it can create the wrong mental model.
+
+The mistake is to assume that three factor categories automatically means **three cumulative security gains in the protocol**.
+
+In reality, for WHfB:
+
+- the **TPM-bound key** is the core authenticator,
+- PIN and biometrics are mostly **local unlock methods** for that same authenticator,
+- the IdP still sees a **single key-based authentication event**.
+
+So this is not equivalent to:
+
+- first proving a password,
+- then proving possession of a smart card,
+- then proving a separate biometric to a remote verifier.
+
+It is closer to:
+
+- one strong hardware authenticator,
+- with one or more local ways to authorize its use.
+
+#### Operational cost vs security gain
+
+Requiring both sequentially would usually make the system worse operationally:
+
+- ❌ more sign-in friction,
+- ❌ more support tickets,
+- ❌ more biometric fallback cases,
+- ❌ more lockout/recovery complexity,
+- ❌ more accessibility issues,
+- ❌ users trying to find workarounds.
+
+That is usually a poor trade if the measurable security gain is marginal.
+
+#### When it can still make sense to discuss it
+
+There are cases where an organization may still *want* stronger local presence checks, for example:
+
+- privileged workstations in highly regulated environments,
+- shared physical spaces with shoulder-surfing risk,
+- environments with strong insider/coercion concerns.
+
+But even there, the better question is usually not:
+
+- *"Can we force PIN + biometrics sequentially?"*
+
+It is:
+
+- *"What threat are we trying to reduce, and is WHfB the right control layer for it?"*
+
+Often the stronger answer is elsewhere:
+
+- PAW / admin workstation isolation,
+- session lock policy,
+- physical security,
+- Conditional Access,
+- Token Protection,
+- privileged access segmentation.
+
+> 💡 **Bottom line:** Requiring TPM + PIN + biometrics as three sequential prompts usually does **not** materially strengthen the cryptographic authentication event. It mostly adds another local gate in front of the same TPM-backed key. For most enterprise deployments, that means **more friction than real security benefit**.
+
 ---
 
 ## 8) 🕵️ Replay, interception, and AiTM: precise threat analysis
@@ -703,6 +914,37 @@ WHfB should be **one signal in a policy decision graph**, not the only control.
 | 🔐 Method | Authentication strength requirements |
 | 🖥️ Device | Compliance, join state, health posture |
 | 🌍 Context | Location / risk / session controls |
+
+### 9.1 🧱 Control stack coverage chart
+
+```text
+Control contribution (qualitative)    Low ◄──────────────────────► High
+
+Stops password reuse / spray
+WHfB                    ██████████  ✅ Strong
+Conditional Access      ████░░░░░░  ⚠️ Indirect
+Device compliance       ██░░░░░░░░  ⚠️ Indirect
+Token Protection        ░░░░░░░░░░  ❌ Not the purpose
+
+Stops phishing / AiTM at auth time
+WHfB                    ██████████  ✅ Strong
+Conditional Access      ██████░░░░  ⚠️ Stronger with auth strength + risk
+Device compliance       ███░░░░░░░  ⚠️ Partial
+Token Protection        ██░░░░░░░░  ⚠️ Post-auth only
+
+Stops stolen token reuse after sign-in
+WHfB                    █████░░░░░  ⚠️ Partial only
+Conditional Access      ██████░░░░  ⚠️ Good with session controls
+Device compliance       ███████░░░  ✅ Strong via device-bound access decisions
+Token Protection        ██████████  ✅ Best control here
+```
+
+#### How to read it
+
+- 🔐 **WHfB** is your strongest control for the **authentication event itself**.
+- 📋 **Conditional Access** turns that method into an enforceable access rule.
+- 🖥️ **Device compliance** ensures the session is tied to a known and managed device posture.
+- 🎫 **Token Protection** is the strongest control once the problem becomes **token theft or replay after sign-in**.
 
 > ⚠️ If you deploy WHfB without strong policy composition, **you leave value on the table**.
 

@@ -2667,6 +2667,593 @@ If the organization uses or plans to use Entra ID:
 
 ---
 
+## Phase 8 — Granular Administration: N-Level Model and Profile-Based Delegation
+
+The three-tier model (T0/T1/T2) defines **where** credentials can be used. It does not define **what** each administrator can do within a tier. In a large or medium-sized team, a flat `T1-Admins` group where every member can administer every server is too broad. Conversely, creating a separate Authentication Silo for every role is overkill and operationally unsustainable.
+
+The N-level model complements tiering by introducing **vertical granularity within each tier** — without changing the security boundary logic.
+
+---
+
+### 8.1 — Why N-Levels Within Tiers
+
+Without N-levels, every T1 admin can:
+- Manage SQL servers, file servers, Exchange servers, and Hyper-V hosts equally
+- Modify any T1 service account
+- Read all T1 LAPS passwords
+
+This violates the **principle of least privilege** inside the tier. An Exchange admin does not need to log into a SQL server. A backup operator does not need to reset service accounts.
+
+N-levels split the population within each tier into **rings of responsibility**:
+
+| Level | Profile | Scope |
+|-------|---------|-------|
+| **N1** | Operational / routine | Read-only access, basic operations, limited to a defined scope |
+| **N2** | Administration | Full administration of specific platforms or services |
+| **N3** | Advanced / privileged | Cross-platform or elevated rights within the tier; closest to the tier ceiling |
+
+N3 at Tier 1 does not have Tier 0 rights — it simply has broader T1 rights than N1 or N2. The tier boundary is still enforced by logon restriction GPOs and Authentication Silos.
+
+---
+
+### 8.2 — N-Level Definition Per Tier
+
+#### Tier 0 — N-Levels
+
+| Level | Name | Scope | Examples |
+|-------|------|-------|---------|
+| **T0-N1** | T0 Read / Auditor | Read-only access to T0 infrastructure; monitoring tasks | AD auditor, PKI auditor, MDI operator |
+| **T0-N2** | T0 Operator | Day-to-day Tier 0 administration within a defined domain | DC operations, AD CS certificate management, AD FS configuration |
+| **T0-N3** | T0 Senior / Domain Admin | Enterprise-wide changes; can modify directory structure, schema, forest config | Schema changes, cross-domain configuration, forest-level operations, PKI root CA |
+
+> **T0-N3 is the only level that should ever be (transiently) in `Domain Admins` or `Enterprise Admins`.** T0-N1 and T0-N2 work with delegated rights only.
+
+#### Tier 1 — N-Levels
+
+| Level | Name | Scope | Examples |
+|-------|------|-------|---------|
+| **T1-N1** | T1 Support / Monitoring | Read-only server monitoring; restart services; no configuration change | L2 support on servers, application log reading, basic service restart |
+| **T1-N2** | T1 Administrator | Full admin of one or more specific platforms | Exchange admin, SQL DBA, File server admin, Hyper-V admin, Backup admin |
+| **T1-N3** | T1 Senior / Platform Lead | Cross-platform admin; T1 infrastructure design; gMSA and delegation management | Senior server engineer, platform architect, T1 security delegate |
+
+#### Tier 2 — N-Levels
+
+| Level | Name | Scope | Examples |
+|-------|------|-------|---------|
+| **T2-N1** | Helpdesk L1 | Password reset, account unlock, basic workstation support | L1 helpdesk, service desk |
+| **T2-N2** | Desktop Administrator | Workstation imaging, software deployment, LAPS retrieval | Desktop support engineer |
+| **T2-N3** | Endpoint Lead / T2 Senior | SCCM/Intune management, workstation policy design, T2 group management | Endpoint management lead |
+
+---
+
+### 8.3 — Extended Group Model
+
+N-levels require a group extension. The existing `Tx-Admins` global groups remain as **aggregating groups** (used in Authentication Silos and for high-level reporting). N-level groups are **nested inside** them.
+
+#### Group Naming Convention
+
+```
+T{tier}-N{level}-{PlatformOrFunction}
+```
+
+Examples:
+
+| Group Name | Scope | Purpose |
+|------------|-------|---------|
+| `T0-N1-Auditors` | Global | T0 read-only auditors |
+| `T0-N2-DCOps` | Global | T0 DC operations team |
+| `T0-N2-PKI` | Global | T0 AD CS / PKI administrators |
+| `T0-N2-ADFS` | Global | T0 AD FS administrators |
+| `T0-N3-DomainAdmins` | Global | T0 senior admins — JIT elevation to `Domain Admins` |
+| `T1-N1-ServerMonitoring` | Global | T1 read-only monitoring accounts |
+| `T1-N2-Exchange` | Global | T1 Exchange administrators |
+| `T1-N2-SQL` | Global | T1 SQL DBAs |
+| `T1-N2-Hyper-V` | Global | T1 Hyper-V / virtualization admins |
+| `T1-N2-Backup` | Global | T1 backup operators |
+| `T1-N2-FileServer` | Global | T1 file server administrators |
+| `T1-N3-PlatformLead` | Global | T1 senior server engineers (cross-platform) |
+| `T2-N1-Helpdesk` | Global | T2 L1 helpdesk |
+| `T2-N2-Desktop` | Global | T2 desktop support engineers |
+| `T2-N3-EndpointLead` | Global | T2 endpoint management leads |
+
+#### Group Nesting Model
+
+```
+T0-Admins (Global)                    ← Used in Auth Silo
+├── T0-N1-Auditors
+├── T0-N2-DCOps
+├── T0-N2-PKI
+├── T0-N2-ADFS
+└── T0-N3-DomainAdmins
+
+T1-Admins (Global)                    ← Used in Auth Silo (if extended to T1)
+├── T1-N1-ServerMonitoring
+├── T1-N2-Exchange
+├── T1-N2-SQL
+├── T1-N2-Hyper-V
+├── T1-N2-Backup
+├── T1-N2-FileServer
+└── T1-N3-PlatformLead
+
+T2-Admins (Global)
+├── T2-N1-Helpdesk
+├── T2-N2-Desktop
+└── T2-N3-EndpointLead
+```
+
+The **Deny Logon** groups (`T0-DenyLogon-T1`, etc.) from Phase 2 still reference `T0-Admins` — since N-level groups are nested inside `T0-Admins`, the logon restrictions are inherited automatically. No additional GPO changes are needed.
+
+#### Implementation Script
+
+```powershell
+$DomainDN = (Get-ADDomain).DistinguishedName
+
+# --- Tier 0 N-Level Groups ---
+$T0GroupsOU = "OU=Groups,OU=Tier 0,$DomainDN"
+$T0NGroups = @(
+    @{ Name="T0-N1-Auditors";        Description="T0 read-only auditors" },
+    @{ Name="T0-N2-DCOps";           Description="T0 DC operations team" },
+    @{ Name="T0-N2-PKI";             Description="T0 AD CS / PKI administrators" },
+    @{ Name="T0-N2-ADFS";            Description="T0 AD FS administrators" },
+    @{ Name="T0-N3-DomainAdmins";    Description="T0 senior admins - JIT escalation to Domain Admins" }
+)
+foreach ($g in $T0NGroups) {
+    New-ADGroup -Name $g.Name -GroupScope Global -GroupCategory Security `
+        -Path $T0GroupsOU -Description $g.Description
+}
+# Nest all T0 N-level groups inside T0-Admins
+Add-ADGroupMember -Identity "T0-Admins" -Members ($T0NGroups.Name)
+
+# --- Tier 1 N-Level Groups ---
+$T1GroupsOU = "OU=Groups,OU=Tier 1,$DomainDN"
+$T1NGroups = @(
+    @{ Name="T1-N1-ServerMonitoring"; Description="T1 read-only server monitoring" },
+    @{ Name="T1-N2-Exchange";         Description="T1 Exchange administrators" },
+    @{ Name="T1-N2-SQL";              Description="T1 SQL DBAs" },
+    @{ Name="T1-N2-HyperV";           Description="T1 Hyper-V / virtualization admins" },
+    @{ Name="T1-N2-Backup";           Description="T1 backup operators" },
+    @{ Name="T1-N2-FileServer";       Description="T1 file server administrators" },
+    @{ Name="T1-N3-PlatformLead";     Description="T1 senior engineers - cross-platform scope" }
+)
+foreach ($g in $T1NGroups) {
+    New-ADGroup -Name $g.Name -GroupScope Global -GroupCategory Security `
+        -Path $T1GroupsOU -Description $g.Description
+}
+Add-ADGroupMember -Identity "T1-Admins" -Members ($T1NGroups.Name)
+
+# --- Tier 2 N-Level Groups ---
+$T2GroupsOU = "OU=Groups,OU=Tier 2,$DomainDN"
+$T2NGroups = @(
+    @{ Name="T2-N1-Helpdesk";     Description="T2 L1 helpdesk operators" },
+    @{ Name="T2-N2-Desktop";      Description="T2 desktop support engineers" },
+    @{ Name="T2-N3-EndpointLead"; Description="T2 endpoint management leads" }
+)
+foreach ($g in $T2NGroups) {
+    New-ADGroup -Name $g.Name -GroupScope Global -GroupCategory Security `
+        -Path $T2GroupsOU -Description $g.Description
+}
+Add-ADGroupMember -Identity "T2-Admins" -Members ($T2NGroups.Name)
+```
+
+---
+
+### 8.4 — Account Naming Convention with N-Levels
+
+The base convention from Phase 2.1 (`t0-prenom.nom`) is extended with the N-level:
+
+#### Option A — Level Embedded in Account Name (Recommended)
+
+```
+{tier}-{level}-{firstname}.{lastname}
+```
+
+| Account | Level | Example |
+|---------|-------|---------|
+| `t0-n3-john.doe` | T0 Senior / Domain Admin | Full T0 privileges via JIT |
+| `t0-n2-john.doe` | T0 Operator (DC Ops) | Day-to-day DC administration |
+| `t1-n2-john.doe` | T1 Admin (e.g., Exchange) | Exchange server administration |
+| `t1-n1-john.doe` | T1 Monitoring | Read-only server monitoring |
+| `t2-n1-john.doe` | Helpdesk L1 | Password reset, account unlock |
+
+**Advantage:** Immediately readable in logs — `t0-n3-john.doe` in a Security Event instantly signals the account type and expected behavior.
+
+**Limitation:** If someone changes roles (N2 → N3), the account must be renamed or a new account must be created. Prefer **creating a new account** and disabling the old one (audit trail remains intact).
+
+#### Option B — Level Implicit via Group Membership Only
+
+Keep `t0-john.doe` as the account name, determine the N-level by group membership (`T0-N2-PKI`, `T0-N3-DomainAdmins`, etc.).
+
+**Advantage:** No account rename needed on role change — just modify group membership.
+
+**Limitation:** Less readable in logs. Requires correlating the account name against group membership to determine privilege level during incident response.
+
+#### Recommendation
+
+Use **Option A** for T0 accounts (visibility in security logs outweighs the cost of recreation on role change) and **Option B** is acceptable for T1/T2 where role changes are more frequent and the security impact of misreading a log event is lower.
+
+---
+
+### 8.5 — Platform-Based Delegation (Profile Métier)
+
+N-level groups alone do not grant rights — they need **AD delegation** to specific OUs and objects, and **local group membership** on specific servers.
+
+#### Delegation Matrix by Platform
+
+| Platform | Group | AD Delegation | Local Group on Target |
+|----------|-------|--------------|----------------------|
+| **Exchange** | `T1-N2-Exchange` | `OU=Exchange Servers,OU=Servers,OU=Tier 1` — manage computer objects | Local `Administrators` on Exchange servers only |
+| **SQL** | `T1-N2-SQL` | `OU=SQL Servers,OU=Servers,OU=Tier 1` — manage computer objects | Local `Administrators` on SQL servers only |
+| **Hyper-V** | `T1-N2-HyperV` | `OU=HyperV Hosts,OU=Servers,OU=Tier 1` | Local `Administrators` on Hyper-V hosts only |
+| **File Servers** | `T1-N2-FileServer` | `OU=File Servers,OU=Servers,OU=Tier 1` | Local `Administrators` on file servers only |
+| **Backup** | `T1-N2-Backup` | `OU=Backup Servers,OU=Servers,OU=Tier 1` — read LAPS T1 | Local `Backup Operators` on target servers |
+| **Monitoring** | `T1-N1-ServerMonitoring` | Read-only on `OU=Tier 1` — read computer objects, no write | Local `Remote Management Users` only |
+| **DC Ops** | `T0-N2-DCOps` | Delegated: Force GPO refresh, replication management, computer object read/reset on `OU=Domain Controllers` | No local admin on DCs — administration via remote tools only (MMC, RSAT) |
+| **PKI** | `T0-N2-PKI` | CA manager role delegated at CA level; `OU=Servers,OU=Tier 0` PKI server object management | Local `Administrators` on AD CS servers only |
+| **AD FS** | `T0-N2-ADFS` | `OU=Servers,OU=Tier 0` AD FS server management | Local `Administrators` on AD FS servers only |
+| **Auditors** | `T0-N1-Auditors` | Read-only on domain root, Schema, Configuration — no write anywhere | No local admin anywhere |
+
+#### Sub-OU Structure for Platform Targeting (Optional but Recommended)
+
+Within `Tier 1\Servers`, sub-OUs by platform allow GPO-level and delegation-level targeting:
+
+```
+Tier 1
+└── Servers
+    ├── Exchange
+    ├── SQL
+    ├── HyperV
+    ├── FileServers
+    ├── Backup
+    └── Application
+```
+
+```powershell
+$T1ServersOU = "OU=Servers,OU=Tier 1,$((Get-ADDomain).DistinguishedName)"
+
+$Platforms = @("Exchange","SQL","HyperV","FileServers","Backup","Application")
+foreach ($platform in $Platforms) {
+    New-ADOrganizationalUnit -Name $platform -Path $T1ServersOU `
+        -Description "Tier 1 - $platform servers"
+}
+```
+
+Then delegate per sub-OU:
+
+```powershell
+$DomainDN = (Get-ADDomain).DistinguishedName
+$Domain    = (Get-ADDomain).NetBIOSName
+
+# T1-N2-Exchange: full control on Exchange OU
+$ExchangeOU = "OU=Exchange,OU=Servers,OU=Tier 1,$DomainDN"
+dsacls $ExchangeOU /I:T /G "${Domain}\T1-N2-Exchange:GA;computer;"
+
+# T1-N1-ServerMonitoring: read-only on entire Tier 1
+$T1OU = "OU=Tier 1,$DomainDN"
+dsacls $T1OU /I:T /G "${Domain}\T1-N1-ServerMonitoring:GR;;"
+
+# T0-N2-PKI: full control on T0 PKI server objects
+$T0ServersOU = "OU=Servers,OU=Tier 0,$DomainDN"
+dsacls $T0ServersOU /I:T /G "${Domain}\T0-N2-PKI:GA;computer;" /FILTER:"CN=ADCS*"
+```
+
+#### Local Admin Assignment via GPO Preferences (Per Platform)
+
+Rather than applying a single GPO to all of `Tier 1\Servers`, create **per-platform GPOs** linked to the sub-OUs:
+
+| GPO Name | Linked To | Local Admin Group Added |
+|----------|-----------|------------------------|
+| `T1-Exchange-LocalAdmins` | `Tier 1\Servers\Exchange` | `T1-N2-Exchange`, `T1-N3-PlatformLead` |
+| `T1-SQL-LocalAdmins` | `Tier 1\Servers\SQL` | `T1-N2-SQL`, `T1-N3-PlatformLead` |
+| `T1-HyperV-LocalAdmins` | `Tier 1\Servers\HyperV` | `T1-N2-HyperV`, `T1-N3-PlatformLead` |
+| `T1-FileServer-LocalAdmins` | `Tier 1\Servers\FileServers` | `T1-N2-FileServer`, `T1-N3-PlatformLead` |
+
+Each GPO uses `Computer Configuration → Preferences → Control Panel Settings → Local Users and Groups` with **Action: Update** (not Replace — so existing T0 accounts in local admins are not removed):
+
+```
+Group: Administrators
+Action: Update
+Members to Add:
+  - DOMAIN\T1-N2-Exchange   (for the Exchange GPO)
+  - DOMAIN\T1-N3-PlatformLead
+Members to Remove:
+  - DOMAIN\Domain Admins    (always remove — T0 accounts must not be in T1 local admins)
+```
+
+> **Why Update instead of Replace?** Replace removes all existing members and rebuilds the group. If Windows LAPS, a break-glass account, or a legitimate local account is in Administrators, Replace will remove it. Use Update to add/remove specific entries without touching others. Use Replace only when you need full control of the local admin group.
+
+---
+
+### 8.6 — Authentication Silos and N-Levels
+
+Authentication Silos from Phase 2.3 operate at the **tier level**, not the N-level. This is by design:
+
+- A silo restricts **which machines** an account class can authenticate to
+- N-levels control **what** those accounts can do once authenticated
+
+You do **not** need one silo per N-level. The recommended model is:
+
+| Silo | Covers | Accounts |
+|------|--------|---------|
+| `T0-Silo` | All T0 accounts authenticate to T0 machines only | All members of `T0-Admins` (which includes all T0 N-level groups via nesting) |
+| `T1-Silo` *(optional)* | T1 accounts authenticate to T1 machines and T1 PAWs only | All members of `T1-Admins` |
+
+The N-level groups are nested inside `T0-Admins`, so all T0-N* accounts are automatically enrolled in the T0 silo when you assign the silo to `T0-Admins`. No per-N-level silo configuration is needed.
+
+**Exception — T0-N1 Auditors:**
+
+Auditors may need to query T1 or T2 infrastructure for read-only audit purposes (e.g., running BloodHound or PingCastle from a T0 account). If you enforce the T0 silo strictly, these queries will fail on non-T0 machines.
+
+Options:
+1. **Preferred:** Use a **dedicated audit workstation** classified as T0 (in the T0 PAW OU) from which auditors run their tools — the silo is satisfied.
+2. **Alternative:** Create a separate `T0-Audit-Silo` with a broader machine scope, and assign only `T0-N1-Auditors` to it.
+
+```powershell
+# Example: Create a T0-N1 silo with broader machine scope for auditors
+New-ADAuthenticationPolicySilo -Name "T0-Audit-Silo" `
+    -Description "T0 Auditors - read access to all tiers from T0 audit workstation" `
+    -UserAuthenticationPolicy "T0-AuthPolicy" `
+    -Enforce
+
+# Assign only auditor accounts to this silo
+$Auditors = Get-ADGroupMember -Identity "T0-N1-Auditors"
+foreach ($a in $Auditors) {
+    Set-ADUser -Identity $a -AuthenticationPolicySilo "T0-Audit-Silo"
+    Grant-ADAuthenticationPolicySiloAccess -Identity "T0-Audit-Silo" -Account $a
+}
+```
+
+---
+
+### 8.7 — GPO Strategy for N-Levels
+
+**No new logon restriction GPOs are needed for N-levels.** The existing six deny GPOs from Phase 2.2 cover the tier boundary — they apply to `T0-Admins`, `T1-Admins`, and `T2-Admins`, which contain the N-level groups via nesting.
+
+What N-levels add at the GPO layer:
+
+| GPO Purpose | Scope | Detail |
+|-------------|-------|--------|
+| **Per-platform Local Admin** | Per sub-OU in T1 | Controls local Administrators group per platform (see 8.5) |
+| **LAPS read permissions** | Per sub-OU | `T1-N2-Exchange` reads LAPS only on `Tier 1\Servers\Exchange` |
+| **WinRM / PS remoting restriction** | Per sub-OU | Only the relevant N2 group can WinRM to each platform |
+
+#### LAPS Read Permissions Per Platform
+
+```powershell
+$DomainDN = (Get-ADDomain).DistinguishedName
+
+# Only Exchange admins can read LAPS passwords for Exchange servers
+Set-LapsADReadPasswordPermission `
+    -Identity "OU=Exchange,OU=Servers,OU=Tier 1,$DomainDN" `
+    -AllowedPrincipals "T1-N2-Exchange","T1-N3-PlatformLead"
+
+Set-LapsADReadPasswordPermission `
+    -Identity "OU=SQL,OU=Servers,OU=Tier 1,$DomainDN" `
+    -AllowedPrincipals "T1-N2-SQL","T1-N3-PlatformLead"
+
+Set-LapsADReadPasswordPermission `
+    -Identity "OU=HyperV,OU=Servers,OU=Tier 1,$DomainDN" `
+    -AllowedPrincipals "T1-N2-HyperV","T1-N3-PlatformLead"
+```
+
+#### WinRM Restriction Per Platform (via Windows Firewall GPO)
+
+```
+Computer Configuration → Policies → Windows Settings → Security Settings →
+  Windows Firewall with Advanced Security → Inbound Rules:
+
+Rule: "Allow WinRM from T1-N2-Exchange"
+  Protocol: TCP, Port 5985-5986
+  Remote IP: IP range of the Exchange admin PAW/jump server
+  Scope: Linked only to OU=Exchange,OU=Servers,OU=Tier 1
+```
+
+This prevents a SQL DBA (`T1-N2-SQL`) from connecting via WinRM to an Exchange server, even though both are T1. The tier boundary is enforced by GPO; the platform boundary is enforced by firewall rules.
+
+---
+
+### 8.8 — Renaming and Migrating Existing Admin Accounts
+
+Most environments have legacy admin accounts that do not follow any naming convention (`administrator`, `jean.dupont`, `admin-sql`, `adminIT`). Migrating these to the tiered naming model is a **high-impact, politically sensitive** operation that must be planned carefully.
+
+#### Migration Approach: Create-Then-Disable (Recommended over Rename)
+
+**Do not rename existing accounts.** Renaming a `sAMAccountName` in Active Directory:
+- Breaks all service principal names referencing the old name
+- Breaks scripts and scheduled tasks using the old name
+- Does not change the Security Identifier (SID) — so audit logs referencing the old SID are still accurate, but the display name changes in SIEM reports, which causes confusion
+- Breaks any hardcoded references in application configurations
+
+The recommended approach:
+
+```
+1. Create the new tiered account (t0-john.doe, t1-n2-john.doe, etc.)
+2. Add the new account to the correct N-level group
+3. Run both accounts in parallel for a transition period (2-4 weeks)
+4. Migrate scheduled tasks, scripts, and service account references to the new account
+5. Disable the old account (do NOT delete — the SID must remain for log correlation)
+6. Move the disabled old account to the Disabled\Users OU
+7. Add a description to the old account: "Replaced by t0-john.doe on YYYY-MM-DD"
+8. Schedule deletion after the retention period (90-180 days per policy)
+```
+
+#### Migration Script
+
+```powershell
+function Invoke-AdminAccountMigration {
+    param(
+        [Parameter(Mandatory)][string]$OldSamAccountName,
+        [Parameter(Mandatory)][string]$NewTier,          # "T0", "T1", "T2"
+        [Parameter(Mandatory)][string]$NewLevel,         # "N1", "N2", "N3"
+        [Parameter(Mandatory)][string]$FirstName,
+        [Parameter(Mandatory)][string]$LastName,
+        [Parameter(Mandatory)][string]$NLevelGroup,      # e.g. "T1-N2-Exchange"
+        [Parameter(Mandatory)][securestring]$NewPassword
+    )
+
+    $DomainDN = (Get-ADDomain).DistinguishedName
+    $NewSam   = "$($NewTier.ToLower())-$($NewLevel.ToLower())-$($FirstName.ToLower()).$($LastName.ToLower())"
+    $TargetOU = "OU=Accounts,OU=$($NewTier -replace 'T','Tier '),$DomainDN"
+
+    # 1 — Create new tiered account
+    New-ADUser `
+        -Name              $NewSam `
+        -SamAccountName    $NewSam `
+        -UserPrincipalName "$NewSam@$((Get-ADDomain).DNSRoot)" `
+        -GivenName         $FirstName `
+        -Surname           $LastName `
+        -DisplayName       "$FirstName $LastName ($NewTier-$NewLevel)" `
+        -Description       "$NewTier-$NewLevel admin account for $FirstName $LastName. Replaces: $OldSamAccountName" `
+        -Path              $TargetOU `
+        -AccountPassword   $NewPassword `
+        -Enabled           $true `
+        -ChangePasswordAtLogon $true
+
+    # 2 — Add to N-level group (which nests into Tx-Admins automatically)
+    Add-ADGroupMember -Identity $NLevelGroup -Members $NewSam
+
+    # 3 — Add T0 accounts to Protected Users (always)
+    if ($NewTier -eq "T0") {
+        Add-ADGroupMember -Identity "Protected Users" -Members $NewSam
+        Set-ADUser -Identity $NewSam -AccountNotDelegated $true
+    }
+
+    # 4 — Annotate and disable old account
+    $DisabledOU = "OU=Users,OU=Disabled,$DomainDN"
+    Set-ADUser -Identity $OldSamAccountName `
+        -Description "DISABLED $(Get-Date -Format 'yyyy-MM-dd') — Replaced by $NewSam (tiering migration)"
+    Disable-ADAccount -Identity $OldSamAccountName
+    Move-ADObject -Identity (Get-ADUser $OldSamAccountName).DistinguishedName `
+        -TargetPath $DisabledOU
+
+    Write-Host "[OK] Created: $NewSam → Group: $NLevelGroup" -ForegroundColor Green
+    Write-Host "[OK] Disabled: $OldSamAccountName → Moved to Disabled OU" -ForegroundColor Yellow
+}
+
+# Example usage
+$pw = Read-Host "New account password" -AsSecureString
+Invoke-AdminAccountMigration `
+    -OldSamAccountName "jean.dupont" `
+    -NewTier           "T1" `
+    -NewLevel          "N2" `
+    -FirstName         "Jean" `
+    -LastName          "Dupont" `
+    -NLevelGroup       "T1-N2-Exchange" `
+    -NewPassword       $pw
+```
+
+#### Bulk Audit: Who Still Needs Migration?
+
+```powershell
+# Find privileged accounts that do NOT follow the tiered naming convention
+$PrivilegedGroups = @(
+    "Domain Admins","Enterprise Admins","Schema Admins",
+    "T0-Admins","T1-Admins","T2-Admins"
+)
+
+$AllPrivAccounts = foreach ($g in $PrivilegedGroups) {
+    Get-ADGroupMember -Identity $g -Recursive |
+        Where-Object { $_.objectClass -eq 'user' } |
+        Select-Object Name, SamAccountName, @{N='SourceGroup';E={$g}}
+}
+
+# Flag accounts not matching the tiered naming pattern
+$AllPrivAccounts | Where-Object {
+    $_.SamAccountName -notmatch '^t[0-2]-(n[1-3]-)?[a-z]+\.[a-z]+'
+} | Select-Object SamAccountName, SourceGroup, Name |
+    Sort-Object SourceGroup, SamAccountName |
+    Format-Table -AutoSize
+```
+
+#### Special Case — Service Accounts
+
+Service accounts that have been in `Domain Admins` since the early days are the highest-risk migration. The process differs:
+
+1. **Identify the service** using the account (check `servicePrincipalName`, scheduled tasks, services.msc on servers)
+2. **Create a gMSA** to replace it (see Phase 5.4)
+3. **Test in staging** — configure the service to use the gMSA, verify operation
+4. **Cut over in production** — update service configuration, restart service
+5. **Remove old service account from all privileged groups immediately after cutover**
+6. **Keep the old account disabled** for 30 days (in case of rollback need), then delete
+
+```powershell
+# Find which services on all servers are using a specific account
+$TargetAccount = "DOMAIN\svc-old-admin"
+$AllServers = Get-ADComputer -Filter {OperatingSystem -like "*Server*"} |
+    Select-Object -ExpandProperty Name
+
+foreach ($server in $AllServers) {
+    try {
+        $services = Get-WmiObject Win32_Service -ComputerName $server -ErrorAction Stop |
+            Where-Object { $_.StartName -eq $TargetAccount }
+        if ($services) {
+            $services | Select-Object @{N='Server';E={$server}}, Name, DisplayName, StartName, State
+        }
+    } catch {
+        Write-Warning "Cannot connect to $server"
+    }
+}
+```
+
+---
+
+### 8.9 — How N-Levels Translate to JIT (Phase 2.4 Revisited)
+
+With N-levels, JIT becomes more surgical. Instead of granting temporary membership to `Domain Admins` directly, the workflow targets the **narrowest group that satisfies the need**:
+
+| Scenario | JIT Target Group | TTL | Approval Required |
+|----------|-----------------|-----|------------------|
+| T0-N2 admin needs to force replication | `T0-N2-DCOps` → inherits T0-Admins → already in silo | No elevation needed — already has rights | N/A |
+| T0-N2 PKI admin needs to issue a root CA cert | Permanent `T0-N2-PKI` membership | N/A | Dual approval for root CA operations (procedural) |
+| T0-N3 admin needs to modify schema | JIT: `T0-N3-DomainAdmins` → then grant Schema Admins temporarily | 1-2 hours | Dual T0-N3 approval |
+| T0 admin needs `Enterprise Admins` for cross-domain change | JIT: temporary `Enterprise Admins` membership via TTL | 2 hours max | CISO + second T0-N3 approval |
+| T1-N2-Exchange admin needs elevated access for major update | JIT: temporary `T1-N3-PlatformLead` membership | 4 hours | T0-N3 or manager approval |
+
+The key principle: **JIT targets the most granular group that provides the required access**, not the highest group that happens to work.
+
+```powershell
+# JIT: Add T0-N3 admin to Schema Admins for 90 minutes
+Add-ADGroupMember -Identity "Schema Admins" `
+    -Members "t0-n3-john.doe" `
+    -MemberTimeToLive (New-TimeSpan -Minutes 90)
+
+# Log the elevation
+Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
+    -EntryType Information `
+    -Message "JIT elevation: t0-n3-john.doe added to Schema Admins. TTL: 90 min. Approver: t0-n3-jane.smith. Ticket: INC-20260506-001"
+```
+
+---
+
+### Phase 8 Checklist
+
+- [ ] N-level model defined for each tier (N1/N2/N3 scope and population documented)
+- [ ] Platform taxonomy established (which platforms exist at T1, assigned to which N-level)
+- [ ] N-level groups created per tier (T0-N1 through T2-N3) in correct tier Group OUs
+- [ ] N-level groups nested inside `Tx-Admins` (Deny Logon GPOs automatically inherited)
+- [ ] Sub-OUs created in `Tier 1\Servers` for each platform (Exchange, SQL, HyperV, etc.)
+- [ ] Per-platform delegation applied via `dsacls` (N-level group → platform sub-OU)
+- [ ] Per-platform local admin GPOs created and linked to platform sub-OUs
+- [ ] `Domain Admins` removed from local Administrators via per-platform GPOs
+- [ ] LAPS read permissions scoped per platform sub-OU (not domain-wide T1-Admins read)
+- [ ] WinRM firewall rules scoped per platform (N2 group for Exchange cannot WinRM to SQL)
+- [ ] Account naming convention documented (Option A for T0, recommendation for T1/T2)
+- [ ] Audit of existing privileged accounts completed (identify non-compliant accounts)
+- [ ] Migration plan created per non-compliant account (create new → parallel run → disable old)
+- [ ] Migration script tested in lab before production deployment
+- [ ] Old admin accounts disabled and moved to Disabled OU (not deleted)
+- [ ] Old accounts annotated with replacement account name and migration date
+- [ ] Service accounts using privileged group membership identified for gMSA migration
+- [ ] T0-N1 Auditors silo strategy decided (dedicated audit workstation or separate silo)
+- [ ] T0-N1 Auditors enrolled in correct Authentication Silo
+- [ ] Authentication Silo verified: all T0 N-level accounts covered via `T0-Admins` nesting
+- [ ] JIT workflow updated to target N-level groups (not `Domain Admins` directly)
+- [ ] JIT maximum TTL defined per N-level group and scenario
+- [ ] Dual approval required for `Schema Admins` and `Enterprise Admins` JIT elevation
+- [ ] N-level group membership added to monthly health check review
+- [ ] Training updated for T0/T1/T2 admins explaining their N-level scope
+
+---
+
 ## Summary — Prioritized Implementation Order
 
 | Priority | Phase | Actions | Impact |
@@ -2677,6 +3264,7 @@ If the organization uses or plans to use Entra ID:
 | **P3 — Hardening** | Phases 4 + 5 | GPO hardening per tier, gMSA migration, AD CS hardening, ACL cleanup, firewall segmentation | Reduces attack vectors |
 | **P4 — Detection** | Phase 6 | MDI, SIEM rules, tiering violation alerts, Windows Event Forwarding | Visibility and response capability |
 | **P5 — Maturity** | Phase 7 | Periodic reviews, health check automation, training, break-glass, hybrid extensions | Long-term sustainability |
+| **P6 — Granularity** | Phase 8 | N-level model (N1/N2/N3), platform-based delegation, account migration, surgical JIT | Least-privilege within tiers; readable audit trail |
 
 ---
 
