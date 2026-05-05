@@ -62,6 +62,91 @@ Préparé le: 2026-05-05
 
 ---
 
+## Questions supplémentaires (mode préparation intensive) 🚀
+
+### Migration et déploiement
+
+| # | Question probable du client | Réponse courte | Référence article |
+|---|---|---|---|
+| 24 | On a déjà des policies "Require MFA" partout. On doit tout refaire ? | Pas forcément tout refaire, mais il faut **remplacer progressivement** les contrôles génériques par des **Authentication Strengths** explicites, surtout sur les apps sensibles et les accès admin. | Section 1.1 + Section 4.3 + Section 7 |
+| 25 | Quel ordre de déploiement limite le risque de casse ? | Commencer par définir les tiers de force, imposer AAL3 sur les périmètres critiques, puis étendre WHfB/FIDO2; garder AAL2 en transition contrôlée. | Section 4.3 |
+| 26 | Combien de temps garder AAL2 en transition ? | Le minimum possible, avec **date de fin** et propriétaire nommé. Sans date, la transition devient permanente. | Section 4.1 + Section 7 |
+| 27 | Peut-on déployer WHfB et FIDO2 en parallèle ? | Oui, et c'est recommandé: WHfB pour postes Windows gérés, FIDO2/passkeys pour cas non-Windows, partagés ou externes. | Section 3.1 + Section 3.2 |
+| 28 | Quel premier périmètre donne le plus de valeur sécurité ? | Admin portals, PIM, comptes privilégiés et applications à fort impact. | Section 4.3 + Section 5 |
+| 29 | Comment éviter le rejet utilisateur au lancement ? | Communication claire + parcours d'enrôlement simple + scénario de recovery testé (TAP). L'expérience compte autant que la policy. | Section 3.7 + Section 6 |
+| 30 | Si tout le monde n'est pas prêt à AAL3, que faire ? | Autoriser AAL2 uniquement comme **exception transitoire**, scope réduit, suivi et plan de migration. | Section 2 + Section 4.1 |
+| 31 | Faut-il migrer toutes les apps en même temps ? | Non. Prioriser par risque business: sensibles d'abord, puis généralisation par vagues. | Section 4.1 + Section 4.3 |
+| 32 | Peut-on garder SMS "juste au cas où" ? | Par défaut, non. Le maintenir activé sans garde-fou crée une dette de sécurité durable. | Section 4.3 + Section 7 |
+
+---
+
+### Opérations, support et recovery
+
+| # | Question probable du client | Réponse courte | Référence article |
+|---|---|---|---|
+| 33 | Que fait-on si un utilisateur perd son téléphone ? | Activer un processus recovery basé sur TAP + vérification d'identité, puis ré-enrôler une méthode forte. | Section 3.7 + Section 6 |
+| 34 | Que fait-on si un admin perd sa clé FIDO2 ? | Processus break-glass contrôlé, désenrôlement immédiat de la clé perdue, enrôlement d'une nouvelle clé, audit de l'événement. | Section 3.1 + Section 7 |
+| 35 | TAP peut-il devenir un bypass permanent ? | Il ne doit jamais l'être. TAP doit rester court, contrôlé et traçable. | Section 3.7 + Section 7 |
+| 36 | Comment réduire les tickets help desk liés au passwordless ? | Aligner les politiques d'expiration (cloud/hybride), documenter les parcours de recovery, et former le support avant rollout massif. | Section 6 + Section 7 |
+| 37 | Qui doit pouvoir émettre un TAP ? | Un groupe restreint, avec séparation des rôles, procédure d'identification et journalisation. | Section 3.7 + Section 7 |
+| 38 | Quel est l'indicateur de maturité opérationnelle principal ? | Baisse des méthodes faibles actives + hausse du taux d'enrôlement AAL3 + baisse des exceptions non justifiées. | Section 7 |
+| 39 | Comment gérer les utilisateurs sans smartphone pro ? | FIDO2 hardware keys ou OATH matériel en backup contraint, pas SMS par défaut. | Section 2 + Section 5 |
+| 40 | Faut-il prévoir un plan de continuité spécifique ? | Oui: procédures de perte appareil, perte clé, panne enrollment, compte break-glass testé régulièrement. | Section 7 |
+
+---
+
+### Trusted Signals et Conditional Access
+
+| # | Question probable du client | Réponse courte | Référence article |
+|---|---|---|---|
+| 41 | Méthode forte seule, c'est suffisant ? | Non. Il faut combiner méthode + device + contexte + identité (Trusted Signals). | Section 4.4 |
+| 42 | Pourquoi exiger un device compliant avec AAL3 ? | Parce que la même méthode sur device non maîtrisé dégrade le niveau de confiance global. | Section 4.4 |
+| 43 | Peut-on appliquer Trusted Signals différemment selon les apps ? | Oui, c'est même conseillé: policies CA par niveau de criticité applicative. | Section 4.1 + Section 4.4 |
+| 44 | Faut-il utiliser le risque utilisateur/session dans les policies ? | Oui, quand possible: cela renforce le modèle contextuel et permet du step-up ciblé. | Section 4.4 |
+| 45 | Comment expliquer Trusted Signals au management ? | "Ce n'est plus juste qui se connecte, c'est qui + comment + depuis quoi + dans quel contexte." | Section 4.4 |
+| 46 | Peut-on auditer les écarts Trusted Signals ? | Oui via logs de connexion et distribution des méthodes, puis revue périodique des exceptions. | Section 7 |
+
+---
+
+### Population et cas d'usage
+
+| # | Question probable du client | Réponse courte | Référence article |
+|---|---|---|---|
+| 47 | B2B/partenaires: on impose AAL3 à tous ? | Minimum AAL2 contrôlé, AAL3 selon criticité et niveau de confiance inter-tenant. | Section 5 |
+| 48 | Kiosks/shared devices: WHfB est-il adapté ? | Pas toujours; FIDO2 hardware key est souvent plus adapté aux postes partagés. | Section 5 |
+| 49 | Terrain/industrie sans connectivité stable: quelle méthode ? | FIDO2 en priorité, OATH matériel en backup contraint si nécessaire. | Section 2 + Section 5 |
+| 50 | VIP/dirigeants: quelle exigence minimale ? | AAL3 immédiat + device de confiance + processus recovery renforcé. | Section 4.3 + Section 5 |
+| 51 | Comptes de service: ces recommandations s'appliquent ? | Partiellement: ils nécessitent une gouvernance spécifique (hors flux utilisateur interactif standard). | Hors périmètre principal de l'article |
+| 52 | Break-glass doit-il utiliser WHfB ? | Préférence pratique: FIDO2 hardware key dédiée et stockée de façon sécurisée, monitorée en permanence. | Section 5 + Section 7 |
+
+---
+
+### Conformité, audit et gouvernance
+
+| # | Question probable du client | Réponse courte | Référence article |
+|---|---|---|---|
+| 53 | Comment prouver qu'on est aligné avec l'exigence "Strong AuthN" ? | Montrer les policies Authentication Strength, la couverture AAL3 et la réduction des exceptions faibles. | Section 1.1 + Section 7 |
+| 54 | AAL3 partout est-il réaliste ? | Oui comme cible stratégique; exécution par vagues, avec exceptions datées pendant la transition. | Section 4.1 + Section 4.3 |
+| 55 | Quel est le plus grand risque de gouvernance ? | L'exception sans date de sortie: elle devient la norme. | Section 1.1 + Section 7 |
+| 56 | À quelle fréquence revoir les exceptions ? | Au minimum trimestrielle, avec re-justification formelle. | Section 7 |
+| 57 | Comment éviter la dérive de méthodes faibles ? | Policy explicite, monitoring, retrait progressif, et objectifs mesurés de réduction. | Section 7 |
+| 58 | Quel message audit retenir en une ligne ? | "MFA n'est pas un binaire; le niveau d'assurance est piloté par Authentication Strength et Trusted Signals." | Section 1.1 + Section 4.4 |
+
+---
+
+### Questions "pièges" fréquentes en comité
+
+| # | Question probable du client | Réponse courte | Référence article |
+|---|---|---|---|
+| 59 | "On a activé MFA, on est bons, non ?" | Non. Sans distinction de force, vous mélangez méthodes très fortes et méthodes faibles sous la même étiquette. | Section 1 + Section 1.1 |
+| 60 | "Passwordless veut dire on supprime les passwords ?" | Non: passwordless = bypass du password, pas suppression de son cycle de vie. | Section 6 |
+| 61 | "On garde SMS juste pour 2-3 cas, c'est ok ?" | Seulement si strictement contrôlé et avec plan de retrait; sinon ça redevient un chemin principal. | Section 4.3 + Section 7 |
+| 62 | "Si on force plus de prompts, c'est forcément plus secure ?" | Pas toujours. L'architecture cryptographique et la posture device apportent plus que la friction utilisateur. | Section 3.2 + Section 4.4 |
+| 63 | "AAL2 suffit partout si on surveille bien ?" | Non pour les accès à fort impact. Les périmètres critiques doivent passer en AAL3. | Section 4.1 + Section 4.3 |
+| 64 | "Pourquoi investir dans FIDO2 si on a déjà Authenticator ?" | Parce qu'Authenticator push reste AAL2 transitoire; FIDO2/WHfB apportent la résistance phishing AAL3 cible. | Section 3.1 + Section 3.4 |
+
+---
+
 ## ⚠️ Point clé à préparer pour la Sécu groupe
 
 > La Sécu groupe veut **"3MFA"** = ils cherchent **AAL3 / phishing-resistant MFA**.
