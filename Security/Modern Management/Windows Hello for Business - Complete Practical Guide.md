@@ -1,16 +1,16 @@
-# Windows Hello for Business (WHfB) - Deep Dive Field Guide
+# 🔐 Windows Hello for Business (WHfB) — Deep Dive Field Guide
 
 **Passwordless is easy to say. WHfB internals are where the real security story lives.**
 
 Published: 2026-05-05 | Windows Hello for Business, TPM, Entra ID, Kerberos, Conditional Access, Zero Trust
 
-> TL;DR
+> **⚡ TL;DR**
 >
-> - WHfB is a key-based authentication architecture, not a UX feature.
-> - The private key is protected by TPM and never sent to the identity provider.
-> - Logon uses challenge-response with fresh nonces, not replayable shared secrets.
-> - Trust model choice (Cloud Kerberos / Key trust / Certificate trust) changes infrastructure and operations, not the core security primitive.
-> - AAL3-grade outcomes require method + device + policy context, not method alone.
+> - 🏗️ WHfB is a **key-based authentication architecture**, not a UX feature.
+> - 🔒 The **private key is protected by TPM** and never sent to the identity provider.
+> - 🔄 Logon uses **challenge-response with fresh nonces**, not replayable shared secrets.
+> - 🗺️ Trust model choice (Cloud Kerberos / Key trust / Certificate trust) changes infrastructure and operations, **not the core security primitive**.
+> - 🎯 AAL3-grade outcomes require **method + device + policy context**, not method alone.
 
 ---
 
@@ -35,30 +35,32 @@ Published: 2026-05-05 | Windows Hello for Business, TPM, Entra ID, Kerberos, Con
 
 ---
 
-## 1) Scope and audience
+## 1) 🎯 Scope and audience
 
 This guide is for engineers and architects who need to answer questions like:
 
-- "What exactly is signed during WHfB auth?"
-- "Can an attacker replay a captured signed challenge?"
-- "What really changes between Cloud Kerberos trust and Key trust?"
-- "How do we deploy WHfB at scale without creating a support nightmare?"
+- ❓ *"What exactly is signed during WHfB auth?"*
+- ❓ *"Can an attacker replay a captured signed challenge?"*
+- ❓ *"What really changes between Cloud Kerberos trust and Key trust?"*
+- ❓ *"How do we deploy WHfB at scale without creating a support nightmare?"*
 
-If you need a lightweight introduction, this is not that guide.
+> ⚠️ If you need a lightweight introduction, this is not that guide.
 
 ---
 
-## 2) WHfB architecture in one view
+## 2) 🏗️ WHfB architecture in one view
 
 This section covers all protocol flows end-to-end. There are three distinct flows you must understand:
 
-- **Flow A — Enrollment (provisioning)**: The one-time sequence that creates and registers key material.
-- **Flow B — Cloud-only / Entra ID sign-in**: The runtime auth flow for cloud resources.
-- **Flow C — Hybrid Kerberos ticket acquisition**: Additional on-prem exchange for hybrid joined devices.
+| Flow | Label | Description |
+|------|-------|-------------|
+| 🟦 A | **Enrollment (provisioning)** | One-time sequence that creates and registers key material |
+| 🟩 B | **Cloud sign-in (Entra ID)** | Runtime auth flow for cloud resources |
+| 🟨 C | **Hybrid Kerberos acquisition** | Additional on-prem exchange for hybrid joined devices |
 
 ---
 
-### 2.0 Planes and actors
+### 2.0 🗻 Planes and actors
 
 Before the flows, here is the full actor map:
 
@@ -112,7 +114,7 @@ Before the flows, here is the full actor map:
 
 ---
 
-### 2.1 Flow A — Enrollment (provisioning)
+### 2.1 🟦 Flow A — Enrollment (provisioning)
 
 This flow happens once per user per device. It is security-critical: everything downstream depends on how well this phase is gated.
 
@@ -213,14 +215,14 @@ for this user on this device          linked to user + device      linked to AD 
 
 ```
 
-> **What is NOT sent during enrollment:**
-> - Private key (stays in TPM, never exported)
-> - PIN value (stays local, used only to gate TPM operations)
-> - Raw biometric data (processed locally by Windows Biometric Framework, never transmitted)
+> **❌ What is NOT sent during enrollment:**
+> - 🔒 Private key → stays in TPM, never exported
+> - 🔢 PIN value → stays local, only gates TPM operations
+> - 👁️ Raw biometric data → processed locally by Windows Biometric Framework, never transmitted
 
 ---
 
-### 2.2 Flow B — Cloud sign-in (Entra ID token issuance)
+### 2.2 🟩 Flow B — Cloud sign-in (Entra ID token issuance)
 
 This flow runs at every interactive sign-in and at PRT renewal. It is the core runtime authentication loop.
 
@@ -341,14 +343,14 @@ SSO available for all apps            method=whfb, device_id,
 
 ```
 
-> **What is NOT sent during sign-in:**
-> - Private key (operation occurs inside TPM, only signature leaves)
-> - PIN or biometric raw data (local unlock only, never sent)
-> - Password (absent from this entire flow)
+> **❌ What is NOT sent during sign-in:**
+> - 🔒 Private key → operation occurs inside TPM, only the signature leaves
+> - 🔢 PIN or biometric raw data → local unlock only, never sent to the server
+> - 🚫 Password → absent from this entire flow
 
 ---
 
-### 2.3 Flow C — Hybrid Kerberos ticket acquisition (Cloud Kerberos trust)
+### 2.3 🟨 Flow C — Hybrid Kerberos ticket acquisition (Cloud Kerberos trust)
 
 For hybrid environments, after the cloud token is issued, the endpoint also needs a Kerberos TGT to access on-prem resources. This is the additional flow specific to hybrid joins.
 
@@ -412,11 +414,11 @@ on-prem Exchange, etc.                                from here on
 
 ```
 
-> **Key trust model variant:** In key trust, the KDC validates the signature directly against the `msDS-KeyCredentialLink` attribute synced on the AD user object. No Cloud TGT exchange is used; the endpoint sends a PKINIT AS-REQ directly with the WHfB key.
+> 💡 **Key trust model variant:** In key trust, the KDC validates the signature directly against the `msDS-KeyCredentialLink` attribute synced on the AD user object. No Cloud TGT exchange is used; the endpoint sends a PKINIT AS-REQ directly with the WHfB key.
 
 ---
 
-### 2.4 PRT (Primary Refresh Token) internals
+### 2.4 🎫 PRT (Primary Refresh Token) internals
 
 The PRT is the session anchor for Entra ID SSO. It is worth understanding independently.
 
@@ -460,14 +462,14 @@ Every 4 hours (approximately), the WAM broker:
      │      device claim refreshed,         │
      │      compliance state re-evaluated)  │
 
-- PRT is device-bound: it carries the device_id and is signed-context protected.
-- PRT is non-exportable in the same sense: the session_key is bound to the device's TPM session material.
-- Token abuse without device access is significantly harder than with a standard refresh token.
+- 🔗 PRT is **device-bound**: it carries the `device_id` and is signed-context protected.
+- 🔐 PRT is **non-exportable** in the same sense: the `session_key` is bound to the device's TPM session material.
+- 🛡️ Token abuse without device access is **significantly harder** than with a standard refresh token.
 ```
 
 ---
 
-### 2.5 Full picture — combined view
+### 2.5 🗺️ Full picture — combined view
 
 ```text
                 ┌───────────────────────────────────────────────────┐
@@ -507,129 +509,134 @@ Every 4 hours (approximately), the WAM broker:
                 └───────────────────────────┘
 ```
 
-Core principle: **possession proof over cryptographic key** replaces password proof. The private key never leaves the TPM. The PIN and biometrics never leave the device. The server validates a signature, not a secret.
+> 🔑 **Core principle:** Possession proof over cryptographic key replaces password proof. The **private key never leaves the TPM**. The **PIN and biometrics never leave the device**. The server validates a signature, not a secret.
 
 ---
 
-## 3) Cryptographic internals (the part most articles skip)
+## 3) 🔐 Cryptographic internals (the part most articles skip)
 
-### 3.1 Key material model
+### 3.1 🗝️ Key material model
 
 WHfB uses a layered key model inside the Windows Hello container architecture.
 
 | Element | Purpose | Lifetime |
 |---|---|---|
-| Protector key(s) | Bound to local gesture unlock method | Changes with gesture lifecycle |
-| Authentication key | Core key used to unlock identity key material | Long-lived (regenerated on reset events) |
-| User identity key(s) | Used for IdP authentication/signing operations | Long-lived, trust-model dependent |
+| 🔒 Protector key(s) | Bound to local gesture unlock method | Changes with gesture lifecycle |
+| 🔑 Authentication key | Core key used to unlock identity key material | Long-lived (regenerated on reset events) |
+| 🎼 User identity key(s) | Used for IdP authentication/signing operations | Long-lived, trust-model dependent |
 
-### 3.2 TPM role (what TPM really adds)
+### 3.2 🛡️ TPM role (what TPM really adds)
 
-- Stores key material or key handles in hardware-bound trust boundary.
-- Enforces anti-hammering properties for PIN-gated operations.
-- Prevents private key export under normal threat models.
+- ✅ Stores key material or key handles in **hardware-bound trust boundary**.
+- ✅ Enforces **anti-hammering** properties for PIN-gated operations.
+- ✅ Prevents **private key export** under normal threat models.
 
-Without TPM, WHfB can fall back to software key protection depending on policy. For high assurance, enforce hardware protection.
+> ⚠️ Without TPM, WHfB can fall back to software key protection depending on policy. For high assurance, **enforce hardware protection**.
 
-### 3.3 What is actually sent to the server
+### 3.3 📤 What is actually sent to the server
 
-At sign-in, the server receives proof artifacts, not secrets:
+At sign-in, the server receives **proof artifacts, not secrets**:
 
-- fresh challenge (nonce),
-- signed response,
-- protocol metadata needed for verification.
+- ✅ Fresh challenge (nonce)
+- ✅ Signed response
+- ✅ Protocol metadata needed for verification
 
-The private key is not transmitted. The PIN is not transmitted. Raw biometric data is not transmitted.
+> ❌ Private key → not transmitted  
+> ❌ PIN → not transmitted  
+> ❌ Raw biometric data → not transmitted
 
 ---
 
-## 4) Enrollment deep dive (provisioning pipeline)
+## 4) 📝 Enrollment deep dive (provisioning pipeline)
 
 ### 4.1 Enrollment phases
 
 ```text
-Device registration -> Policy trigger -> MFA-backed provisioning
--> Key generation in TPM -> Public key registration -> Ready state
+Device registration → Policy trigger → MFA-backed provisioning
+    → Key generation in TPM → Public key registration → ✅ Ready state
 ```
 
 ### 4.2 Enrollment sequence (simplified)
 
-1. Device has identity and registration state with IdP.
-2. WHfB policy applies (Intune CSP and/or GPO).
-3. User satisfies provisioning requirements (including MFA requirements).
-4. User configures PIN and optionally biometrics.
-5. Device creates key pair and binds private key to trust module.
-6. Public key (or cert material in cert trust) is registered and associated with user identity.
+1. 🖥️ Device has identity and registration state with IdP.
+2. 📋 WHfB policy applies (Intune CSP and/or GPO).
+3. 🔐 User satisfies provisioning requirements (including MFA requirements).
+4. 🔢 User configures PIN and optionally biometrics.
+5. 🛡️ Device creates key pair and binds private key to TPM.
+6. ☁️ Public key (or cert material in cert trust) is registered and associated with user identity.
 
-### 4.3 Why enrollment is security-critical
+### 4.3 ⚠️ Why enrollment is security-critical
 
-If provisioning is weak, the entire architecture is weak. Enrollment security controls are first-class controls.
+> If provisioning is weak, the **entire architecture is weak**. Enrollment security controls are first-class controls.
 
 ---
 
-## 5) Sign-in deep dive (what happens at unlock)
+## 5) 🚀 Sign-in deep dive (what happens at unlock)
 
-### 5.1 Local unlock and key release
+### 5.1 🔓 Local unlock and key release
 
 User enters PIN or performs biometric gesture.
 
-This does not send credential material to cloud/on-prem identity provider. It authorizes local key operation.
+> 💡 This does **not** send credential material to the cloud/on-prem identity provider. It only authorizes a local key operation inside the TPM.
 
-### 5.2 Challenge-response
+### 5.2 🔄 Challenge-response
 
-Server side issues fresh nonce.
-Endpoint signs challenge with private key.
-Server validates signature against registered public key and policy context.
+1. Server issues a fresh nonce (challenge).
+2. Endpoint signs challenge with private key **inside TPM**.
+3. Server validates signature against registered public key and policy context.
 
-### 5.3 Why replay fails
+### 5.3 🛡️ Why replay fails
 
 | Captured artifact | Why replay fails |
 |---|---|
-| Public key | Not secret, useless without private key |
-| Signed challenge | Bound to one nonce + freshness window |
-| Previous auth exchange | Server rejects reused/expired challenge |
+| ❌ Public key | Not secret, useless without private key |
+| ❌ Signed challenge | Bound to one nonce + freshness window |
+| ❌ Previous auth exchange | Server rejects reused/expired challenge |
 
-### 5.4 Token and session implications
+### 5.4 🎫 Token and session implications
 
-WHfB improves credential theft resistance, but session controls still matter. Combine with policy controls for token/session risk reduction.
+WHfB improves credential theft resistance, but **session controls still matter**. Combine with CA policy controls for token/session risk reduction.
 
 ---
 
-## 6) Trust models deep dive
+## 6) 🗺️ Trust models deep dive
 
-Trust model determines how on-prem authentication dependencies are wired, not whether private key cryptography exists.
+Trust model determines how on-prem authentication dependencies are wired, **not** whether private key cryptography exists.
 
-### 6.1 Cloud Kerberos trust
+### 6.1 ☁️ Cloud Kerberos trust
 
-Best fit for many modern hybrid deployments.
+> ⭐ Best fit for most modern hybrid deployments.
 
-- Reduced PKI overhead versus cert trust.
-- Simplified path for many organizations adopting passwordless with hybrid access needs.
+- ✅ Reduced PKI overhead versus cert trust.
+- ✅ Simplified path for organizations adopting passwordless with hybrid access needs.
+- ✅ No need to deploy on-prem PKI for WHfB keys.
 
-### 6.2 Key trust
+### 6.2 🔑 Key trust
 
-Legacy and existing deployments still use this model.
+> Legacy and existing deployments still use this model.
 
-- Valid model, but often less preferred for new programs where Cloud Kerberos trust is available and appropriate.
+- ⚠️ Valid model, but often less preferred for new programs where Cloud Kerberos trust is available.
+- ⚠️ Requires `msDS-KeyCredentialLink` sync to be healthy and up to date.
 
-### 6.3 Certificate trust
+### 6.3 📄 Certificate trust
 
-Strong fit for certificate-mandated environments.
+> Strong fit for certificate-mandated and regulated environments.
 
-- Highest operational complexity.
-- Requires mature PKI operations and lifecycle discipline.
+- ✅ Best compliance alignment where certificates are required.
+- ⚠️ Highest operational complexity.
+- ⚠️ Requires mature PKI operations and lifecycle discipline.
 
 ### 6.4 Decision matrix
 
-| Criterion | Cloud Kerberos trust | Key trust | Certificate trust |
+| Criterion | ☁️ Cloud Kerberos | 🔑 Key trust | 📄 Certificate trust |
 |---|---|---|---|
-| New hybrid deployment simplicity | High | Medium | Low |
-| PKI dependency | Low | Medium | High |
-| Certificate-centric compliance fit | Medium | Medium | High |
+| New hybrid deployment simplicity | ✅ High | ⚠️ Medium | ❌ Low |
+| PKI dependency | ✅ Low | ⚠️ Medium | ❌ High |
+| Certificate-centric compliance fit | ⚠️ Medium | ⚠️ Medium | ✅ High |
 
 ---
 
-## 7) The 3-factor debate: TPM + PIN + biometrics
+## 7) 🤔 The 3-factor debate: TPM + PIN + biometrics
 
 This is where many security discussions get stuck.
 
@@ -637,132 +644,132 @@ This is where many security discussions get stuck.
 
 | Factor category | WHfB component |
 |---|---|
-| Something you have | Device-bound TPM-protected key |
-| Something you know | PIN |
-| Something you are | Biometrics |
+| 📱 Something you **have** | Device-bound TPM-protected key |
+| 🔢 Something you **know** | PIN |
+| 👁️ Something you **are** | Biometrics |
 
-### 7.2 What can be enforced
+### 7.2 ✅ What can be enforced
 
-- TPM requirement: yes.
-- PIN policy complexity: yes.
-- Biometrics enabled with policy: yes.
+- ✅ TPM requirement: enforceable via policy.
+- ✅ PIN complexity: enforceable via policy.
+- ✅ Biometrics enabled: enforceable via policy.
 
-### 7.3 What is not native behavior
+### 7.3 ⚠️ What is not native behavior
 
-PIN and biometrics are generally alternative local unlock gestures, not two sequential prompts in one transaction.
+PIN and biometrics are generally **alternative** local unlock gestures, not two sequential prompts in one transaction.
 
-So "TPM + PIN + biometrics simultaneously" must be clarified as either:
+So *"TPM + PIN + biometrics simultaneously"* must be clarified as either:
 
-- architectural presence requirement (valid), or
-- sequential prompt requirement (not native WHfB behavior).
+- ✅ **Architectural presence requirement** (valid — you can enforce all three exist)
+- ❌ **Sequential prompt requirement** (not native WHfB behavior)
 
 ---
 
-## 8) Replay, interception, and AiTM: precise threat analysis
+## 8) 🕵️ Replay, interception, and AiTM: precise threat analysis
 
 ### 8.1 Intercepting the public key
 
-No practical value alone. Public key is designed to be public.
+> 💤 No practical value alone. Public key is **designed to be public**.
 
 ### 8.2 Intercepting a signed challenge
 
-Still not replayable because nonce is one-time + freshness-constrained.
+> 💤 Still not replayable because the nonce is **one-time + freshness-constrained**.
 
 ### 8.3 Real-time active relay scenarios
 
-Real-time adversary-in-the-middle is a different class than replay. WHfB significantly raises the bar versus OTP/push patterns, but endpoint/session hardening remains mandatory.
+Real-time adversary-in-the-middle is a different class than replay. WHfB **significantly raises the bar** versus OTP/push patterns, but endpoint/session hardening remains mandatory.
 
 ### 8.4 Threat coverage chart
 
 ```text
-Threat resistance (qualitative)
+Threat resistance (qualitative)       Low ◄──────────────────────► High
 
-Password spray            WHfB: ##########
-OTP replay                WHfB: ##########
-MFA fatigue               WHfB: #########-
-Simple challenge replay   WHfB: ##########
-Post-auth token abuse     WHfB: #####-----  (needs CA/session controls)
+Password spray            WHfB: ██████████  ✅ Blocked
+OTP replay                WHfB: ██████████  ✅ Blocked
+MFA fatigue / push spam   WHfB: ██████████  ✅ N/A (no push)
+Simple challenge replay   WHfB: ██████████  ✅ Blocked
+Post-auth token abuse     WHfB: █████░░░░░  ⚠️ Needs CA + session controls
 ```
 
 ---
 
-## 9) WHfB + Conditional Access + Trusted Signals
+## 9) 📊 WHfB + Conditional Access + Trusted Signals
 
-WHfB should be one signal in a policy decision graph.
+WHfB should be **one signal in a policy decision graph**, not the only control.
 
 | Signal dimension | Typical control |
 |---|---|
-| Identity | User/group/role targeting |
-| Method | Authentication strength requirements |
-| Device | Compliance, join state, health posture |
-| Context | Location/risk/session controls |
+| 👤 Identity | User/group/role targeting |
+| 🔐 Method | Authentication strength requirements |
+| 🖥️ Device | Compliance, join state, health posture |
+| 🌍 Context | Location / risk / session controls |
 
-If you deploy WHfB without strong policy composition, you leave value on the table.
+> ⚠️ If you deploy WHfB without strong policy composition, **you leave value on the table**.
 
 ---
 
-## 10) Passwordless and password lifecycle reality
+## 10) 🚫 Passwordless and password lifecycle reality
 
-Passwordless does not remove password objects from lifecycle governance.
+Passwordless does **not** remove password objects from lifecycle governance.
 
-| Statement | True/False |
+| Statement | Answer |
 |---|---|
-| Users stop typing passwords daily | True |
-| Password object disappears from directory | False |
-| Expiry policy can be ignored safely | False |
+| Users stop typing passwords daily | ✅ True |
+| Password object disappears from directory | ❌ False |
+| Expiry policy can be ignored safely | ❌ False |
 
-For cloud-only and hybrid populations, align lifecycle policy with real sign-in behavior and recovery design.
-
----
-
-## 11) Deployment strategy: 30/60/90 without drama
-
-### Day 0-30 (Foundation)
-
-- Decide trust model.
-- Define AAL3 target and exception policy.
-- Build support and recovery runbooks.
-
-### Day 31-60 (Pilot)
-
-- Start with IT/admin + one business cohort.
-- Measure enrollment friction and failure causes.
-- Validate remote/VDI scenarios explicitly.
-
-### Day 61-90 (Scale)
-
-- Expand by risk-prioritized populations.
-- Enforce stronger CA controls on critical apps.
-- Track and burn down weak-method exceptions.
+> 💡 For cloud-only and hybrid populations, align **lifecycle policy with real sign-in behavior** and recovery design.
 
 ---
 
-## 12) Day-2 operations and recovery engineering
+## 11) 📅 Deployment strategy: 30/60/90 without drama
 
-### 12.1 Non-negotiable runbooks
+### 🟦 Day 0–30 — Foundation
 
-- Lost device
-- PIN reset
-- Biometric fallback
-- TAP-based bootstrap/recovery
+- → Decide trust model.
+- → Define AAL3 target and exception policy.
+- → Build support and recovery runbooks.
 
-### 12.2 Break-glass posture
+### 🟨 Day 31–60 — Pilot
 
-- Dedicated emergency identities only.
-- Strong methods only.
-- Alert and review every usage event.
+- → Start with IT/admin + one business cohort.
+- → Measure enrollment friction and failure causes.
+- → Validate remote/VDI scenarios explicitly.
 
-### 12.3 Operational anti-patterns
+### 🟩 Day 61–90 — Scale
 
-- No owner for recovery process
-- Open-ended AAL2 exceptions
-- Support team not trained before rollout
+- → Expand by risk-prioritized populations.
+- → Enforce stronger CA controls on critical apps.
+- → Track and burn down weak-method exceptions.
 
 ---
 
-## 13) Troubleshooting deep cuts
+## 12) 🔧 Day-2 operations and recovery engineering
 
-### 13.1 Fast local checks
+### 12.1 📋 Non-negotiable runbooks
+
+- 📱 Lost device
+- 🔢 PIN reset
+- 👁️ Biometric fallback
+- 🔑 TAP-based bootstrap/recovery
+
+### 12.2 🚨 Break-glass posture
+
+- → Dedicated emergency identities only.
+- → Strong methods only.
+- → Alert and review **every** usage event.
+
+### 12.3 ❌ Operational anti-patterns
+
+- 🚫 No owner for recovery process
+- 🚫 Open-ended AAL2 exceptions
+- 🚫 Support team not trained before rollout
+
+---
+
+## 13) 🔍 Troubleshooting deep cuts
+
+### 13.1 ⚡ Fast local checks
 
 ```powershell
 dsregcmd /status
@@ -774,77 +781,77 @@ certutil -v -store my
 
 | Symptom | Likely cause | Investigation focus |
 |---|---|---|
-| Provisioning not triggering | Policy/scope/prereq mismatch | Join state + policy assignment |
-| Random password prompts | Lifecycle misalignment | Password policy + hybrid dependency path |
-| Works for subset only | Scoping inconsistency | Group assignment and CA targeting |
-| Sensitive app blocked | Grant controls unmet | CA decision details |
+| ❌ Provisioning not triggering | Policy/scope/prereq mismatch | Join state + policy assignment |
+| ❌ Random password prompts | Lifecycle misalignment | Password policy + hybrid dependency path |
+| ❌ Works for subset only | Scoping inconsistency | Group assignment and CA targeting |
+| ❌ Sensitive app blocked | Grant controls unmet | CA decision details |
 
 ---
 
-## 14) Metrics that prove security, not activity
+## 14) 📊 Metrics that prove security, not activity
 
 Track posture outcomes monthly.
 
-| Metric | Direction |
+| Metric | Target direction |
 |---|---|
-| WHfB enrollment rate | Up |
-| Privileged users on AAL3 methods | Up |
-| Weak-method exception count | Down |
-| Exception overdue count | Down |
-| Recovery MTTR | Down |
+| WHfB enrollment rate | 📈 Up |
+| Privileged users on AAL3 methods | 📈 Up |
+| Weak-method exception count | 📉 Down |
+| Exception overdue count | 📉 Down |
+| Recovery MTTR | 📉 Down |
 
 ### Governance scorecard example
 
 ```text
 Security governance snapshot
 
-AAL3 privileged coverage       95%   OK
-AAL3 overall coverage          71%   Improving
-Open AAL2 exceptions           12    Watch
-Overdue exceptions             2     Action required
-Break-glass usage (30d)        0     OK
+AAL3 privileged coverage       95%   ✅ OK
+AAL3 overall coverage          71%   📈 Improving
+Open AAL2 exceptions           12    ⚠️  Watch
+Overdue exceptions              2    🚨 Action required
+Break-glass usage (30d)         0    ✅ OK
 ```
 
 ---
 
-## 15) What changed in 2025/2026
+## 15) 📰 What changed in 2025/2026
 
-- NIST moved baseline language forward to SP 800-63B-4 (final, July 2025).
-- Syncable authenticator/passkey guidance is now mainstream design input.
-- Microsoft guidance continues to emphasize architecture and policy composition over prompt count.
-- Authentication Strength + Conditional Access remains the practical enforcement mechanism for high-assurance access patterns.
+- 🟢 **NIST SP 800-63B-4** (final, July 2025) is now the baseline — supersedes 63B-upd2.
+- 🟢 Syncable authenticator/passkey guidance is now **mainstream design input**.
+- 🟢 Microsoft guidance continues to emphasize **architecture and policy composition** over prompt count.
+- 🟢 Authentication Strength + Conditional Access remains the practical enforcement mechanism for high-assurance access patterns.
 
 ---
 
-## 16) References (official)
+## 16) 📚 References (official)
 
 All links below were validated as reachable at publication time.
 
 ### Microsoft Learn
 
-- https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/
-- https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/how-it-works
-- https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/deploy/
-- https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-strengths
-- https://learn.microsoft.com/en-us/entra/identity/conditional-access/overview
-- https://learn.microsoft.com/en-us/entra/identity/authentication/howto-authentication-temporary-access-pass
+- 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/
+- 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/how-it-works
+- 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/deploy/
+- 🔗 https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-strengths
+- 🔗 https://learn.microsoft.com/en-us/entra/identity/conditional-access/overview
+- 🔗 https://learn.microsoft.com/en-us/entra/identity/authentication/howto-authentication-temporary-access-pass
 
 ### NIST
 
-- https://csrc.nist.gov/pubs/sp/800/63/b/4/final
-- https://csrc.nist.gov/pubs/sp/800/63/b/sup/final
+- 🔗 https://csrc.nist.gov/pubs/sp/800/63/b/4/final *(current baseline)*
+- 🔗 https://csrc.nist.gov/pubs/sp/800/63/b/sup/final
 
 ### Legacy note
 
-- https://csrc.nist.gov/pubs/sp/800/63/b/upd2/final (reachable but superseded by 63B-4)
+- ⚠️ https://csrc.nist.gov/pubs/sp/800/63/b/upd2/final *(reachable but superseded by 63B-4)*
 
 ---
 
-## Final recommendation
+## 🎯 Final recommendation
 
 If your program objective is strong authentication at enterprise scale:
 
-1. enforce phishing-resistant requirements on privileged access now,
-2. scale WHfB for managed Windows + FIDO2 for portability/cross-platform,
-3. govern exceptions as temporary debt with owners and deadlines,
-4. treat recovery as security engineering, not helpdesk afterthought.
+1. 🚨 **Enforce phishing-resistant requirements** on privileged access now.
+2. 📱 **Scale WHfB** for managed Windows + FIDO2 for portability/cross-platform.
+3. 📋 **Govern exceptions as temporary debt** — with owners and deadlines.
+4. 🔧 **Treat recovery as security engineering**, not helpdesk afterthought.
