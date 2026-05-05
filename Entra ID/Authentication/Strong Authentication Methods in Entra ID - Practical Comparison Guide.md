@@ -14,9 +14,12 @@ Short version you can use in a client discussion:
 	- Certificate-Based Authentication (CBA)
 	- Security level: **AAL3**
 
+
 - 📲 **Priority 2: Microsoft Authenticator push**
 	- Require number matching
+	- This is MFA, not strict passwordless
 	- Security level: **AAL2** (good mainstream default)
+	- **Authenticator phone sign-in** is a separate passwordless mode (not FIDO2)
 
 - 🔢 **Priority 3: OATH TOTP**
 	- Useful fallback when needed
@@ -100,7 +103,8 @@ Practical rule: in Conditional Access, always use **Authentication Strength** �
 | FIDO2 Security Keys / Passkeys | ⭐⭐⭐⭐⭐ | 🟢 Very high (5/5) | Fast (tap + PIN/biometric) | Compatible key, modern browser/OS, FIDO2 policy | Very strong, no shared secret, great for admins | Hardware cost, key logistics, loss/replacement handling | Admins, privileged access, high-risk environments |
 | Windows Hello for Business (WHfB) | ⭐⭐⭐⭐⭐ | 🟢 Very high (5/5) | Excellent on managed endpoints | Compliant/joined device, TPM recommended, Intune/GPO config | Passwordless, excellent UX, device-bound credential | Depends on device posture, broader rollout effort | Internal users on company-managed devices |
 | Certificate-Based Authentication (CBA) | ⭐⭐⭐⭐ | 🟢 High to very high (4-5/5) | Varies by setup | PKI, user certificates, cert lifecycle processes | Robust, compliance-friendly in regulated sectors | PKI complexity, heavier operations | Regulated environments, smartcard/CAC scenarios |
-| Microsoft Authenticator (push + number matching) | ⭐⭐⭐⭐ | 🟡 Medium to high (3-4/5) | Very good for most users | Smartphone, Authenticator app, proper policy tuning | Easy to deploy, fast adoption, strong balance | MFA fatigue risk if misconfigured, mobile dependency | Large user populations, transition to passwordless |
+| Microsoft Authenticator push (number matching) | ⭐⭐⭐⭐ | 🟡 Medium to high (3-4/5) | Very good for most users | Smartphone, Authenticator app, proper policy tuning | Easy to deploy, fast adoption, strong balance | MFA fatigue risk if misconfigured, mobile dependency | Large user populations, practical MFA baseline |
+| Microsoft Authenticator phone sign-in (passwordless) | ⭐⭐⭐⭐ | 🟡 Medium to high (3-4/5) | Good | Smartphone, Authenticator app, phone sign-in enabled, user registration completed | Passwordless user flow, reduced password exposure, familiar mobile UX | Device dependency, recovery process required if phone is lost | Passwordless transition for non-privileged populations |
 | OATH TOTP (app/hardware token) | ⭐⭐⭐ | 🟠 Medium (3/5) | Good | TOTP app or hardware token, enrollment | Works offline, simple fallback | Phishable, more friction, reset overhead | Backup method, users with limited mobile data |
 | Temporary Access Pass (TAP) | ⭐⭐⭐ | 🔵 Context-dependent (temporary method) | Good for onboarding | TAP policy enabled, HR/IT process | Great for passwordless bootstrap and recovery | Temporary by design, risky if validity window is too broad | Onboarding, break-fix, secure reset |
 | SMS / Voice OTP | ⭐⭐ | 🔴 Low to medium (2/5) | Familiar but fragile | Valid phone number, telecom availability | Maximum compatibility | SIM swap risk, interception risk, lower trust level | Temporary fallback only |
@@ -112,7 +116,8 @@ Practical rule: in Conditional Access, always use **Authentication Strength** �
 | Tier | Methods | Phishing-resistant | NIST level | Recommended scope |
 |---|---|---|---|---|
 | 🟢 **Phishing-resistant** | FIDO2 / Passkeys, WHfB, CBA | ✅ Yes | AAL3 | Admins, privileged access, sensitive workloads |
-| 🔵 **Strong mainstream** | Microsoft Authenticator push (number matching) | ⚠️ Partial | AAL2 | Large user populations, phased modernization |
+| 🔵 **Strong mainstream (MFA)** | Microsoft Authenticator push (number matching) | ⚠️ Partial | AAL2 | Large user populations, phased modernization |
+| 🟦 **Strong mainstream (passwordless app)** | Microsoft Authenticator phone sign-in | ⚠️ Partial | AAL2 | Passwordless transition when FIDO2/WHfB is not yet generalized |
 | 🟡 **Backup** | OATH TOTP (app or hardware token) | ❌ No | AAL2 | Constrained environments, fallback only |
 | 🟣 **Temporary bootstrap** | Temporary Access Pass (TAP) | — Contextual | — | Onboarding, recovery — never permanent |
 | 🔴 **Legacy fallback** | SMS / Voice OTP | ❌ No | AAL1 | Emergency fallback, tightly scoped, with an exit plan |
@@ -227,7 +232,7 @@ Quick take: extremely strong if your PKI game is mature.
 
 ---
 
-### 3.4 Microsoft Authenticator (push + number matching)
+### 3.4 Microsoft Authenticator push (number matching)
 
 Quick take: the practical default for large populations and phased modernization.
 
@@ -249,7 +254,30 @@ Quick take: the practical default for large populations and phased modernization
 
 ---
 
-### 3.5 OATH TOTP (third-party apps or hardware token)
+### 3.5 Microsoft Authenticator phone sign-in (passwordless)
+
+Quick take: a practical passwordless option for users not yet on WHfB/FIDO2, but not equivalent to phishing-resistant methods.
+
+#### ✅ Why it is useful
+
+- Passwordless user experience with a familiar mobile app
+- Reduces daily password exposure and password-related friction
+- Easy to position as a transition step toward stronger passwordless methods
+
+#### ⚠️ Watch-outs
+
+- Not FIDO2 and not phishing-resistant at the same level as WHfB/FIDO2/CBA
+- Strongly dependent on smartphone lifecycle and recovery readiness
+- Requires clear guidance so users and stakeholders do not confuse it with Authenticator push MFA
+
+#### 🎯 Best fit
+
+- General user populations during passwordless transition
+- Organizations not ready for full WHfB/FIDO2 coverage yet
+
+---
+
+### 3.6 OATH TOTP (third-party apps or hardware token)
 
 Quick take: useful backup path, but not where you want to stop.
 
@@ -270,7 +298,7 @@ Quick take: useful backup path, but not where you want to stop.
 
 ---
 
-### 3.6 Temporary Access Pass (TAP)
+### 3.7 Temporary Access Pass (TAP)
 
 Quick take: fantastic bootstrap tool, risky if governance is loose.
 
@@ -291,7 +319,7 @@ Quick take: fantastic bootstrap tool, risky if governance is loose.
 
 ---
 
-### 3.7 SMS and Voice OTP
+### 3.8 SMS and Voice OTP
 
 Quick take: keep only as a tightly controlled emergency fallback.
 
