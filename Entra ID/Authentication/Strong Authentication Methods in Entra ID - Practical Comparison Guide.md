@@ -176,6 +176,13 @@ In practice, this can be a hardware security key or a synced/device-bound passke
 - Coexists with WHfB: use WHfB on managed Windows endpoints and FIDO2/Passkeys where WHfB is not available or not practical
 - Immediate priority for Admin/IT/SecOps, admin portals, PIM activation, and critical consoles
 
+#### 🧠 Passkey model nuance (advanced)
+
+- **Device-bound passkey**: key material stays tied to one device/authenticator (strong local control model).
+- **Synced passkey**: credential portability improves UX and recovery, but governance depends more on ecosystem and account/device protection.
+- **Hardware security key**: strongest portability with explicit possession control and clear break-glass handling.
+- Practical policy approach: prioritize phishing resistance first, then choose passkey model per population, device posture, and recovery maturity.
+
 ---
 
 ### 3.2 Windows Hello for Business (WHfB)
@@ -209,6 +216,13 @@ It is phishing-resistant by design when deployed with proper device and policy c
 - **TPM is non-negotiable** for strong assurance: enforce via Intune/GPO.
 - **PIN and biometrics are local unlock methods** for the same TPM-protected key (not stacked sequential prompts).
 - **Policy quality determines outcome**: require compliant devices, enforce PIN policy, and define recovery/reset operations.
+
+#### 🧠 WHfB factor model (advanced)
+
+- **Have**: TPM-backed private key bound to the device.
+- **Know / Are**: user unlocks with PIN *or* biometrics.
+- **Why not 3 sequential prompts?** Because PIN and biometrics are alternative local gestures to unlock the same key, not cumulative remote challenges.
+- Practical outcome: the assurance is achieved by architecture (hardware-bound key + local user verification), not by multiplying user prompts.
 
 ---
 
