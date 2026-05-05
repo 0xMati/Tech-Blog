@@ -14,7 +14,21 @@ The core principle is simple: **never expose a higher-tier credential on a lower
 | **Tier 1** | Management Plane | Server infrastructure — anything that runs business applications and services | Application servers, file servers, SQL servers, Exchange, SCCM/MECM, Hyper-V/VMware hosts, print servers |
 | **Tier 2** | User Access | End-user devices — where users perform day-to-day work | Workstations, laptops, kiosks, thin clients |
 
-### Key Rule: Credentials Never Flow Downward
+```mermaid
+flowchart TD
+    T0["Tier 0\nControl Plane\n(AD, DC, PKI)"]
+    T1["Tier 1\nManagement Plane\n(Servers, Apps)"]
+    T2["Tier 2\nUser Access\n(Workstations)"]
+
+    T0 -->|Admin downflow forbidden| T1
+    T1 -->|Admin downflow forbidden| T2
+
+    style T0 fill:#fde68a,stroke:#92400e,stroke-width:2px
+    style T1 fill:#bfdbfe,stroke:#1e40af,stroke-width:2px
+    style T2 fill:#bbf7d0,stroke:#166534,stroke-width:2px
+```
+
+### 🔒 Key Rule: Credentials Never Flow Downward
 
 ```
 Tier 0 credentials → ONLY on Tier 0 systems
@@ -26,7 +40,7 @@ Tier 2 credentials → ONLY on Tier 2 systems
 ❌ A Tier 2 admin logging into a Domain Controller = access denied (enforced)
 ```
 
-### Why This Matters
+### ⚠️ Why This Matters
 
 Without tiering, a single compromised workstation can lead to full domain compromise in minutes:
 
@@ -37,9 +51,31 @@ Without tiering, a single compromised workstation can lead to full domain compro
 
 Tiering breaks this chain by ensuring that **Domain Admin credentials are never present on workstations**.
 
+## 🗂️ Quick Navigation
+
+- [🧭 Phase 0 — Prerequisites and Scoping](#-phase-0--prerequisites-and-scoping)
+- [🏗️ Phase 1 — OU Structure and Group Model Design](#-phase-1--ou-structure-and-group-model-design)
+- [🛡️ Phase 2 — Account Isolation and Logon Restrictions](#-phase-2--account-isolation-and-logon-restrictions)
+- [💻 Phase 3 — Privileged Access Workstations (PAW)](#-phase-3--privileged-access-workstations-paw)
+- [⚙️ Phase 4 — GPO Hardening Per Tier](#-phase-4--gpo-hardening-per-tier)
+- [🔐 Phase 5 — Tier 0 Object Protection](#-phase-5--tier-0-object-protection)
+- [📡 Phase 6 — Monitoring and Detection](#-phase-6--monitoring-and-detection)
+- [🔁 Phase 7 — Operational Procedures and Continuous Improvement](#-phase-7--operational-procedures-and-continuous-improvement)
+- [🧩 Phase 8 — Granular Administration: N-Level Model and Profile-Based Delegation](#-phase-8--granular-administration-n-level-model-and-profile-based-delegation)
+- [📌 Summary — Prioritized Implementation Order](#-summary--prioritized-implementation-order)
+- [🚧 Common Pitfalls and Lessons Learned](#-common-pitfalls-and-lessons-learned)
+- [📚 References](#-references)
+
+### 🎨 Reading Legend
+
+- 🔴 Critical: security boundary or compromise risk
+- 🟡 Warning: high chance of lockout or operational breakage
+- 🔵 Important: deployment constraint or sequencing requirement
+- 🟢 Recommendation: best practice to improve resilience
+
 ---
 
-## Phase 0 — Prerequisites and Scoping
+## 🧭 Phase 0 — Prerequisites and Scoping
 
 Before touching Active Directory, you need a thorough understanding of your current environment and executive support for the project. This phase is about discovery, classification, and getting organizational buy-in.
 
@@ -76,7 +112,7 @@ These are systems that can **directly control Active Directory**. If compromised
 | MIM (Microsoft Identity Manager) servers | Can manage identities, group memberships, and provision privileged accounts in AD |
 | RADIUS/NPS servers authenticating DC access | Control who can authenticate to Tier 0 |
 
-> **Critical:** Any system that can **deploy code to**, **restore**, or **manage** a Tier 0 asset is itself Tier 0. This is the transitive trust principle.
+> **🔴 Critical:** Any system that can **deploy code to**, **restore**, or **manage** a Tier 0 asset is itself Tier 0. This is the transitive trust principle.
 
 #### Tier 1 Assets — Servers and Applications
 
@@ -302,7 +338,7 @@ Each forest is an independent security boundary. Tiering must be implemented **p
 - Shared backup infrastructure across forests makes backup servers T0 for all forests
 - Shared PAM vaults (CyberArk) holding credentials for both forests are T0 for both
 
-### Phase 0 Checklist
+### ✅ Phase 0 Checklist
 
 - [ ] Executive sponsorship obtained (CISO/CIO mandate)
 - [ ] RACI matrix created and communicated to all teams
@@ -326,7 +362,7 @@ Each forest is an independent security boundary. Tiering must be implemented **p
 
 ---
 
-## Phase 1 — OU Structure and Group Model Design
+## 🏗️ Phase 1 — OU Structure and Group Model Design
 
 This phase defines the organizational backbone of the tiering model. The OU structure determines where objects live, how GPOs are applied, and how delegation works. The group model determines who has access to what.
 
@@ -430,7 +466,7 @@ New-ADOrganizationalUnit -Name "Users"     -Path $Disabled.DistinguishedName
 New-ADOrganizationalUnit -Name "Computers" -Path $Disabled.DistinguishedName
 ```
 
-> **Important:** Do NOT move Domain Controllers out of the default `Domain Controllers` OU. The `Default Domain Controllers Policy` GPO is linked there and is required for proper DC operation.
+> **🔵 Important:** Do NOT move Domain Controllers out of the default `Domain Controllers` OU. The `Default Domain Controllers Policy` GPO is linked there and is required for proper DC operation.
 
 #### Why Redirect the Default Computer Container?
 
@@ -632,7 +668,7 @@ $DCsOU = "OU=Domain Controllers,$((Get-ADDomain).DistinguishedName)"
     Format-Table -AutoSize
 ```
 
-### Phase 1 Checklist
+### ✅ Phase 1 Checklist
 
 - [ ] Tiering OU structure created (Tier 0, Tier 1, Tier 2, Quarantine, Standard Users, Disabled)
 - [ ] Sub-OUs created for Accounts, Groups, Service Accounts, Servers/Workstations, PAW per tier
@@ -655,7 +691,7 @@ $DCsOU = "OU=Domain Controllers,$((Get-ADDomain).DistinguishedName)"
 
 ---
 
-## Phase 2 — Account Isolation and Logon Restrictions
+## 🛡️ Phase 2 — Account Isolation and Logon Restrictions
 
 This is the phase that actually enforces tiering. Without logon restrictions, the OU structure is just cosmetic.
 
@@ -781,9 +817,9 @@ For each deny GPO, configure these settings under:
 | Deny log on as a batch job | `DOMAIN\T0-DenyLogon-T2` |
 | Deny log on as a service | `DOMAIN\T0-DenyLogon-T2` |
 
-> **Warning:** "Deny" rights always override "Allow" rights. A user in both a deny and an allow group will be denied. Test carefully before applying broadly.
+> **🟡 Warning:** "Deny" rights always override "Allow" rights. A user in both a deny and an allow group will be denied. Test carefully before applying broadly.
 
-> **Warning:** Do NOT add `Domain Admins` or `Enterprise Admins` to deny groups on DCs. This will lock you out.
+> **🟡 Warning:** Do NOT add `Domain Admins` or `Enterprise Admins` to deny groups on DCs. This will lock you out.
 
 #### Testing Strategy
 
@@ -860,7 +896,7 @@ foreach ($comp in $T0Computers) {
 }
 ```
 
-> **Recommendation:** Deploy Authentication Policies in **audit mode** first. Monitor Event ID **105** (Authentication Policy) and **106** (Authentication Silo) in the `AuthenticationPolicyFailures-DomainController` event log on DCs.
+> **🟢 Recommendation:** Deploy Authentication Policies in **audit mode** first. Monitor Event ID **105** (Authentication Policy) and **106** (Authentication Silo) in the `AuthenticationPolicyFailures-DomainController` event log on DCs.
 
 ### 2.4 — Just-In-Time (JIT) Administration
 
@@ -1109,7 +1145,7 @@ Every secret must have a designated home. If it's not in a vault, it's unmanaged
 | 9 | Enable audit logging and forward to SIEM | Week 6 |
 | 10 | Train all admins on vault usage per tier | Week 7 |
 
-### Phase 2 Checklist
+### ✅ Phase 2 Checklist
 
 - [ ] Naming convention for tiered admin accounts defined and documented
 - [ ] All Tier 0 admin accounts created and placed in `Tier 0\Accounts`
@@ -1151,7 +1187,7 @@ Every secret must have a designated home. If it's not in a vault, it's unmanaged
 
 ---
 
-## Phase 3 — Privileged Access Workstations (PAW)
+## 💻 Phase 3 — Privileged Access Workstations (PAW)
 
 PAWs are dedicated, hardened machines from which administrators perform privileged tasks. They ensure that Tier 0 credentials are only ever exposed on Tier 0-trusted hardware.
 
@@ -1313,7 +1349,7 @@ New-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Lsa" `
 mstsc /restrictedadmin /v:jumpserver01.domain.local
 ```
 
-> **Important:** Restricted Admin Mode should only be used as a **last resort** when Remote Credential Guard is not available. It logs you in as a local administrator on the target, with no access to domain resources from that session. This makes AD administration nearly impossible (no MMC snap-ins, no PowerShell remoting to other servers, no LDAP queries with your identity).
+> **🔵 Important:** Restricted Admin Mode should only be used as a **last resort** when Remote Credential Guard is not available. It logs you in as a local administrator on the target, with no access to domain resources from that session. This makes AD administration nearly impossible (no MMC snap-ins, no PowerShell remoting to other servers, no LDAP queries with your identity).
 
 ### 3.5 — Remote Credential Guard vs. Restricted Admin Mode
 
@@ -1344,7 +1380,7 @@ Both prevent credential caching on the remote machine, but **Remote Credential G
 
 > **Note:** If you set the GPO mode to "Require Remote Credential Guard" and an admin tries to RDP to a Server 2012 R2 machine, the connection will be refused. This is intentional — it forces the organization to migrate legacy servers or use an explicit exception path.
 
-### Phase 3 Checklist
+### ✅ Phase 3 Checklist
 
 - [ ] Tier 0 PAW hardware procured (physical machines, TPM 2.0, Secure Boot, VBS-capable)
 - [ ] Clean OS installed from trusted media (not from standard workstation image)
@@ -1369,7 +1405,7 @@ Both prevent credential caching on the remote machine, but **Remote Credential G
 
 ---
 
-## Phase 4 — GPO Hardening Per Tier
+## ⚙️ Phase 4 — GPO Hardening Per Tier
 
 Each tier receives a set of security GPOs that harden the machines within that tier. These GPOs are in addition to the logon restriction GPOs from Phase 2.
 
@@ -1472,11 +1508,11 @@ System:
   └── Audit Security System Extension = Success and Failure
 ```
 
-> **Important:** Also force Advanced Audit Policy to override legacy audit policy:
+> **🔵 Important:** Also force Advanced Audit Policy to override legacy audit policy:
 > `Computer Configuration → Policies → Windows Settings → Security Settings → Local Policies → Security Options`
 > `Audit: Force audit policy subcategory settings (Windows Vista or later) to override audit policy category settings = Enabled`
 
-> **Important:** Increase the Security Event Log size (default 20 MB is far too small):
+> **🔵 Important:** Increase the Security Event Log size (default 20 MB is far too small):
 > `Computer Configuration → Policies → Windows Settings → Security Settings → Event Log`
 > `Maximum Security Log size = 1048576 KB (1 GB)` or more
 
@@ -1647,7 +1683,7 @@ Computer Configuration → Policies → Administrative Templates → System → 
 - Configure authorized password decryptors: <Tier-specific admin group>
 ```
 
-> **Critical:** LAPS read permissions must follow tiering. T2-Admins can read T2 LAPS passwords. T1-Admins can read T1 LAPS passwords. T0-Admins can read T0 LAPS passwords. **Never** grant cross-tier LAPS read access.
+> **🔴 Critical:** LAPS read permissions must follow tiering. T2-Admins can read T2 LAPS passwords. T1-Admins can read T1 LAPS passwords. T0-Admins can read T0 LAPS passwords. **Never** grant cross-tier LAPS read access.
 
 ### 4.5 — NTLM Restriction Roadmap
 
@@ -1804,7 +1840,7 @@ Set-GPInheritance -Target $T0OU -IsBlocked Yes
 Get-GPInheritance -Target $T0OU | Select-Object Path, GpoInheritanceBlocked
 ```
 
-> **Important:** When you block inheritance on Tier 0, you must explicitly link all necessary GPOs to the T0 OU (password policy via Fine-Grained Password Policy, audit policy, hardening baseline). Nothing from above will flow down.
+> **🔵 Important:** When you block inheritance on Tier 0, you must explicitly link all necessary GPOs to the T0 OU (password policy via Fine-Grained Password Policy, audit policy, hardening baseline). Nothing from above will flow down.
 
 #### Loopback Processing for PAW OUs
 
@@ -1860,7 +1896,7 @@ Get-GPInheritance -Target "OU=Tier 0,$((Get-ADDomain).DistinguishedName)" |
     Select-Object Path, GpoInheritanceBlocked, @{N='InheritedGPOs';E={$_.InheritedGpoLinks.DisplayName -join ', '}}
 ```
 
-### Phase 4 Checklist
+### ✅ Phase 4 Checklist
 
 - [ ] DC hardening GPO created and linked to Domain Controllers OU
 - [ ] Credential Guard **NOT** enabled on DCs (not recommended per Microsoft)
@@ -1909,7 +1945,7 @@ Get-GPInheritance -Target "OU=Tier 0,$((Get-ADDomain).DistinguishedName)" |
 
 ---
 
-## Phase 5 — Tier 0 Object Protection
+## 🔐 Phase 5 — Tier 0 Object Protection
 
 Even with logon restrictions and PAWs, Active Directory objects must be protected against unauthorized modification. An attacker with write access to a Tier 0 object can escalate privileges without ever logging into a DC.
 
@@ -2036,7 +2072,7 @@ Write-Host "Second krbtgt password rotation complete at $(Get-Date)" -Foreground
 
 > **Why twice?** Active Directory keeps the current and previous krbtgt password hashes. The first rotation pushes the old hash to "previous." The second rotation pushes the compromise hash completely out. You **must** wait between rotations to avoid breaking all existing Kerberos tickets.
 
-> **Recommendation:** Rotate krbtgt every **180 days** at minimum. Some organizations rotate every 90 days.
+> **🟢 Recommendation:** Rotate krbtgt every **180 days** at minimum. Some organizations rotate every 90 days.
 
 #### Monitor for Golden Ticket Attacks
 
@@ -2206,7 +2242,7 @@ Tier 0 backup data requirements:
 | **Windows Server Backup** | Native backup on DCs — simplest option. Backup files stored locally or on isolated T0 share. Ensure share permissions are T0-only. |
 | **Veritas NetBackup** | Master server managing DC backups = T0. Use separate policy domains per tier. |
 
-> **Recommendation:** For environments where separate backup infrastructure per tier is too costly, **Windows Server Backup on DCs writing to an isolated T0 share** is a practical, low-cost approach that avoids introducing third-party agents on DCs entirely.
+> **🟢 Recommendation:** For environments where separate backup infrastructure per tier is too costly, **Windows Server Backup on DCs writing to an isolated T0 share** is a practical, low-cost approach that avoids introducing third-party agents on DCs entirely.
 
 #### Validating Backup Tiering
 
@@ -2240,7 +2276,7 @@ foreach ($acct in $backupAccounts) {
 }
 ```
 
-### Phase 5 Checklist
+### ✅ Phase 5 Checklist
 
 - [ ] ACLs on domain root object audited — no non-admin `WriteDACL`/`GenericAll`
 - [ ] ACLs on AdminSDHolder audited and cleaned
@@ -2279,7 +2315,7 @@ foreach ($acct in $backupAccounts) {
 
 ---
 
-## Phase 6 — Monitoring and Detection
+## 📡 Phase 6 — Monitoring and Detection
 
 Tiering is only effective if you can **detect** and **respond** to violations and attacks. This phase deploys the detection layer.
 
@@ -2369,7 +2405,7 @@ Tier 1 machines → WEF Collector (Tier 1) → SIEM
 Tier 2 machines → WEF Collector (Tier 2) → SIEM
 ```
 
-> **Important:** If you use a single WEF collector for all tiers, it must be Tier 0 (because it receives Tier 0 events and credentials from Tier 0 machines).
+> **🔵 Important:** If you use a single WEF collector for all tiers, it must be Tier 0 (because it receives Tier 0 events and credentials from Tier 0 machines).
 
 **Key events to collect and alert on:**
 
@@ -2408,7 +2444,7 @@ Track these metrics monthly to measure tiering health:
 | BloodHound: paths from T2 to T0 | 0 | Quarterly BloodHound assessment |
 | MATI score | ≥ 80/100 | Quarterly [MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector) assessment |
 
-### Phase 6 Checklist
+### ✅ Phase 6 Checklist
 
 - [ ] Tiering violation SIEM rule deployed (T0 account on non-T0 machine)
 - [ ] Tiering violation SIEM rule deployed (T1 account on T2 machine)
@@ -2430,7 +2466,7 @@ Track these metrics monthly to measure tiering health:
 
 ---
 
-## Phase 7 — Operational Procedures and Continuous Improvement
+## 🔁 Phase 7 — Operational Procedures and Continuous Improvement
 
 Tiering is not a one-time project. Without ongoing maintenance, the model degrades over time as exceptions accumulate and new systems are deployed without classification.
 
@@ -2644,7 +2680,7 @@ If the organization uses or plans to use Entra ID:
 | **Entra ID Connect as T0** | Already classified; ensure the connect server is in T0 OU with T0 hardening |
 | **Passwordless for T0** | FIDO2 security keys + Entra for phishing-resistant MFA on PAWs |
 
-### Phase 7 Checklist
+### ✅ Phase 7 Checklist
 
 - [ ] Administrator onboarding procedure documented (account creation, group assignment, PAW issuance)
 - [ ] Administrator offboarding procedure documented (disable accounts, remove from groups, recover PAW)
@@ -2667,7 +2703,7 @@ If the organization uses or plans to use Entra ID:
 
 ---
 
-## Phase 8 — Granular Administration: N-Level Model and Profile-Based Delegation
+## 🧩 Phase 8 — Granular Administration: N-Level Model and Profile-Based Delegation
 
 The three-tier model (T0/T1/T2) defines **where** credentials can be used. It does not define **what** each administrator can do within a tier. In a large or medium-sized team, a flat `T1-Admins` group where every member can administer every server is too broad. Conversely, creating a separate Authentication Silo for every role is overkill and operationally unsustainable.
 
@@ -3198,6 +3234,15 @@ foreach ($server in $AllServers) {
 
 ### 8.9 — How N-Levels Translate to JIT (Phase 2.4 Revisited)
 
+```mermaid
+flowchart LR
+    REQ["📝 JIT Request"] --> APR["✅ Approval"]
+    APR --> ELEV["⏱️ TTL Membership\n(Add-ADGroupMember -MemberTimeToLive)"]
+    ELEV --> TASK["🛠️ Privileged Task"]
+    TASK --> EXP["⌛ TTL Expiry\nMembership removed automatically"]
+    EXP --> AUD["📋 Audit Trail\nwho / group / approver / duration"]
+```
+
 With N-levels, JIT becomes more surgical. Instead of granting temporary membership to `Domain Admins` directly, the workflow targets the **narrowest group that satisfies the need**:
 
 | Scenario | JIT Target Group | TTL | Approval Required |
@@ -3224,7 +3269,7 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 
 ---
 
-### Phase 8 Checklist
+### ✅ Phase 8 Checklist
 
 - [ ] N-level model defined for each tier (N1/N2/N3 scope and population documented)
 - [ ] Platform taxonomy established (which platforms exist at T1, assigned to which N-level)
@@ -3254,7 +3299,7 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 
 ---
 
-## Summary — Prioritized Implementation Order
+## 📌 Summary — Prioritized Implementation Order
 
 | Priority | Phase | Actions | Impact |
 |----------|-------|---------|--------|
@@ -3268,7 +3313,7 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 
 ---
 
-## Common Pitfalls and Lessons Learned
+## 🚧 Common Pitfalls and Lessons Learned
 
 | Pitfall | Explanation | Mitigation |
 |---------|-------------|------------|
@@ -3290,7 +3335,7 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 
 ---
 
-## References
+## 📚 References
 
 - [Microsoft: Securing Privileged Access](https://aka.ms/SPA)
 - [Microsoft: Privileged Access Workstations](https://aka.ms/PAW)
