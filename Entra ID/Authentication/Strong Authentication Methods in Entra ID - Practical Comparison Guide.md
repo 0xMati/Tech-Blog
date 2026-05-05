@@ -121,16 +121,16 @@ Much more defensible than one global "require MFA" switch.
 
 ## 2. Quick comparison table 📊
 
-| Method | Quick score | Phishing resistance level | User experience | Prerequisites | Pros | Cons | Best use case |
-|---|---|---|---|---|---|---|---|
-| FIDO2 Security Keys / Passkeys | ⭐⭐⭐⭐⭐ | 🟢 Very high (5/5) | Fast (tap + PIN/biometric) | Compatible key, modern browser/OS, FIDO2 policy | Very strong, no shared secret, great for admins | Hardware cost, key logistics, loss/replacement handling | Admins, privileged access, high-risk environments |
-| Windows Hello for Business (WHfB) | ⭐⭐⭐⭐⭐ | 🟢 Very high (5/5) | Excellent on managed endpoints | Compliant/joined device, TPM recommended, Intune/GPO config | Passwordless, excellent UX, device-bound credential | Depends on device posture, broader rollout effort | Internal users on company-managed devices |
-| Certificate-Based Authentication (CBA) | ⭐⭐⭐⭐ | 🟢 High to very high (4-5/5) | Varies by setup | PKI, user certificates, cert lifecycle processes | Robust, compliance-friendly in regulated sectors | PKI complexity, heavier operations | Regulated environments, smartcard/CAC scenarios |
-| Microsoft Authenticator push (number matching) | ⭐⭐⭐⭐ | 🟡 Medium to high (3-4/5) | Very good for most users | Smartphone, Authenticator app, proper policy tuning | Easy to deploy, fast adoption, strong balance | MFA fatigue risk if misconfigured, mobile dependency | Large user populations, practical MFA baseline |
-| Microsoft Authenticator phone sign-in (passwordless) | ⭐⭐⭐⭐ | 🟡 Medium to high (3-4/5) | Good | Smartphone, Authenticator app, phone sign-in enabled, user registration completed | Passwordless user flow, reduced password exposure, familiar mobile UX | Device dependency, recovery process required if phone is lost | Passwordless transition for non-privileged populations |
-| OATH TOTP (app/hardware token) | ⭐⭐⭐ | 🟠 Medium (3/5) | Good | TOTP app or hardware token, enrollment | Works offline, simple fallback | Phishable, more friction, reset overhead | Backup method, users with limited mobile data |
-| Temporary Access Pass (TAP) | ⭐⭐⭐ | 🔵 Context-dependent (temporary method) | Good for onboarding | TAP policy enabled, HR/IT process | Great for passwordless bootstrap and recovery | Temporary by design, risky if validity window is too broad | Onboarding, break-fix, secure reset |
-| SMS / Voice OTP | ⭐⭐ | 🔴 Low to medium (2/5) | Familiar but fragile | Valid phone number, telecom availability | Maximum compatibility | SIM swap risk, interception risk, lower trust level | Temporary fallback only |
+| Method | Assurance | AAL | Strategic status | User experience | Prerequisites | Pros | Cons | Best use |
+|---|---|---|---|---|---|---|---|---|
+| 🔑 **FIDO2 Security Keys / Passkeys** | 🟢 Very high (5/5) | **AAL3** | ✅ **Target** | Fast (tap + PIN/biometric) | Compatible key, modern browser/OS, FIDO2 policy | Very strong, no shared secret, ideal for admins | Hardware lifecycle (stock, loss, replacement) | Admins, privileged access, high-risk environments |
+| 💻 **Windows Hello for Business (WHfB)** | 🟢 Very high (5/5) | **AAL3** | ✅ **Target** | Excellent on managed endpoints | Compliant/joined device, TPM recommended, Intune/GPO config | Passwordless, excellent UX, device-bound credential | Depends on device posture and rollout quality | Managed internal users, long-term passwordless |
+| 📜 **Certificate-Based Authentication (CBA)** | 🟢 High to very high (4-5/5) | **AAL3** | ✅ **Target** | Varies by setup | PKI, user certificates, lifecycle processes | Robust, compliance-friendly in regulated sectors | PKI complexity and operational burden | Regulated sectors, smartcard/CAC scenarios |
+| 📱 **Authenticator push (number matching)** | 🟡 Medium to high (3-4/5) | **AAL2** | 🔄 **Transition** | Very good for most users | Smartphone, Authenticator app, policy tuning | Easy to deploy, fast adoption, strong balance | MFA fatigue risk if policy is loose | Practical baseline for large populations |
+| 📱 **Authenticator phone sign-in (passwordless)** | 🟡 Medium to high (3-4/5) | **AAL2** | 🔄 **Transition** | Good | Smartphone, Authenticator app, phone sign-in enabled | Passwordless flow, reduced password exposure | Not equivalent to FIDO2/WHfB/CBA phishing resistance; recovery required | Passwordless bridge for non-privileged populations |
+| ⏱️ **OATH TOTP (app/hardware token)** | 🟠 Medium (3/5) | **AAL2** | ⚠️ **Fallback** | Good | TOTP app or hardware token, enrollment | Works offline, useful backup | Phishable code, more user friction | Backup in constrained environments |
+| 🎟️ **Temporary Access Pass (TAP)** | 🔵 Context-dependent | Contextual | ⚠️ **Bootstrap only** | Good for onboarding | TAP policy enabled, HR/IT process | Excellent for passwordless bootstrap/recovery | Must stay short-lived and tightly governed | Onboarding and secure recovery |
+| 📞 **SMS / Voice OTP** | 🔴 Low to medium (2/5) | **AAL1** | 🚫 **Legacy fallback only** | Familiar but fragile | Valid phone number, telecom availability | Maximum compatibility | SIM-swap/interception risk; lower trust level | Emergency compatibility case |
 
 ---
 
