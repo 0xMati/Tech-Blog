@@ -172,8 +172,9 @@ In practice, this can be a hardware security key or a synced/device-bound passke
 
 #### 🎯 Best fit
 
-- Admin, IT, and SecOps teams
-- Admin portals, PIM activation, critical consoles
+- Long-term target for all user populations as part of a phishing-resistant strategy
+- Coexists with WHfB: use WHfB on managed Windows endpoints and FIDO2/Passkeys where WHfB is not available or not practical
+- Immediate priority for Admin/IT/SecOps, admin portals, PIM activation, and critical consoles
 
 ---
 
