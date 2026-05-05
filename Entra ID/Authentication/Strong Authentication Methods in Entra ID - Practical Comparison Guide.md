@@ -497,67 +497,95 @@ Use this matrix to map populations to methods in your Authentication Strength an
 
 ## 6. Passwordless ≠ Password Removed from the Directory 🔑
 
-One of the most persistent misconceptions in passwordless deployments: **going passwordless does not delete the user's password**.
+→ **The trap**: teams deploy WHfB or FIDO2, users stop typing passwords — and assume the password is gone. It is not.
 
-In Entra ID — and in hybrid environments — the password remains in the directory. What changes is that the user no longer needs it to authenticate. The authentication flow bypasses the password entirely. But the password still exists, and this distinction has concrete operational consequences that are easy to overlook until they cause incidents.
+**Going passwordless does not delete the user's password.** In Entra ID — and in hybrid environments — the password remains in the directory. The authentication flow bypasses it, but the password still exists and still has a lifecycle. This distinction has concrete operational consequences that are easy to overlook until they cause incidents.
 
 ### What actually happens to the password?
 
 | Scenario | Password status | Risk if ignored |
 |---|---|---|
-| WHfB or FIDO2 deployed, user authenticates daily without password | Password still exists in Entra ID | If it expires, fallback flows and legacy protocol fallbacks break unexpectedly |
-| Hybrid user synced from on-prem AD | On-prem AD password policy governs expiry | AD password expiry triggers Kerberos issues and sync disruptions even if the user has not typed it in months |
-| Cloud-only user in full passwordless flow | Entra ID password policy applies | An expired password can block legacy auth fallback or generate a confusing reset prompt |
+| WHfB or FIDO2 deployed, user authenticates without password daily | Password **still exists** in Entra ID | If it **expires**, fallback flows and legacy auth paths break unexpectedly |
+| Hybrid user synced from on-prem AD | On-prem **AD password policy governs expiry** | AD expiry triggers Kerberos failures and sync issues — even if the user has not typed it in months |
+| Cloud-only user in full passwordless flow | Entra ID **password policy applies** | Expired password can block legacy auth fallback or trigger a confusing reset prompt |
 
 ### The password expiry problem
 
 If you deploy passwordless without adjusting password expiry policies, you will eventually see:
 
-- Users suddenly prompted for a password they have not typed in months — and do not remember
-- Helpdesk calls at scale, disproportionate to any actual security gain
-- Hybrid sync issues or Kerberos ticket failures triggered by on-prem AD password expiry, invisible to the user until something breaks
+- Users suddenly prompted for a password they have **not typed in months** — and do not remember
+- **Helpdesk calls at scale**, disproportionate to any actual security gain
+- **Hybrid sync issues or Kerberos failures** triggered by on-prem AD expiry, invisible to the user until something breaks
 
-→ **Microsoft's recommendation for cloud-only accounts in a full passwordless deployment**: set password policies to **Password Never Expires**. The password exists as a silent backstop but is never surfaced to the user. It can be rotated programmatically if required by policy, without the user ever interacting with it.
+→ **Microsoft's recommendation for cloud-only accounts** in a full passwordless deployment: set password policies to **Password Never Expires**. The password exists as a silent backstop but is never surfaced to the user. It can be rotated programmatically if required by policy, without the user ever interacting with it.
 
-→ **For hybrid accounts**: coordinate with the AD team. If the user will never be prompted for their on-prem AD password, expiry-driven disruption has no security value and only creates operational noise. Use Fine-Grained Password Policies (FGPPs) to carve out passwordless populations from the standard expiry cycle.
+→ **For hybrid accounts**: coordinate with the AD team. If the user will never be prompted for their on-prem AD password, expiry-driven disruption has **no security value** — it only creates operational noise. Use **Fine-Grained Password Policies (FGPPs)** to carve out passwordless populations from the standard expiry cycle.
 
 ### Practical checklist for passwordless deployments
 
-- 🔍 Audit current password expiry policies **before** rolling out passwordless at scale
-- ☁️ Cloud-only users: plan the switch to **Password Never Expires** once passwordless enrollment is confirmed and validated
-- 🏢 Hybrid users: work with the AD team on Fine-Grained Password Policies for passwordless populations
-- 🆘 Document and test the fallback path — what happens when WHfB or FIDO2 is unavailable?
-- 🔄 Use TAP as the recovery method, not the old password
-- 📋 Communicate clearly to users: they may still have a password in the system, but it is no longer their authentication method
+- 🔍 **Audit** current password expiry policies *before* rolling out passwordless at scale
+- ☁️ **Cloud-only users**: plan the switch to **Password Never Expires** once passwordless enrollment is confirmed
+- 🏢 **Hybrid users**: work with the AD team on **Fine-Grained Password Policies** for passwordless populations
+- 🆘 **Document and test the fallback path** — what happens when WHfB or FIDO2 is unavailable?
+- 🔄 **Use TAP** as the recovery method, not the old password
+- 📋 **Communicate to users**: they may still have a password in the system, but it is no longer their authentication method
 
 ---
 
 ## 7. Entra ID implementation checklist ✅
 
-- 🔄 Verify Authentication Methods migration status is fully modern and complete
-- 🧹 Clean up remaining legacy MFA options
-- 🧱 Define clear Authentication Strengths (standard vs phishing-resistant)
-- 🔗 Map the right strengths to the right Conditional Access policies
-- 🛡️ Protect sensitive user actions (MFA registration, device registration)
-- 🆘 Define a recovery process (TAP, identity verification, time limits)
-- 🚨 Implement tightly controlled break-glass exclusions
-- 📈 Monitor sign-in logs and authentication method changes
+Use this checklist as a starting framework for any authentication modernization project. Items are ordered by phase, not by priority — all of them matter.
+
+### 🏗️ Phase 1 — Foundation
+
+- [ ] **Migrate** to the unified Authentication Methods policy (legacy MFA/SSPR per-user settings fully disabled)
+- [ ] **Audit** currently enabled methods and remove anything not explicitly justified
+- [ ] **Define Authentication Strength tiers**: at minimum, one for general MFA (AAL2) and one for phishing-resistant (AAL3)
+- [ ] **Protect MFA and device registration** with Conditional Access (registration should never be uncontrolled)
+
+### 🔐 Phase 2 — Method deployment
+
+- [ ] **Enforce AAL3** immediately on admin portals, PIM activation, and high-impact applications
+- [ ] **Deploy WHfB** on all Intune-managed Windows endpoints with TPM enforcement
+- [ ] **Deploy FIDO2/Passkeys** for admin populations and cross-platform/non-Windows use cases
+- [ ] **Enable Authenticator push (number matching)** as the AAL2 baseline for general populations — with a dated migration plan to AAL3
+- [ ] **Disable SMS/Voice** by default — no exception without formal justification and CISO-level approval
+- [ ] **Configure TAP** with short validity, restricted issuance rights, and documented recovery process
+
+### 🏛️ Phase 3 — Governance
+
+- [ ] **Map Authentication Strengths** to every Conditional Access policy explicitly — no implicit "require MFA"
+- [ ] **Bind device compliance** requirements alongside method strength in policies (Trusted Signal model)
+- [ ] **Adjust password expiry policies** for passwordless populations (cloud: Password Never Expires; hybrid: FGPP)
+- [ ] **Define and test break-glass accounts**: FIDO2 hardware key, monitored, stored securely
+- [ ] **Document exception process**: any non-AAL3 method must have a named owner and retirement date
+
+### 📈 Phase 4 — Monitoring and continuous improvement
+
+- [ ] **Monitor sign-in logs** for authentication method distribution and drift
+- [ ] **Track registration health** (users enrolled in strong vs weak methods)
+- [ ] **Alert on legacy auth attempts** and review periodically
+- [ ] **Review exceptions quarterly**: any AAL2 or lower scope still active must be re-justified or closed
 
 ---
 
 ## 8. Conclusion 🎯
 
-Not all MFA methods are equal. The real question is not "MFA enabled: yes/no". The real question is:
+Not all MFA is equal. Two users can both pass MFA and sit in completely different risk tiers. That gap is not a configuration mistake — it is a **design choice** that needs to be made explicitly.
 
-- which method,
-- for which population,
-- in which context,
-- with which governance model.
+The shift this guide is pushing for:
 
-→ If you want one practical north star:
+| From | To |
+|---|---|
+| "Require MFA" as a single checkbox | **Authentication Strength** bound to each access scenario |
+| MFA deployed, job done | **AAL3 as default target**, weaker methods as temporary transitions |
+| Identity policy disconnected from device posture | **Trusted Signals**: user + method + device + context evaluated together |
+| Passwordless = passwords removed | **Passwordless = passwords bypassed** — lifecycle still needs governance |
 
-- target phishing-resistant by default,
-- keep weaker methods as exceptions,
-- treat onboarding/recovery as first-class security operations.
+→ **One practical north star:**
 
-That is where Entra ID moves from checkbox MFA to production-grade strong authentication. 🎯
+- **Target phishing-resistant (AAL3) by default** — for all populations, not just admins
+- **Keep weaker methods as controlled exceptions** with named owners and exit dates
+- **Treat onboarding and recovery as first-class security operations** — not an afterthought
+
+That is where Entra ID moves from checkbox MFA to **production-grade strong authentication**. 🛡️
