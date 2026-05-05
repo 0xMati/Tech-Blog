@@ -23,9 +23,15 @@ flowchart TD
     T0 -->|Admin downflow forbidden| T1
     T1 -->|Admin downflow forbidden| T2
 
-    style T0 fill:#fde68a,stroke:#92400e,stroke-width:2px
-    style T1 fill:#bfdbfe,stroke:#1e40af,stroke-width:2px
-    style T2 fill:#bbf7d0,stroke:#166534,stroke-width:2px
+    classDef tier0 fill:#fde68a,stroke:#92400e,stroke-width:2px,color:#111827;
+    classDef tier1 fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef tier2 fill:#bbf7d0,stroke:#166534,stroke-width:2px,color:#111827;
+    class T0 tier0;
+    class T1 tier1;
+    class T2 tier2;
+
+    linkStyle 0 stroke:#e5e7eb,stroke-width:2px,color:#f9fafb;
+    linkStyle 1 stroke:#e5e7eb,stroke-width:2px,color:#f9fafb;
 ```
 
 ### 🔒 Key Rule: Credentials Never Flow Downward
@@ -3241,6 +3247,15 @@ flowchart LR
     ELEV --> TASK["🛠️ Privileged Task"]
     TASK --> EXP["⌛ TTL Expiry\nMembership removed automatically"]
     EXP --> AUD["📋 Audit Trail\nwho / group / approver / duration"]
+
+    classDef step fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    class REQ,APR,ELEV,TASK,EXP,AUD step;
+
+    linkStyle 0 stroke:#e5e7eb,stroke-width:2px;
+    linkStyle 1 stroke:#e5e7eb,stroke-width:2px;
+    linkStyle 2 stroke:#e5e7eb,stroke-width:2px;
+    linkStyle 3 stroke:#e5e7eb,stroke-width:2px;
+    linkStyle 4 stroke:#e5e7eb,stroke-width:2px;
 ```
 
 With N-levels, JIT becomes more surgical. Instead of granting temporary membership to `Domain Admins` directly, the workflow targets the **narrowest group that satisfies the need**:
