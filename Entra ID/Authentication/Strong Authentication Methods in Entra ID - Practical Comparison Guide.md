@@ -136,16 +136,15 @@ Much more defensible than one global "require MFA" switch.
 
 ## 2.1 Strength ladder at a glance 🪜
 
-| Tier | Methods | Phishing-resistant | NIST level | Recommended scope |
+| Tier | Policy intent | AAL target | Allowed in production | Exit condition |
 |---|---|---|---|---|
-| 🟢 **Phishing-resistant** | FIDO2 / Passkeys, WHfB, CBA | ✅ Yes | AAL3 | Admins, privileged access, sensitive workloads |
-| 🔵 **Strong mainstream (MFA)** | Microsoft Authenticator push (number matching) | ⚠️ Partial | AAL2 | Large user populations, phased modernization |
-| 🟦 **Strong mainstream (passwordless app)** | Microsoft Authenticator phone sign-in | ⚠️ Partial | AAL2 | Passwordless transition when FIDO2/WHfB is not yet generalized |
-| 🟡 **Backup** | OATH TOTP (app or hardware token) | ❌ No | AAL2 | Constrained environments, fallback only |
-| 🟣 **Temporary bootstrap** | Temporary Access Pass (TAP) | — Contextual | — | Onboarding, recovery — never permanent |
-| 🔴 **Legacy fallback** | SMS / Voice OTP | ❌ No | AAL1 | Emergency fallback, tightly scoped, with an exit plan |
+| 🟢 **Target state** | Default for normal and sensitive access | **AAL3** | Yes | None (this is the desired steady state) |
+| 🔵 **Transition state** | Controlled modernization when AAL3 is not yet fully deployed | **AAL2** | Yes, but scoped | Migration plan with deadline to AAL3 |
+| 🟡 **Fallback state** | Backup for constrained scenarios | **AAL2** | Yes, as exception only | Remove once primary method is restored |
+| 🟣 **Bootstrap state** | Onboarding and secure recovery | Contextual | Yes, temporary only | Auto-expiry + support verification complete |
+| 🔴 **Legacy emergency state** | Last-resort compatibility only | **AAL1** | Yes, emergency only | Explicit retirement plan and review cycle |
 
-→ Rule of thumb: the more sensitive the resource or the more privileged the user, the higher the required tier. Lower tiers should have an explicit justification and a migration-off plan — not a permanent home.
+→ Rule of thumb: use this ladder for policy decisions, and use section 2 for method-level details. Target AAL3 by default, and treat lower tiers as temporary states with documented exit dates.
 
 ---
 
