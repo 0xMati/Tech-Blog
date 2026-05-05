@@ -23,15 +23,11 @@ flowchart TD
     T0 -->|Admin downflow forbidden| T1
     T1 -->|Admin downflow forbidden| T2
 
-    classDef tier0 fill:#fde68a,stroke:#92400e,stroke-width:2px,color:#111827;
-    classDef tier1 fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
-    classDef tier2 fill:#bbf7d0,stroke:#166534,stroke-width:2px,color:#111827;
-    class T0 tier0;
-    class T1 tier1;
-    class T2 tier2;
-
-    linkStyle 0 stroke:#e5e7eb,stroke-width:2px,color:#f9fafb;
-    linkStyle 1 stroke:#e5e7eb,stroke-width:2px,color:#f9fafb;
+    style T0 fill:#1f2937,stroke:#f59e0b,stroke-width:2px,color:#f9fafb
+    style T1 fill:#1e3a8a,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
+    style T2 fill:#14532d,stroke:#86efac,stroke-width:2px,color:#f9fafb
+    linkStyle 0 stroke:#94a3b8,stroke-width:2px
+    linkStyle 1 stroke:#94a3b8,stroke-width:2px
 ```
 
 ### 🔒 Key Rule: Credentials Never Flow Downward
@@ -3242,20 +3238,23 @@ foreach ($server in $AllServers) {
 
 ```mermaid
 flowchart LR
-    REQ["📝 JIT Request"] --> APR["✅ Approval"]
-    APR --> ELEV["⏱️ TTL Membership\n(Add-ADGroupMember -MemberTimeToLive)"]
-    ELEV --> TASK["🛠️ Privileged Task"]
-    TASK --> EXP["⌛ TTL Expiry\nMembership removed automatically"]
-    EXP --> AUD["📋 Audit Trail\nwho / group / approver / duration"]
+    REQ["JIT Request"] --> APR["Approval"]
+    APR --> ELEV["TTL Membership\n(Add-ADGroupMember -MemberTimeToLive)"]
+    ELEV --> TASK["Privileged Task"]
+    TASK --> EXP["TTL Expiry\nMembership removed automatically"]
+    EXP --> AUD["Audit Trail\nwho / group / approver / duration"]
 
-    classDef step fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
-    class REQ,APR,ELEV,TASK,EXP,AUD step;
-
-    linkStyle 0 stroke:#e5e7eb,stroke-width:2px;
-    linkStyle 1 stroke:#e5e7eb,stroke-width:2px;
-    linkStyle 2 stroke:#e5e7eb,stroke-width:2px;
-    linkStyle 3 stroke:#e5e7eb,stroke-width:2px;
-    linkStyle 4 stroke:#e5e7eb,stroke-width:2px;
+    style REQ fill:#1e3a8a,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
+    style APR fill:#1e3a8a,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
+    style ELEV fill:#1e3a8a,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
+    style TASK fill:#1e3a8a,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
+    style EXP fill:#1e3a8a,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
+    style AUD fill:#1e3a8a,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
+    linkStyle 0 stroke:#94a3b8,stroke-width:2px
+    linkStyle 1 stroke:#94a3b8,stroke-width:2px
+    linkStyle 2 stroke:#94a3b8,stroke-width:2px
+    linkStyle 3 stroke:#94a3b8,stroke-width:2px
+    linkStyle 4 stroke:#94a3b8,stroke-width:2px
 ```
 
 With N-levels, JIT becomes more surgical. Instead of granting temporary membership to `Domain Admins` directly, the workflow targets the **narrowest group that satisfies the need**:
