@@ -450,10 +450,32 @@ Because telecom channels can be intercepted or socially engineered, this method 
 3. Scale AAL3 on managed Windows endpoints with WHfB.
 4. Extend AAL3 to broader and cross-platform populations with FIDO2/passkeys (including Authenticator passkeys where supported).
 5. Keep Authenticator push/phone sign-in (AAL2) as controlled transition paths with dated migration plans.
-6. Keep TOTP as constrained backup; keep SMS/Voice as emergency fallback only.
+6. Keep TOTP as a **justified exception only** — explicit scope, owner, and monitoring required.
+7. **Disable SMS/Voice by default** — no exception without formal justification and CISO-level approval.
 7. Use TAP for onboarding and recovery, with short validity and strict issuance controls.
 
 → Bonus reality check: if your strongest method is optional, users will converge on the weakest allowed path.
+
+### 4.4 Trusted Signals — method is only one dimension 🔗
+
+A common mistake: treating authentication as a single gate. In Entra ID, the trust decision is a **compound evaluation**.
+
+| Signal dimension | What it covers | Examples |
+|---|---|---|
+| 👤 **Who** | Identity + role + group | Authenticated user, admin role, guest status |
+| 🔑 **How** | Authentication method + AAL level | FIDO2 (AAL3), Authenticator push (AAL2) |
+| 💻 **Device** | Compliance state + hardware posture | Intune-compliant, Entra-joined, TPM active |
+| 🌍 **Context** | Risk signals + environment | Named location, sign-in risk, session anomaly |
+
+→ **The key principle:** a phishing-resistant method on an unmanaged device is stronger than SMS, but weaker than the same method on an Intune-compliant, TPM-equipped device. Method strength and device posture are not independent variables.
+
+**In practice**, this means Conditional Access policies should bind all four dimensions:
+- **Authentication Strength** for the method
+- **Device compliance** requirement for device posture
+- **Identity Protection** risk conditions for contextual signals
+- **Named locations / network conditions** where relevant
+
+→ That is what separates checkbox MFA from a real defense-in-depth architecture.
 
 ---
 
@@ -493,16 +515,6 @@ If you deploy passwordless without adjusting password expiry policies, you will 
 → **Microsoft's recommendation for cloud-only accounts in a full passwordless deployment**: set password policies to **Password Never Expires**. The password exists as a silent backstop but is never surfaced to the user. It can be rotated programmatically if required by policy, without the user ever interacting with it.
 
 → **For hybrid accounts**: coordinate with the AD team. If the user will never be prompted for their on-prem AD password, expiry-driven disruption has no security value and only creates operational noise. Use Fine-Grained Password Policies (FGPPs) to carve out passwordless populations from the standard expiry cycle.
-
-### Trusted Signal: why device posture matters here too
-
-This connects to the **Trusted Signal** concept in Conditional Access. In a passwordless design, the trust is no longer placed in a secret the user knows — it is placed in the combination of:
-
-- **The device** (compliant, Intune-managed, TPM-protected)
-- **The authentication method** (WHfB, FIDO2)
-- **The contextual signals** (location, risk score, session characteristics)
-
-A Conditional Access policy that enforces phishing-resistant MFA and requires a compliant device is not just checking "did the user prove identity" — it is checking "did the right user, on the right device, in the right context, use the right method". That is the Trusted Signal model: authentication is no longer a single gate, it is a compound signal evaluated at every access request.
 
 ### Practical checklist for passwordless deployments
 
