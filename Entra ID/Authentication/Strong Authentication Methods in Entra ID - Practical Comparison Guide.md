@@ -184,9 +184,9 @@ In practice, this can be a hardware security key or a synced/device-bound passke
 
 #### 🧾 What it is (and why it is strong)
 
-WHfB replaces password entry with a device-bound key protected by TPM. Users unlock locally with PIN or biometrics, and the credential is never exposed as a shared secret over the network.
+WHfB replaces password entry with a device-bound key protected by TPM. Users unlock locally with PIN or biometrics, and the credential is never exposed as a reusable secret over the network.
 
-Security comes from architecture, not from adding more prompts: strong cryptography, local gesture, and device trust combined.
+It is phishing-resistant by design when deployed with proper device and policy controls.
 
 #### ✅ Why it is great
 
@@ -197,52 +197,18 @@ Security comes from architecture, not from adding more prompts: strong cryptogra
 #### ⚠️ Watch-outs
 
 - Requires serious device hygiene
-- More of a structured program than "just enable MFA"
+- More of a structured identity/device program than "just enable MFA"
 
 #### 🎯 Best fit
 
-- Internal users on managed laptops
-- Long-term passwordless strategy
+- Long-term phishing-resistant target for managed Windows users
+- Coexists with FIDO2/Passkeys for non-Windows, shared, or less-managed scenarios
 
-#### 🔬 Focus: TPM + PIN + Biometrics — do all three factors really apply?
+#### 🔬 Implementation notes (quick)
 
-This is a recurring question and the answer requires unpacking how WHfB actually works under the hood.
-
-**The three factor types in identity security:**
-
-| Factor type | Description | In WHfB |
-|---|---|---|
-| Something you **have** | A physical object | TPM chip (hardware-bound private key) |
-| Something you **know** | A secret you memorize | PIN (local only, never transmitted to any server) |
-| Something you **are** | A biological trait | Fingerprint or facial recognition (biometrics) |
-
-**How WHfB actually uses them:**
-
-WHfB generates a key pair directly inside the TPM. The private key never leaves the chip — not during sign-in, not during token issuance, never. To unlock that key, the user provides a local verification: either a PIN or biometrics. These are local gestures, not credentials in flight.
-
-Important nuance: **PIN and biometrics are alternative unlock methods, not stacked steps**. The user either enters a PIN or scans a fingerprint — both unlock the same TPM-protected key. They are not performed simultaneously.
-
-**So does WHfB achieve "three-factor" authentication?**
-
-The answer is: yes, by design — but not in the way most people picture it.
-
-- **TPM (have)** is always active: the credential is device-bound and hardware-protected, regardless of how the user unlocks it.
-- **PIN (know)** or **biometrics (are)** is the active second gate at unlock time.
-- When biometrics is enabled, the combination is **have (TPM) + are (biometrics)**, with PIN as a fallback that brings in the **know** dimension when biometrics are unavailable.
-
-All three factor types are present in the architecture. What does not happen is three sequential verification steps — it is one fluid gesture that engages two or three factor types simultaneously depending on the unlock method used.
-
-**Can you configure and enforce TPM + PIN + biometrics together in WHfB?**
-
-Yes, and this is the recommended production setup:
-
-- **TPM requirement**: enforced via Intune device configuration profile or GPO — ensures the credential is hardware-bound.
-- **PIN complexity**: enforced via Windows Hello for Business policy — minimum length, complexity rules, expiry if required.
-- **Biometrics**: enabled via policy as a companion unlock method alongside PIN.
-
-The result in practice: a user on a TPM-equipped Intune-managed device who authenticates via facial recognition is satisfying all three factor types without a single extra step. For them it is "look at the laptop". For your security posture it is a hardware-bound, phishing-resistant, AAL3-grade credential with no password in flight, no OTP code, and no secret that can be stolen remotely.
-
-This is precisely what separates WHfB from traditional MFA: the security depth is embedded in the architecture, not added as an extra prompt.
+- **TPM is non-negotiable** for strong assurance: enforce via Intune/GPO.
+- **PIN and biometrics are local unlock methods** for the same TPM-protected key (not stacked sequential prompts).
+- **Policy quality determines outcome**: require compliant devices, enforce PIN policy, and define recovery/reset operations.
 
 ---
 
@@ -268,7 +234,14 @@ When certificate lifecycle and revocation are well governed, it provides strong 
 
 #### 🎯 Best fit
 
-- Regulated sectors, smartcards, legacy federation contexts
+- AAL3 target where PKI is already mature or mandated
+- Regulated sectors, smartcards, and certificate-centric environments
+
+#### 🔬 Implementation notes (quick)
+
+- Define strict certificate issuance proofing and role separation.
+- Enforce revocation hygiene (CRL/OCSP and lifecycle monitoring).
+- Treat certificate renewal and lost-token handling as production runbooks.
 
 ---
 
@@ -295,8 +268,14 @@ It remains AAL2 and can still be phished through real-time attack paths, so it s
 
 #### 🎯 Best fit
 
-- Large user base
-- Transitional phase before phishing-resistant by default
+- Broad user populations as a practical AAL2 baseline
+- Transition phase while rolling out phishing-resistant methods by default
+
+#### 🔬 Implementation notes (quick)
+
+- Enforce number matching and disable weak approval patterns.
+- Pair with Conditional Access context controls (device/risk/location).
+- Define a step-up path to AAL3 for privileged and sensitive access.
 
 ---
 
@@ -327,6 +306,12 @@ Important distinction: passwordless does not automatically mean phishing-resista
 - General user populations during passwordless transition
 - Organizations not ready for full WHfB/FIDO2 coverage yet
 
+#### 🔬 Implementation notes (quick)
+
+- Position clearly as transition AAL2, not final phishing-resistant state.
+- Plan recovery scenarios (new phone, lost phone, app reset) before broad rollout.
+- Avoid user confusion with push MFA by documenting both experiences.
+
 ---
 
 ### 3.6 OATH TOTP (third-party apps or hardware token)
@@ -353,6 +338,12 @@ Because the code is still replayable during its validity window, it is not phish
 
 - Backup method
 - Specific cases without push notification support
+
+#### 🔬 Implementation notes (quick)
+
+- Keep as backup only and require explicit business justification.
+- Monitor usage and remove persistent dependency where possible.
+- Pair with migration milestones toward phishing-resistant methods.
 
 ---
 
@@ -381,6 +372,12 @@ It is operationally powerful, but only if validity, issuance rights, and verific
 - Day-one onboarding
 - Controlled recovery (support + identity verification)
 
+#### 🔬 Implementation notes (quick)
+
+- Keep lifetime short and scope tightly controlled.
+- Restrict issuance rights and require operator verification steps.
+- Audit issuance and usage patterns as part of identity operations.
+
 ---
 
 ### 3.8 SMS and Voice OTP
@@ -406,6 +403,12 @@ Because telecom channels can be intercepted or socially engineered, this method 
 #### 🎯 Best fit
 
 - Temporary fallback, tightly scoped, with a migration-off plan
+
+#### 🔬 Implementation notes (quick)
+
+- Keep disabled by default where business constraints allow.
+- If enabled, scope to emergency groups and review periodically.
+- Track retirement metrics to drive elimination over time.
 
 ---
 
