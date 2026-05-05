@@ -635,6 +635,37 @@ Entra ID — user object
 - **What it does:** Allows the **on-prem KDC** (Key Distribution Center on the domain controller) to verify WHfB authentication for on-prem resources — without contacting Entra ID. In **Key trust** model specifically, the KDC reads this attribute directly during PKINIT.
 - **Who reads it:** The AD KDC during Kerberos authentication in hybrid scenarios.
 
+#### 🆔 KeyId vs msDS-KeyCredentialLink
+
+These two are often confused, but they are not the same kind of object.
+
+- **`KeyId`** = the unique identifier of **one specific WHfB credential**
+- **`msDS-KeyCredentialLink`** = the AD attribute that stores **one or more KeyCredential entries** for the user
+
+So the relationship is:
+
+```text
+msDS-KeyCredentialLink
+└─ KeyCredential entry #1
+   ├─ KeyId
+   ├─ PublicKey
+   ├─ DeviceId
+   └─ metadata
+
+└─ KeyCredential entry #2
+   ├─ KeyId
+   ├─ PublicKey
+   ├─ DeviceId
+   └─ metadata
+```
+
+In other words:
+
+- `KeyId` is a **field inside one credential record**
+- `msDS-KeyCredentialLink` is the **directory attribute that carries the credential records**
+
+> 💡 **Simple mental model:** `msDS-KeyCredentialLink` is the folder. `KeyId` is the serial number written on one document inside that folder.
+
 #### Summary table
 
 | Element | Lives where | Seen by | Role |
