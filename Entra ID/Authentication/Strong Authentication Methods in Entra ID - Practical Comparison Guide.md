@@ -39,30 +39,30 @@ Published: 2026-05-04
 
 Most teams start with a simple question: "Do we have MFA enabled?" ✅
 
-Good start. Wrong finish line.
+Good start. Not the finish line.
 
-In Entra ID, two users can both "pass MFA" and still be in totally different risk leagues:
+In Entra ID, two users can both pass MFA and still sit in very different risk tiers:
 
 - User A signs in with WHfB or FIDO2 (phishing-resistant) 🛡️
 - User B signs in with SMS OTP (interceptable, weaker) ⚠️
 
 → Same MFA checkbox, different blast radius.
 
-So a strong authentication strategy should always answer 4 questions:
+A strong authentication strategy should always define 4 things:
 
-- Which method is allowed?
-- For which population?
-- For which app or sensitive action?
-- Under which context/risk signals?
+- Which methods are allowed
+- Which populations can use them
+- Which apps/actions require stronger assurance
+- Which context/risk signals can tighten access
 
-If those 4 are explicit, decisions get faster, policies get cleaner, and exceptions stop multiplying like gremlins after midnight.
+When these 4 points are explicit, decisions are faster, policies are cleaner, and exceptions stop spreading.
 
 ### Stakeholder takeaway 🎯
 
 - Do not stop at: "Do we have MFA?"
 - Move to: "Which MFA strength do we enforce for which business risk?"
 
-That is the shift from checkbox security to decision-grade security. Section 1.1 shows how Entra ID implements this with Authentication Strengths and AAL mapping.
+That is the shift from checkbox security to decision-grade security.
 
 ---
 
