@@ -153,6 +153,12 @@ Use the **Strategic status** column in section 2 as the policy decision lever:
 
 → Quick take: best-in-class for high-value access and admin scenarios.
 
+#### 🧾 What it is (and why it is strong)
+
+FIDO2 uses public-key cryptography: the private key stays on the authenticator, and Entra ID validates a challenge response. There is no reusable secret to steal and replay.
+
+In practice, this can be a hardware security key or a synced/device-bound passkey (including passkeys registered through Microsoft Authenticator, depending on platform support and policy).
+
 #### ✅ Why it is great
 
 - Native phishing resistance 🛡️
@@ -161,7 +167,7 @@ Use the **Strategic status** column in section 2 as the policy decision lever:
 
 #### ⚠️ Watch-outs
 
-- Physical key lifecycle management (stock, loss, replacement)
+- Credential lifecycle management (hardware key logistics or mobile device recovery/replacement)
 - Requires a clean backup and recovery process
 
 #### 🎯 Best fit
@@ -174,6 +180,12 @@ Use the **Strategic status** column in section 2 as the policy decision lever:
 ### 3.2 Windows Hello for Business (WHfB)
 
 → Quick take: top-tier security with excellent daily UX on managed devices.
+
+#### 🧾 What it is (and why it is strong)
+
+WHfB replaces password entry with a device-bound key protected by TPM. Users unlock locally with PIN or biometrics, and the credential is never exposed as a shared secret over the network.
+
+Security comes from architecture, not from adding more prompts: strong cryptography, local gesture, and device trust combined.
 
 #### ✅ Why it is great
 
@@ -237,6 +249,12 @@ This is precisely what separates WHfB from traditional MFA: the security depth i
 
 → Quick take: extremely strong if your PKI game is mature.
 
+#### 🧾 What it is (and why it is strong)
+
+CBA uses X.509 certificates to authenticate users instead of passwords or OTP codes. Trust is anchored in your PKI chain and certificate issuance controls.
+
+When certificate lifecycle and revocation are well governed, it provides strong assurance and excellent auditability in regulated environments.
+
 #### ✅ Why it is great
 
 - Very strong when PKI is mature
@@ -256,6 +274,12 @@ This is precisely what separates WHfB from traditional MFA: the security depth i
 ### 3.4 Microsoft Authenticator push (number matching)
 
 → Quick take: the practical default for large populations and phased modernization.
+
+#### 🧾 What it is (and where it fits)
+
+This is classic MFA: user enters password, then approves a mobile prompt with number matching. It significantly improves security versus password-only and is easy to deploy at scale.
+
+It remains AAL2 and can still be phished through real-time attack paths, so it should be treated as a transition baseline, not a final target for high-risk access.
 
 #### ✅ Why it is great
 
@@ -278,6 +302,12 @@ This is precisely what separates WHfB from traditional MFA: the security depth i
 ### 3.5 Microsoft Authenticator phone sign-in (passwordless)
 
 → Quick take: a practical passwordless option for users not yet on WHfB/FIDO2, but not equivalent to phishing-resistant methods.
+
+#### 🧾 What it is (and where it fits)
+
+Phone sign-in removes daily password entry and authenticates through the Authenticator app flow. It is often a strong adoption step because users keep familiar mobile habits.
+
+Important distinction: passwordless does not automatically mean phishing-resistant at AAL3 level. This method is typically positioned as AAL2 transition.
 
 #### ✅ Why it is useful
 
@@ -302,6 +332,12 @@ This is precisely what separates WHfB from traditional MFA: the security depth i
 
 → Quick take: useful backup path, but not where you want to stop.
 
+#### 🧾 What it is (and where it fits)
+
+TOTP generates a short-lived numeric code based on a shared secret and time window. It works in low-connectivity conditions and is widely supported.
+
+Because the code is still replayable during its validity window, it is not phishing-resistant and should stay a controlled backup path.
+
 #### ✅ Why it is useful
 
 - Works even without mobile data
@@ -323,6 +359,12 @@ This is precisely what separates WHfB from traditional MFA: the security depth i
 
 → Quick take: fantastic bootstrap tool, risky if governance is loose.
 
+#### 🧾 What it is (and where it fits)
+
+TAP is a temporary credential designed to bootstrap strong methods (WHfB, FIDO2) or recover access without bypassing identity checks.
+
+It is operationally powerful, but only if validity, issuance rights, and verification steps are tightly controlled.
+
 #### ✅ Why it is excellent
 
 - Ideal bootstrap to move users into passwordless flows 🚀
@@ -343,6 +385,12 @@ This is precisely what separates WHfB from traditional MFA: the security depth i
 ### 3.8 SMS and Voice OTP
 
 → Quick take: keep only as a tightly controlled emergency fallback.
+
+#### 🧾 What it is (and where it fits)
+
+SMS/voice OTP delivers one-time codes through telecom channels and remains broadly accessible for edge scenarios.
+
+Because telecom channels can be intercepted or socially engineered, this method should remain emergency-only with an explicit retirement objective.
 
 #### ✅ Why it still exists
 
