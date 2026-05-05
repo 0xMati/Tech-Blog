@@ -4,7 +4,7 @@
 
 The **Active Directory Tiering Model** (also known as the **Enterprise Access Model**) is a security architecture designed to contain credential theft and lateral movement within an Active Directory environment. It replaces the legacy ESAE (Enhanced Security Admin Environment) / Red Forest model with a more practical, layered approach.
 
-The core principle is simple: **never expose a higher-tier credential on a lower-tier system**. A Domain Admin logging into a workstation leaves cached credentials that an attacker can harvest. Tiering eliminates this by enforcing strict isolation between administrative boundaries.
+The core principle is simple: 🔒 **never expose a higher-tier credential on a lower-tier system**. A Domain Admin logging into a workstation leaves cached credentials that an attacker can harvest. Tiering eliminates this by enforcing strict isolation between administrative boundaries.
 
 ### The Three Tiers
 
@@ -129,9 +129,9 @@ These are systems that can **directly control Active Directory**. If compromised
 | Hyper-V / VMware hosts (not hosting DCs) | Can control VMs at the Tier 1 level |
 | WSUS servers | Can push updates to servers |
 
-> **Warning about Exchange:** In many environments, the `Exchange Windows Permissions` group has `WriteDACL` on the domain root, which is effectively DCSync. If this is the case, **Exchange is Tier 0**. Audit this with: `Get-ADPermission` or BloodHound.
+> **⚠️ Warning about Exchange:** In many environments, the `Exchange Windows Permissions` group has `WriteDACL` on the domain root, which is effectively DCSync. If this is the case, **Exchange is Tier 0**. Audit this with: `Get-ADPermission` or BloodHound.
 
-> **Warning about SCCM/MECM:** If SCCM has a client installed on Domain Controllers, or if SCCM administrators can push software to DCs, then SCCM is Tier 0. This is one of the most common misclassifications.
+> **⚠️ Warning about SCCM/MECM:** If SCCM has a client installed on Domain Controllers, or if SCCM administrators can push software to DCs, then SCCM is Tier 0. This is one of the most common misclassifications.
 
 #### Tier 2 Assets — End-User Devices
 
@@ -314,7 +314,7 @@ Many organizations have child domains, resource forests, or external trusts. Tie
 | **Forest trust** | SID filtering is enabled by default. Verify with `netdom trust /d:domain.local /quarantine` |
 | **PAM trust (bastion forest)** | Used for MIM PAM (now deprecated) — shadow principals in bastion forest. If already deployed, plan migration to native JIT or third-party PAM |
 
-#### Key Rules for Multi-Domain Forests
+#### 🧭 Key Rules for Multi-Domain Forests
 
 1. **Enterprise Admins and Schema Admins should only exist in the forest root domain.** Child domain admins should never be EA/SA.
 2. **Each domain needs its own tiering structure** — OU hierarchy, groups, GPOs. Do not rely on forest-level GPOs.
@@ -577,13 +577,13 @@ Get-ADComputer -Filter * -SearchBase "OU=Computers,OU=Quarantine,DC=domain,DC=lo
     Move-ADObject -TargetPath "OU=Desktops,OU=Workstations,OU=Tier 2,DC=domain,DC=local"
 ```
 
-> **Caution:** Moving objects changes which GPOs are applied. Verify GPO inheritance with `gpresult /r` on key systems after the move.
+> **🟡 Caution:** Moving objects changes which GPOs are applied. Verify GPO inheritance with `gpresult /r` on key systems after the move.
 
 ### 1.4 — Design the Delegation Model
 
 Tiering defines *who can log on where*. The delegation model defines *who can manage what inside Active Directory*. Without a delegation model, tiering is incomplete — an admin who can't log on to a DC but can reset Domain Admin passwords via ADUC still has Tier 0 power.
 
-#### Delegation Principles
+#### 🧩 Delegation Principles
 
 1. **No one touches Tier 0 objects except Tier 0 admins.** Period.
 2. **Tier 1 admins manage Tier 1 OUs** — create/delete/modify servers, reset server local admin passwords (LAPS), manage server groups.
@@ -648,7 +648,7 @@ dsacls $T1GroupsOU /I:S /G "DOMAIN\T1-Admins:WP;member;group"                 # 
     } | Format-Table IdentityReference, ActiveDirectoryRights, AccessControlType -AutoSize
 ```
 
-> **Critical rule:** Tier 2 admins must NEVER have password reset rights on Tier 0 or Tier 1 accounts. Verify this explicitly. A helpdesk operator who can reset a Domain Admin password is effectively Tier 0.
+> **🔴 Critical rule:** Tier 2 admins must NEVER have password reset rights on Tier 0 or Tier 1 accounts. Verify this explicitly. A helpdesk operator who can reset a Domain Admin password is effectively Tier 0.
 
 #### Audit Existing Delegations
 
@@ -823,7 +823,7 @@ For each deny GPO, configure these settings under:
 
 > **🟡 Warning:** Do NOT add `Domain Admins` or `Enterprise Admins` to deny groups on DCs. This will lock you out.
 
-#### Testing Strategy
+#### 🧪 Testing Strategy
 
 1. **Start in audit mode:** Before enforcing, use the scripts from Phase 0.3 to identify current violations. Every violation is a logon that **will break** when you enforce the GPO.
 2. **Apply to a test OU first:** Create a `Test` sub-OU in each tier and link the GPO there. Move one test machine to validate.
@@ -843,7 +843,7 @@ Invoke-Command -ComputerName "TESTSERVER01" -ScriptBlock {
 
 Authentication Policies and Silos provide **Kerberos-level enforcement** that is stronger than GPO-based deny logon rights. GPO deny rights can be bypassed in certain scenarios (e.g., a compromised machine not applying GPO). Authentication Policies enforce restrictions **at the DC level** during TGT issuance.
 
-#### How It Works
+#### ⚙️ How It Works
 
 - An **Authentication Policy** defines conditions under which a TGT will be issued (e.g., "only on Tier 0 machines")
 - An **Authentication Silo** groups accounts and policies together
@@ -915,7 +915,7 @@ Even with proper tiering, **permanent standing access** remains a risk: compromi
 
 #### Strategy: Empty Groups by Default
 
-The core principle:
+The core principle: 🎯
 
 > **Enterprise Admins and Schema Admins should have ZERO permanent members.** Domain Admins should have only the bare minimum (ideally one break-glass account). All other T0 access is granted through JIT.
 
@@ -1008,7 +1008,7 @@ These are powerful but introduce significant cost and complexity. Evaluate wheth
 
 > **⚠️ Note on MIM PAM:** Microsoft Identity Manager (MIM) 2016 included a PAM feature that used a bastion forest to provide JIT access. **MIM has reached end of mainstream support (January 2029 extended support end) and Microsoft is not investing in new features.** Do not start new MIM PAM deployments. For new implementations, use **native temporary group membership** (Option 1) or **Entra PIM** (Option 2).
 
-#### JIT Implementation Roadmap
+#### 🗺️ JIT Implementation Roadmap
 
 | Step | Action | Timeline |
 |------|--------|----------|
@@ -1027,7 +1027,7 @@ These are powerful but introduce significant cost and complexity. Evaluate wheth
 
 Tiering creates multiple admin accounts per person and many service accounts across tiers. Without a structured approach to storing and managing these credentials, admins will revert to sticky notes, shared spreadsheets, or a single password for everything — destroying the separation you just built.
 
-#### Core Principle
+#### 🔐 Core Principle
 
 > **The vault is classified at the tier of the highest-sensitivity secret it contains.** A KeePass database holding both T0 break-glass passwords and T2 LAPS passwords is a **Tier 0 asset** — because compromising it yields T0 access.
 
@@ -1044,7 +1044,7 @@ This leads to the fundamental rule: **separate vaults per tier**.
 | **🧰 HashiCorp Vault** | DevOps-heavy, hybrid/cloud | Namespace/policy-based | Yes (dynamic secrets) | Full audit | No | $ (OSS) / $$ (Enterprise) |
 | **☁️ Azure Key Vault** | Hybrid environments with Entra ID | RBAC-based separation | Yes (certificates) | Full audit via Azure Monitor | No | $ |
 
-#### Recommendation by Environment Size
+#### ✅ Recommendation by Environment Size
 
 **Small environment (< 500 users, 1-3 T0 admins):**
 Use **KeePass/KeePassXC** with strict discipline:
@@ -1120,7 +1120,7 @@ Every secret must have a designated home. If it's not in a vault, it's unmanaged
 | T2 support account passwords | T2 | T2 vault | Every 90 days |
 | Wi-Fi / VPN shared keys | T2 | T2 vault | Every 180 days |
 
-#### Anti-Patterns to Avoid
+#### 🚫 Anti-Patterns to Avoid
 
 | Anti-Pattern | Risk | Fix |
 |-------------|------|-----|
@@ -2472,9 +2472,9 @@ Track these metrics monthly to measure tiering health:
 
 Tiering is not a one-time project. Without ongoing maintenance, the model degrades over time as exceptions accumulate and new systems are deployed without classification.
 
-### 7.1 — Onboarding and Offboarding Procedures
+### 👥 7.1 — Onboarding and Offboarding Procedures
 
-#### New Administrator Onboarding
+#### 🟢 New Administrator Onboarding
 
 1. Determine which tiers the admin needs to manage
 2. Create tiered admin accounts (`t0-`, `t1-`, `t2-` prefix) using the script from Phase 2.1
@@ -2483,7 +2483,7 @@ Tiering is not a one-time project. Without ongoing maintenance, the model degrad
 5. Brief the admin on the tiering model and acceptable use policy
 6. Document the accounts in the admin register
 
-#### Administrator Offboarding
+#### 🔴 Administrator Offboarding
 
 1. Disable all tiered admin accounts immediately (do not delete — retain for log correlation)
 2. Remove from all privileged groups
@@ -2595,11 +2595,11 @@ function Invoke-TieringHealthCheck {
 Invoke-TieringHealthCheck
 ```
 
-### 7.3 — Break-Glass Procedure
+### 🚨 7.3 — Break-Glass Procedure
 
 A break-glass (emergency access) procedure is essential. If all T0 admin accounts are locked out (e.g., due to a misconfigured Authentication Policy), you need a way back in.
 
-#### Break-Glass Account Setup
+#### 🧯 Break-Glass Account Setup
 
 1. Create **two** break-glass accounts: `BreakGlass-01`, `BreakGlass-02`
 2. Set extremely long, randomly generated passwords (30+ characters)
@@ -2644,7 +2644,7 @@ Write-Host "BreakGlass-02 password: $([System.Runtime.InteropServices.Marshal]::
 Write-Host "`nSTORE THESE PASSWORDS IN SEPARATE PHYSICAL SAFES. CLEAR THIS SCREEN NOW." -ForegroundColor Yellow
 ```
 
-#### Break-Glass Usage Process
+#### 🛠️ Break-Glass Usage Process
 
 1. Two authorized persons must be present (dual control)
 2. Retrieve password from physical safe
@@ -2654,7 +2654,7 @@ Write-Host "`nSTORE THESE PASSWORDS IN SEPARATE PHYSICAL SAFES. CLEAR THIS SCREE
 6. Store new password in the safe
 7. Conduct a post-incident review
 
-### 7.4 — Training and Change Management
+### 🎓 7.4 — Training and Change Management
 
 | Audience | Training Content |
 |----------|-----------------|
@@ -2665,7 +2665,7 @@ Write-Host "`nSTORE THESE PASSWORDS IN SEPARATE PHYSICAL SAFES. CLEAR THIS SCREE
 | **Security team** | Tiering violation response, monitoring dashboards, quarterly review procedures, BloodHound analysis |
 | **Management** | High-level briefing on risk reduction, KPIs, compliance posture improvement |
 
-**Key messaging points:**
+**📣 Key messaging points:**
 - "This is not about making your job harder — it's about making the attacker's job impossible"
 - "If a Domain Admin credential is stolen from your workstation, the entire company is compromised. Tiering prevents this."
 - "Yes, you need multiple accounts. Yes, the PAW is restrictive. This is the cost of protecting 10,000+ users and all company data."
@@ -2713,7 +2713,7 @@ The N-level model complements tiering by introducing **vertical granularity with
 
 ---
 
-### 8.1 — Why N-Levels Within Tiers
+### 🧠 8.1 — Why N-Levels Within Tiers
 
 Without N-levels, every T1 admin can:
 - Manage SQL servers, file servers, Exchange servers, and Hyper-V hosts equally
@@ -2875,7 +2875,7 @@ Add-ADGroupMember -Identity "T2-Admins" -Members ($T2NGroups.Name)
 
 ---
 
-### 8.4 — Account Naming Convention with N-Levels
+### 🏷️ 8.4 — Account Naming Convention with N-Levels
 
 The base convention from Phase 2.1 (`t0-prenom.nom`) is extended with the N-level:
 
@@ -2905,7 +2905,7 @@ Keep `t0-john.doe` as the account name, determine the N-level by group membershi
 
 **Limitation:** Less readable in logs. Requires correlating the account name against group membership to determine privilege level during incident response.
 
-#### Recommendation
+#### ✅ Recommendation
 
 Use **Option A** for T0 accounts (visibility in security logs outweighs the cost of recreation on role change) and **Option B** is acceptable for T1/T2 where role changes are more frequent and the security impact of misreading a log event is lower.
 
@@ -3093,7 +3093,7 @@ This prevents a SQL DBA (`T1-N2-SQL`) from connecting via WinRM to an Exchange s
 
 Most environments have legacy admin accounts that do not follow any naming convention (`administrator`, `jean.dupont`, `admin-sql`, `adminIT`). Migrating these to the tiered naming model is a **high-impact, politically sensitive** operation that must be planned carefully.
 
-#### Migration Approach: Create-Then-Disable (Recommended over Rename)
+#### 🔁 Migration Approach: Create-Then-Disable (Recommended over Rename)
 
 **Do not rename existing accounts.** Renaming a `sAMAccountName` in Active Directory:
 - Breaks all service principal names referencing the old name
