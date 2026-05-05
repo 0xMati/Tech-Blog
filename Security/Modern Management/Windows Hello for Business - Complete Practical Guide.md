@@ -558,6 +558,30 @@ WHfB uses a **layered chain of keys** inside the Windows Hello container archite
 - ✅ Enforces **anti-hammering** properties for PIN-gated operations.
 - ✅ Prevents **private key export** under normal threat models.
 
+#### 🔨 What anti-hammering means
+
+`Anti-hammering` is the TPM's built-in protection against **rapid brute-force PIN guessing**.
+
+The idea is simple:
+
+- a user enters a wrong PIN,
+- the TPM counts the failed attempt,
+- after too many failures, the TPM slows down or blocks further attempts,
+- the attacker cannot try thousands of PINs per second like they could against a normal software secret.
+
+So even if the PIN is short, it is **not equivalent to a short password stored in software**. The TPM makes repeated guessing expensive and slow.
+
+```text
+Without anti-hammering:
+Attacker script → 0000, 0001, 0002, 0003, ... very fast
+
+With TPM anti-hammering:
+Wrong PINs accumulate → delay increases / lockout kicks in
+→ brute force becomes impractical
+```
+
+> 💡 **Why this matters:** In WHfB, the PIN is local to the device and protected by the TPM. Its strength comes not only from its length, but from the fact that the TPM severely limits guessing attempts.
+
 > ⚠️ Without TPM, WHfB can fall back to software key protection depending on policy. For high assurance, **enforce hardware protection**.
 
 ### 3.3 📤 What is actually sent to the server
