@@ -134,17 +134,16 @@ Much more defensible than one global "require MFA" switch.
 
 ---
 
-## 2.1 Strength ladder at a glance 🪜
+## 2.1 How to read section 2 quickly 🧭
 
-| Tier | Policy intent | AAL target | Allowed in production | Exit condition |
-|---|---|---|---|---|
-| 🟢 **Target state** | Default for normal and sensitive access | **AAL3** | Yes | None (this is the desired steady state) |
-| 🔵 **Transition state** | Controlled modernization when AAL3 is not yet fully deployed | **AAL2** | Yes, but scoped | Migration plan with deadline to AAL3 |
-| 🟡 **Fallback state** | Backup for constrained scenarios | **AAL2** | Yes, as exception only | Remove once primary method is restored |
-| 🟣 **Bootstrap state** | Onboarding and secure recovery | Contextual | Yes, temporary only | Auto-expiry + support verification complete |
-| 🔴 **Legacy emergency state** | Last-resort compatibility only | **AAL1** | Yes, emergency only | Explicit retirement plan and review cycle |
+Use the **Strategic status** column in section 2 as the policy decision lever:
 
-→ Rule of thumb: use this ladder for policy decisions, and use section 2 for method-level details. Target AAL3 by default, and treat lower tiers as temporary states with documented exit dates.
+- ✅ **Target**: preferred long-term state (default to **AAL3**)
+- 🔄 **Transition**: allowed while migrating to AAL3, with a dated plan
+- ⚠️ **Fallback/Bootstrap**: temporary by design, tightly scoped and reviewed
+- 🚫 **Legacy fallback only**: emergency compatibility path with retirement objective
+
+→ Rule of thumb: keep one source of truth in section 2, and treat every non-target method as temporary unless formally justified.
 
 ---
 
