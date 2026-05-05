@@ -6,7 +6,7 @@ Published: 2026-05-04
 
 ## TL;DR ⚡ (for busy admins)
 
-Short version you can use in a client discussion:
+→ Short version you can use in a client discussion:
 
 - 🛡️ **Priority 1: Phishing-resistant methods (target state)**
 	- FIDO2/Passkeys
@@ -46,7 +46,7 @@ In Entra ID, two users can both "pass MFA" and still be in totally different ris
 - User A signs in with WHfB or FIDO2 (phishing-resistant) 🛡️
 - User B signs in with SMS OTP (interceptable, weaker) ⚠️
 
-=> Same MFA checkbox, different blast radius.
+→ Same MFA checkbox, different blast radius.
 
 So a strong authentication strategy should always answer 4 questions:
 
@@ -68,7 +68,7 @@ That is the shift from checkbox security to decision-grade security. Section 1.1
 
 ### 1.1 Authentication Strength, Phishing-Resistant MFA, and AAL3 🏛️
 
-Core idea: authentication strength is a **policy dial**, not a buzzword.
+→ Core idea: authentication strength is a **policy dial**, not a buzzword.
 
 When Entra ID says "phishing-resistant MFA", it means a specific enforceable level: **Authentication Strength** in Conditional Access.
 
@@ -104,12 +104,12 @@ AAL (Authenticator Assurance Level) comes from **NIST SP 800-63B** and is common
 | AAL2 | MFA, moderate assurance | Authenticator push, TOTP + password |
 | AAL3 | Hardware-bound, phishing-resistant authenticator | FIDO2, WHfB with TPM, smartcard/CBA |
 
-Quick translation 🔄
+→ Quick translation 🔄
 
 - "Phishing-resistant MFA" in Microsoft language and "AAL3" in compliance language point to the same security objective
 - You can discuss architecture with IT teams and still answer audit/compliance questions without changing strategy
 
-Boss-level recommendation 🕹️
+→ Boss-level recommendation 🕹️
 
 - Use **Authentication Strength** in every critical Conditional Access policy
 - Reserve phishing-resistant / AAL3 for privileged access, sensitive data, and high-impact business applications
@@ -143,7 +143,7 @@ Boss-level recommendation 🕹️
 | 🟣 **Temporary bootstrap** | Temporary Access Pass (TAP) | — Contextual | — | Onboarding, recovery — never permanent |
 | 🔴 **Legacy fallback** | SMS / Voice OTP | ❌ No | AAL1 | Emergency fallback, tightly scoped, with an exit plan |
 
-Rule of thumb: the more sensitive the resource or the more privileged the user, the higher the required tier. Lower tiers should have an explicit justification and a migration-off plan — not a permanent home.
+→ Rule of thumb: the more sensitive the resource or the more privileged the user, the higher the required tier. Lower tiers should have an explicit justification and a migration-off plan — not a permanent home.
 
 ---
 
@@ -151,7 +151,7 @@ Rule of thumb: the more sensitive the resource or the more privileged the user, 
 
 ### 3.1 FIDO2 Security Keys and Passkeys
 
-Quick take: best-in-class for high-value access and admin scenarios.
+→ Quick take: best-in-class for high-value access and admin scenarios.
 
 #### ✅ Why it is great
 
@@ -173,7 +173,7 @@ Quick take: best-in-class for high-value access and admin scenarios.
 
 ### 3.2 Windows Hello for Business (WHfB)
 
-Quick take: top-tier security with excellent daily UX on managed devices.
+→ Quick take: top-tier security with excellent daily UX on managed devices.
 
 #### ✅ Why it is great
 
@@ -235,7 +235,7 @@ This is precisely what separates WHfB from traditional MFA: the security depth i
 
 ### 3.3 Certificate-Based Authentication (CBA)
 
-Quick take: extremely strong if your PKI game is mature.
+→ Quick take: extremely strong if your PKI game is mature.
 
 #### ✅ Why it is great
 
@@ -255,7 +255,7 @@ Quick take: extremely strong if your PKI game is mature.
 
 ### 3.4 Microsoft Authenticator push (number matching)
 
-Quick take: the practical default for large populations and phased modernization.
+→ Quick take: the practical default for large populations and phased modernization.
 
 #### ✅ Why it is great
 
@@ -277,7 +277,7 @@ Quick take: the practical default for large populations and phased modernization
 
 ### 3.5 Microsoft Authenticator phone sign-in (passwordless)
 
-Quick take: a practical passwordless option for users not yet on WHfB/FIDO2, but not equivalent to phishing-resistant methods.
+→ Quick take: a practical passwordless option for users not yet on WHfB/FIDO2, but not equivalent to phishing-resistant methods.
 
 #### ✅ Why it is useful
 
@@ -300,7 +300,7 @@ Quick take: a practical passwordless option for users not yet on WHfB/FIDO2, but
 
 ### 3.6 OATH TOTP (third-party apps or hardware token)
 
-Quick take: useful backup path, but not where you want to stop.
+→ Quick take: useful backup path, but not where you want to stop.
 
 #### ✅ Why it is useful
 
@@ -321,7 +321,7 @@ Quick take: useful backup path, but not where you want to stop.
 
 ### 3.7 Temporary Access Pass (TAP)
 
-Quick take: fantastic bootstrap tool, risky if governance is loose.
+→ Quick take: fantastic bootstrap tool, risky if governance is loose.
 
 #### ✅ Why it is excellent
 
@@ -342,7 +342,7 @@ Quick take: fantastic bootstrap tool, risky if governance is loose.
 
 ### 3.8 SMS and Voice OTP
 
-Quick take: keep only as a tightly controlled emergency fallback.
+→ Quick take: keep only as a tightly controlled emergency fallback.
 
 #### ✅ Why it still exists
 
@@ -362,7 +362,7 @@ Quick take: keep only as a tightly controlled emergency fallback.
 
 ## 4. How to choose without regretting it in 6 months 🧭
 
-Use this simple rule:
+→ Use this simple rule:
 
 - The more sensitive the resource, the more phishing-resistant the method must be.
 - The more privileged the user, the rarer the exception should be.
@@ -379,7 +379,7 @@ A fourth dimension often overlooked: **device posture as a Trusted Signal**. In 
 5. Reduce SMS/Voice to strict minimum.
 6. Use TAP for onboarding/recovery, never as a permanent method.
 
-Bonus reality check: if your strongest method is optional, users will discover the weakest one in record time.
+→ Bonus reality check: if your strongest method is optional, users will discover the weakest one in record time.
 
 ---
 
@@ -416,9 +416,9 @@ If you deploy passwordless without adjusting password expiry policies, you will 
 - Helpdesk calls at scale, disproportionate to any actual security gain
 - Hybrid sync issues or Kerberos ticket failures triggered by on-prem AD password expiry, invisible to the user until something breaks
 
-**Microsoft's recommendation for cloud-only accounts in a full passwordless deployment**: set password policies to **Password Never Expires**. The password exists as a silent backstop but is never surfaced to the user. It can be rotated programmatically if required by policy, without the user ever interacting with it.
+→ **Microsoft's recommendation for cloud-only accounts in a full passwordless deployment**: set password policies to **Password Never Expires**. The password exists as a silent backstop but is never surfaced to the user. It can be rotated programmatically if required by policy, without the user ever interacting with it.
 
-**For hybrid accounts**: coordinate with the AD team. If the user will never be prompted for their on-prem AD password, expiry-driven disruption has no security value and only creates operational noise. Use Fine-Grained Password Policies (FGPPs) to carve out passwordless populations from the standard expiry cycle.
+→ **For hybrid accounts**: coordinate with the AD team. If the user will never be prompted for their on-prem AD password, expiry-driven disruption has no security value and only creates operational noise. Use Fine-Grained Password Policies (FGPPs) to carve out passwordless populations from the standard expiry cycle.
 
 ### Trusted Signal: why device posture matters here too
 
@@ -463,7 +463,7 @@ Not all MFA methods are equal. The real question is not "MFA enabled: yes/no". T
 - in which context,
 - with which governance model.
 
-If you want one practical north star:
+→ If you want one practical north star:
 
 - target phishing-resistant by default,
 - keep weaker methods as exceptions,
