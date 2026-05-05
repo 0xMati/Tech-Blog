@@ -10,9 +10,9 @@ The core principle is simple: **never expose a higher-tier credential on a lower
 
 | Tier | Name | Scope | Examples |
 |------|------|-------|----------|
-| **Tier 0** | Control Plane | Identity infrastructure — anything that can directly control Active Directory | Domain Controllers, AD CS (PKI), AD FS, Entra ID Connect, DNS (AD-integrated), Schema/Configuration partition, DHCP on DCs |
-| **Tier 1** | Management Plane | Server infrastructure — anything that runs business applications and services | Application servers, file servers, SQL servers, Exchange, SCCM/MECM, Hyper-V/VMware hosts, print servers |
-| **Tier 2** | User Access | End-user devices — where users perform day-to-day work | Workstations, laptops, kiosks, thin clients |
+| **🛡️ Tier 0** | Control Plane | Identity infrastructure — anything that can directly control Active Directory | Domain Controllers, AD CS (PKI), AD FS, Entra ID Connect, DNS (AD-integrated), Schema/Configuration partition, DHCP on DCs |
+| **⚙️ Tier 1** | Management Plane | Server infrastructure — anything that runs business applications and services | Application servers, file servers, SQL servers, Exchange, SCCM/MECM, Hyper-V/VMware hosts, print servers |
+| **💻 Tier 2** | User Access | End-user devices — where users perform day-to-day work | Workstations, laptops, kiosks, thin clients |
 
 ```mermaid
 flowchart TD
@@ -1037,12 +1037,12 @@ This leads to the fundamental rule: **separate vaults per tier**.
 
 | Solution | Best For | Tier Separation | Auto-Rotation | Audit Trail | Session Recording | Cost |
 |----------|----------|-----------------|---------------|-------------|-------------------|------|
-| **KeePass / KeePassXC** | Small teams, budget-constrained | Manual (separate `.kdbx` per tier) | No | No native audit | No | Free |
-| **CyberArk PAM** | Enterprise, regulated industries | Built-in safes per tier | Yes | Full audit | Yes | $$$ |
-| **BeyondTrust PM** | Enterprise, session management focus | Policy-based separation | Yes | Full audit | Yes | $$$ |
-| **Delinea Secret Server** | Mid-market, good UI | Folder-based separation | Yes | Full audit | Yes | $$ |
-| **HashiCorp Vault** | DevOps-heavy, hybrid/cloud | Namespace/policy-based | Yes (dynamic secrets) | Full audit | No | $ (OSS) / $$ (Enterprise) |
-| **Azure Key Vault** | Hybrid environments with Entra ID | RBAC-based separation | Yes (certificates) | Full audit via Azure Monitor | No | $ |
+| **🗝️ KeePass / KeePassXC** | Small teams, budget-constrained | Manual (separate `.kdbx` per tier) | No | No native audit | No | Free |
+| **🏦 CyberArk PAM** | Enterprise, regulated industries | Built-in safes per tier | Yes | Full audit | Yes | $$$ |
+| **🔐 BeyondTrust PM** | Enterprise, session management focus | Policy-based separation | Yes | Full audit | Yes | $$$ |
+| **📁 Delinea Secret Server** | Mid-market, good UI | Folder-based separation | Yes | Full audit | Yes | $$ |
+| **🧰 HashiCorp Vault** | DevOps-heavy, hybrid/cloud | Namespace/policy-based | Yes (dynamic secrets) | Full audit | No | $ (OSS) / $$ (Enterprise) |
+| **☁️ Azure Key Vault** | Hybrid environments with Entra ID | RBAC-based separation | Yes (certificates) | Full audit via Azure Monitor | No | $ |
 
 #### Recommendation by Environment Size
 
@@ -2080,9 +2080,9 @@ Write-Host "Second krbtgt password rotation complete at $(Get-Date)" -Foreground
 
 | Event ID | Source | Meaning |
 |----------|--------|---------|
-| 4769 | Security | TGS request — look for tickets with anomalous lifetimes (>10 hours) |
-| 4768 | Security | TGT request — baseline normal patterns |
-| Alert | MDI | "Suspected Golden Ticket usage" |
+| 4769 | Security | 🔎 TGS request — look for tickets with anomalous lifetimes (>10 hours) |
+| 4768 | Security | 🧭 TGT request — baseline normal patterns |
+| Alert | MDI | 🚨 "Suspected Golden Ticket usage" |
 
 ### 5.4 — Secure Service Accounts
 
@@ -2238,11 +2238,11 @@ Tier 0 backup data requirements:
 
 | Product | Key T0 Consideration |
 |---------|---------------------|
-| **Veeam** | Veeam server backing up DCs = T0. Use separate Veeam instances or isolated backup jobs. Disable "Guest Processing" credentials sharing across tiers. Use per-job service accounts. |
-| **Commvault** | CommServe managing DC backups = T0. Use separate storage policies per tier. Restrict CommCell console access by tier. |
-| **DPM / Azure Backup** | DPM server backing up DCs = T0. For Azure Backup, the MARS agent on DCs connects to a Recovery Services Vault — restrict vault access to T0 admins via Azure RBAC. |
-| **Windows Server Backup** | Native backup on DCs — simplest option. Backup files stored locally or on isolated T0 share. Ensure share permissions are T0-only. |
-| **Veritas NetBackup** | Master server managing DC backups = T0. Use separate policy domains per tier. |
+| **🟢 Veeam** | Veeam server backing up DCs = T0. Use separate Veeam instances or isolated backup jobs. Disable "Guest Processing" credentials sharing across tiers. Use per-job service accounts. |
+| **🟠 Commvault** | CommServe managing DC backups = T0. Use separate storage policies per tier. Restrict CommCell console access by tier. |
+| **🔵 DPM / Azure Backup** | DPM server backing up DCs = T0. For Azure Backup, the MARS agent on DCs connects to a Recovery Services Vault — restrict vault access to T0 admins via Azure RBAC. |
+| **🧩 Windows Server Backup** | Native backup on DCs — simplest option. Backup files stored locally or on isolated T0 share. Ensure share permissions are T0-only. |
+| **🟣 Veritas NetBackup** | Master server managing DC backups = T0. Use separate policy domains per tier. |
 
 > **🟢 Recommendation:** For environments where separate backup infrastructure per tier is too costly, **Windows Server Backup on DCs writing to an isolated T0 share** is a practical, low-cost approach that avoids introducing third-party agents on DCs entirely.
 
@@ -2413,18 +2413,18 @@ Tier 2 machines → WEF Collector (Tier 2) → SIEM
 
 | Event ID | Source | What It Detects |
 |----------|--------|----------------|
-| 4624 | Security | Successful logon — track by tier |
-| 4625 | Security | Failed logon — brute force detection |
-| 4672 | Security | Special privileges assigned — T0 privilege use |
-| 4728/4732/4756 | Security | Member added to security group — privilege escalation |
-| 4768 | Security | Kerberos TGT request — authentication patterns |
-| 4769 | Security | Kerberos TGS request — Kerberoasting detection |
-| 4776 | Security | NTLM authentication — should be rare in a tiered environment |
-| 5136 | Security | Directory object modified — ACL/attribute changes |
-| 5141 | Security | Directory object deleted |
-| 4688 | Security | Process creation (with command line) — malicious tool execution |
-| 7045 | System | New service installed — persistence detection |
-| 1102 | Security | Audit log cleared — anti-forensics |
+| 4624 | Security | ✅ Successful logon — track by tier |
+| 4625 | Security | ❌ Failed logon — brute force detection |
+| 4672 | Security | 🔐 Special privileges assigned — T0 privilege use |
+| 4728/4732/4756 | Security | ⬆️ Member added to security group — privilege escalation |
+| 4768 | Security | 🎫 Kerberos TGT request — authentication patterns |
+| 4769 | Security | 🎯 Kerberos TGS request — Kerberoasting detection |
+| 4776 | Security | 🧱 NTLM authentication — should be rare in a tiered environment |
+| 5136 | Security | 📝 Directory object modified — ACL/attribute changes |
+| 5141 | Security | 🗑️ Directory object deleted |
+| 4688 | Security | ⚙️ Process creation (with command line) — malicious tool execution |
+| 7045 | System | 🧪 New service installed — persistence detection |
+| 1102 | Security | 🚨 Audit log cleared — anti-forensics |
 
 ### 6.4 — Dashboards and KPIs
 
@@ -2432,19 +2432,19 @@ Track these metrics monthly to measure tiering health:
 
 | KPI | Target | How to Measure |
 |-----|--------|---------------|
-| Tiering violations (T0 on non-T0) | 0 | SIEM alert count |
-| Tiering violations (T1 on T2) | 0 | SIEM alert count |
-| % of servers with LAPS enabled | 100% | LAPS reporting / AD attribute audit |
-| % of workstations with LAPS enabled | 100% | LAPS reporting |
-| Members in Domain Admins | Minimum needed | Monthly group review |
-| Members in Enterprise Admins | 0 (only populated during use) | Monthly group review |
-| Service accounts in Domain Admins | 0 | Monthly audit |
-| T0 accounts in Protected Users group | 100% | AD query |
-| Kerberoastable accounts with weak passwords | 0 | Regular Kerberoast simulation |
-| stale T0 accounts (>90 days inactive) | 0 | AD query on lastLogonTimestamp |
-| krbtgt password age | <180 days | `(Get-ADUser krbtgt -Properties PasswordLastSet).PasswordLastSet` |
-| BloodHound: paths from T2 to T0 | 0 | Quarterly BloodHound assessment |
-| MATI score | ≥ 80/100 | Quarterly [MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector) assessment |
+| 🚨 Tiering violations (T0 on non-T0) | 0 | SIEM alert count |
+| ⚠️ Tiering violations (T1 on T2) | 0 | SIEM alert count |
+| 🔑 % of servers with LAPS enabled | 100% | LAPS reporting / AD attribute audit |
+| 🔑 % of workstations with LAPS enabled | 100% | LAPS reporting |
+| 👑 Members in Domain Admins | Minimum needed | Monthly group review |
+| 👑 Members in Enterprise Admins | 0 (only populated during use) | Monthly group review |
+| 🧾 Service accounts in Domain Admins | 0 | Monthly audit |
+| 🛡️ T0 accounts in Protected Users group | 100% | AD query |
+| 🔥 Kerberoastable accounts with weak passwords | 0 | Regular Kerberoast simulation |
+| 💤 stale T0 accounts (>90 days inactive) | 0 | AD query on lastLogonTimestamp |
+| 🕒 krbtgt password age | <180 days | `(Get-ADUser krbtgt -Properties PasswordLastSet).PasswordLastSet` |
+| 🕸️ BloodHound: paths from T2 to T0 | 0 | Quarterly BloodHound assessment |
+| 📈 MATI score | ≥ 80/100 | Quarterly [MATI](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector) assessment |
 
 ### ✅ Phase 6 Checklist
 
@@ -2740,9 +2740,9 @@ N3 at Tier 1 does not have Tier 0 rights — it simply has broader T1 rights tha
 
 | Level | Name | Scope | Examples |
 |-------|------|-------|---------|
-| **T0-N1** | T0 Read / Auditor | Read-only access to T0 infrastructure; monitoring tasks | AD auditor, PKI auditor, MDI operator |
-| **T0-N2** | T0 Operator | Day-to-day Tier 0 administration within a defined domain | DC operations, AD CS certificate management, AD FS configuration |
-| **T0-N3** | T0 Senior / Domain Admin | Enterprise-wide changes; can modify directory structure, schema, forest config | Schema changes, cross-domain configuration, forest-level operations, PKI root CA |
+| **🔎 T0-N1** | T0 Read / Auditor | Read-only access to T0 infrastructure; monitoring tasks | AD auditor, PKI auditor, MDI operator |
+| **🛠️ T0-N2** | T0 Operator | Day-to-day Tier 0 administration within a defined domain | DC operations, AD CS certificate management, AD FS configuration |
+| **👑 T0-N3** | T0 Senior / Domain Admin | Enterprise-wide changes; can modify directory structure, schema, forest config | Schema changes, cross-domain configuration, forest-level operations, PKI root CA |
 
 > **T0-N3 is the only level that should ever be (transiently) in `Domain Admins` or `Enterprise Admins`.** T0-N1 and T0-N2 work with delegated rights only.
 
@@ -2750,17 +2750,17 @@ N3 at Tier 1 does not have Tier 0 rights — it simply has broader T1 rights tha
 
 | Level | Name | Scope | Examples |
 |-------|------|-------|---------|
-| **T1-N1** | T1 Support / Monitoring | Read-only server monitoring; restart services; no configuration change | L2 support on servers, application log reading, basic service restart |
-| **T1-N2** | T1 Administrator | Full admin of one or more specific platforms | Exchange admin, SQL DBA, File server admin, Hyper-V admin, Backup admin |
-| **T1-N3** | T1 Senior / Platform Lead | Cross-platform admin; T1 infrastructure design; gMSA and delegation management | Senior server engineer, platform architect, T1 security delegate |
+| **🔎 T1-N1** | T1 Support / Monitoring | Read-only server monitoring; restart services; no configuration change | L2 support on servers, application log reading, basic service restart |
+| **🛠️ T1-N2** | T1 Administrator | Full admin of one or more specific platforms | Exchange admin, SQL DBA, File server admin, Hyper-V admin, Backup admin |
+| **🏁 T1-N3** | T1 Senior / Platform Lead | Cross-platform admin; T1 infrastructure design; gMSA and delegation management | Senior server engineer, platform architect, T1 security delegate |
 
 #### Tier 2 — N-Levels
 
 | Level | Name | Scope | Examples |
 |-------|------|-------|---------|
-| **T2-N1** | Helpdesk L1 | Password reset, account unlock, basic workstation support | L1 helpdesk, service desk |
-| **T2-N2** | Desktop Administrator | Workstation imaging, software deployment, LAPS retrieval | Desktop support engineer |
-| **T2-N3** | Endpoint Lead / T2 Senior | SCCM/Intune management, workstation policy design, T2 group management | Endpoint management lead |
+| **📞 T2-N1** | Helpdesk L1 | Password reset, account unlock, basic workstation support | L1 helpdesk, service desk |
+| **🧰 T2-N2** | Desktop Administrator | Workstation imaging, software deployment, LAPS retrieval | Desktop support engineer |
+| **🧭 T2-N3** | Endpoint Lead / T2 Senior | SCCM/Intune management, workstation policy design, T2 group management | Endpoint management lead |
 
 ---
 
@@ -3317,13 +3317,13 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 
 | Priority | Phase | Actions | Impact |
 |----------|-------|---------|--------|
-| **P0 — Quick Wins** | Phase 0 | Asset classification, privileged account inventory, krbtgt rotation, LAPS | Immediately reduces attack surface |
-| **P1 — Foundations** | Phases 1 + 2 | OU structure, tiering groups, dedicated admin accounts, logon restriction GPOs | Establishes the tiering framework |
-| **P2 — Strong Isolation** | Phases 2 + 3 | PAW deployment, Authentication Policies/Silos, Protected Users group | Effective Tier 0 isolation |
-| **P3 — Hardening** | Phases 4 + 5 | GPO hardening per tier, gMSA migration, AD CS hardening, ACL cleanup, firewall segmentation | Reduces attack vectors |
-| **P4 — Detection** | Phase 6 | MDI, SIEM rules, tiering violation alerts, Windows Event Forwarding | Visibility and response capability |
-| **P5 — Maturity** | Phase 7 | Periodic reviews, health check automation, training, break-glass, hybrid extensions | Long-term sustainability |
-| **P6 — Granularity** | Phase 8 | N-level model (N1/N2/N3), platform-based delegation, account migration, surgical JIT | Least-privilege within tiers; readable audit trail |
+| **⚡ P0 — Quick Wins** | Phase 0 | Asset classification, privileged account inventory, krbtgt rotation, LAPS | Immediately reduces attack surface |
+| **🏗️ P1 — Foundations** | Phases 1 + 2 | OU structure, tiering groups, dedicated admin accounts, logon restriction GPOs | Establishes the tiering framework |
+| **🔒 P2 — Strong Isolation** | Phases 2 + 3 | PAW deployment, Authentication Policies/Silos, Protected Users group | Effective Tier 0 isolation |
+| **🛡️ P3 — Hardening** | Phases 4 + 5 | GPO hardening per tier, gMSA migration, AD CS hardening, ACL cleanup, firewall segmentation | Reduces attack vectors |
+| **📡 P4 — Detection** | Phase 6 | MDI, SIEM rules, tiering violation alerts, Windows Event Forwarding | Visibility and response capability |
+| **♻️ P5 — Maturity** | Phase 7 | Periodic reviews, health check automation, training, break-glass, hybrid extensions | Long-term sustainability |
+| **🧩 P6 — Granularity** | Phase 8 | N-level model (N1/N2/N3), platform-based delegation, account migration, surgical JIT | Least-privilege within tiers; readable audit trail |
 
 ---
 
