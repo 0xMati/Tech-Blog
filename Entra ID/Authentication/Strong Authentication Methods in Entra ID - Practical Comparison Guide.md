@@ -83,23 +83,17 @@ Practical rule: in Conditional Access, always use **Authentication Strength** �
 
 ---
 
-## 2.1 Visual map: strength ladder at a glance 🪜
+## 2.1 Strength ladder at a glance 🪜
 
-```mermaid
-flowchart TB
-	A[Phishing-resistant tier<br/>FIDO2/Passkeys<br/>WHfB<br/>CBA] --> B[Strong mainstream tier<br/>Microsoft Authenticator Push]
-	B --> C[Backup tier<br/>OATH TOTP]
-	C --> D[Temporary bootstrap tier<br/>TAP]
-	D --> E[Legacy fallback tier<br/>SMS / Voice OTP]
+| Tier | Methods | Phishing-resistant | NIST level | Recommended scope |
+|---|---|---|---|---|
+| 🟢 **Phishing-resistant** | FIDO2 / Passkeys, WHfB, CBA | ✅ Yes | AAL3 | Admins, privileged access, sensitive workloads |
+| 🔵 **Strong mainstream** | Microsoft Authenticator push (number matching) | ⚠️ Partial | AAL2 | Large user populations, phased modernization |
+| 🟡 **Backup** | OATH TOTP (app or hardware token) | ❌ No | AAL2 | Constrained environments, fallback only |
+| 🟣 **Temporary bootstrap** | Temporary Access Pass (TAP) | — Contextual | — | Onboarding, recovery — never permanent |
+| 🔴 **Legacy fallback** | SMS / Voice OTP | ❌ No | AAL1 | Emergency fallback, tightly scoped, with an exit plan |
 
-	style A fill:#daf5d8,stroke:#2a7f3b,stroke-width:2px
-	style B fill:#e8f3ff,stroke:#2f6db3,stroke-width:2px
-	style C fill:#fff4d8,stroke:#a87200,stroke-width:2px
-	style D fill:#f7e8ff,stroke:#7c3fb2,stroke-width:2px
-	style E fill:#ffe4e4,stroke:#b23b3b,stroke-width:2px
-```
-
-If you remember only one thing: move up the ladder for sensitive access, and keep lower tiers as controlled exceptions.
+Rule of thumb: the more sensitive the resource or the more privileged the user, the higher the required tier. Lower tiers should have an explicit justification and a migration-off plan — not a permanent home.
 
 ---
 
