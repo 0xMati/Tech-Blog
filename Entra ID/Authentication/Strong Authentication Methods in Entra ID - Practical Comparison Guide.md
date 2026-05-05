@@ -39,6 +39,36 @@ Quick takeaway: strong auth is not about adding more prompts, it is about using 
 
 ---
 
+### 1.1 Authentication Strength, Phishing-Resistant MFA, and AAL3 🏛️
+
+When Entra ID talks about "phishing-resistant MFA", it refers to a specific **Authentication Strength** level you configure in Conditional Access — not just a toggle on the user account.
+
+**Authentication Strength** is a named policy that defines which authentication method combinations are acceptable to satisfy an access requirement. Microsoft ships three built-in strengths:
+
+| Strength | What it requires |
+|---|---|
+| Multifactor authentication | Any MFA combination, including SMS + password |
+| Passwordless MFA | Passwordless methods: WHfB, FIDO2, certificate |
+| Phishing-resistant MFA | FIDO2, WHfB, or CBA only — methods with no shared secret that can be intercepted or replayed |
+
+In Conditional Access, you attach a strength to a policy instead of the generic "require MFA" option. This gives you real precision: an admin portal demands phishing-resistant MFA, a low-risk internal app accepts standard MFA, and the policy enforces that distinction automatically.
+
+**Where does AAL3 fit?**
+
+AAL (Authenticator Assurance Level) comes from the **NIST SP 800-63B** framework — a government-grade identity standard widely referenced in regulated industries and government contracts:
+
+| Level | Description | Typical methods |
+|---|---|---|
+| AAL1 | Single factor, minimal assurance | Password alone |
+| AAL2 | MFA, moderate assurance | Authenticator push, TOTP + password |
+| AAL3 | Hardware-bound, phishing-resistant authenticator | FIDO2, WHfB with TPM, smartcard/CBA |
+
+Microsoft's "phishing-resistant MFA" Authentication Strength maps directly to **AAL3**. If a client or auditor references AAL3, they are describing the same control — the terminology simply differs depending on whether the conversation is Microsoft-native or compliance-framework-driven.
+
+Practical rule: in Conditional Access, always use **Authentication Strength** — not just "require MFA" — to enforce the right level for the right resource. Phishing-resistant / AAL3 is the target for privileged access, sensitive data workloads, and high-risk populations.
+
+---
+
 ## 2. Quick comparison table 📊
 
 | Method | Quick score | Phishing resistance level | User experience | Prerequisites | Pros | Cons | Best use case |
@@ -116,6 +146,46 @@ Quick take: top-tier security with excellent daily UX on managed devices.
 
 - Internal users on managed laptops
 - Long-term passwordless strategy
+
+#### 🔬 Focus: TPM + PIN + Biometrics — do all three factors really apply?
+
+This is a recurring question and the answer requires unpacking how WHfB actually works under the hood.
+
+**The three factor types in identity security:**
+
+| Factor type | Description | In WHfB |
+|---|---|---|
+| Something you **have** | A physical object | TPM chip (hardware-bound private key) |
+| Something you **know** | A secret you memorize | PIN (local only, never transmitted to any server) |
+| Something you **are** | A biological trait | Fingerprint or facial recognition (biometrics) |
+
+**How WHfB actually uses them:**
+
+WHfB generates a key pair directly inside the TPM. The private key never leaves the chip — not during sign-in, not during token issuance, never. To unlock that key, the user provides a local verification: either a PIN or biometrics. These are local gestures, not credentials in flight.
+
+Important nuance: **PIN and biometrics are alternative unlock methods, not stacked steps**. The user either enters a PIN or scans a fingerprint — both unlock the same TPM-protected key. They are not performed simultaneously.
+
+**So does WHfB achieve "three-factor" authentication?**
+
+The answer is: yes, by design — but not in the way most people picture it.
+
+- **TPM (have)** is always active: the credential is device-bound and hardware-protected, regardless of how the user unlocks it.
+- **PIN (know)** or **biometrics (are)** is the active second gate at unlock time.
+- When biometrics is enabled, the combination is **have (TPM) + are (biometrics)**, with PIN as a fallback that brings in the **know** dimension when biometrics are unavailable.
+
+All three factor types are present in the architecture. What does not happen is three sequential verification steps — it is one fluid gesture that engages two or three factor types simultaneously depending on the unlock method used.
+
+**Can you configure and enforce TPM + PIN + biometrics together in WHfB?**
+
+Yes, and this is the recommended production setup:
+
+- **TPM requirement**: enforced via Intune device configuration profile or GPO — ensures the credential is hardware-bound.
+- **PIN complexity**: enforced via Windows Hello for Business policy — minimum length, complexity rules, expiry if required.
+- **Biometrics**: enabled via policy as a companion unlock method alongside PIN.
+
+The result in practice: a user on a TPM-equipped Intune-managed device who authenticates via facial recognition is satisfying all three factor types without a single extra step. For them it is "look at the laptop". For your security posture it is a hardware-bound, phishing-resistant, AAL3-grade credential with no password in flight, no OTP code, and no secret that can be stolen remotely.
+
+This is precisely what separates WHfB from traditional MFA: the security depth is embedded in the architecture, not added as an extra prompt.
 
 ---
 
@@ -268,7 +338,54 @@ Bonus reality check: if your strongest method is optional, users will discover t
 
 ---
 
-## 7. Conclusion 🎯
+## 7. Passwordless ≠ Password Removed from the Directory 🔑
+
+One of the most persistent misconceptions in passwordless deployments: **going passwordless does not delete the user's password**.
+
+In Entra ID — and in hybrid environments — the password remains in the directory. What changes is that the user no longer needs it to authenticate. The authentication flow bypasses the password entirely. But the password still exists, and this distinction has concrete operational consequences that are easy to overlook until they cause incidents.
+
+### What actually happens to the password?
+
+| Scenario | Password status | Risk if ignored |
+|---|---|---|
+| WHfB or FIDO2 deployed, user authenticates daily without password | Password still exists in Entra ID | If it expires, fallback flows and legacy protocol fallbacks break unexpectedly |
+| Hybrid user synced from on-prem AD | On-prem AD password policy governs expiry | AD password expiry triggers Kerberos issues and sync disruptions even if the user has not typed it in months |
+| Cloud-only user in full passwordless flow | Entra ID password policy applies | An expired password can block legacy auth fallback or generate a confusing reset prompt |
+
+### The password expiry problem
+
+If you deploy passwordless without adjusting password expiry policies, you will eventually see:
+
+- Users suddenly prompted for a password they have not typed in months — and do not remember
+- Helpdesk calls at scale, disproportionate to any actual security gain
+- Hybrid sync issues or Kerberos ticket failures triggered by on-prem AD password expiry, invisible to the user until something breaks
+
+**Microsoft's recommendation for cloud-only accounts in a full passwordless deployment**: set password policies to **Password Never Expires**. The password exists as a silent backstop but is never surfaced to the user. It can be rotated programmatically if required by policy, without the user ever interacting with it.
+
+**For hybrid accounts**: coordinate with the AD team. If the user will never be prompted for their on-prem AD password, expiry-driven disruption has no security value and only creates operational noise. Use Fine-Grained Password Policies (FGPPs) to carve out passwordless populations from the standard expiry cycle.
+
+### Trusted Signal: why device posture matters here too
+
+This connects to the **Trusted Signal** concept in Conditional Access. In a passwordless design, the trust is no longer placed in a secret the user knows — it is placed in the combination of:
+
+- **The device** (compliant, Intune-managed, TPM-protected)
+- **The authentication method** (WHfB, FIDO2)
+- **The contextual signals** (location, risk score, session characteristics)
+
+A Conditional Access policy that enforces phishing-resistant MFA and requires a compliant device is not just checking "did the user prove identity" — it is checking "did the right user, on the right device, in the right context, use the right method". That is the Trusted Signal model: authentication is no longer a single gate, it is a compound signal evaluated at every access request.
+
+### Practical checklist for passwordless deployments
+
+- 🔍 Audit current password expiry policies **before** rolling out passwordless at scale
+- ☁️ Cloud-only users: plan the switch to **Password Never Expires** once passwordless enrollment is confirmed and validated
+- 🏢 Hybrid users: work with the AD team on Fine-Grained Password Policies for passwordless populations
+- 🆘 Document and test the fallback path — what happens when WHfB or FIDO2 is unavailable?
+- 🔄 Use TAP as the recovery method, not the old password
+- 📋 Communicate clearly to users: they may still have a password in the system, but it is no longer their authentication method
+
+---
+
+## 8. Conclusion 🎯
 
 Not all MFA methods are equal. The real question is not "MFA enabled: yes/no". The real question is:
 
