@@ -571,18 +571,39 @@ The idea is simple:
 
 So even if the PIN is short, it is **not equivalent to a short password stored in software**. The TPM makes repeated guessing expensive and slow.
 
+**Practical anti-hammering parameters:**
+- **3 failed attempts** → TPM enters 1-minute lockout (user waits, then can retry)
+- **Cumulative failures across lockouts** → progressively longer delays
+- **~32 total failed attempts** → device may implement longer-term lockout or credential reset requirement
+- **This is TPM firmware behavior**, not configurable via GPO or Intune
+
 ```text
 Without anti-hammering:
 Attacker script → 0000, 0001, 0002, 0003, ... very fast
 
 With TPM anti-hammering:
-Wrong PINs accumulate → delay increases / lockout kicks in
+Attempt 1,2,3 fail → 1-minute lockout
+Attempt 4,5,6 fail → lockout increases
+Attempt ~32+ fail → device-level credential reset or extended lockout
 → brute force becomes impractical
 ```
 
 > 💡 **Why this matters:** In WHfB, the PIN is local to the device and protected by the TPM. Its strength comes not only from its length, but from the fact that the TPM severely limits guessing attempts.
 
 > ⚠️ Without TPM, WHfB can fall back to software key protection depending on policy. For high assurance, **enforce hardware protection**.
+
+#### 🔐 Biometric data storage isolation
+
+Biometric data used for Windows Hello is **stored locally only** on the device, **never roamed or transmitted** to external services or servers. This isolation prevents central collection points that attackers could compromise.
+
+**Storage specifics:**
+- **Location:** `C:\WINDOWS\System32\WinBioDatabase` — per-sensor database
+- **Encryption:** AES with CBC chaining mode (per-database encryption key, randomly generated and system-bound)
+- **Hashing:** SHA256 for template integrity
+- **Conversion:** Even if an attacker obtained encrypted biometric data, it **cannot be converted back** into raw biometric samples recognizable by the sensor
+- **Per-sensor isolation:** Each biometric sensor has its own encrypted database file with unique keys
+
+This means **no biometric template roaming**, **no cloud backup of biometric data**, and **no cross-device biometric sync** — protecting against the threat of compromised central biometric repositories.
 
 ### 3.3 📤 What is actually sent to the server
 
@@ -1050,13 +1071,47 @@ Passwordless does **not** remove password objects from lifecycle governance.
 - 👁️ Biometric fallback
 - 🔑 TAP-based bootstrap/recovery
 
-### 12.2 🚨 Break-glass posture
+#### 🔢 PIN reset runbook (Microsoft PIN reset service)
+
+**Microsoft PIN reset service** enables users to recover a forgotten Windows Hello PIN without re-enrolling WHfB. This is an essential recovery path.
+
+**Key points:**
+- User initiates PIN reset via sign-in screen or Settings
+- Identity verification required (must satisfy MFA or existing proof of identity)
+- New PIN is set locally on the device
+- Private key remains unchanged — only the Protector key is re-bound
+- Reference: https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/pin-reset
+
+**Operational checklist:**
+- ✅ Document PIN reset procedure for support team before rollout
+- ✅ Test PIN reset in pilot phase (network availability, identity verification flows)
+- ✅ Brief users on PIN reset as preferred path vs. TAP-based recovery
+- ✅ Monitor PIN reset event logs to detect patterns (frequent resets = sign of forgotten PINs → UX friction)
+
+### 12.2 🛡️ PIN policy limits and defaults
+
+**Important operational clarity:** PIN complexity and anti-hammering parameters are **native TPM/WHfB algorithms**, NOT configurable via GPO or Intune.
+
+| Aspect | Configurable? | Default/Native behavior | Implication |
+|---|---|---|---|
+| PIN length | ✅ Yes (Intune/GPO) | Minimum 4–16 digits | You can enforce 6+ digit PINs |
+| PIN history | ✅ Yes (Intune/GPO) | Can enforce last N PINs cannot be reused | You can prevent PIN reuse |
+| PIN expiration | ✅ Yes (Intune/GPO) | Can force periodic PIN reset | You can mandate refresh cycles |
+| **PIN complexity (constant delta)** | ❌ No | Native: blocks 1234, 1357, 9630, etc. (100 patterns always blocked) | Cannot customize; native algorithm covers 99% of weak patterns |
+| **Anti-hammering lockout** | ❌ No | Native: 3 failures → 1-min lockout; ~32 total failures → extended lockout | Cannot adjust; TPM firmware-level protection |
+| **Biometric complexity** | ❌ No | Native: per-sensor encrypted storage, AES-CBC, local-only | Cannot customize; architectural isolation |
+
+**Consequence:** If your security policy requires custom PIN pattern blocking beyond the native algorithm, that **cannot be implemented in WHfB** — PIN complexity is a locked architectural feature.
+
+---
+
+### 12.4 🚨 Break-glass posture
 
 - → Dedicated emergency identities only.
 - → Strong methods only.
 - → Alert and review **every** usage event.
 
-### 12.3 ❌ Operational anti-patterns
+### 12.5 ❌ Operational anti-patterns
 
 - 🚫 No owner for recovery process
 - 🚫 Open-ended AAL2 exceptions
