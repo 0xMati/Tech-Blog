@@ -6,7 +6,7 @@ Published: 2026-05-04
 
 ## TL;DR ⚡ (for busy admins)
 
-→ Short version you can use in a client discussion:
+→ Short version :
 
 - 🛡️ **Priority 1: Phishing-resistant methods (target state)**
 	- FIDO2/Passkeys
