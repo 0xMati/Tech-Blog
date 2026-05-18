@@ -590,3 +590,371 @@ Hypothèses à tester dans l'ordre :
 - [ ] Vérifier le **site AD** du poste : si le poste est dans un site sans DC, le DC Locator peut envoyer aléatoirement vers DC1 ou DC2 selon le `try_next_closest_site`.
 - [ ] `msDS-SupportedEncryptionTypes` divergent entre DC1 et DC2 → Kerberos peut échouer silencieusement et ressembler à un secure channel KO.
 - [ ] `Restart-Service Netlogon` côté DC est non-disruptif et utile pour forcer la ré-publication des SRV / re-bind avec le PDC après modification.
+
+---
+
+## Annexe — Collecte exhaustive des logs et fichiers
+
+Objectif : pouvoir analyser hors-ligne ou transmettre à Microsoft Support un dossier complet, daté, et reproductible. Tout est centralisé dans `C:\Temp\SC-Bundle-<DATE>` sur le poste d'analyse.
+
+### A.1 Structure cible
+
+```text
+C:\Temp\SC-Bundle-yyyyMMdd-HHmmss\
+├── 00-Context\
+│   ├── transcript.log
+│   ├── forest-domain.txt
+│   └── fsmo.txt
+├── 10-DC1\
+│   ├── dcdiag.txt
+│   ├── repadmin\
+│   ├── events\
+│   ├── netlogon\
+│   ├── dfsr\
+│   ├── dns\
+│   └── system-info\
+├── 10-DC2\
+│   └── (idem DC1)
+├── 20-Client-<Poste>\
+│   ├── netlogon.log
+│   ├── netlogon.bak
+│   ├── events\
+│   ├── klist.txt
+│   ├── nltest.txt
+│   └── gpresult.html
+├── 30-Replication\
+│   ├── showrepl-DC1.csv
+│   ├── showrepl-DC2.csv
+│   ├── showobjmeta-<poste>-DC1.txt
+│   ├── showobjmeta-<poste>-DC2.txt
+│   ├── uptodateness-DC1.csv
+│   └── uptodateness-DC2.csv
+├── 40-SYSVOL\
+│   ├── dfsrdiag-DC2.txt
+│   ├── gpo-versions-DC1.csv
+│   ├── gpo-versions-DC2.csv
+│   └── gpt-hash-diff.txt
+├── 50-Network\
+│   ├── capture-DC2.etl
+│   └── capture-client.etl
+└── 90-VMware\
+    ├── snapshots-DC2.txt
+    └── vmx-advanced.txt
+```
+
+### A.2 Bootstrap du bundle
+
+- [ ] Initialiser le dossier et la transcription
+  ```powershell
+  $Stamp  = Get-Date -Format yyyyMMdd-HHmmss
+  $Root   = "C:\Temp\SC-Bundle-$Stamp"
+  '00-Context','10-DC1','10-DC2','20-Client','30-Replication','40-SYSVOL','50-Network','90-VMware' |
+      ForEach-Object { New-Item -ItemType Directory -Path (Join-Path $Root $_) -Force | Out-Null }
+  Start-Transcript -Path (Join-Path $Root '00-Context\transcript.log')
+
+  Get-ADForest | Out-File (Join-Path $Root '00-Context\forest-domain.txt')
+  Get-ADDomain | Out-File -Append (Join-Path $Root '00-Context\forest-domain.txt')
+  netdom query fsmo > (Join-Path $Root '00-Context\fsmo.txt')
+  ```
+
+### A.3 Par DC (à exécuter pour DC1 et DC2)
+
+- [ ] `dcdiag` complet
+  ```powershell
+  dcdiag /s:$DC1 /v /c /e > "$Root\10-DC1\dcdiag.txt"
+  dcdiag /s:$DC2 /v /c /e > "$Root\10-DC2\dcdiag.txt"
+  ```
+
+- [ ] `repadmin` complet (un sous-dossier `repadmin` par DC)
+  ```powershell
+  $DCs = @{ DC1 = $DC1; DC2 = $DC2 }
+  foreach ($n in $DCs.Keys) {
+      $srv = $DCs[$n]; $out = "$Root\10-$n\repadmin"
+      New-Item -ItemType Directory $out -Force | Out-Null
+      repadmin /showrepl   $srv /verbose > "$out\showrepl.txt"
+      repadmin /showrepl   $srv /csv     > "$out\showrepl.csv"
+      repadmin /replsummary $srv         > "$out\replsummary.txt"
+      repadmin /queue       $srv         > "$out\queue.txt"
+      repadmin /showbackup  $srv         > "$out\showbackup.txt"
+      repadmin /showconn    $srv         > "$out\showconn.txt"
+      repadmin /bind        $srv         > "$out\bind.txt"
+      repadmin /istg        $srv         > "$out\istg.txt"
+      repadmin /options     $srv         > "$out\options.txt"
+  }
+  ```
+
+- [ ] Events Windows (export `.evtx` + `.csv` lisible)
+  ```powershell
+  $LogsDC = 'Directory Service','DFS Replication','DNS Server','System','Application'
+  foreach ($n in $DCs.Keys) {
+      $srv = $DCs[$n]; $out = "$Root\10-$n\events"
+      New-Item -ItemType Directory $out -Force | Out-Null
+      foreach ($l in $LogsDC) {
+          $safe = $l -replace '\W','_'
+          $evtx = "$out\$safe.evtx"
+          # Export brut du log entier
+          wevtutil epl $l $evtx /r:$srv /ow:true
+          # Vue csv des 30 derniers jours, niveaux Critical/Error/Warning
+          Get-WinEvent -ComputerName $srv -FilterHashtable @{
+              LogName=$l; StartTime=(Get-Date).AddDays(-30); Level=1,2,3
+          } -ErrorAction SilentlyContinue |
+              Select-Object TimeCreated, Id, LevelDisplayName, ProviderName, Message |
+              Export-Csv -NoTypeInformation -Encoding UTF8 -Path "$out\$safe.csv"
+      }
+      # Security filtré Kerberos / Netlogon
+      Get-WinEvent -ComputerName $srv -FilterHashtable @{
+          LogName='Security'; StartTime=(Get-Date).AddDays(-7); Id=4768,4769,4771,4776,4624,4625
+      } -ErrorAction SilentlyContinue |
+          Select-Object TimeCreated, Id, Message |
+          Export-Csv -NoTypeInformation -Encoding UTF8 -Path "$out\Security-Kerb.csv"
+  }
+  ```
+
+- [ ] Logs Netlogon DC (déjà persistés sur disque)
+  ```powershell
+  foreach ($n in $DCs.Keys) {
+      $srv = $DCs[$n]; $out = "$Root\10-$n\netlogon"
+      New-Item -ItemType Directory $out -Force | Out-Null
+      Copy-Item "\\$srv\C$\Windows\Debug\netlogon.log" $out -ErrorAction SilentlyContinue
+      Copy-Item "\\$srv\C$\Windows\Debug\netlogon.bak" $out -ErrorAction SilentlyContinue
+  }
+  ```
+  - [ ] Si non collectés, activer `nltest /dbflag:0x2080FFFF` sur le DC, reproduire, copier, puis `nltest /dbflag:0x0`.
+
+- [ ] DFSR debug logs (compressés dans `C:\Windows\Debug\Dfsr*.log.gz`)
+  ```powershell
+  foreach ($n in $DCs.Keys) {
+      $srv = $DCs[$n]; $out = "$Root\10-$n\dfsr"
+      New-Item -ItemType Directory $out -Force | Out-Null
+      Copy-Item "\\$srv\C$\Windows\Debug\Dfsr*" $out -ErrorAction SilentlyContinue
+  }
+  ```
+
+- [ ] DNS — export de zone + records `_msdcs`
+  ```powershell
+  foreach ($n in $DCs.Keys) {
+      $srv = $DCs[$n]; $out = "$Root\10-$n\dns"
+      New-Item -ItemType Directory $out -Force | Out-Null
+      dnscmd $srv /enumzones                              > "$out\zones.txt"
+      dnscmd $srv /zoneexport $Domain "dns-$Domain.dns"   > "$out\export-domain.txt"
+      dnscmd $srv /zoneexport "_msdcs.$Domain" "dns-msdcs-$Domain.dns" > "$out\export-msdcs.txt"
+      # Copier les .dns générés (par défaut dans %SystemRoot%\System32\dns)
+      Copy-Item "\\$srv\C$\Windows\System32\dns\dns-*.dns" $out -ErrorAction SilentlyContinue
+  }
+  ```
+
+- [ ] System info / patches / services
+  ```powershell
+  foreach ($n in $DCs.Keys) {
+      $srv = $DCs[$n]; $out = "$Root\10-$n\system-info"
+      New-Item -ItemType Directory $out -Force | Out-Null
+      Invoke-Command -ComputerName $srv -ScriptBlock {
+          systeminfo
+      } | Out-File "$out\systeminfo.txt"
+      Invoke-Command -ComputerName $srv -ScriptBlock {
+          Get-HotFix | Sort-Object InstalledOn -Descending
+      } | Out-File "$out\hotfix.txt"
+      Invoke-Command -ComputerName $srv -ScriptBlock {
+          Get-Service NTDS,Netlogon,kdc,DFSR,DNS,w32time,IsmServ
+      } | Out-File "$out\services.txt"
+      Invoke-Command -ComputerName $srv -ScriptBlock {
+          w32tm /query /status; w32tm /query /configuration
+      } | Out-File "$out\w32tm.txt"
+      Invoke-Command -ComputerName $srv -ScriptBlock { setspn -L "$env:COMPUTERNAME$" } |
+          Out-File "$out\spn.txt"
+  }
+  ```
+
+### A.4 Réplication ciblée du compte machine impacté
+
+- [ ] Métadonnées de l'objet
+  ```powershell
+  $DN = (Get-ADComputer $Poste -Server $DC1).DistinguishedName
+  $rep = "$Root\30-Replication"
+  repadmin /showobjmeta $DC1 "$DN" > "$rep\showobjmeta-$Poste-DC1.txt"
+  repadmin /showobjmeta $DC2 "$DN" > "$rep\showobjmeta-$Poste-DC2.txt"
+  Compare-Object (Get-Content "$rep\showobjmeta-$Poste-DC1.txt") `
+                 (Get-Content "$rep\showobjmeta-$Poste-DC2.txt") |
+      Out-File "$rep\diff-$Poste.txt"
+  ```
+
+- [ ] Up-to-dateness + partner metadata
+  ```powershell
+  Get-ADReplicationUpToDatenessVectorTable -Target $DC1 |
+      Export-Csv "$rep\uptodateness-DC1.csv" -NoTypeInformation -Encoding UTF8
+  Get-ADReplicationUpToDatenessVectorTable -Target $DC2 |
+      Export-Csv "$rep\uptodateness-DC2.csv" -NoTypeInformation -Encoding UTF8
+  Get-ADReplicationPartnerMetadata -Target $DC1 -Scope Server |
+      Export-Csv "$rep\partnermeta-DC1.csv" -NoTypeInformation -Encoding UTF8
+  Get-ADReplicationPartnerMetadata -Target $DC2 -Scope Server |
+      Export-Csv "$rep\partnermeta-DC2.csv" -NoTypeInformation -Encoding UTF8
+  Get-ADReplicationFailure -Scope Forest |
+      Export-Csv "$rep\replfailures.csv" -NoTypeInformation -Encoding UTF8
+  ```
+
+### A.5 SYSVOL / DFSR
+
+- [ ] État DFSR + diff GPO
+  ```powershell
+  $sys = "$Root\40-SYSVOL"
+  Invoke-Command -ComputerName $DC2 -ScriptBlock {
+      dfsrdiag replicationstate /member:$env:COMPUTERNAME
+      dfsrdiag backlog /rgname:'Domain System Volume' /rfname:'SYSVOL Share' /smem:$using:DC1 /rmem:$env:COMPUTERNAME
+  } | Out-File "$sys\dfsrdiag-DC2.txt"
+
+  Get-GPO -All -Server $DC1 |
+      Select-Object DisplayName, Id,
+          @{N='AD';E={$_.User.DSVersion + $_.Computer.DSVersion}},
+          @{N='SYSVOL';E={$_.User.SysvolVersion + $_.Computer.SysvolVersion}} |
+      Export-Csv "$sys\gpo-versions-DC1.csv" -NoTypeInformation -Encoding UTF8
+  Get-GPO -All -Server $DC2 |
+      Select-Object DisplayName, Id,
+          @{N='AD';E={$_.User.DSVersion + $_.Computer.DSVersion}},
+          @{N='SYSVOL';E={$_.User.SysvolVersion + $_.Computer.SysvolVersion}} |
+      Export-Csv "$sys\gpo-versions-DC2.csv" -NoTypeInformation -Encoding UTF8
+
+  $g1 = Get-ChildItem "\\$DC1\SYSVOL\$Domain\Policies" -Recurse -Filter GPT.INI | Get-FileHash
+  $g2 = Get-ChildItem "\\$DC2\SYSVOL\$Domain\Policies" -Recurse -Filter GPT.INI | Get-FileHash
+  Compare-Object $g1 $g2 -Property Hash, Path | Out-File "$sys\gpt-hash-diff.txt"
+  ```
+
+### A.6 Côté poste client
+
+À exécuter sur le **poste impacté** (en local, transcription incluse).
+
+- [ ] Bootstrap local
+  ```powershell
+  $Stamp = Get-Date -Format yyyyMMdd-HHmmss
+  $Cli   = "C:\Temp\SC-Client-$env:COMPUTERNAME-$Stamp"
+  New-Item -ItemType Directory $Cli -Force | Out-Null
+  Start-Transcript -Path "$Cli\transcript.log"
+  ```
+
+- [ ] Captures nltest / klist / status
+  ```powershell
+  (
+    nltest /sc_query:dr.tfn.intra
+    nltest /dsgetdc:dr.tfn.intra
+    nltest /dsgetdc:dr.tfn.intra /force
+    nltest /sc_verify:dr.tfn.intra
+    Test-ComputerSecureChannel -Verbose
+  ) *>&1 | Out-File "$Cli\nltest.txt"
+
+  (klist; klist -li 0x3e7) | Out-File "$Cli\klist.txt"
+  ```
+
+- [ ] Trace Netlogon verbeuse
+  ```powershell
+  nltest /dbflag:0x2080FFFF
+  # >>> reproduire le problème <<<
+  Start-Sleep -Seconds 60
+  nltest /dbflag:0x0
+  Copy-Item C:\Windows\Debug\netlogon.log $Cli
+  Copy-Item C:\Windows\Debug\netlogon.bak $Cli -ErrorAction SilentlyContinue
+  ```
+
+- [ ] Events poste
+  ```powershell
+  New-Item -ItemType Directory "$Cli\events" -Force | Out-Null
+  wevtutil epl System         "$Cli\events\System.evtx"          /ow:true
+  wevtutil epl Application    "$Cli\events\Application.evtx"     /ow:true
+  wevtutil epl Security       "$Cli\events\Security.evtx"        /ow:true
+  Get-WinEvent -LogName System -MaxEvents 500 |
+      Where-Object ProviderName -in 'NETLOGON','Microsoft-Windows-Kerberos','LsaSrv','Schannel' |
+      Select-Object TimeCreated, ProviderName, Id, Message |
+      Export-Csv "$Cli\events\System-Auth.csv" -NoTypeInformation -Encoding UTF8
+  ```
+
+- [ ] CAPI2 (utile si la smart card est dans la boucle)
+  ```powershell
+  wevtutil sl Microsoft-Windows-CAPI2/Operational /e:true
+  # reproduire
+  wevtutil epl Microsoft-Windows-CAPI2/Operational "$Cli\events\CAPI2.evtx" /ow:true
+  wevtutil sl Microsoft-Windows-CAPI2/Operational /e:false
+  ```
+
+- [ ] GPResult
+  ```powershell
+  gpresult /h "$Cli\gpresult.html" /f
+  gpresult /z > "$Cli\gpresult.txt"
+  ```
+
+- [ ] Stop transcript et zipper
+  ```powershell
+  Stop-Transcript
+  Compress-Archive -Path $Cli -DestinationPath "$Cli.zip" -Force
+  ```
+
+### A.7 Captures réseau
+
+- [ ] Sur **DC2** pendant un `sc_reset` du poste vers DC2 (filtrer sur l'IP du poste).
+  ```powershell
+  $cap = "$Root\50-Network"
+  New-Item -ItemType Directory $cap -Force | Out-Null
+  Invoke-Command -ComputerName $DC2 -ScriptBlock {
+      param($PosteIP)
+      New-NetEventSession -Name SC -LocalFilePath C:\Temp\capture-DC2.etl -MaxFileSize 512 | Out-Null
+      Add-NetEventPacketCaptureProvider -SessionName SC -IpAddresses $PosteIP | Out-Null
+      Start-NetEventSession -Name SC
+      Start-Sleep -Seconds 60   # <- déclencher sc_reset côté poste pendant ces 60s
+      Stop-NetEventSession  -Name SC
+      Remove-NetEventSession -Name SC
+  } -ArgumentList '<IP-poste>'
+  Copy-Item "\\$DC2\C$\Temp\capture-DC2.etl" $cap
+  ```
+  - [ ] Conversion ETL → PCAP avec **etl2pcapng** si Wireshark requis : `etl2pcapng.exe capture-DC2.etl capture-DC2.pcapng`.
+
+- [ ] Sur le **poste** en parallèle, même principe :
+  ```powershell
+  netsh trace start capture=yes scenario=NetConnection tracefile=C:\Temp\capture-client.etl maxsize=512
+  # reproduire
+  netsh trace stop
+  ```
+
+### A.8 VMware (à demander à l'équipe virtualisation)
+
+- [ ] Snapshots de la VM DC2 (PowerCLI ou export onglet Snapshots)
+  ```powershell
+  # depuis poste avec PowerCLI installé et connecté au vCenter :
+  Connect-VIServer <vcenter>
+  Get-VM DC02 | Get-Snapshot | Select Name, Created, Description, SizeGB |
+      Out-File "$Root\90-VMware\snapshots-DC2.txt"
+  ```
+- [ ] Paramètres avancés (présence `vm.genid`)
+  ```powershell
+  Get-VM DC02 | Get-AdvancedSetting |
+      Where-Object Name -Match 'genid|hotplug|uuid' |
+      Out-File "$Root\90-VMware\vmx-advanced.txt"
+  ```
+- [ ] Demander en plus, par mail / ticket :
+  - [ ] Date de création de la VM DC2.
+  - [ ] Historique des opérations `Revert to snapshot`, `Clone`, `Restore from backup` depuis la date du DCpromo.
+  - [ ] Logs `vmware.log` de la VM DC2 sur la fenêtre concernée.
+  - [ ] Solution de backup utilisée (Veeam, Networker, Avamar, VDP, autre) + mode AAIP / VSS.
+
+### A.9 Finalisation du bundle
+
+- [ ] Stopper la transcription, zipper le tout
+  ```powershell
+  Stop-Transcript
+  Compress-Archive -Path $Root -DestinationPath "$Root.zip" -Force
+  Get-FileHash "$Root.zip" -Algorithm SHA256 | Out-File "$Root.zip.sha256.txt"
+  ```
+- [ ] Nommer le ZIP : `SC-Bundle-<CLIENT>-<DCName>-<yyyyMMdd-HHmmss>.zip`.
+- [ ] À joindre au cas Microsoft Support : le ZIP + le `.sha256.txt`.
+
+### A.10 Récapitulatif "qui collecte quoi"
+
+| Source | Fichiers / commandes | Format | Où |
+|---|---|---|---|
+| Poste analyse | `dcdiag`, `repadmin`, `Get-ADReplication*`, `Compare-Object` métadonnées | txt / csv | `10-DCx`, `30-Replication` |
+| DC1 et DC2 | Event logs `Directory Service`, `DFS Replication`, `DNS Server`, `System`, `Application`, `Security` filtré Kerberos | evtx + csv | `10-DCx\events` |
+| DC1 et DC2 | `C:\Windows\Debug\netlogon.log` / `.bak`, `Dfsr*.log.gz` | brut | `10-DCx\netlogon`, `10-DCx\dfsr` |
+| DC1 et DC2 | Export zones DNS `domain` + `_msdcs.domain` | .dns | `10-DCx\dns` |
+| DC1 et DC2 | `systeminfo`, `Get-HotFix`, `setspn -L`, `w32tm`, services | txt | `10-DCx\system-info` |
+| SYSVOL | `dfsrdiag`, versions GPO AD vs SYSVOL, hash GPT.INI | txt / csv | `40-SYSVOL` |
+| Poste client | `netlogon.log` + `.bak` (dbflag 0x2080FFFF), `nltest`, `klist`, events System/Security/CAPI2, `gpresult` | mix | `20-Client-<Poste>` |
+| Réseau | Capture `NetEventPacketCapture` sur DC2 + `netsh trace` côté poste | etl / pcapng | `50-Network` |
+| VMware | Snapshots, advanced settings, vmware.log, type de backup | txt + .log | `90-VMware` |
+| Contexte | `Get-ADForest`, `Get-ADDomain`, `netdom query fsmo`, transcript | txt | `00-Context` |
+
