@@ -49,9 +49,9 @@ Hypothèses à tester dans l'ordre :
   ```
 - [ ] Variables de session
   ```powershell
-  $DC1    = 'DC01.dr.tfn.intra'
-  $DC2    = 'DC02.dr.tfn.intra'
-  $Domain = 'dr.tfn.intra'
+  $DC1    = 'DC01.corp.contoso.com'
+  $DC2    = 'DC02.corp.contoso.com'
+  $Domain = 'corp.contoso.com'
   $Poste  = 'PCXXXX'
   ```
 - [ ] Règles
@@ -162,7 +162,7 @@ Hypothèses à tester dans l'ordre :
   repadmin /showrepl $DC2 /verbose | Select-String 'invocationID', 'DSA object GUID'
   repadmin /showrepl $DC1 /verbose | Select-String 'invocationID', 'DSA object GUID'
 
-  $NtdsDN = "CN=NTDS Settings,CN=DC02,CN=Servers,CN=<Site>,CN=Sites,CN=Configuration,DC=dr,DC=tfn,DC=intra"
+  $NtdsDN = "CN=NTDS Settings,CN=DC02,CN=Servers,CN=<Site>,CN=Sites,CN=Configuration,DC=corp,DC=contoso,DC=com"
   Get-ADObject -Server $DC1 -Identity $NtdsDN -Properties invocationId, msDS-GenerationId, objectGUID | Format-List
   Get-ADObject -Server $DC2 -Identity $NtdsDN -Properties invocationId, msDS-GenerationId, objectGUID | Format-List
   ```
@@ -236,13 +236,13 @@ Hypothèses à tester dans l'ordre :
 
 - [ ] Forcer la réplication d'une partition spécifique
   ```powershell
-  repadmin /replicate $DC2 $DC1 "DC=dr,DC=tfn,DC=intra" /full /async
-  repadmin /replicate $DC2 $DC1 "CN=Configuration,DC=dr,DC=tfn,DC=intra" /full /async
+  repadmin /replicate $DC2 $DC1 "DC=corp,DC=contoso,DC=com" /full /async
+  repadmin /replicate $DC2 $DC1 "CN=Configuration,DC=corp,DC=contoso,DC=com" /full /async
   ```
 
 - [ ] Lingering objects
   ```powershell
-  repadmin /removelingeringobjects $DC2 <GUID-DC1> "DC=dr,DC=tfn,DC=intra" /advisory_mode
+  repadmin /removelingeringobjects $DC2 <GUID-DC1> "DC=corp,DC=contoso,DC=com" /advisory_mode
   ```
   - [ ] Mode advisory uniquement en premier passage. Lire la sortie avant d'enlever le `/advisory_mode`.
 
@@ -255,7 +255,7 @@ Hypothèses à tester dans l'ordre :
 - [ ] Lister tous les NTDS Settings de la forêt
   ```powershell
   Get-ADObject -Server $DC1 `
-      -SearchBase "CN=Sites,CN=Configuration,DC=dr,DC=tfn,DC=intra" `
+      -SearchBase "CN=Sites,CN=Configuration,DC=corp,DC=contoso,DC=com" `
       -Filter 'objectClass -eq "nTDSDSA"' `
       -Properties whenCreated, invocationId, objectGUID, distinguishedName |
       Format-Table whenCreated, distinguishedName, invocationId
@@ -279,13 +279,13 @@ Hypothèses à tester dans l'ordre :
   ```
 - [ ] SPN obligatoires à vérifier :
   - [ ] `HOST/DC02`
-  - [ ] `HOST/DC02.dr.tfn.intra`
+  - [ ] `HOST/DC02.corp.contoso.com`
   - [ ] `ldap/DC02`
-  - [ ] `ldap/DC02.dr.tfn.intra`
-  - [ ] `ldap/DC02.dr.tfn.intra/dr.tfn.intra`
-  - [ ] `ldap/<DSA-GUID>._msdcs.dr.tfn.intra`
-  - [ ] `GC/DC02.dr.tfn.intra/dr.tfn.intra` (si GC)
-  - [ ] `E3514235-4B06-11D1-AB04-00C04FC2DCD2/<DSA-GUID>/dr.tfn.intra` ← **SPN de réplication, critique**
+  - [ ] `ldap/DC02.corp.contoso.com`
+  - [ ] `ldap/DC02.corp.contoso.com/corp.contoso.com`
+  - [ ] `ldap/<DSA-GUID>._msdcs.corp.contoso.com`
+  - [ ] `GC/DC02.corp.contoso.com/corp.contoso.com` (si GC)
+  - [ ] `E3514235-4B06-11D1-AB04-00C04FC2DCD2/<DSA-GUID>/corp.contoso.com` ← **SPN de réplication, critique**
 
 - [ ] Détection de doublons
   ```powershell
@@ -331,15 +331,15 @@ Hypothèses à tester dans l'ordre :
 - [ ] Tester depuis DC2 vers le domaine
   ```powershell
   Invoke-Command -ComputerName $DC2 -ScriptBlock {
-      nltest /sc_verify:dr.tfn.intra
+      nltest /sc_verify:corp.contoso.com
       Test-ComputerSecureChannel -Verbose
-      nltest /dsgetdc:dr.tfn.intra
+      nltest /dsgetdc:corp.contoso.com
   }
   ```
 - [ ] Tester depuis DC1
   ```powershell
   Invoke-Command -ComputerName $DC1 -ScriptBlock {
-      nltest /sc_verify:dr.tfn.intra
+      nltest /sc_verify:corp.contoso.com
       Test-ComputerSecureChannel -Verbose
   }
   ```
@@ -833,10 +833,10 @@ C:\Temp\SC-Bundle-yyyyMMdd-HHmmss\
 - [ ] Captures nltest / klist / status
   ```powershell
   (
-    nltest /sc_query:dr.tfn.intra
-    nltest /dsgetdc:dr.tfn.intra
-    nltest /dsgetdc:dr.tfn.intra /force
-    nltest /sc_verify:dr.tfn.intra
+    nltest /sc_query:corp.contoso.com
+    nltest /dsgetdc:corp.contoso.com
+    nltest /dsgetdc:corp.contoso.com /force
+    nltest /sc_verify:corp.contoso.com
     Test-ComputerSecureChannel -Verbose
   ) *>&1 | Out-File "$Cli\nltest.txt"
 
