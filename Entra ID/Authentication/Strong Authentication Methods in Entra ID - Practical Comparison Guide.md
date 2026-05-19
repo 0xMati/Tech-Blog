@@ -580,22 +580,38 @@ This is the most important and most underused option, and it directly extends th
 
 ### 7.3 Bluetooth-enabled FIDO2 security keys
 
-**The scenario:** a user needs to sign in across very different form factors during the day — a corporate laptop in the morning, a personal phone for Outlook on the train, a tablet during a customer meeting, a shared kiosk at a workshop. They want **one** authenticator they physically carry, that works on all of them, that survives losing the laptop, and that gives AAL3. USB-only or NFC-only keys don't fit cleanly: USB needs a port (and dongles for USB-C/Lightning), NFC needs reader hardware that isn't always there. A FIDO2 key with **BLE built in** removes the transport friction.
+**The scenario:** a user needs to sign in to web apps and Entra ID across very different form factors during the day — a corporate laptop, a personal phone for Outlook on the train, a tablet during a customer meeting. They want **one** physical authenticator that works on all of them and gives AAL3. USB-only keys need ports and dongles (USB-C, Lightning); NFC needs reader hardware that isn't always there. A FIDO2 key with **BLE built in** removes the transport friction — *but only for the app / browser sign-in scenario.*
 
-A subset of FIDO2 hardware keys ship with **BLE in addition to USB / NFC**. The use cases are narrow but real:
+> ⚠️ **Important scope limitation.** Microsoft's FIDO2 credential provider for **Windows sign-in (the lock screen)** supports **USB and NFC only**. **BLE is not a supported transport for Windows logon.** The Bluetooth radio is not reliably available pre-logon and BLE pairing requires a user session, so the OS credential provider only enumerates HID-class (USB) and NFC authenticators. The same BLE-capable key used to sign in to a SaaS app from a browser will be **invisible on the Windows lock screen over BLE** — the user must use USB or NFC for that.
 
-- **Mobile-first users** who authenticate primarily from phones/tablets where USB is impractical and NFC is not always available.
+**So what BLE actually buys you:**
+
+| Sign-in target | USB | NFC | BLE |
+|---|---|---|---|
+| Web app / Entra ID via browser (Edge, Chrome, Safari on phone/tablet/PC) | ✅ | ✅ | ✅ |
+| Native mobile app using platform WebAuthn (iOS / Android) | — | ✅ (some) | ✅ |
+| **Windows lock screen / sign-in** | ✅ | ✅ | ❌ |
+| **macOS / Linux login** | ✅ | ❌ (usually) | ❌ |
+
+Use cases where BLE on a FIDO2 key is genuinely useful:
+
+- **Mobile-first users** who authenticate primarily from phones/tablets to web apps and SaaS where USB is impractical and NFC is not always available.
 - **Accessibility scenarios** where plugging a USB key is difficult.
-- **Field engineers** who switch between phones, tablets and PCs and want one key for everything.
+- **Field engineers** who switch between phones, tablets and PCs for app sign-in.
 
-→ This does not change the security model. The key is still a FIDO2 authenticator, the proof is still a cryptographic signature, the AAL3 properties are preserved. Bluetooth is just one more transport between the key and the host.
+Use cases where BLE on a FIDO2 key is **not** the answer:
+
+- **Replacing the smart card / Hello PIN at the Windows lock screen** — the user still needs USB or NFC for that, regardless of whether the key supports BLE.
+- **Pre-boot authentication / BitLocker** — even further out of scope, only TPM + PIN / startup key apply.
+
+→ BLE does not change the security model. The key is still a FIDO2 authenticator, the proof is still a cryptographic signature, the AAL3 properties are preserved. Bluetooth is just one more transport between the key and the host, available in the WebAuthn flow.
 
 **What to watch:**
 
 - Key inventory and lifecycle: BLE keys need pairing management, sometimes battery management.
 - Some regulated environments disable BLE on endpoints for endpoint hardening reasons — verify compatibility before standardizing on BLE keys.
 
-**How a BLE FIDO2 key signs in (vs. a USB/NFC key):**
+**How a BLE FIDO2 key signs in to a web app (not Windows logon):**
 
 ```text
 ┌──────────────────────────┐                          ┌─────────────────────────────┐
@@ -616,7 +632,7 @@ A subset of FIDO2 hardware keys ship with **BLE in addition to USB / NFC**. The 
                                                        │  - AAL3 attestation         │
                                                        └─────────────────────────────┘
 
-Sign-in flow:
+Sign-in flow (WebAuthn ceremony triggered by a browser or app):
   1. RP (Entra ID) issues a WebAuthn challenge to the browser.
   2. Browser asks the platform for a FIDO2 authenticator; key is found over BLE (already paired).
   3. User performs user verification on the key (PIN / fingerprint / button).
@@ -625,6 +641,8 @@ Sign-in flow:
 ```
 
 > 🔑 Difference vs. caBLE: here the **key itself is the authenticator** (single device, single user, dedicated hardware). With caBLE, the **phone is the authenticator** and BLE only proves co-location during a cross-device ceremony. Both produce phishing-resistant AAL3, but the lifecycle and provisioning models are different.
+>
+> 🖥️ **And neither of them — BLE FIDO2 key nor caBLE — is the answer for the Windows lock screen.** For Windows logon with a FIDO2 key, the only supported transports are USB and NFC.
 
 ### 7.4 Windows Dynamic Lock — the environmental layer
 
