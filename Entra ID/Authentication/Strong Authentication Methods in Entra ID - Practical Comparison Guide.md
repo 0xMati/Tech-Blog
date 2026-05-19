@@ -33,6 +33,10 @@ Published: 2026-05-04
 	- Passwordless does not delete the password in the directory
 	- Password expiry policies must be aligned to avoid incidents
 
+- 📡 **Bluetooth in the strategy (section 7)**
+	- Real value: **cross-device passkey sign-in (caBLE)** for web/app sign-in on shared/BYO devices, and **Dynamic Lock** for session hygiene
+	- **Not** for Windows lock screen (USB / NFC only) and **not** a Conditional Access signal
+
 ---
 
 ## 1. What is a strong authentication method in Entra ID? 🧠
@@ -452,7 +456,7 @@ Because telecom channels can be intercepted or socially engineered, this method 
 5. Keep Authenticator push/phone sign-in (AAL2) as controlled transition paths with dated migration plans.
 6. Keep TOTP as a **justified exception only** — explicit scope, owner, and monitoring required.
 7. **Disable SMS/Voice by default** — no exception without formal justification and CISO-level approval.
-7. Use TAP for onboarding and recovery, with short validity and strict issuance controls.
+8. Use TAP for onboarding and recovery, with short validity and strict issuance controls.
 
 → Bonus reality check: if your strongest method is optional, users will converge on the weakest allowed path.
 
@@ -534,6 +538,8 @@ If you deploy passwordless without adjusting password expiry policies, you will 
 
 ## 7. Where Bluetooth fits in a strong authentication strategy 📶
 
+> 📖 **Quick glossary.** **BLE** = *Bluetooth Low Energy*, the low-power variant of Bluetooth introduced with Bluetooth 4.0 (2010). It is the radio used for FIDO2 over Bluetooth, for cross-device passkey proximity checks, and for most modern wearables. *Classic Bluetooth* (the higher-power profile used for audio, keyboards and Windows pairing) is what Dynamic Lock observes.
+
 → **The framing**: Bluetooth keeps coming up in customer conversations — *"can I use my phone in Bluetooth range as a trust signal?"*, *"can I unlock my PC when my watch is nearby?"*. The honest answer is that Bluetooth **does have a role** in modern Entra ID / Windows authentication, but **not the one most people imagine**. This section maps out exactly what Bluetooth can and cannot do, and what options it actually adds to your strategy.
 
 ### 7.1 The four real Bluetooth-related capabilities
@@ -553,7 +559,9 @@ There are four distinct features where Bluetooth shows up. They sit at very diff
 
 This is the most important and most underused option, and it directly extends the AAL3 phishing-resistant tier of section 3.1.
 
-**The scenario:** a user sits at a PC where they do not have a passkey registered (a shared workstation, a kiosk, a new device, a colleague's laptop, or any browser that does not have a platform authenticator for the user). They want to sign in to a website or Windows itself **without** typing a password and **without** carrying a hardware key.
+**The scenario:** a user sits at a PC where they do not have a passkey registered (a shared workstation, a kiosk, a new device, a colleague's laptop, or any browser that does not have a platform authenticator for the user). They want to sign in to **a website or a web-based app (including Entra ID itself via the browser)** without typing a password and without carrying a hardware key.
+
+> ⚠️ **Scope limit, same as BLE FIDO2 keys (section 7.3).** caBLE is a **WebAuthn ceremony triggered by a browser or a native app**. It is **not** an option to unlock the Windows lock screen. The Windows credential provider only enumerates local USB / NFC FIDO2 authenticators; it does not display a QR code and cannot reach the cloud relay tunnel pre-logon. So caBLE answers the *"sign in to a website / Entra ID web sign-in"* problem on any device, but it does **not** answer *"unlock my colleague's Windows laptop without his PIN"*.
 
 **The flow:**
 
@@ -578,9 +586,11 @@ This is the most important and most underused option, and it directly extends th
 - Tenant policy: the FIDO2 / passkey authentication method must be enabled and the passkey registered with Microsoft Authenticator (or another supported provider).
 - Network path: even with BLE for proximity, the assertion relay still needs Internet.
 
-### 7.3 Bluetooth-enabled FIDO2 security keys
+### 7.3 Bluetooth-enabled FIDO2 security keys (dedicated hardware tokens — not a phone)
 
-> 🧭 **First, clear up the most common confusion: caBLE vs BLE FIDO2 key.**
+> 🔑 **Plain-language reminder.** A *"Bluetooth-enabled FIDO2 security key"* is a **physical hardware token** — a small dedicated object you carry on a keychain or in a pocket. Examples: Yubikey 5C NFC + BLE, Feitian BioPass BLE, Token2 PIN+. It is **never a phone**. A phone acting as an authenticator is **caBLE / cross-device passkey** (section 7.2 above), and the role of Bluetooth is completely different there.
+
+> 🧭 **Most common confusion: caBLE vs BLE FIDO2 key.**
 >
 > Both options use Bluetooth, but the role of Bluetooth is completely different in each:
 >
@@ -601,7 +611,28 @@ This is the most important and most underused option, and it directly extends th
 
 **The scenario:** a user needs to sign in to web apps and Entra ID across very different form factors during the day — a corporate laptop, a personal phone for Outlook on the train, a tablet during a customer meeting. They want **one** physical authenticator that works on all of them and gives AAL3. USB-only keys need ports and dongles (USB-C, Lightning); NFC needs reader hardware that isn't always there. A FIDO2 key with **BLE built in** removes the transport friction — *but only for the app / browser sign-in scenario.*
 
-> ⚠️ **Important scope limitation.** Microsoft's FIDO2 credential provider for **Windows sign-in (the lock screen)** supports **USB and NFC only**. **BLE is not a supported transport for Windows logon.** The Bluetooth radio is not reliably available pre-logon and BLE pairing requires a user session, so the OS credential provider only enumerates HID-class (USB) and NFC authenticators. The same BLE-capable key used to sign in to a SaaS app from a browser will be **invisible on the Windows lock screen over BLE** — the user must use USB or NFC for that.
+> ⚠️ **Scope limitation (same as caBLE in section 7.2): BLE FIDO2 keys do not work on the Windows lock screen.** Microsoft's FIDO2 credential provider for **Windows sign-in** supports **USB and NFC only**. The Bluetooth radio is not reliably available pre-logon and BLE pairing requires a user session, so the credential provider only enumerates HID-class (USB) and NFC authenticators. The same BLE-capable key used to sign in to a SaaS app from a browser will be **invisible on the Windows lock screen over BLE** — the user must use USB or NFC for Windows logon.
+
+> 🔍 **Advanced: why Microsoft documentation can feel contradictory — WebAuthn APIs ≠ Windows Logon Credential Provider.**
+>
+> Some Microsoft pages (notably [WebAuthn APIs for passwordless authentication on Windows](https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/webauthn-apis)) state that *Windows supports USB, NFC and BLE for FIDO2*. This is **true — but only for the WebAuthn platform APIs**, which are consumed by browsers (Edge, Chrome) and Win32 apps running **inside an already-open Windows session**.
+>
+> The **Windows lock screen / sign-in screen** is a different component: it uses **Credential Providers** (the FIDO2 credential provider `WindowsHelloFIDOCredentialProvider`). Microsoft confirms this in the [Entra passkey on Windows](https://learn.microsoft.com/en-us/entra/identity/authentication/how-to-authentication-entra-passkeys-on-windows) preview documentation: *"Microsoft Entra passkey on Windows... can't be used for device sign-in."*
+>
+> ```text
+> ┌───────────────────────────────────┐         ┌────────────────────────────┐
+> │  Lock screen / sign-in screen     │         │  Already in Windows session     │
+> │  (Winlogon → Credential Provider) │         │  (Edge/Chrome, Win32 apps)      │
+> │                                   │         │                                 │
+> │  Transports accepted:             │         │  Transports accepted:           │
+> │   ✅ USB                          │         │   ✅ USB                        │
+> │   ✅ NFC                          │         │   ✅ NFC                        │
+> │   ❌ BLE                          │         │   ✅ BLE (FIDO2 key)            │
+> │   ❌ caBLE (QR + phone)           │         │   ✅ caBLE (QR + phone)         │
+> └─────────────────────────────────────┘         └────────────────────────────┘
+> ```
+>
+> When somebody says *"Microsoft says BLE works on Windows"*, the precise answer is: **"Yes, for apps running in the session. No, for the sign-in screen."**
 
 **So what BLE actually buys you:**
 
