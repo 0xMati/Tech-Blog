@@ -613,6 +613,25 @@ This is the most important and most underused option, and it directly extends th
 
 > ⚠️ **Scope limitation (same as caBLE in section 7.2): BLE FIDO2 keys do not work on the Windows lock screen.** Microsoft's FIDO2 credential provider for **Windows sign-in** supports **USB and NFC only**. The Bluetooth radio is not reliably available pre-logon and BLE pairing requires a user session, so the credential provider only enumerates HID-class (USB) and NFC authenticators. The same BLE-capable key used to sign in to a SaaS app from a browser will be **invisible on the Windows lock screen over BLE** — the user must use USB or NFC for Windows logon.
 
+> 🏷️ **NFC for Windows logon: supported in theory, rare in practice.** The Windows credential provider does accept NFC FIDO2 keys at the sign-in screen, but **most corporate PCs do not have an NFC reader built in**. Quick reality check on hardware availability:
+>
+> | Form factor | NFC reader built in? |
+> |---|---|
+> | Standard business laptop (Dell Latitude, Lenovo ThinkPad, HP EliteBook) | ❌ Almost never |
+> | Surface Pro / Surface Laptop | ❌ No |
+> | Desktop workstation | ❌ No (would need external USB NFC reader) |
+> | Industrial / healthcare / retail Windows tablets | ✅ Often |
+> | Point-of-sale terminals, hospital workstations with badge readers | ✅ Yes |
+> | Phones and tablets (iOS / Android) | ✅ Universally |
+>
+> **Practical consequence for FIDO2 rollout planning:**
+>
+> - For **Windows sign-in on the standard corporate PC fleet** → plan on **USB** as the default transport. NFC is a bonus only in equipped environments.
+> - For **mobile / tablet sign-in** to apps → NFC is excellent and widely supported.
+> - For **shared workstations in hospitals, retail, factories** where users already badge in → NFC FIDO2 keys are a strong fit and avoid USB plug/unplug friction.
+>
+> If a stakeholder says *"we will give everyone NFC keys to sign in to Windows"*, the immediate follow-up question is: *"how many of our PCs actually have an NFC reader?"*. The answer is usually *"none, but the key also has USB-C"* — at which point the deployment effectively becomes a **USB FIDO2 rollout** with NFC reserved for mobile app sign-in.
+
 > 🔍 **Advanced: why Microsoft documentation can feel contradictory — WebAuthn APIs ≠ Windows Logon Credential Provider.**
 >
 > Some Microsoft pages (notably [WebAuthn APIs for passwordless authentication on Windows](https://learn.microsoft.com/en-us/windows/security/identity-protection/hello-for-business/webauthn-apis)) state that *Windows supports USB, NFC and BLE for FIDO2*. This is **true — but only for the WebAuthn platform APIs**, which are consumed by browsers (Edge, Chrome) and Win32 apps running **inside an already-open Windows session**.
