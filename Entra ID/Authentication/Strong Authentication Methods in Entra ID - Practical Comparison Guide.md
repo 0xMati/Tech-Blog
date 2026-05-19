@@ -532,7 +532,166 @@ If you deploy passwordless without adjusting password expiry policies, you will 
 
 ---
 
-## 7. Entra ID implementation checklist ✅
+## 7. Where Bluetooth fits in a strong authentication strategy 📶
+
+→ **The framing**: Bluetooth keeps coming up in customer conversations — *"can I use my phone in Bluetooth range as a trust signal?"*, *"can I unlock my PC when my watch is nearby?"*. The honest answer is that Bluetooth **does have a role** in modern Entra ID / Windows authentication, but **not the one most people imagine**. This section maps out exactly what Bluetooth can and cannot do, and what options it actually adds to your strategy.
+
+### 7.1 The four real Bluetooth-related capabilities
+
+There are four distinct features where Bluetooth shows up. They sit at very different layers of the stack and address different objectives.
+
+| # | Capability | Layer | What it adds to the strategy |
+|---|---|---|---|
+| 1 | **Cross-device passkey sign-in** (FIDO2 hybrid transport, *caBLE*) | Authentication (AAL3) | Lets the phone act as a **phishing-resistant authenticator** for sign-in on another device (PC, kiosk, shared workstation) |
+| 2 | **Bluetooth-enabled FIDO2 security keys** | Authentication (AAL3) | Adds form-factor options for hardware keys (BLE in addition to USB/NFC) |
+| 3 | **Windows Dynamic Lock** | Session lifecycle | Auto-locks the PC when the paired phone moves out of range |
+| 4 | **Companion Device Framework (CDF)** | Authentication (legacy) | **Deprecated** — do not propose for new designs |
+
+→ Only **#1 and #2** are authentication. **#3 is environmental hygiene.** **#4 is historical.**
+
+### 7.2 Cross-device passkey sign-in (FIDO2 hybrid / caBLE)
+
+This is the most important and most underused option, and it directly extends the AAL3 phishing-resistant tier of section 3.1.
+
+**The scenario:** a user sits at a PC where they do not have a passkey registered (a shared workstation, a kiosk, a new device, a colleague's laptop, or any browser that does not have a platform authenticator for the user). They want to sign in to a website or Windows itself **without** typing a password and **without** carrying a hardware key.
+
+**The flow:**
+
+1. The PC's browser presents a QR code during the sign-in challenge.
+2. The user scans the QR with the phone that already holds their passkey.
+3. The phone and PC perform a **proximity check over Bluetooth Low Energy** to confirm they are physically near each other.
+4. The actual authentication happens cryptographically: the phone signs the WebAuthn challenge with the passkey's private key. The signed assertion is relayed back to the relying party via the cloud.
+5. The PC receives the validated authentication and proceeds.
+
+**Why Bluetooth is here:** the BLE handshake is a **proximity proof**, not an authentication transport. It prevents a remote attacker from triggering the QR flow on a victim's phone from far away. The cryptographic proof is still the FIDO2 signature.
+
+**What it gives you in the strategy:**
+
+- ✅ **AAL3 phishing-resistant** authentication on devices where the user has nothing pre-enrolled.
+- ✅ A **shared / kiosk / BYO-PC** answer that does not require deploying hardware keys to every user.
+- ✅ A **clean recovery path** when WHfB on the primary PC is unavailable: the passkey on the phone still works on any other machine.
+- ✅ Compatible with the Microsoft Authenticator passkey already covered in section 3.1.
+
+**What to verify before relying on it:**
+
+- Operating systems involved (modern Windows, Android, iOS) and supported browsers.
+- Tenant policy: the FIDO2 / passkey authentication method must be enabled and the passkey registered with Microsoft Authenticator (or another supported provider).
+- Network path: even with BLE for proximity, the assertion relay still needs Internet.
+
+### 7.3 Bluetooth-enabled FIDO2 security keys
+
+A subset of FIDO2 hardware keys ship with **BLE in addition to USB / NFC**. The use cases are narrow but real:
+
+- **Mobile-first users** who authenticate primarily from phones/tablets where USB is impractical and NFC is not always available.
+- **Accessibility scenarios** where plugging a USB key is difficult.
+- **Field engineers** who switch between phones, tablets and PCs and want one key for everything.
+
+→ This does not change the security model. The key is still a FIDO2 authenticator, the proof is still a cryptographic signature, the AAL3 properties are preserved. Bluetooth is just one more transport between the key and the host.
+
+**What to watch:**
+
+- Key inventory and lifecycle: BLE keys need pairing management, sometimes battery management.
+- Some regulated environments disable BLE on endpoints for endpoint hardening reasons — verify compatibility before standardizing on BLE keys.
+
+### 7.4 Windows Dynamic Lock — the environmental layer
+
+Dynamic Lock is **not authentication**, but it is a useful complement to a strong authentication strategy. It uses Bluetooth pairing between the PC and a personal device (phone, watch) to detect **absence** and locks the session when the signal degrades.
+
+**What it adds to the strategy:**
+
+- ✅ Reduces unattended-session risk in open-space offices, hot-desking environments, hospitals, factories.
+- ✅ Reinforces the AAL3 investment: a strong sign-in is wasted if the session stays open afterwards.
+- ✅ Works alongside screen saver timeout and lid-close policy — the three controls together cover most physical-presence scenarios.
+
+**What it is not:**
+
+- ❌ Not an unlock mechanism. The user still performs the Hello gesture when they come back.
+- ❌ Not a signal that Conditional Access can read. There is no *"phone is paired and in range"* condition in CA policies.
+- ❌ Not a substitute for an authentication method.
+
+**Configuration entry point:** Intune Settings Catalog or GPO under *Computer Configuration → Administrative Templates → Windows Components → Windows Hello for Business → Configure dynamic lock factors*.
+
+### 7.5 Companion Device Framework (CDF) — historical context
+
+Customers occasionally surface the [Companion Device Framework](https://learn.microsoft.com/en-us/windows/uwp/security/companion-device-unlock) when asking *"can my phone in Bluetooth range unlock my PC?"*. It is the only piece of official Microsoft documentation that ever described that exact scenario, so it is worth understanding — and equally important to understand why it is **no longer part of any modern design**.
+
+**What CDF was designed to do:**
+
+A third-party "companion device" (phone, wearable, badge) ran a UWP app that registered with a Windows service called the *Companion Authentication Service*. Two 256-bit HMAC keys were exchanged at enrollment (one to authenticate the companion app to the service, one to protect the per-PC unlock token). At unlock time, the companion device proved possession of those keys via an HMAC challenge-response, and Windows unlocked the session.
+
+```text
+┌─────────────────────────────┐                  ┌──────────────────────────────────────┐
+│   Companion device          │                  │   Windows PC                          │
+│   (phone, wearable, badge)  │                  │                                       │
+│                             │                  │   ┌─────────────────────────────┐    │
+│   - stores HMAC keys        │   transport      │   │ Companion device app (UWP)  │    │
+│   - collects intent signal  │   USB / NFC /    │   │ - foreground: enrollment    │    │
+│     (button, gesture, NFC)  │   Bluetooth /    │   │ - background: auth task     │    │
+│   - collects presence       │◄────────────────►│   └──────────────┬──────────────┘    │
+│     signal (PIN, button)    │   BLE / Wi-Fi    │                  │ APIs              │
+│                             │                  │   ┌──────────────▼──────────────┐    │
+│                             │                  │   │ Companion Authentication    │    │
+│                             │                  │   │ Service (Windows service)   │    │
+│                             │                  │   │ - holds per-PC unlock token │    │
+│                             │                  │   │ - validates HMAC responses  │    │
+│                             │                  │   │ - issues unlock to Windows  │    │
+│                             │                  │   └─────────────────────────────┘    │
+└─────────────────────────────┘                  │   PC PIN remains a fallback           │
+                                                 └──────────────────────────────────────┘
+
+Unlock flow (simplified):
+  1. User signals intent (button on device, NFC tap, lid open, space bar).
+  2. Background app asks the service for a nonce.
+  3. Service returns nonce; app forwards it to the companion device.
+  4. Companion device computes HMAC(authkey, nonce + context) and HMAC(devicekey, nonce).
+  5. App returns both HMACs to the service.
+  6. Service validates → releases unlock token → Windows unlocks.
+```
+
+**Why Microsoft deprecated it (Windows 10 2004 onward):**
+
+- 🔑 **Wrong crypto primitive for modern identity.** CDF relied on **symmetric HMAC shared keys** stored on a third-party device. Modern phishing-resistant authentication (FIDO2 / passkeys / WHfB) uses **asymmetric keys** with hardware-bound private keys — strictly stronger.
+- 🏛️ **No central governance.** No Conditional Access integration, no Intune policy beyond "enable/disable + AppLocker", no audit pipeline in Entra ID. Enterprise governance was effectively absent.
+- 📱 **No first-party companion apps.** The framework depended on third-party vendors shipping UWP apps; in practice, very few did, and most were abandoned.
+- 🔄 **Replaced by better building blocks.** Everything CDF tried to enable (use a phone to sign in to a PC) is now covered by **cross-device passkey sign-in (caBLE)** — same outcome, modern crypto, real CA integration, and properly governed lifecycle.
+
+**Treatment in any modern design:**
+
+- ❌ Do not enable, do not propose, do not extend.
+- ❌ Do not reference it in a security architecture document as a future option.
+- ✅ Use the deprecation as a reference point when explaining to stakeholders why *"phone Bluetooth unlock"* exists as a documented idea but is not the answer in 2026 — **cross-device passkey is**.
+
+> 💡 **One-line takeaway:** CDF is the historical record of *what Microsoft tried* for phone-as-companion-unlock. Cross-device passkeys are what Microsoft *actually ships and supports* today.
+
+### 7.6 What Bluetooth does NOT add (and never will, natively)
+
+To set expectations cleanly with stakeholders:
+
+| Idea | Status |
+|---|---|
+| 🤔 Unlock Windows automatically when the phone is nearby | ❌ Not a native Microsoft capability — and intentionally not, because proximity is not identity |
+| 🤔 Skip MFA in Conditional Access when paired device is in range | ❌ No such signal exists in CA |
+| 🤔 Reduce PIN prompts when the watch is on the wrist | ❌ Not exposed by WHfB |
+| 🤔 Use BLE distance as a risk-reducing factor | ❌ Not a Microsoft trust signal — third-party identity products (Duo, Okta FastPass, HYPR, Beyond Identity) expose similar ideas, but in *their own* policy engines, not Entra ID |
+
+→ Bluetooth is **never the cryptographic trust anchor**. It can carry a proximity check (caBLE) or trigger a lock (Dynamic Lock), but it never replaces the signed assertion.
+
+### 7.7 How to bring Bluetooth into the strategy without misusing it
+
+A practical pattern that combines everything above:
+
+1. **AAL3 by default** on every population (section 4) — WHfB on managed Windows, FIDO2 / passkeys elsewhere.
+2. **Add cross-device passkey** (caBLE) as the standard answer for shared workstations, kiosks, BYO laptops, and as a backup path when the primary device is unavailable. Bluetooth proximity is part of this flow, but the security is in the passkey, not in the radio.
+3. **Add Dynamic Lock** as a baseline session-hygiene control on all corporate Windows endpoints. Pair it with a short screen saver timeout and lock-on-lid-close.
+4. **Allow BLE-enabled FIDO2 keys** where they solve a real form-factor problem (mobile-first, accessibility, multi-device users). Avoid them where endpoint hardening policies block BLE.
+5. **Do not introduce Bluetooth proximity as a CA condition.** If a stakeholder asks, redirect to caBLE (for authentication) or Dynamic Lock (for presence).
+6. **Companion Device Framework (CDF)**: do not propose, do not extend. It is deprecated.
+
+> 💡 **Bottom line:** Bluetooth genuinely strengthens a strong-authentication program in two specific places — **cross-device passkey sign-in** (proximity-checked phishing-resistant auth on any device) and **Dynamic Lock** (closing the session-left-open gap). Everything beyond that is either marketing folklore or a third-party feature that does not extend Entra ID's native trust model.
+
+---
+
+## 8. Entra ID implementation checklist ✅
 
 Use this checklist as a starting framework for any authentication modernization project. Items are ordered by phase, not by priority — all of them matter.
 
@@ -569,7 +728,7 @@ Use this checklist as a starting framework for any authentication modernization 
 
 ---
 
-## 8. Conclusion 🎯
+## 9. Conclusion 🎯
 
 Not all MFA is equal. Two users can both pass MFA and sit in completely different risk tiers. That gap is not a configuration mistake — it is a **design choice** that needs to be made explicitly.
 
