@@ -580,6 +580,8 @@ This is the most important and most underused option, and it directly extends th
 
 ### 7.3 Bluetooth-enabled FIDO2 security keys
 
+**The scenario:** a user needs to sign in across very different form factors during the day — a corporate laptop in the morning, a personal phone for Outlook on the train, a tablet during a customer meeting, a shared kiosk at a workshop. They want **one** authenticator they physically carry, that works on all of them, that survives losing the laptop, and that gives AAL3. USB-only or NFC-only keys don't fit cleanly: USB needs a port (and dongles for USB-C/Lightning), NFC needs reader hardware that isn't always there. A FIDO2 key with **BLE built in** removes the transport friction.
+
 A subset of FIDO2 hardware keys ship with **BLE in addition to USB / NFC**. The use cases are narrow but real:
 
 - **Mobile-first users** who authenticate primarily from phones/tablets where USB is impractical and NFC is not always available.
@@ -593,7 +595,40 @@ A subset of FIDO2 hardware keys ship with **BLE in addition to USB / NFC**. The 
 - Key inventory and lifecycle: BLE keys need pairing management, sometimes battery management.
 - Some regulated environments disable BLE on endpoints for endpoint hardening reasons — verify compatibility before standardizing on BLE keys.
 
+**How a BLE FIDO2 key signs in (vs. a USB/NFC key):**
+
+```text
+┌──────────────────────────┐                          ┌─────────────────────────────┐
+│  FIDO2 security key      │                          │  Client device              │
+│  (BLE + USB/NFC)         │                          │  (PC, phone, tablet)        │
+│                          │                          │                             │
+│  - Secure Element        │      CTAP2 over BLE      │  ┌───────────────────────┐  │
+│  - private key (per RP)  │◄────────────────────────►│  │ Browser / WebAuthn    │  │
+│  - user verification     │   pairing required once  │  │ platform API          │  │
+│    (PIN or fingerprint)  │   no QR, no cloud relay  │  └──────────┬────────────┘  │
+│                          │                          │             │ HTTPS         │
+└──────────────────────────┘                          └─────────────┼───────────────┘
+                                                                    │
+                                                                    ▼
+                                                       ┌─────────────────────────────┐
+                                                       │  Entra ID / RP              │
+                                                       │  - challenge → signature    │
+                                                       │  - AAL3 attestation         │
+                                                       └─────────────────────────────┘
+
+Sign-in flow:
+  1. RP (Entra ID) issues a WebAuthn challenge to the browser.
+  2. Browser asks the platform for a FIDO2 authenticator; key is found over BLE (already paired).
+  3. User performs user verification on the key (PIN / fingerprint / button).
+  4. Key signs the challenge with the per-RP private key inside its Secure Element.
+  5. Signature returned to Entra ID → AAL3 sign-in granted.
+```
+
+> 🔑 Difference vs. caBLE: here the **key itself is the authenticator** (single device, single user, dedicated hardware). With caBLE, the **phone is the authenticator** and BLE only proves co-location during a cross-device ceremony. Both produce phishing-resistant AAL3, but the lifecycle and provisioning models are different.
+
 ### 7.4 Windows Dynamic Lock — the environmental layer
+
+**The scenario:** a user signs in to their PC in the morning with Windows Hello (face, PIN, FIDO2 — the strong auth investment is in place), then leaves their desk for a meeting, a coffee, a customer visit, without locking the screen. In open-space offices, hot-desking floors, hospitals, factories, trading rooms, the unattended session is the weakest link of the day: the strongest sign-in ceremony is worthless if anyone walking by has 5 minutes of access. Screen saver timeouts help but are coarse — either too short (annoying) or too long (unsafe). The user's phone is already paired to the PC over Bluetooth.
 
 Dynamic Lock is **not authentication**, but it is a useful complement to a strong authentication strategy. It uses Bluetooth pairing between the PC and a personal device (phone, watch) to detect **absence** and locks the session when the signal degrades.
 
@@ -611,7 +646,35 @@ Dynamic Lock is **not authentication**, but it is a useful complement to a stron
 
 **Configuration entry point:** Intune Settings Catalog or GPO under *Computer Configuration → Administrative Templates → Windows Components → Windows Hello for Business → Configure dynamic lock factors*.
 
+**How Dynamic Lock observes presence:**
+
+```text
+┌──────────────────────────┐                          ┌─────────────────────────────┐
+│  Paired Bluetooth device │                          │  Windows PC (signed-in)     │
+│  (phone, watch, earbuds) │      classic Bluetooth   │                             │
+│                          │     RSSI / link state    │  ┌───────────────────────┐  │
+│  - already paired        │◄────────────────────────►│  │ Dynamic Lock service  │  │
+│  - emits BT signal       │                          │  │ - polls signal/RSSI   │  │
+│                          │                          │  │ - timeout ≈ 30 s      │  │
+└──────────────────────────┘                          │  └──────────┬────────────┘  │
+                                                       │             │ LockWorkstation
+                                                       │             ▼               │
+                                                       │   Session locked            │
+                                                       │   (user re-auth via Hello)  │
+                                                       └─────────────────────────────┘
+
+Observation loop (simplified):
+  1. User signs in with Hello (PIN / face / fingerprint / FIDO2).  ← actual auth
+  2. Paired device's BT signal is monitored continuously.
+  3. Signal lost or RSSI degraded > threshold for ~30 seconds → Windows locks the session.
+  4. User returns, performs Hello gesture again to unlock.            ← actual auth
+```
+
+> ⚠️ Dynamic Lock only locks; it never unlocks, never bypasses Hello, and never feeds a signal into Entra ID Conditional Access. It is **session hygiene**, not authentication.
+
 ### 7.5 Companion Device Framework (CDF) — historical context
+
+**The scenario (as Microsoft imagined it around 2016–2019):** a user approaches their PC with their phone, fitness band, or company badge in their pocket. They tap the space bar (or press a button on the wearable, or touch the badge to an NFC reader), the companion device wakes up, validates the user's intent and presence, and Windows unlocks — no PIN, no password, no biometric on the PC itself. The companion device was meant to be the *something you have*, replacing the PIN/biometric on machines that didn't have a camera or fingerprint reader.
 
 Customers occasionally surface the [Companion Device Framework](https://learn.microsoft.com/en-us/windows/uwp/security/companion-device-unlock) when asking *"can my phone in Bluetooth range unlock my PC?"*. It is the only piece of official Microsoft documentation that ever described that exact scenario, so it is worth understanding — and equally important to understand why it is **no longer part of any modern design**.
 
