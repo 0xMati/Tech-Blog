@@ -580,6 +580,25 @@ This is the most important and most underused option, and it directly extends th
 
 ### 7.3 Bluetooth-enabled FIDO2 security keys
 
+> 🧭 **First, clear up the most common confusion: caBLE vs BLE FIDO2 key.**
+>
+> Both options use Bluetooth, but the role of Bluetooth is completely different in each:
+>
+> | | caBLE (section 7.2) | BLE FIDO2 key (this section) |
+> |---|---|---|
+> | **What is the authenticator?** | A **phone** (the user's smartphone) | A **dedicated hardware token** (Yubikey, Feitian, Token2…) |
+> | **What does Bluetooth do?** | **Proximity proof.** Confirms the phone and the PC are physically close. The cryptographic exchange goes via the **cloud relay (Internet)**. | **Transport channel.** Carries the CTAP2 protocol messages between the key and the host. Replaces the USB cable. |
+> | **Where does the private key live?** | In the phone's secure storage (Secure Enclave / Strongbox / Authenticator app) | In the FIDO2 key's Secure Element |
+> | **Cloud / Internet required?** | ✅ Yes — relay tunnel carries the WebAuthn assertion | ❌ No — everything is local PC ↔ key |
+> | **User experience** | QR code on the PC → scan + approve on the phone | Plug or tap the key, touch the button |
+> | **Extra hardware to distribute?** | ❌ No (phone already in pocket) | ✅ Yes (procure, ship, track, replace keys) |
+>
+> **The mental test:** if you cut Internet, **caBLE breaks** (no relay) but the **BLE key still works** (local Bluetooth channel is enough). If you cut Bluetooth, **both break**, but for different reasons: caBLE loses its proximity proof; the BLE key loses its only transport.
+>
+> **One-line summary:**
+> - *caBLE* = "Bluetooth says my phone is here, but the auth conversation goes through the cloud."
+> - *BLE FIDO2 key* = "Bluetooth IS the cable between the key and the PC, no cloud involved."
+
 **The scenario:** a user needs to sign in to web apps and Entra ID across very different form factors during the day — a corporate laptop, a personal phone for Outlook on the train, a tablet during a customer meeting. They want **one** physical authenticator that works on all of them and gives AAL3. USB-only keys need ports and dongles (USB-C, Lightning); NFC needs reader hardware that isn't always there. A FIDO2 key with **BLE built in** removes the transport friction — *but only for the app / browser sign-in scenario.*
 
 > ⚠️ **Important scope limitation.** Microsoft's FIDO2 credential provider for **Windows sign-in (the lock screen)** supports **USB and NFC only**. **BLE is not a supported transport for Windows logon.** The Bluetooth radio is not reliably available pre-logon and BLE pairing requires a user session, so the OS credential provider only enumerates HID-class (USB) and NFC authenticators. The same BLE-capable key used to sign in to a SaaS app from a browser will be **invisible on the Windows lock screen over BLE** — the user must use USB or NFC for that.
