@@ -17,38 +17,43 @@ This article explains the prerequisites, how the mechanism works, how to test it
 
 To enable automatic password rotation for SCRIL (Smart Card is Required for Interactive Logon) accounts, the following conditions must be met in the Active Directory environment:
 
-**Forest Functional Level = Windows Server 2016 or higher**
- Required for the domain controller to support this feature.
+**Domain Functional Level = Windows Server 2016 or higher**
+ Required for the domain controller to support this feature. (Note: Microsoft documents this as a **domain** functional level requirement, not a forest-wide one — a single Windows Server 2016+ DFL domain is enough even in a multi-domain forest.)
 
 **`msDS-ExpirePasswordsOnSmartCardOnlyAccounts = TRUE`**
 Enables password rotation at the domain level.
-This is a domain attribute introduced in Windows Server 2016.
+This is a domain-wide attribute (set on the **domain root object**, not via GPO) introduced in Windows Server 2016. You can enable it with PowerShell:
 
-![](assets/Automatic%20Password%20Rotation%20for%20SCRIL%20Accounts%20in%20Active%20Directory/2025-05-13-13-18-18.png)
+```powershell
+Set-ADObject -Identity (Get-ADDomain).DistinguishedName `
+             -Replace @{'msDS-ExpirePasswordsOnSmartCardOnlyAccounts'=$true}
+```
 
-![](assets/Automatic%20Password%20Rotation%20for%20SCRIL%20Accounts%20in%20Active%20Directory/2025-05-13-13-19-27.png)
+![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-18-18.png)
+
+![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-19-27.png)
 
 **`SmartcardRequired = TRUE` on the user account**
 This enables the SCRIL flag.
 It can be set using Active Directory Users and Computers or PowerShell.
 
-![](assets/Automatic%20Password%20Rotation%20for%20SCRIL%20Accounts%20in%20Active%20Directory/2025-05-13-13-20-34.png)
+![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-20-34.png)
 
 **`PasswordNeverExpires = FALSE`**
 The user account must allow password expiration. 
 If set to TRUE, the rotation mechanism is bypassed.
 
-![](assets/Automatic%20Password%20Rotation%20for%20SCRIL%20Accounts%20in%20Active%20Directory/2025-05-13-13-20-54.png)
+![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-20-54.png)
 
 **A valid `pwdLastSet` value**
 A password must exist on the account. If not, expiration and rotation will not trigger.
 
-![](assets/Automatic%20Password%20Rotation%20for%20SCRIL%20Accounts%20in%20Active%20Directory/2025-05-13-13-22-34.png)
+![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-22-34.png)
 
 **Password expiration policy applied** (via GPO or FGPP)
 The domain or Fine-Grained Password Policy must define a `maxPwdAge` greater than zero.
 
-![](assets/Automatic%20Password%20Rotation%20for%20SCRIL%20Accounts%20in%20Active%20Directory/2025-05-13-13-21-51.png)
+![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-21-51.png)
 
 ---
 
@@ -79,21 +84,23 @@ Since SCRIL users never interact with their password:
 - 🔐 Ensure accounts have a valid `pwdLastSet` value — if missing or set to `0`, password expiration won’t trigger.
 - 🧪 Use a test account and FGPP with short expiration (e.g. 5 minutes) to verify the behavior in lab.
 - ⚙️ Prefer gradual rollout using Fine-Grained Password Policies (FGPP) for controlled deployment.
-- 🛡️ Be cautious with VPN scenarios: if users log on with cached credentials and the password changes in AD, it may cause lockouts.
+- 🛡️ **NTLM fallback caveat**: even with SCRIL, applications and protocols that still rely on the NTLM hash (legacy LDAP simple bind, RDP NLA fallback, some VPN/RADIUS supplicants, third-party agents reading cached secrets) will break right after a rotation until they re-authenticate with the new hash. Inventory NTLM-dependent integrations before broad rollout.
 - 🔍 Monitor `pwdLastSet` and authentication logs to confirm rotation is working as expected.
 
-- Does this work with service accounts? → ❌ No, it’s meant for interactive logon users only.
-- Can the rotation be scheduled or forced? → ❌ No, only evaluated at logon.
-- Does it work in hybrid environments with Entra ID? → ⚠️ Not fully; see known limitations.
+### ❓ FAQ
+
+- **Does this work with service accounts?** → ❌ No, it’s meant for interactive logon users only (and SCRIL itself doesn’t make sense for service accounts — use gMSA instead).
+- **Can the rotation be scheduled or forced?** → ❌ No, only evaluated at logon. If you need a forced rotation, reset the password manually (`Set-ADAccountPassword`) or temporarily flip `pwdLastSet` via ADSI.
+- **Does it work in hybrid environments with Entra ID?** → ⚠️ Partially. With SCRIL on, the account has **no usable on-prem password**, so Entra ID Connect cannot sync a meaningful password hash — the cloud identity has no PHS-backed password either. Recommended companion controls for cloud sign-in: **Cloud Kerberos Trust** (so on-prem SSO keeps working from cloud-joined devices), **WHfB Cloud Trust**, **FIDO2 / passkeys**, or **certificate-based authentication (Entra ID CBA)**.
 
 - 🧰 Use tools such as PtHTools by NSA Cybersecurity to detect accounts that haven’t had their NTLM secrets rotated and assess pass-the-hash exposure:
-https://github.com/nsacyber/Pass-the-Hash-Guidance/tree/master/PtHTools
+<https://github.com/nsacyber/Pass-the-Hash-Guidance/tree/master/PtHTools>
 
 
 ---
 
 ## 📚 References
 
-- Microsoft Docs – [Smart Card is required for interactive logon](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/smart-card-is-required-for-interactive-logon)
-- Blog: [Uwe Gradenegger – SCRIL Password Rotation](https://www.gradenegger.eu/)
-- Blog: [Fabian Bader – Passwordless with WHfB and SCRIL](https://blog.bader.dev)
+- [Smart Card is required for interactive logon (Microsoft Learn)](https://learn.microsoft.com/windows/security/threat-protection/security-policy-settings/smart-card-is-required-for-interactive-logon)
+- [msDS-ExpirePasswordsOnSmartCardOnlyAccounts (Microsoft Learn)](https://learn.microsoft.com/openspecs/windows_protocols/ms-ada2/c1ef0e63-cf6e-4ef1-aa9a-2dc11b6a4f25)
+- [NSA — Pass-the-Hash Guidance & Tools](https://github.com/nsacyber/Pass-the-Hash-Guidance)
