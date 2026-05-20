@@ -10,7 +10,7 @@ This note covers a safe, two-step rollout to **LDAP Signing** in Active Director
 The snippet below audits **LDAP Signing** on your Domain Controllers by reading the server policy backing value:
 `HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity`
 - `2 = Require` (**target**)
-- `1 = None/Negotiate` (not enforced)
+- `1 = Negotiate signing` (default — signing used only if the client requests it)
 - `0 = None` (legacy / not recommended)
 
 It shows a colored table and a per-DC summary. CSV export is present but commented out.
@@ -363,9 +363,10 @@ This monitor maps who still performs **unsigned LDAP binds** and who still uses 
 > **Simple bind over LDAPS (636)** continues to work, but you should prefer **SASL-signed** where possible.
 
 ### How to check results
+1. Run the monitor script below on a workstation with WinRM access to all DCs.
 2. Inspect 2887 (volume), 2888/2889 (sources: hosts/accounts).
 3. Fix apps: move to **SASL-signed** or **LDAPS (636)** with valid DC certs (ideally with **CBT**).
-4. Re-run until unsigned/simple noise disappears → then enforce **Require**.
+4. Re-run until unsigned/simple noise disappears — then enforce **Require**.
 
 ### PS Script to Track LDAP Signing Events on DC
 
@@ -603,6 +604,8 @@ Write-Host "Legend: 2886=DC not requiring signing; 2887=unsigned/simple count; 2
 
 Once unsigned/simple bind sources are remediated or acceptably exceptioned, enforce **LDAP Signing** on DCs.
 
+> ⚠️ **Compatibility warning before enforcement:** moving DCs to **Require** will reject **unsigned SASL binds** and **simple binds in clear (389 without TLS)**. Known impact areas: legacy NPS/RADIUS deployments, scanners/MFPs and appliances using LDAP simple bind on port 389, older Java/Oracle/IBM LDAP client libraries, in-house apps using a non-Windows LDAP stack, and Microsoft components historically known for clear simple bind (Exchange OAB SCP discovery, SCCM/Configuration Manager LDAP queries, SCOM AD MP). **Do not skip Phase 2** — the monitor script surfaces these clients via events 2888 / 2889 *before* you start blocking traffic.
+
 ### Target settings (GPO)
 - **Domain Controllers (server side)**
   - Path: `Computer Configuration → Windows Settings → Security Settings → Local Policies → Security Options`
@@ -641,6 +644,9 @@ Once unsigned/simple bind sources are remediated or acceptably exceptioned, enfo
 - Revert DC policy to **None/Not defined** (or set `LDAPServerIntegrity = 1`) on the DC OU, force GPUpdate.  
   Keep the monitor running to re-assess unsigned/simple volumes before a new attempt.
 
+## References
 
-
-
+- [Microsoft Security Advisory ADV190023 — Microsoft Guidance for Enabling LDAP Channel Binding and LDAP Signing](https://msrc.microsoft.com/update-guide/vulnerability/ADV190023)
+- [2020 LDAP channel binding and LDAP signing requirements for Windows](https://learn.microsoft.com/troubleshoot/windows-server/active-directory/2020-ldap-channel-binding-and-ldap-signing-requirements-for-windows)
+- [How to enable LDAP signing in Windows Server (KB 935834)](https://support.microsoft.com/topic/how-to-enable-ldap-signing-in-windows-server-2008-d2b2e26b-262c-c30b-c1f4-cf78ea9e2e44)
+- [Use the LDAP signing and channel binding events to track non-compliant devices](https://techcommunity.microsoft.com/blog/coreinfrastructureandsecurityblog/use-the-ldap-signing-and-channel-binding-events-to-track-non-compliant-d/3253033)

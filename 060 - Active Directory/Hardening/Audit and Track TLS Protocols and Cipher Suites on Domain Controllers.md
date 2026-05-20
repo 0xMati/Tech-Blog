@@ -1,4 +1,5 @@
 # Audit and Track TLS Protocols and Cipher Suites on Domain Controllers
+🗓️ Published: 2026-01-29
 
 ## Overview
 
@@ -69,6 +70,18 @@ The script provided in this article:
 - Checks the current logging level on each DC
 - Optionally enables verbose logging remotely if missing
 
+> ⚠️ **Volume impact:** `EventLogging = 7` is the most verbose level and generates **one event per TLS handshake** on the System log. On busy DCs this can mean **thousands of events per hour**, accelerating log rotation and potentially overwriting other System events. Recommended approach:
+>
+> 1. Enable verbose logging only for the duration of the audit (e.g., 24 – 72 hours).
+> 2. Optionally increase the System log max size (`wevtutil sl System /ms:524288000` = 500 MB).
+> 3. Revert after collection: delete the `EventLogging` value (or set it back to `1`, the default).
+>
+> ```powershell
+> # Revert after audit (run on each DC, or via Invoke-Command)
+> Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL' `
+>                     -Name 'EventLogging' -ErrorAction SilentlyContinue
+> ```
+
 ---
 
 ## Events Used for the Audit
@@ -85,6 +98,8 @@ This event provides, among others:
 - `ExchangeStrength`
 - `TargetName`
 - Certificate information
+
+> **Cipher suite name mapping:** the script includes a small built-in lookup table covering the most common modern suites (ECDHE-AES-GCM for TLS 1.2 and the three standard TLS 1.3 suites). Unknown suites are displayed as `UNKNOWN (0xXXXX)` — cross-reference them with the [IANA TLS Cipher Suite Registry](https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-4) for exhaustive coverage.
 
 ---
 
@@ -629,6 +644,15 @@ if ($ExportCsv) {
 Write-Host "`n=== TLS / Schannel audit completed ===" -ForegroundColor Cyan
 ```
 
-![](assets/Audit%20and%20Track%20TLS%20Protocols%20and%20Cipher%20Suites%20on%20Domain%20Controllers/2026-01-29-16-00-11.png)
+![](../assets/audit-track-tls-protocols-cipher-suites/2026-01-29-16-00-11.png)
 
-![](assets/Audit%20and%20Track%20TLS%20Protocols%20and%20Cipher%20Suites%20on%20Domain%20Controllers/2026-01-29-16-00-34.png)
+![](../assets/audit-track-tls-protocols-cipher-suites/2026-01-29-16-00-34.png)
+
+---
+
+## References
+
+- [Schannel events (Microsoft Learn)](https://learn.microsoft.com/windows/win32/secauthn/schannel-events)
+- [Manage TLS — Schannel registry entries](https://learn.microsoft.com/windows-server/security/tls/manage-tls)
+- [IANA TLS Cipher Suite Registry](https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-4)
+- [TLS cipher suites in Windows](https://learn.microsoft.com/windows/win32/secauthn/cipher-suites-in-schannel)

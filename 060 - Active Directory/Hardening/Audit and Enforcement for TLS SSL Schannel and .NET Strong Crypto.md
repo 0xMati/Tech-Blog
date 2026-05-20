@@ -15,6 +15,8 @@ This PowerShell 5.1 script audits Schannel TLS/SSL settings (TLS 1.0/1.1/1.2 for
 - Quickly confirms if TLS 1.0/1.1 are still permitted and TLS 1.2 is explicit.
 - Highlights legacy .NET defaults that can break when disabling old TLS versions.
 
+> **Scope note:** this audit covers TLS 1.0 / 1.1 / 1.2 Schannel protocols and .NET Strong Crypto. **TLS 1.3** is supported and enabled by default on Windows Server 2022+ and Windows 11+ — it does not require explicit registry configuration, and intentionally disabling it is not recommended. Cipher suites, hashes and key exchange algorithms (`Schannel\Ciphers`, `Hashes`, `KeyExchangeAlgorithms`) are **out of scope** of this article.
+
 **Prereqs**
 - Windows PowerShell 5.1
 - PowerShell Remoting enabled to the DCs
@@ -274,11 +276,13 @@ $summary | Format-Table -AutoSize
 
 ## Remediation with GPO
 
-> Scope this GPO to the **Domain Controllers OU**. Use **Preferences ▸ Windows Settings ▸ Registry**. Action = **Update** (or **Create** if missing). A **server reboot** is recommended after applying Schannel changes.
+> Scope this GPO to the **Domain Controllers OU**. Use **Preferences ▸ Windows Settings ▸ Registry**. Action = **Update** (or **Create** if missing). A **server reboot is required** after applying Schannel changes — the LSA loads Schannel settings at boot and won't pick them up otherwise.
+
+> ⚠️ **Compatibility warning before disabling TLS 1.0 / 1.1:** legacy clients that don't speak TLS 1.2 will be rejected on every Schannel-protected channel (LDAPS, RPC over HTTPS, SMB over QUIC, WinRM HTTPS, SQL Server TDS, IIS, RDS, etc.). Known impact areas: SQL Server with old ODBC/OLEDB clients, Java 7- applications, scanners/MFPs with old firmware, RADIUS/NPS legacy supplicants, backup agents with vendor-bundled TLS stacks, MSSQL Linked Servers using legacy drivers, and any third-party LDAPS consumer not patched in the last few years. Run the audit script on **clients** as well, not only on DCs, when feasible.
 
 ---
 
-### 1 Disable TLS 1.0 and TLS 1.1 (Server & Client)
+### 1. Disable TLS 1.0 and TLS 1.1 (Server & Client)
 
 **Hive:** `HKEY_LOCAL_MACHINE`  
 **Key base:** `SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\Protocols`
@@ -305,7 +309,7 @@ Create/update the following DWORD values:
 
 ---
 
-### 2 Enable TLS 1.2 (Server & Client)
+### 2. Enable TLS 1.2 (Server & Client)
 
 **Hive:** `HKEY_LOCAL_MACHINE`  
 **Key base:** `SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\Protocols`
@@ -323,7 +327,7 @@ Create/update the following DWORD values:
 
 ---
 
-### 3 .NET Strong Crypto (recommended)
+### 3. .NET Strong Crypto (recommended)
 
 Apply to **both** native (x64) and **WOW6432Node** paths.
 
@@ -359,3 +363,11 @@ Apply to **both** native (x64) and **WOW6432Node** paths.
     - TLS 1.0/1.1: **Disabled** (Compliant)
     - TLS 1.2: **Enabled** (Compliant)
     - .NET keys: **1** (Compliant)
+
+## References
+
+- [TLS registry settings (Microsoft Learn)](https://learn.microsoft.com/windows-server/security/tls/tls-registry-settings)
+- [Transport Layer Security (TLS) best practices with the .NET Framework](https://learn.microsoft.com/dotnet/framework/network-programming/tls)
+- [KB 245030 — How to restrict the use of certain cryptographic algorithms and protocols in Schannel.dll](https://learn.microsoft.com/troubleshoot/windows-server/windows-security/restrict-cryptographic-algorithms-protocols-schannel)
+- [Solving the TLS 1.0 Problem (Microsoft Security Engineering)](https://learn.microsoft.com/security/engineering/solving-tls1-problem)
+
