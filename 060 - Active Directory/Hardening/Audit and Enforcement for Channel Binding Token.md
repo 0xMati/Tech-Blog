@@ -10,21 +10,18 @@ This note documents a safe rollout to enforce **Channel Binding Tokens (CBT)** f
 ## Rollout strategy (two steps)
 
 1. **Phase 1 — When supported (`LdapEnforceChannelBinding = 1`)**
-   - Purpose: detect and fix legacy clients/libraries that don’t present CBT.
-   - Actions: monitor **Directory Service ▸ LDAP Interface Events** for bind failures, validate LDAPS with `Ldp.exe`, and inventory any failing apps/middlewares.
-
-**Purpose:** detect and fix legacy clients/libraries that don’t present CBT.  
-**Actions:** monitor Directory Service events, validate LDAPS with `Ldp.exe`, inventory failing apps/middlewares.
+   - **Purpose:** detect and fix legacy clients/libraries that don't present CBT.
+   - **Actions:** monitor **Directory Service ▸ LDAP Interface Events** for bind failures, validate LDAPS with `Ldp.exe`, and inventory any failing apps/middlewares.
 
 2. **Phase 2 — Required (`LdapEnforceChannelBinding = 2`)**
-   - Purpose: enforce CBT for all LDAPS binds.
-   - Actions: after remediation, flip to **Required**, keep monitoring for residual failures.
+   - **Purpose:** enforce CBT for all LDAPS binds.
+   - **Actions:** after remediation, flip to **Required** and keep monitoring for residual failures.
 
-**Purpose:** enforce CBT for all LDAPS binds.  
-**Actions:** after remediation, flip to **Required** and keep monitoring for residual failures.
-
+> ⚠️ **Compatibility warning before Phase 2:** moving to `Required` will reject any LDAPS bind that doesn't present a valid CBT. Known impact areas: legacy NPS/RADIUS deployments, older Java/Oracle/IBM LDAP client libraries, third-party identity appliances, scanners and printers using LDAPS, and any in-house app using a non-Windows LDAP stack. **Do not skip Phase 1** — it's there to surface these clients via events 3074 / 3075 *before* you start blocking traffic.
 
 ## Phase 0 - Server-side posture check (DC settings for CBT)
+
+> This check is **read-only** and should be run before any change to establish the current posture across all DCs.
 
 ```powershell
 <#
@@ -175,7 +172,7 @@ $summary | Sort-Object Computer | Format-Table -AutoSize
 
 - Or with GPO:
 
-![](assets/Audit%20and%20Enforcement%20for%20Channel%20Binding%20Token/2025-12-03-12-24-05.png)
+![](../assets/audit-enforcement-channel-binding-token/2025-12-03-12-24-05.png)
 
 ### Increase Logs verbosity to track CBT Events
 
@@ -619,12 +616,18 @@ Write-Host "Legend: 3039=failed CBT (RED), 3074=invalid CBT would-fail (YELLOW),
 
 ## Rollout to Phase 2 — Required
 
-Apply to the **Domain Controllers OU**:
+Apply to the **Domain Controllers**:
 
 - `HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding` (DWORD)
   - `2` = **Required** (Phase 2, target state)
 
 - Or with GPO:
 
-![](assets/Audit%20and%20Enforcement%20for%20Channel%20Binding%20Token/2025-12-03-12-25-04.png)
+![](../assets/audit-enforcement-channel-binding-token/2025-12-03-12-25-04.png)
+
+## References
+
+- [Microsoft Security Advisory ADV190023 — Microsoft Guidance for Enabling LDAP Channel Binding and LDAP Signing](https://msrc.microsoft.com/update-guide/vulnerability/ADV190023)
+- [2020 LDAP channel binding and LDAP signing requirements for Windows](https://learn.microsoft.com/troubleshoot/windows-server/active-directory/2020-ldap-channel-binding-and-ldap-signing-requirements-for-windows)
+- [Use the LDAP signing and channel binding events to track non-compliant devices](https://techcommunity.microsoft.com/blog/coreinfrastructureandsecurityblog/use-the-ldap-signing-and-channel-binding-events-to-track-non-compliant-d/3253033)
 
