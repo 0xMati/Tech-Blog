@@ -123,11 +123,12 @@ Once the driver is present on the workstation, per-user GPO Preferences will suc
 
 | Action | Why |
 |---|---|
-| Dedicate the print server role — never use a Domain Controller as a print server | A compromised Print Spooler on a DC = domain compromise |
+| **Disable the Print Spooler service on every Domain Controller** | Mandatory since the PrintNightmare disclosures. A spooler running on a DC turns a printer-driver bug into a domain compromise. `Stop-Service Spooler; Set-Service Spooler -StartupType Disabled` |
+| Dedicate the print server role — never co-host it with a DC, AD CS, or other Tier 0 asset | A compromised Print Spooler on a Tier 0 box = full forest compromise |
 | Restrict who can install drivers on the print server | Only designated print admins should modify drivers |
 | Use signed drivers only | Unsigned drivers are an unnecessary risk |
 | Prefer Type 4 (v4) drivers over Type 3 (v3) | Type 4 drivers run in user-mode, are package-aware, and reduce kernel attack surface |
-| Disable the Print Spooler service on servers that don't need it (especially DCs) | Reduces attack surface — `Stop-Service Spooler; Set-Service Spooler -StartupType Disabled` |
+| Disable the Print Spooler service on any other server that does not need it | Reduces attack surface — same command as above |
 | Monitor driver changes on print servers | A compromised print server can push malicious drivers to every client |
 
 ### ⚠️ Remaining risks (even with full hardening)
@@ -143,6 +144,9 @@ The per-machine deployment model shifts trust to the **print server**. If the pr
 ## 📚 References
 
 - [CVE-2021-34527 — Windows Print Spooler Remote Code Execution (PrintNightmare)](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-34527)
+- [CVE-2021-1675 — Windows Print Spooler Remote Code Execution](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-1675)
 - [KB5005010 — Restricting installation of new printer drivers after applying July 2021 updates](https://support.microsoft.com/en-us/topic/kb5005010-restricting-installation-of-new-printer-drivers-after-applying-the-july-6-2021-updates-31b91c02-05bc-4ada-a7ea-183b129578a7)
 - [Managing Point and Print restrictions](https://learn.microsoft.com/en-us/troubleshoot/windows-client/printing/point-and-print-restrictions)
 - [Deploy printers by using Group Policy](https://learn.microsoft.com/en-us/windows-server/administration/print-management/deploy-printers-by-using-group-policy)
+- [V4 printer drivers overview](https://learn.microsoft.com/en-us/windows-hardware/drivers/print/v4-printer-driver)
+- [Secure-by-default Domain Controllers — disable Print Spooler](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory)

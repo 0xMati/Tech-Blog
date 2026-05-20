@@ -5,6 +5,11 @@ Ever had that “oh no, SYSVOL disappeared” moment? 😅
 Whether your domain controller decided to play hide-and-seek with `NETLOGON` or you just need to bring one DC back in line, these PowerShell scripts are here to save your day.  
 Both are 100% PowerShell 5.1-compatible and follow Microsoft’s official steps — just with a geeky twist. 🧠💻  
 
+> ℹ️ **Prerequisites & assumptions**
+> - Your SYSVOL is already migrated from **FRS to DFSR**. If you’re still on FRS (rare in 2026, but it happens on very old domains), run `dfsrmig /getmigrationstate` first and complete the migration before using these scripts — they only operate on the DFSR replication topology.
+> - You have a **fresh backup of SYSVOL** on the DC you intend to keep as the source of truth. For authoritative restore, also export `C:\Windows\SYSVOL_DFSR\domain\Policies` (GPOs) and `\scripts` (NETLOGON) on that DC before starting, and ideally take a System State backup of the PRIMARY DC.
+> - The scripts use `Domain.GetCurrentDomain()` and target **the current domain only**. In a multi-domain forest, run them once per domain that owns a broken SYSVOL.
+
 ---
 
 ## Non-Authoritative Restore (DFSR)
@@ -378,14 +383,39 @@ catch {
 
 ## Quick Verification Commands
 
+```powershell
 # Check DFSR state
 dfsrdiag ReplicationState
 
-# Check backlog (example)
-dfsrdiag backlog /rgname:"Domain System Volume" /rfname:"SYSVOL Share" /smem:$DCName /partner:<OtherDC>
+# Check backlog (example) — run from a DC, comparing with another DC as partner
+dfsrdiag backlog /rgname:"Domain System Volume" /rfname:"SYSVOL Share" /smem:$env:COMPUTERNAME /partner:<OtherDC>
 
 # Force AD replication
+#   /A = sync all naming contexts
+#   /d = display DSA (server) names instead of GUIDs
+#   /e = cross-site (enterprise-wide)
+#   /P = push changes outward from this DC
 repadmin /syncall /AdeP
 
-# Verify shares
+# Verify SYSVOL and NETLOGON shares are advertised again
 net share
+```
+
+## ⚠️ Recovery if the script crashes mid-run
+
+The authoritative script sets the DFSR service `StartupType=Manual` on every DC at step 1 and restores `Automatic` only at step 12. If the script aborts in between (network glitch, AD bind error, Ctrl+C…), DFSR will **not auto-start at next reboot** on the affected DCs. Re-enable it manually:
+
+```powershell
+# Run on each DC that did not reach step 12
+sc.exe config dfsr start= auto
+sc.exe start dfsr
+```
+
+Then verify with `dfsrdiag ReplicationState` and `net share` that SYSVOL/NETLOGON are advertised again before declaring the incident closed.
+
+## 📚 References
+
+- [Force authoritative and non-authoritative synchronization for DFSR-replicated SYSVOL](https://learn.microsoft.com/troubleshoot/windows-server/group-policy/force-authoritative-non-authoritative-synchronization)
+- [Migrate SYSVOL replication from FRS to DFSR (`dfsrmig`)](https://learn.microsoft.com/troubleshoot/windows-server/group-policy/migrate-sysvol-replication-from-frs-to-dfsr)
+- [DFSR event reference (4114 / 4602 / 4604)](https://learn.microsoft.com/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/cc758302(v=ws.10))
+

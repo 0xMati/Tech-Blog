@@ -1,4 +1,4 @@
-# DNS Aging and Scavenging Explained with verification Script
+# DNS Aging and Scavenging Explained with Verification Script
 🗓️ Published: 2025-12-03
 
 ## Introduction
@@ -44,19 +44,19 @@ Example 1:
 
 If the Non-Refresh Interval and the Refresh Interval are seven (7) days then a resource record is considered as stale if not refreshed after fourteen (14) days.
 
-![](assets/Dns%20Aging%20and%20Scavenging%20Explained%20with%20verification%20script/2025-12-03-17-27-55.png)
+![](../assets/dns-aging-scavenging-explained/2025-12-03-17-27-55.png)
 
 Example 2:
 
 If the Non-Refresh Interval and the Refresh Interval are seven (7) days then a resource record can be refreshed after 7 days starting from the last refresh. Once done, a new Non-Refresh Interval period will start.
 
-![](assets/Dns%20Aging%20and%20Scavenging%20Explained%20with%20verification%20script/2025-12-03-17-28-22.png)
+![](../assets/dns-aging-scavenging-explained/2025-12-03-17-28-22.png)
 
 Example 3:
 
 Even if the Non-Refresh and Refresh intervals were elapsed, a resource record can be refreshed as long as the record was not removed from the DNS zone. Once done, a new Non-Refresh Interval will start and the record will no longer be considered as stale.
 
-![](assets/Dns%20Aging%20and%20Scavenging%20Explained%20with%20verification%20script/2025-12-03-17-28-55.png)
+![](../assets/dns-aging-scavenging-explained/2025-12-03-17-28-55.png)
 
 ### 🔹 Scavenging: safely removing stale records
 
@@ -102,7 +102,7 @@ These two intervals combined determine how long a record can stay unchanged befo
 
 > If aging is not enabled on a zone, *no* record in that zone will ever be scavenged.
 
-![](assets/Dns%20Aging%20and%20Scavenging%20Explained%20with%20verification%20script/2025-12-03-17-31-48.png)
+![](../assets/dns-aging-scavenging-explained/2025-12-03-17-31-48.png)
 
 ---
 
@@ -120,7 +120,28 @@ Specify a scavenging period (default: 7 days).
 
 Every time this timer fires, the server will scan eligible zones and delete stale dynamic records.
 
-![](assets/Dns%20Aging%20and%20Scavenging%20Explained%20with%20verification%20script/2025-12-03-17-32-16.png)
+![](../assets/dns-aging-scavenging-explained/2025-12-03-17-32-16.png)
+
+---
+
+### 🐚 Equivalent PowerShell commands
+
+If you prefer scripting over the DNS Manager UI:
+
+```powershell
+# Enable aging on a specific zone (NoRefresh and Refresh default to 7 days each)
+Set-DnsServerZoneAging -Name 'contoso.com' -Aging $true `
+                       -NoRefreshInterval 7.00:00:00 `
+                       -RefreshInterval 7.00:00:00
+
+# Enable scavenging on the local DNS server, every 7 days
+Set-DnsServerScavenging -ScavengingState $true `
+                        -ScavengingInterval 7.00:00:00 -ApplyOnAllZones
+
+# Verify both
+Get-DnsServerZoneAging -Name 'contoso.com'
+Get-DnsServerScavenging
+```
 
 ---
 
@@ -141,6 +162,8 @@ If you want to test cleanup immediately:
 Invoke-DnsServerScavenging
 ```
 
+> ⚠️ **This is not a dry-run.** `Invoke-DnsServerScavenging` triggers the **real** scavenging pass on the server it is executed on, and stale records matching the current aging settings will be **deleted immediately**. Always run the dry-run PowerShell script below first to know exactly what would be removed.
+
 ---
 
 ### Summary
@@ -152,6 +175,17 @@ Both required     = scavenging actually works
 ```
 
 Enable aging → enable scavenging → verify timestamps → done.
+
+---
+
+### ⚠️ Production caveats before enabling for the first time
+
+- 🕒 **Existing records have no timestamp.** When you enable aging on a zone that already contains years of records, every existing dynamic record is initialized with `Timestamp = 0` and will **never** be scavenged until the client re-registers itself. Plan for either a controlled re-registration wave (`ipconfig /registerdns` via GPO/Scheduled Task), or accept that cleanup will progressively happen as machines refresh.
+- 🏛️ **AD-integrated zones with multiple DCs.** Scavenging is performed by **only one** of the eligible DNS servers at a time. By default, *any* DC running the DNS role can scavenge; in larger environments, **restrict it to a small list** with `Set-DnsServerZoneAging -ScavengeServers <IP1>,<IP2>` to avoid race conditions and unpredictable deletions.
+- 🌐 **DHCP-driven registrations.** If DHCP servers register DNS records on behalf of clients, ensure the DHCP service is in the `DnsUpdateProxy` group and that the DHCP server has its credentials configured to take ownership of the records. Otherwise scavenging may delete records that DHCP keeps re-creating, or vice-versa.
+- 🔍 **Static records are safe.** Anything without a timestamp (manually created, or marked “static”) is never touched by scavenging.
+
+---
 
 ## PowerShell Dry-Run Script Overview
 
@@ -364,3 +398,11 @@ Write-Host ("✅ {0} record(s) identified as CANDIDATES for scavenging (also ava
 #     Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
 # Write-Host "📁 CSV export written to: $OutputPath" -ForegroundColor Green
 ```
+
+## 📚 References
+
+- [DNS aging and scavenging concepts (Microsoft Learn)](https://learn.microsoft.com/windows-server/identity/ad-ds/plan/security-best-practices/best-practice-active-directory-deployment-for-managing-windows-systems)
+- [Set-DnsServerZoneAging cmdlet](https://learn.microsoft.com/powershell/module/dnsserver/set-dnsserverzoneaging)
+- [Set-DnsServerScavenging cmdlet](https://learn.microsoft.com/powershell/module/dnsserver/set-dnsserverscavenging)
+- [Don't be afraid of DNS Scavenging. Just be patient. (AskDS legacy blog)](https://techcommunity.microsoft.com/blog/askds/dont-be-afraid-of-dns-scavenging-just-be-patient/396096)
+

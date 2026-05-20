@@ -1,8 +1,7 @@
 # gPLink attribute inconsistent in child domain
 🗓️ Published: 2025-05-05
 
-
-# Identifying and Remediating Inconsistent `gPLink` Attributes in Active Directory
+## Identifying and Remediating Inconsistent `gPLink` Attributes in Active Directory
 
 In Active Directory environments, Group Policy Objects (GPOs) play a critical role in enforcing configuration and security policies across domain-joined machines. Each Organizational Unit (OU) or container that applies one or more GPOs stores a list of linked GPOs in the `gPLink` attribute.
 
@@ -27,7 +26,7 @@ For example:
 
 [gPLink] = [LDAP://cn={6AC1786C-016F-11D2-945F-00C04fB984F9},cn=policies,cn=system,DC=domain,DC=local;0]
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-05-23-28-53.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-05-23-28-53.png)
 
 ### Why it matters
 
@@ -40,7 +39,7 @@ When a GPO is deleted but its reference remains in a `gPLink` attribute:
 Maintaining consistency in `gPLink` values is therefore essential to ensure proper Group Policy behavior and clean administrative hygiene.
 
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-12-26.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-12-26.png)
 
 
 ## 2. Common Causes of `gPLink` Inconsistencies
@@ -53,7 +52,7 @@ Inconsistent `gPLink` values usually appear when a GPO is deleted or moved witho
   A GPO created in the forest root domain is linked to an OU in a child domain. When the GPO is deleted in the root domain, the link is removed there, but **remains in the child domain**’s OU `gPLink` attribute.  
   > ⚠️ This behavior is by design — GPO deletions are **domain-local** and do not cascade to other domains.
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-05-23-31-04.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-05-23-31-04.png)
 
 - **Manual GPO deletion via ADSIEdit or scripting**:  
   Deleting a GPO by removing its LDAP object or SYSVOL folder directly can leave stale references behind in `gPLink`.
@@ -79,7 +78,9 @@ If you're running this script in an audit or reporting context, you may want to 
 
 The script supports optional export to CSV. Simply uncomment the following line at the end:
 
---> $orphanedGpos | Export-Csv -Path "C:\Temp\Orphaned-GPOs.csv" -NoTypeInformation -Encoding UTF8
+```powershell
+$orphanedGpos | Export-Csv -Path "C:\Temp\Orphaned-GPOs.csv" -NoTypeInformation -Encoding UTF8
+```
 
 Make sure the target directory (e.g., C:\Temp) exists or change the path to suit your environment.
 This will generate a file with the following columns:
@@ -170,8 +171,8 @@ foreach ($domain in $allOUsWithGplink.Keys) {
         if (-not $gplink) { continue }
 
         # Match all GUIDs from gPLink (case-insensitive)
-        $matches = [regex]::Matches($gplink, '(?i)CN=\{(?<guid>[0-9a-fA-F\-]+)\}')
-        foreach ($match in $matches) {
+        $gplinkMatches = [regex]::Matches($gplink, '(?i)CN=\{(?<guid>[0-9a-fA-F\-]+)\}')
+        foreach ($match in $gplinkMatches) {
             $gplinkGuidRaw = $match.Groups['guid'].Value
             $gplinkGuid = $gplinkGuidRaw.ToLower()
 
@@ -197,8 +198,8 @@ foreach ($domain in $allOUsWithGplink.Keys) {
         $gplink = $ou.gPLink
         if (-not $gplink) { continue }
 
-        $matches = [regex]::Matches($gplink, '(?i)CN=\{(?<guid>[0-9a-fA-F\-]+)\}')
-        foreach ($match in $matches) {
+        $gplinkMatches = [regex]::Matches($gplink, '(?i)CN=\{(?<guid>[0-9a-fA-F\-]+)\}')
+        foreach ($match in $gplinkMatches) {
             $gplinkGuidRaw = $match.Groups['guid'].Value
             $gplinkGuid = $gplinkGuidRaw.ToLower()
 
@@ -227,22 +228,28 @@ if ($orphanedGpos.Count -eq 0) {
 # $orphanedGpos | Export-Csv -Path "C:\Temp\Orphaned-GPOs.csv" -NoTypeInformation -Encoding UTF8
 ```
 
-Notes:
-This script does not analyze GPOs linked to domains or sites — it focuses on OUs.
-You can adapt it to scan gPLink on other container types by querying Get-ADObject directly.
-It requires the Group Policy Management Console (GPMC) and Active Directory PowerShell module.
+> **Notes:**
+> - This script does not analyze GPOs linked to **domains or sites** — it focuses on OUs. You can adapt it to other container types by querying `Get-ADObject` directly.
+> - It requires the **Active Directory PowerShell module** (RSAT-AD-PowerShell) and — if you want to inspect linked GPOs interactively — the **Group Policy Management Console (GPMC)**.
+> - The script targets the **forest** via `Forest.Domains` and walks each domain. You need read access on every domain to get a complete picture.
 
 Example :
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-00-14-41.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-06-00-14-41.png)
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-00-14-56.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-06-00-14-56.png)
 
 
 ## 4. Remediating Inconsistent `gPLink` References
 
 Once orphaned GPO links have been identified, the next step is to clean them up safely. This involves editing the `gPLink` attribute of affected OUs to remove the references to non-existent GPOs.
 Here is another version of the script that will delete automatically orphaned GPO and create a backup file.
+
+> ⚠️ **Before running the remediation script, keep in mind:**
+> - **Replication lag**: a GPO that exists in another domain but hasn’t replicated yet to the DC you’re querying will look orphaned. Always query a healthy GC / direct DC of the GPO’s home domain, and re-run the detection script twice in a row before remediating large batches.
+> - **Enforced links (`;1`)**: when you remove an orphaned enforced link, lower-level OUs may suddenly become subject to GPOs higher in the hierarchy that were previously overridden. Spot-check enforced entries before bulk removal.
+> - **Cross-domain linking by design**: some teams intentionally link forest-root GPOs to child OUs. Confirm with the GPO owners that the orphaned references really are orphaned and not just queried from the wrong DC.
+> - **Always keep the CSV backup** that the script produces. The `Restore` script in section 5 lets you roll back any OU to its original `gPLink` value if a remediation turns out to be wrong.
 
 ### Remediation Strategy
 
@@ -338,8 +345,8 @@ foreach ($domain in $allOUsWithGplink.Keys) {
         $gplink = $ou.gPLink
         if (-not $gplink) { continue }
 
-        $matches = [regex]::Matches($gplink, '(?i)CN=\{(?<guid>[0-9a-fA-F\-]+)\}')
-        foreach ($match in $matches) {
+        $gplinkMatches = [regex]::Matches($gplink, '(?i)CN=\{(?<guid>[0-9a-fA-F\-]+)\}')
+        foreach ($match in $gplinkMatches) {
             $gplinkGuidRaw = $match.Groups['guid'].Value
             $gplinkGuid = $gplinkGuidRaw.ToLower()
 
@@ -365,8 +372,8 @@ foreach ($domain in $allOUsWithGplink.Keys) {
         $gplink = $ou.gPLink
         if (-not $gplink) { continue }
 
-        $matches = [regex]::Matches($gplink, '(?i)CN=\{(?<guid>[0-9a-fA-F\-]+)\}')
-        foreach ($match in $matches) {
+        $gplinkMatches = [regex]::Matches($gplink, '(?i)CN=\{(?<guid>[0-9a-fA-F\-]+)\}')
+        foreach ($match in $gplinkMatches) {
             $gplinkGuidRaw = $match.Groups['guid'].Value
             $gplinkGuid = $gplinkGuidRaw.ToLower()
 
@@ -424,7 +431,7 @@ if ($orphanedGpos.Count -gt 0) {
                 $currentGPlink = $ou.gPLink
                 $gpoIdToRemove = $entry.OrphanedGpoId.ToLower()
 
-                # Retenir les liens valides
+                # Keep only valid links
                 $validLinks = [regex]::Matches($currentGPlink, '(?i)(LDAP://CN=\{(?<guid>[0-9a-f\-]+)\}.*?)(?=(LDAP|$))') |
                     Where-Object {
                         $linkGuid = $_.Groups['guid'].Value.ToLower()
@@ -453,20 +460,20 @@ if ($orphanedGpos.Count -gt 0) {
 Example :
 You can see that the script will prompt you to confirm deletion :
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-07-30.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-07-30.png)
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-07-47.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-07-47.png)
 
---> You will be able to restore OUs modified with the backup file
+> Once the remediation is done, you can use the backup file to restore the original OU configuration if needed (see section 5).
 
 
 ## 5. Restore GPLinks from Backup
 
 If you need to restore the previous configuration, you can use this script, just edit the backup file path :
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-09-59.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-09-59.png)
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-10-23.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-10-23.png)
 
 
 ```powershell
@@ -509,4 +516,12 @@ foreach ($entry in $backupData) {
 Write-Host "`n🎉 Restoration complete." -ForegroundColor Cyan
 ```
 
-![](assets/gPLink%20attribute%20inconsistent%20in%20child%20domain/2025-05-06-01-10-50.png)
+![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-10-50.png)
+
+## 📚 References
+
+- [`gPLink` attribute reference (MS-ADTS)](https://learn.microsoft.com/openspecs/windows_protocols/ms-adts/4ea3f33b-2710-4ec6-8a8f-93b96d2bd7c8)
+- [Group Policy processing and precedence](https://learn.microsoft.com/previous-versions/windows/it-pro/windows-server-2003/cc785665(v=ws.10))
+- [`Get-ADOrganizationalUnit` cmdlet](https://learn.microsoft.com/powershell/module/activedirectory/get-adorganizationalunit)
+- [`Set-ADOrganizationalUnit` cmdlet](https://learn.microsoft.com/powershell/module/activedirectory/set-adorganizationalunit)
+
