@@ -9,7 +9,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Forgetting just one TDO** leaves a downgrade path open. **Banning RC4 on the DCs without fixing the TDOs first** breaks cross-realm authentication.
 
-If you want to read just two sections, read [The referral ticket — the only thing that crosses the trust 🎫](#the-referral-ticket--the-only-thing-that-crosses-the-trust-), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-), [Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-) and [Remediation procedure](#-remediation-procedure).
+If you want to read just two sections, read [The referral ticket — the only thing that crosses the trust 🎫](#the-referral-ticket--the-only-thing-that-crosses-the-trust-), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-), [Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-), [Lab 3 — A production forest trust stuck in transition (the most common state in the wild) 🧪](#lab-3--a-production-forest-trust-stuck-in-transition-the-most-common-state-in-the-wild-) and [Remediation procedure](#-remediation-procedure).
 
 ---
 
@@ -729,6 +729,171 @@ Restart-Computer
 ```
 
 The GPO change on the **Domain Controllers** OU (`0x8000001C → 0x80000018`) is the **target state** and should stay. If you only made the change temporarily for this lab and need to roll back, revert the GPO from `AES + future` to `RC4 + AES + future` and run `gpupdate /force` on the DCs. **Do not roll back unless absolutely necessary** — once you have proven the downgrade pattern in your own environment, leaving the GPO at `0x18` is the whole point of the exercise.
+
+---
+
+## Lab 3 — A production forest trust stuck in transition (the most common state in the wild) 🧪
+
+Lab 1 showed a naked intra-forest trust where nothing was hardened. Lab 2 showed an ESAE Red Forest where the admin side was fully hardened but the prod side was not. **Lab 3 covers what you will actually find in 8 out of 10 enterprise environments**: a forest trust where someone made an effort on the TDO, the trust password has been rotated, the audit script returns a green check — and yet the KDC is still in the KB5021131 transition phase, silently accepting RC4 session keys for cross-realm traffic.
+
+This is the lab that should worry you the most, because the surface signals all look fine.
+
+### Setup
+
+- Production forest `mathiasmotron.com` — DCs `MM-DC2`, `MM-DC3`
+- External partner forest `ext.local` — DC `EXT-DC1`
+- **Two-way forest trust** between `mathiasmotron.com` and `ext.local`
+- `trustAttributes` on the prod-side TDO: `0x8` = `FOREST_TRANSITIVE` (a vanilla forest trust — no `PIM_TRUST`, no `CROSS_ORGANIZATION`, nothing exotic)
+- `msDS-SupportedEncryptionTypes` on the prod-side TDO: **`0x18` (AES only)** ✅
+- Trust password rotation has happened in the past → AES keys are materialized in `supplementalCredentials` (we will prove this below from `klist`)
+- Workstation: a regular domain-joined Windows 11 client in `mathiasmotron.com`, user `darth.vader@MATHIASMOTRON.COM`
+- Resource targeted: `\\ext-dc1.ext.local\sysvol`
+
+The audit script `Get-TrustEncryptionAudit.ps1` run against the prod side returns:
+
+```
+TrustName            : ext.local
+TrustDirection       : Bidirectional
+TrustType            : Forest
+EncFlags             : AES128, AES256
+EncStatus            : AES-only [OK]
+```
+
+A green check. Auditor happy. Move on to the next ticket… right?
+
+### Step 1 — Baseline observation, normal client
+
+```powershell
+klist purge
+Test-Path "\\ext-dc1.ext.local\sysvol"   # True
+klist
+```
+
+The two tickets that matter:
+
+```
+#0> Server: krbtgt/EXT.LOCAL @ MATHIASMOTRON.COM
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
+    Session Key Type:           AES-256-CTS-HMAC-SHA1-96
+    Cache Flags: 0x240 -> FAST DISABLE-TGT-DELEGATION
+    Kdc Called: MM-DC2.mathiasmotron.com
+
+#3> Server: cifs/ext-dc1.ext.local @ EXT.LOCAL
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
+    Session Key Type:           AES-256-CTS-HMAC-SHA1-96
+    Cache Flags: 0x200 -> DISABLE-TGT-DELEGATION
+    Kdc Called: EXT-DC1.ext.local
+```
+
+Three valuable observations on this baseline:
+
+1. **The referral (`#0`) is AES-256 in both `KerbTicket Encryption Type` and `Session Key Type`.** Since the referral is encrypted with the long-term TDO key held on the issuing side (prod), this is the runtime proof that **`msDS-SupportedEncryptionTypes = 0x18` is not just declarative — the trust password has been rotated since, and the AES keys are actually in `supplementalCredentials`**. This is the missing piece that the LDAP attribute alone does not guarantee.
+2. **`Cache Flags: 0x240 → FAST DISABLE-TGT-DELEGATION`** on the referral. `FAST` (`0x40`) is Kerberos Armoring (RFC 6113) — the AS / TGS exchanges are themselves armored under the client TGT, which hides the pre-auth and protects against passive sniffing. `DISABLE-TGT-DELEGATION` (`0x200`) is the CVE-2018-0886 mitigation propagated to a referral on a *standard* forest trust (no `PIM_TRUST` involved). Both are bonus hardening layers the article does not focus on, but they are visible here and they stack on top of the encryption controls.
+3. **The final service ticket (`#3`) inherits AES-256 end to end.** The SMB conversation against `EXT-DC1` is authenticated with an AES authenticator, the session key is AES, life is good.
+
+At this point — `klist` clean, audit script green, ticket flow AES-256 across the trust — **you would be forgiven for closing the file and considering the trust hardened**.
+
+### Step 2 — Same setup, RC4-only client
+
+Now repeat the exact recipe from Lab 1 — force the client to advertise only RC4 in its TGS-REQ, then re-test:
+
+```powershell
+# On the prod client, as local admin
+$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
+New-Item -Path $path -Force | Out-Null
+Set-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -Value 0x4 -Type DWord
+Restart-Computer
+```
+
+Then after reboot, re-test:
+
+```powershell
+klist purge
+Test-Path "\\ext-dc1.ext.local\sysvol"   # True — still works
+klist
+```
+
+The same two tickets, now look like this:
+
+```
+#0> Server: krbtgt/EXT.LOCAL @ MATHIASMOTRON.COM
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
+    Session Key Type:           RSADSI RC4-HMAC(NT)
+    Cache Flags: 0x240 -> FAST DISABLE-TGT-DELEGATION
+    Kdc Called: MM-DC2.mathiasmotron.com
+
+#3> Server: cifs/ext-dc1.ext.local @ EXT.LOCAL
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
+    Session Key Type:           RSADSI RC4-HMAC(NT)
+    Cache Flags: 0x200 -> DISABLE-TGT-DELEGATION
+    Kdc Called: EXT-DC1.ext.local
+```
+
+**Same pattern as Lab 2**, on a vanilla forest trust with **no Red Forest, no `PIM_TRUST`, no asymmetric TDO**. The `KerbTicket Encryption Type` stays AES-256 (because the TDO key really is AES — declarative *and* materialized), but the `Session Key Type` drops back to RC4-HMAC because **the client was allowed to advertise only RC4, and the issuing KDC accepted it**.
+
+### Step 3 — Find the cause: check the KDC GPO on the prod DCs
+
+```powershell
+# On MM-DC2 (or any prod DC)
+Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters' `
+    -Name SupportedEncryptionTypes -ErrorAction SilentlyContinue
+```
+
+Result on the lab:
+
+```
+supportedencryptiontypes : 2147483644
+```
+
+`2147483644` is `0x8000001C` — which decodes to **`RC4 + AES128 + AES256 + future`**. This is the **default value you get when you deploy KB5021131 in the "AES preferred, RC4 still allowed" transition mode and never close the window afterwards**. It is the most common value you will find on production DCs in the wild, because:
+
+- Microsoft documented it as the "safe" intermediate value for the rollout.
+- Admins set it to unblock legacy systems during the deployment phase.
+- Once the deployment is signed off as complete, nobody comes back to flip it to `0x18`.
+- Audit tooling that reads only the TDO attribute does not flag it.
+
+### Step 4 — Side-by-side comparison: what the audit said vs what actually happens
+
+| Signal | What it says | What is actually true |
+|---|---|---|
+| `Get-TrustEncryptionAudit.ps1` → `EncStatus: AES-only [OK]` | TDO is AES-only ✅ | True for the *long-term TDO key*, **misleading for the session keys** ⚠️ |
+| `klist` from a modern client → all AES-256 | Cross-realm traffic is AES | True **as long as the client advertises AES** — any legacy or compromised client can still negotiate RC4 |
+| KDC GPO `0x8000001C` (RC4 + AES + future) | Transition mode, RC4 still tolerated | RC4 session keys are issued on demand — Lab 3 Step 2 just proved it |
+
+The article-wide one-liner applies here too:
+
+> 🔑 **The TDO controls the *secrets* of the trust. The KDC GPO controls the *sessions* that transit the trust. You need both.**
+
+In Lab 2 we saw this on a Red Forest topology. Lab 3 shows the same pattern is **not Red-Forest-specific** — it applies to every forest trust whose KDC policy is still parked at `0x1C`.
+
+### Step 5 — How to close the gap (no GPO change applied in this lab)
+
+The remediation is the same as Lab 2 Step 3 — flip the GPO `Computer Configuration → Policies → Windows Settings → Security Settings → Local Policies → Security Options → Network security: Configure encryption types allowed for Kerberos` from `RC4 + AES + future` (`0x8000001C`) to `AES + future` (`0x80000018`) on the GPO linked to the **Domain Controllers** OU, then `gpupdate /force` on the DCs. After that, re-running Step 2 should produce `Test-Path: False` and an event `4768` with `Result Code 0xE` (`KDC_ERR_ETYPE_NOSUPP`) on the prod KDC — exactly the forensic smoking gun from Lab 2 Step 4.
+
+We deliberately did **not** apply this change in Lab 3, because the value of this lab is documenting the **state you will most often find in production** — and that state is `0x1C`. The remediation belongs in the [Remediation procedure](#-remediation-procedure) section below.
+
+### The takeaway from Lab 3
+
+A "passing" audit on the TDO can mean two very different things:
+
+| Audit verdict | Trust state | What it actually means |
+|---|---|---|
+| `EncStatus: AES-only [OK]` + KDC GPO `0x18` | ✅ **Fully hardened** | Sessions are AES, secrets are AES, downgrade fails |
+| `EncStatus: AES-only [OK]` + KDC GPO `0x1C` | ⚠️ **Half-hardened** | Secrets are AES, sessions are still negotiable down to RC4 |
+| `EncStatus: RC4 allowed [WEAK]` + KDC GPO anything | ❌ **Not hardened** | Secrets and sessions are both at risk |
+
+The audit script in this article reports the TDO state because the TDO is the part that is invisible to the rest of the tooling. **It is not a substitute for a runtime check** of the form `klist purge + cross-realm access + read the actual session keys`. Lab 3 is precisely the case where the script is honest about the TDO and yet hides a real downgrade path that only `klist` reveals.
+
+### Cleanup after Lab 3
+
+```powershell
+# On the prod client — remove the RC4-only client downgrade
+$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
+Remove-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -ErrorAction SilentlyContinue
+Restart-Computer
+```
+
+No GPO change was made on the DCs in Lab 3, so there is nothing to roll back on the server side — the lab is intentionally **non-destructive on the production KDC policy**.
 
 ---
 
