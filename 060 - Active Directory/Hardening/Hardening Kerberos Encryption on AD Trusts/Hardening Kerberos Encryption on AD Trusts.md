@@ -355,22 +355,11 @@ The lab uses an **ESAE-style Red Forest** layout — the kind of architecture th
 - Admin forest `red.local` — DC `RED-DC1`
 - **One-way forest trust**: `mathiasmotron.com` trusts `red.local` (Outbound on the prod side, Inbound on the red side)
 - `trustAttributes` on the prod-side TDO: `0x458` = `FOREST_TRANSITIVE | CROSS_ORGANIZATION | TREAT_AS_EXTERNAL | PIM_TRUST`
-- **Selective Authentication is enabled on the trust** (typical Red Forest hygiene)
 - `msDS-SupportedEncryptionTypes` on the TDO: **`0x18` (AES only) on the red side**, **`0x0` (unset) on the prod side**
 - Workstation: `RED.ADM.red.local`, user `RED\mathiasadmin`
 - Resource targeted from RED: `\\MM-DC2.mathiasmotron.com\sysvol`
 
 > 🧠 **Why the asymmetry on the TDO matters.** A trust has *two* TDOs, one per side, and each one is configured independently. In a Red Forest where the red team owns the admin forest but not the prod forest, this is extremely common: the red team hardens its TDO, the prod team forgets to mirror the change. The audit script in this article surfaces that asymmetry by running it on both sides — see also [Audit procedure](#-audit-procedure) below.
-
-### Side note — Selective Authentication blocks the test before Kerberos even talks
-
-The first attempt at this lab failed with an unhelpful Explorer dialog:
-
-> *The computer you are signing into is protected by an authentication firewall. The specified account is not allowed to authenticate to the computer.*
-
-That message is Windows' rendering of **Kerberos `KDC_ERR_POLICY` (0xC)**, triggered by **Selective Authentication** on the forest trust. With Selective Authentication on, every cross-forest principal needs an explicit `Allowed to authenticate` ACE on every target computer (or on a parent OU). Without that ACE, the prod KDC refuses to issue the service ticket, regardless of encryption types.
-
-This is **a different defense layer**, not an encryption control — and it stacks on top of the Kerberos enctype controls discussed here. For the rest of Lab 2 the trust was temporarily switched to **Forest-wide authentication** via `Set-ADTrust -Identity red.local -SelectiveAuthentication $false` on a prod DC, so we could isolate the encryption question. **Restore Selective Authentication after the test.**
 
 ### Step 1 — Baseline observation, normal client
 
@@ -569,12 +558,6 @@ For a Red Forest specifically, this means **both forests need both layers**. Har
 $path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
 Remove-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -ErrorAction SilentlyContinue
 Restart-Computer
-```
-
-On the prod side, **re-enable Selective Authentication** on the trust (do not leave the lab change in place):
-
-```powershell
-Set-ADTrust -Identity red.local -SelectiveAuthentication $true
 ```
 
 The KDC enforcement on RED-DC1 (`SupportedEncryptionTypes = 0x18`) can stay — that is the target state. Roll it out cleanly via GPO to **all** DCs of the forest, not via direct registry edits, when moving from lab to production.
