@@ -97,7 +97,7 @@ This is subtle enough that it produces a third possible state of the TDO, halfwa
 | **B — Declared only** ⚠️ | `0x18` (AES) | **Still RC4 only** — no rotation happened after the flip | KDC has no AES key to use → either falls back to RC4 anyway, or fails with `KDC_ERR_ETYPE_NOSUPP` |
 | **C — Really hardened** ✅ | `0x18` (AES) | AES128 + AES256 derived from the latest trust password | AES referral. Trust key effectively unrecoverable offline. |
 
-The trap is **state B**: the audit script reads the attribute and reports `AES-only [OK]`, the GUI checkbox is checked, monitoring dashboards turn green — but the long-term key material in `supplementalCredentials` is still the RC4 derived from a trust password that hasn't been rotated since 2017. An attacker capturing a referral ticket gets the same RC4 hash as if you had done nothing at all.
+The trap is **state B**: the audit script reads the attribute and reports `AES-only [OK]`, `Get-ADTrust -Properties msDS-SupportedEncryptionTypes` shows `0x18`, `ksetup /getenctypeattr remote.lab` lists only AES enctypes, third-party tooling (Quest, Semperis, Tenable, BloodHound) turns the trust green in their dashboards — but the long-term key material in `supplementalCredentials` is still the RC4 derived from a trust password that hasn't been rotated since 2017. An attacker capturing a referral ticket gets the same RC4 hash as if you had done nothing at all.
 
 **Why this happens**
 
