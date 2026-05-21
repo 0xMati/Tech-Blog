@@ -154,6 +154,17 @@ function Get-ClassEmoji {
     }
 }
 
+# Plain-English meaning of each classification, used in the legend.
+# Kept short (~80 chars) so the console output does not wrap awkwardly.
+$ClassMeaning = [ordered]@{
+    'AES-only'   = 'AES128+AES256 declared. Verify trust password rotated since (LastChange).'
+    'Mixed'      = 'RC4 still allowed alongside AES. Remove RC4 bit and rotate trust password.'
+    'RC4-only'   = 'Every referral encrypted in RC4-HMAC-MD5. Crackable offline. Fix urgently.'
+    'Legacy-DES' = 'DES bit still present. Should not exist in 2026. Set to 0x18 and rotate.'
+    'Unset'      = 'Attribute is 0 / absent. Behaves like RC4-only for cross-realm. Set to 0x18 and rotate.'
+    'Unknown'    = 'Bits set that are not recognized by the script. Inspect manually.'
+}
+
 #endregion ---------------------------------------------------------------
 
 if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
@@ -168,6 +179,32 @@ Write-Host ""
 Write-Host "==========================================================================" -ForegroundColor Cyan
 Write-Host " Trust Encryption Audit" -ForegroundColor Cyan
 Write-Host "==========================================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host " WHAT THIS SCRIPT DOES" -ForegroundColor Yellow
+Write-Host "   Reads msDS-SupportedEncryptionTypes and trustAttributes on every Trusted"
+Write-Host "   Domain Object (TDO) visible from the local domain. Classifies each trust"
+Write-Host "   by its DECLARED encryption posture at the directory level."
+Write-Host ""
+Write-Host " WHAT THIS SCRIPT DOES *NOT* DO" -ForegroundColor Yellow
+Write-Host "   - It does NOT read the KDC GPO 'Network security: Configure encryption types"
+Write-Host "     allowed for Kerberos' (HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\"
+Write-Host "     Policies\System\Kerberos\Parameters\SupportedEncryptionTypes). That value"
+Write-Host "     controls which SESSION KEYS the KDC is willing to issue. A trust can be"
+Write-Host "     [OK] here AND still negotiate RC4 sessions if the GPO is stuck at 0x1C."
+Write-Host "   - It does NOT inspect supplementalCredentials, so it cannot confirm that"
+Write-Host "     AES KEYS ARE ACTUALLY MATERIALIZED. An attribute set to 0x18 without a"
+Write-Host "     subsequent trust password rotation still has RC4-only keys in practice."
+Write-Host "   - It reads only the LOCAL side. The remote-side TDO has its own attribute"
+Write-Host "     and must be audited from a DC of that domain."
+Write-Host ""
+Write-Host " A FULLY HARDENED TRUST REQUIRES THREE THINGS:" -ForegroundColor Yellow
+Write-Host "   1. msDS-SupportedEncryptionTypes = 0x18 on BOTH TDOs       (this script)"
+Write-Host "   2. Trust password rotated AFTER the attribute change       (whenChanged hint)"
+Write-Host "   3. KDC GPO SupportedEncryptionTypes = 0x80000018 on DCs    (manual check)"
+Write-Host "      -> Verify with: Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\"
+Write-Host "         CurrentVersion\Policies\System\Kerberos\Parameters' -Name SupportedEncryptionTypes"
+Write-Host ""
+Write-Host "--------------------------------------------------------------------------" -ForegroundColor Cyan
 
 try {
     $domainInfo = Get-ADDomain @adParams -ErrorAction Stop
@@ -240,40 +277,78 @@ $results = foreach ($t in $trusts) {
 $rank = @{ 'Legacy-DES'=0; 'RC4-only'=1; 'Mixed'=2; 'Unset'=3; 'AES-only'=4; 'Unknown'=5 }
 $sorted = $results | Sort-Object @{ Expression = { $rank[$_.Classification] } }, Trust
 
-# Console output
+# ---- Main table: encryption posture per trust --------------------------
+Write-Host "[1/4] Encryption posture (msDS-SupportedEncryptionTypes on each TDO)" -ForegroundColor Cyan
+Write-Host "      Reading: each row = one trust seen from the LOCAL side."
+Write-Host "      EncBitsHex is the raw bitmask. EncFlags is the human-readable decoding."
+Write-Host "      LastChange = whenChanged on the TDO. A recent date is a proxy for a recent trust password rotation."
+Write-Host ""
+
 $sorted |
     Select-Object Trust, Direction, TrustType, IntraForest,
                   EncBitsHex, EncFlags, Classification, Status, LastChange |
     Format-Table -AutoSize -Wrap
 
+# ---- Trust attributes table -------------------------------------------
 Write-Host ""
-Write-Host "Trust attribute flags per trust:" -ForegroundColor Cyan
+Write-Host "[2/4] Trust attribute flags (trustAttributes on each TDO)" -ForegroundColor Cyan
+Write-Host "      Independent from encryption. Tells you the type and topology of the trust:"
+Write-Host "      FOREST_TRANSITIVE = forest trust, WITHIN_FOREST = intra-forest (parent/child or shortcut),"
+Write-Host "      PIM_TRUST = Red Forest / ESAE pattern, USES_AES_KEYS = the GUI 'supports AES' checkbox (declarative only)."
+Write-Host ""
+
 $sorted |
     Select-Object Trust, AttrBitsHex, AttrFlags |
     Format-Table -AutoSize -Wrap
 
-# Summary
+# ---- Summary by classification ----------------------------------------
 Write-Host ""
-Write-Host "Summary:" -ForegroundColor Cyan
-$sorted | Group-Object Classification | Sort-Object Name |
+Write-Host "[3/4] Summary by classification" -ForegroundColor Cyan
+Write-Host ""
+
+$sorted | Group-Object Classification | Sort-Object @{ Expression = { $rank[$_.Name] } } |
     ForEach-Object {
         $emoji = Get-ClassEmoji -Class $_.Name
-        '{0,-12} {1,3}  {2}' -f $_.Name, $_.Count, $emoji
+        '   {0,-12} {1,3}  {2}' -f $_.Name, $_.Count, $emoji
     } | Write-Host
 
-# Highlight the actionable items
+Write-Host ""
+Write-Host "   Legend:" -ForegroundColor DarkCyan
+Write-Host "      [OK] AES-only       Best state at the attribute level (verify rotation, see notes below)"
+Write-Host "      [!!] Mixed          RC4 still allowed alongside AES"
+Write-Host "      [XX] RC4-only       Every referral is RC4-encrypted"
+Write-Host "      [XX] Legacy-DES     DES bit still present"
+Write-Host "      [??] Unset          Attribute is 0 / absent -> behaves like RC4-only for cross-realm purposes"
+Write-Host ""
+
+foreach ($cls in ($sorted.Classification | Sort-Object -Unique)) {
+    if ($ClassMeaning.Contains($cls)) {
+        Write-Host ("   {0,-12} : {1}" -f $cls, $ClassMeaning[$cls]) -ForegroundColor DarkGray
+    }
+}
+
+# ---- Actionable list --------------------------------------------------
+Write-Host ""
 $bad = $sorted | Where-Object {
     $_.Classification -in @('Legacy-DES','RC4-only','Mixed','Unset')
 }
 if ($bad) {
+    Write-Host "[4/4] Trusts that need attention (sorted worst-first)" -ForegroundColor Yellow
+    Write-Host "      For each one: see the Remediation procedure in the companion article."
+    Write-Host "      The two-step fix is ALWAYS: (1) set msDS-SupportedEncryptionTypes = 0x18, then (2) rotate the trust password."
+    Write-Host "      Attribute change without rotation = false sense of security (AES keys are not generated)."
     Write-Host ""
-    Write-Host "Trusts that need attention:" -ForegroundColor Yellow
     $bad |
         Select-Object Trust, Classification, EncBitsHex, EncFlags, LastChange |
         Format-Table -AutoSize -Wrap
 } else {
-    Write-Host ""
-    Write-Host "All trusts are AES-only. Nice." -ForegroundColor Green
+    Write-Host "[4/4] All trusts are AES-only at the attribute level." -ForegroundColor Green
+    Write-Host "      Reminder: this is the DECLARATIVE state. To confirm the AES keys are actually"
+    Write-Host "      materialized in supplementalCredentials, do a runtime check:"
+    Write-Host "          klist purge ; Test-Path \\<DC-of-remote-trust>\sysvol ; klist"
+    Write-Host "      The referral ticket (krbtgt/REMOTE @ LOCAL) must show KerbTicket Encryption Type = AES-256."
+    Write-Host "      Also check: GPO 'Network security: Configure encryption types allowed for Kerberos'"
+    Write-Host "      on the Domain Controllers OU should be 0x80000018 (not 0x8000001C) to block RC4 session keys."
 }
 
 # Exports
@@ -289,6 +364,11 @@ if ($ExportJson) {
 }
 
 Write-Host ""
-Write-Host "Remember: this audit shows only the LOCAL side of each trust." -ForegroundColor DarkGray
-Write-Host "Run the same script on the remote side to compare both TDOs." -ForegroundColor DarkGray
+Write-Host "Scope reminders:" -ForegroundColor DarkGray
+Write-Host "   - This audit shows only the LOCAL side of each trust. Each TDO has a twin on the remote side"
+Write-Host "     with its own msDS-SupportedEncryptionTypes. Run this script on the remote side to compare."
+Write-Host "   - The script reads only the ATTRIBUTE. It does not inspect supplementalCredentials, so it cannot"
+Write-Host "     tell whether AES keys are actually materialized. A trust showing [OK] with a very old LastChange"
+Write-Host "     may still be issuing RC4 referrals if the password has not been rotated since the attribute change."
+Write-Host "   - To confirm session-level encryption, do a runtime klist test from a client (see the article's labs)."
 Write-Host ""

@@ -9,7 +9,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Forgetting just one TDO** leaves a downgrade path open. **Banning RC4 on the DCs without fixing the TDOs first** breaks cross-realm authentication.
 
-If you want to read just two sections, read [The referral ticket — the only thing that crosses the trust 🎫](#the-referral-ticket--the-only-thing-that-crosses-the-trust-), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-), [Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-), [Lab 3 — A production forest trust stuck in transition (the most common state in the wild) 🧪](#lab-3--a-production-forest-trust-stuck-in-transition-the-most-common-state-in-the-wild-) and [Remediation procedure](#-remediation-procedure).
+If you want to read just a few sections, read [The referral ticket — the only thing that crosses the trust 🎫](#the-referral-ticket--the-only-thing-that-crosses-the-trust-), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-), [Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-), [Lab 3 — A production forest trust stuck in transition (the most common state in the wild) 🧪](#lab-3--a-production-forest-trust-stuck-in-transition-the-most-common-state-in-the-wild-) and [Remediation procedure](#-remediation-procedure).
 
 ---
 
@@ -58,6 +58,46 @@ A trust password is a long random secret negotiated when the trust is created. F
 **Critical point:** changing `msDS-SupportedEncryptionTypes` only *declares* which enctypes are allowed. The corresponding **keys are only derived when the trust password is (re)set**. If you flip the attribute to "AES only" but never rotate the trust password, the KDC has nothing to encrypt the referral ticket with, and falls back to whichever key still exists — usually RC4.
 
 This is the same mechanic as for regular service accounts after enabling AES on `msDS-SupportedEncryptionTypes`: the attribute promises, the secret rotation delivers.
+
+#### The two-step nature of TDO hardening (declare → materialize)
+
+This is subtle enough that it produces a third possible state of the TDO, halfway between "naked" and "really hardened", which is the **most dangerous** because it audits as green:
+
+| State | `msDS-SupportedEncryptionTypes` | Keys actually present in `supplementalCredentials` | What the KDC ships in a referral |
+|---|---|---|---|
+| **A — Naked** | `0x0` (unset) or `0x4` (RC4) | RC4 (+ maybe DES) — no AES | RC4 referral. Crackable offline. |
+| **B — Declared only** ⚠️ | `0x18` (AES) | **Still RC4 only** — no rotation happened after the flip | KDC has no AES key to use → either falls back to RC4 anyway, or fails with `KDC_ERR_ETYPE_NOSUPP` |
+| **C — Really hardened** ✅ | `0x18` (AES) | AES128 + AES256 derived from the latest trust password | AES referral. Trust key effectively unrecoverable offline. |
+
+The trap is **state B**: the audit script reads the attribute and reports `AES-only [OK]`, the GUI checkbox is checked, monitoring dashboards turn green — but the long-term key material in `supplementalCredentials` is still the RC4 derived from a trust password that hasn't been rotated since 2017. An attacker capturing a referral ticket gets the same RC4 hash as if you had done nothing at all.
+
+**Why this happens**
+
+The keys in `supplementalCredentials` are derived from the **trust password at the moment of the password change**, using whatever enctypes were active at that moment. If you set the trust password in 2017 when the TDO allowed RC4, you derived an RC4 key. Flipping `msDS-SupportedEncryptionTypes` to `0x18` in 2026 changes the *policy* attached to the TDO, but **does not retroactively re-derive keys** from the existing password. No KDC, no replication, no scheduled task goes back and generates AES keys for you. The only event that produces fresh AES keys is a **password rotation** (`netdom trust /Reset` or its `/ResetOneSide` variant) — which forces the LSA to re-derive *all* enctype keys from the new password, this time honoring the current attribute.
+
+**How to detect state B**
+
+Three independent signals you can correlate:
+
+1. **`whenChanged` on the TDO is older than the change to `msDS-SupportedEncryptionTypes`.** If the attribute change happened during this year's hardening campaign but `whenChanged` says 2021, you have not rotated since the flip.
+2. **`klist` from a cross-realm access shows the referral's `KerbTicket Encryption Type` is RC4** (or the access fails with a Kerberos error in event `4769` when the KDC is GPO-restricted to AES). This is the runtime test — see Lab 2 Step 1 for what a *good* baseline looks like (AES-256 on the referral, confirming the keys are materialized).
+3. **The 4769 event for `krbtgt/REMOTE @ LOCAL` shows `TicketEncryptionType=0x17`** (RC4-HMAC). This is the on-DC equivalent of signal #2 and is what the audit procedure in this article hunts for.
+
+**How to fix it**
+
+Always pair an attribute change with a trust password rotation:
+
+```cmd
+:: Step 1 — flip the attribute (declare)
+ksetup /setenctypeattr remote.lab AES256-CTS-HMAC-SHA1-96 AES128-CTS-HMAC-SHA1-96
+
+:: Step 2 — rotate the password (materialize) — same maintenance window
+netdom trust local.lab /Domain:remote.lab /Reset /UserO:LOCAL\admin /PasswordO:* /UserD:REMOTE\admin /PasswordD:*
+```
+
+The [Remediation procedure](#-remediation-procedure) section formalizes this as a four-step sequence — the rotation is **not** an optional follow-up, it is what turns a declarative `0x18` into actual AES cryptography on the wire.
+
+> 🧠 **The rule.** `msDS-SupportedEncryptionTypes` is a **policy attribute**, not a key generator. AES keys appear in `supplementalCredentials` **only** when the trust password is (re)set with the attribute already in place. **Attribute without rotation = false sense of security.** Always treat the two changes as one atomic operation in the change ticket.
 
 ### The Kerberos cross-realm flow
 
@@ -158,9 +198,9 @@ There are three classic "I hardened Kerberos on the DCs" patterns, and each one 
 This GPO writes `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\SupportedEncryptionTypes` and controls the **Kerberos client** capability set of the machine.
 
 - When the DC needs to talk to another realm's KDC, it acts as a Kerberos client
-- If the client capabilities exclude RC4, **the DC refuses to use a referral TGT chiffré in RC4**
+- If the client capabilities exclude RC4, **the DC refuses to use a referral TGT encrypted in RC4**
 - **Outcome**: cross-realm authentication breaks the moment the client tries to use a stale-RC4 trust
-- **Symptom**: `KDC_ERR_ETYPE_NOTSUPP` (0x18) in event `4769`, `Target Name: krbtgt/REMOTE.LOCAL`, often followed by silent NTLM fallback (event `4624` Logon Type 3 with `Authentication Package: NTLM`)
+- **Symptom**: `KDC_ERR_ETYPE_NOSUPP` (0xE) in event `4769`, `Target Name: krbtgt/REMOTE.LOCAL`, often followed by silent NTLM fallback (event `4624` Logon Type 3 with `Authentication Package: NTLM`)
 
 ### Scenario C — Enabling enforcement modes for CVE-2022-37966 / 37967 (`KrbtgtFullPacSignature`, etc.)
 
@@ -173,7 +213,7 @@ This GPO writes `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\S
 |---|---|---|
 | Cross-domain logon works but **feels slow** | Kerberos cross-realm failing, falling back to NTLM | Event `4625` on the target server, `4624` Logon Type 3 with `NTLM` package |
 | `klist` shows TGT cross-realm in `RC4_HMAC_MD5` | Remote TDO still RC4-only **or** trust password not rotated since AES enablement | `Get-ADTrust -Properties msDS-SupportedEncryptionTypes`, `whenChanged` on the TDO |
-| Event `4769` with `Failure code 0x18`, target `krbtgt/REMOTE.LOCAL` | Client refuses RC4, TDO offers RC4 | TDO on the source side + GPO Kerberos enctype on the client/DC |
+| Event `4769` with `Failure code 0xE`, target `krbtgt/REMOTE.LOCAL` | Client refuses RC4, TDO offers RC4 | TDO on the source side + GPO Kerberos enctype on the client/DC |
 | Event `4769` `Failure code 0xD` (`KDC_ERR_BADOPTION`) on cross-realm | Often related to trust attributes / forest routing, not enctype | `trustAttributes`, `msDS-TrustForestTrustInfo` |
 | `Get-ADTrust` says `Trust OK` but `nltest /trusted_domains` shows `NO_TRUST` for that realm | Trust password desynchronization between the two sides | Re-establish with `netdom trust /Reset` |
 
@@ -388,7 +428,7 @@ Three different controls — none of them alone is sufficient.
 flowchart LR
     A[Client AS-REQ<br/>etype = RC4 only] --> B{KDC SupportedEncryptionTypes<br/>registry}
     B -- Allows RC4 --> C{TDO msDS-SupportedEncryptionTypes}
-    B -- Blocks RC4 --> X1[❌ KDC_ERR_ETYPE_NOSUPP<br/>Event 4768 code 0x18]
+    B -- Blocks RC4 --> X1[❌ KDC_ERR_ETYPE_NOSUPP<br/>Event 4768 code 0xE]
     C -- RC4 key exists --> D[Referral ticket issued<br/>Session key = RC4]
     C -- AES only --> X2[❌ No RC4 key in TDO<br/>Referral fails]
     D --> E[SMB / LDAP / RPC<br/>protected by RC4 session key]
@@ -397,15 +437,15 @@ flowchart LR
 | Control | Where | Scope | Stops the downgrade above? |
 |---|---|---|---|
 | `msDS-SupportedEncryptionTypes = 0x18` on the TDO | TDO in AD | Per-trust | ⚠️ **Partially.** Removes the RC4 long-term key from the TDO **after the next trust password rotation**, so the *KerbTicket* field can no longer be RC4. But the *session key* can still be RC4 if the KDC is allowed to issue one. |
-| `SupportedEncryptionTypes = 0x18` on the KDC's `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters` (via the GPO **Network security: Configure encryption types allowed for Kerberos**) | KDC (every DC) | Per-DC | ✅ **Yes.** The KDC will refuse any AS-REQ / TGS-REQ that does not include AES in the `etype` list — event `4768` / `4769` with `Result Code 0x18` (`KDC_ERR_ETYPE_NOSUPP`). |
+| `SupportedEncryptionTypes = 0x18` on the KDC's `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters` (via the GPO **Network security: Configure encryption types allowed for Kerberos**) | KDC (every DC) | Per-DC | ✅ **Yes.** The KDC will refuse any AS-REQ / TGS-REQ that does not include AES in the `etype` list — event `4768` / `4769` with `Result Code 0xE` (`KDC_ERR_ETYPE_NOSUPP`). |
 | The same GPO applied to **clients** | Clients | Per-client | ✅ Belt and braces — the client physically cannot advertise RC4. |
 
 ### Event IDs to watch during the rollout
 
 | Event | Channel | Meaning during a hardening rollout |
 |---|---|---|
-| `4768` `Result Code 0x18` | DC Security log | KDC refused to issue a TGT because no acceptable enctype intersection. Expected on legacy clients once you enable AES-only on the KDC. |
-| `4769` `Failure code 0x18` | DC Security log | Same, on the service ticket request. The `Service Name` field tells you whether the failure is on a normal account or on `krbtgt/REMOTE.LOCAL` (cross-realm). |
+| `4768` `Result Code 0xE` | DC Security log | `KDC_ERR_ETYPE_NOSUPP` — KDC refused to issue a TGT because no acceptable enctype intersection. Expected on legacy clients once you enable AES-only on the KDC. |
+| `4769` `Failure code 0xE` | DC Security log | Same, on the service ticket request. The `Service Name` field tells you whether the failure is on a normal account or on `krbtgt/REMOTE.LOCAL` (cross-realm). |
 | `4769` `Failure code 0xD` | DC Security log | `KDC_ERR_BADOPTION` — sometimes seen during cross-realm transitions, often a routing / trust attribute issue, not enctype. |
 | `5805` | NETLOGON, DC | The trust password could not be verified — typical of a half-rotated trust. |
 
@@ -1069,7 +1109,7 @@ Realm trusts to non-Windows KDCs are the odd one out: only **your side** is an A
 
 - **Updating only one side of the trust.** The KDC of side A picks its enctype from its own TDO. The KDC of side B from its own. If only one is hardened, half of the cross-realm traffic stays on RC4.
 - **Checking the GUI box and stopping there.** `trustAttributes` bit `0x100` is declarative. `msDS-SupportedEncryptionTypes` is the operative attribute.
-- **Modifying the attribute but not rotating the trust password.** No AES keys exist until the password is reset. The KDC then either falls back to RC4 or fails with `KDC_ERR_ETYPE_NOTSUPP`.
+- **Modifying the attribute but not rotating the trust password.** No AES keys exist until the password is reset. The KDC then either falls back to RC4 or fails with `KDC_ERR_ETYPE_NOSUPP` (0xE).
 - **Confusing `ksetup /listenctypes` with the TDO.** `ksetup /listenctypes` reads the local **client** `HKLM\...\Kerberos\Parameters\SupportedEncryptionTypes`. The TDO lives in AD and is read with `Get-ADTrust -Properties msDS-SupportedEncryptionTypes`.
 - **Forgetting intra-forest trusts.** Parent ↔ child and shortcut trusts have TDOs too. Forests built on 2003/2008 schemas often carry RC4-only or DES+RC4 internal trusts.
 - **Trust password rotation that never happens.** The default is 30 days but Windows never rotates automatically without a kick. Treat trust password rotation as a planned maintenance, not a background task.
