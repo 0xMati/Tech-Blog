@@ -9,7 +9,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Forgetting just one TDO** leaves a downgrade path open. **Banning RC4 on the DCs without fixing the TDOs first** breaks cross-realm authentication.
 
-If you want to read just two sections, read [The 3 control points](#-the-3-control-points-and-why-gui-alone-is-not-enough) and [Remediation procedure](#-remediation-procedure).
+If you want to read just two sections, read [The 3 control points](#-the-3-control-points-and-why-gui-alone-is-not-enough), [Lab walkthrough — `KerbTicket Encryption` vs `Session Key` 🧪](#lab-walkthrough--kerbticket-encryption-vs-session-key-) and [Remediation procedure](#-remediation-procedure).
 
 ---
 
@@ -176,6 +176,142 @@ This GPO writes `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\S
 | Event `4769` with `Failure code 0x18`, target `krbtgt/REMOTE.LOCAL` | Client refuses RC4, TDO offers RC4 | TDO on the source side + GPO Kerberos enctype on the client/DC |
 | Event `4769` `Failure code 0xD` (`KDC_ERR_BADOPTION`) on cross-realm | Often related to trust attributes / forest routing, not enctype | `trustAttributes`, `msDS-TrustForestTrustInfo` |
 | `Get-ADTrust` says `Trust OK` but `nltest /trusted_domains` shows `NO_TRUST` for that realm | Trust password desynchronization between the two sides | Re-establish with `netdom trust /Reset` |
+
+---
+
+## Lab walkthrough — `KerbTicket Encryption` vs `Session Key` 🧪
+
+This is the single biggest source of false confidence in trust hardening: an admin runs `klist` after a cross-domain access, sees `AES-256-CTS-HMAC-SHA1-96` on every ticket, and concludes the trust is hardened. **It is not.** `klist` shows two encryption-related fields per ticket, and they answer **completely different questions**.
+
+### Setup
+
+The lab used below has the following layout:
+
+- Parent domain: `mathiasmotron.com` — DCs `MM-DC2`, `MM-DC3`
+- Child domain: `child.mathiasmotron.com` — DC `MM-DC4`
+- Intra-forest parent/child trust (`trustAttributes = 0x20 = WITHIN_FOREST`)
+- TDO `msDS-SupportedEncryptionTypes` is **unset (`0x0`)** — the default state nobody ever changes
+- Test user: `darth.vader@mathiasmotron.com`, logging on from a workstation joined to the parent
+
+### Step 1 — Baseline observation
+
+A normal client, no tweaks, accesses a share on the child DC:
+
+```powershell
+klist purge
+Test-Path "\\mm-dc4.child.mathiasmotron.com\sysvol"
+klist
+```
+
+Relevant tickets:
+
+```
+#0> Server: krbtgt/CHILD.MATHIASMOTRON.COM @ MATHIASMOTRON.COM
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
+    Session Key Type:           AES-256-CTS-HMAC-SHA1-96
+    Kdc Called: MM-DC2.mathiasmotron.com
+
+#2> Server: cifs/MM-DC4.child.mathiasmotron.com @ CHILD.MATHIASMOTRON.COM
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
+    Session Key Type:           AES-256-CTS-HMAC-SHA1-96
+    Kdc Called: MM-DC4.child.mathiasmotron.com
+```
+
+Everything is AES-256. Easy conclusion: "the trust is fine." **This conclusion is wrong**, and the next step proves it.
+
+### Step 2 — A legacy-acting client
+
+Without touching the trust at all, simulate a client that only advertises RC4 in its Kerberos requests (think: an old Windows 7 box, a misconfigured Linux SSSD client, a third-party SSO appliance, or an attacker-controlled host). Then redo the exact same access:
+
+```powershell
+klist purge
+Test-Path "\\mm-dc4.child.mathiasmotron.com\sysvol"
+klist
+```
+
+Same tickets, but look at the two encryption fields side by side:
+
+```
+#0> Server: krbtgt/CHILD.MATHIASMOTRON.COM @ MATHIASMOTRON.COM
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96   ← unchanged
+    Session Key Type:           RSADSI RC4-HMAC(NT)         ← DOWNGRADED
+    Kdc Called: MM-DC2.mathiasmotron.com
+
+#2> Server: cifs/MM-DC4.child.mathiasmotron.com @ CHILD.MATHIASMOTRON.COM
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96   ← unchanged
+    Session Key Type:           RSADSI RC4-HMAC(NT)         ← DOWNGRADED
+    Kdc Called: MM-DC4.child.mathiasmotron.com
+```
+
+The access still succeeds. Every ticket is still "AES-256" in the field most admins look at. **But every session is in fact protected by RC4.**
+
+### Side-by-side observation
+
+| Field on the ticket | Normal client | Downgraded client | Who controls it |
+|---|---|---|---|
+| `KerbTicket Encryption Type` | AES-256 | AES-256 | The **server's long-term key** (TDO for the referral, machine account for the service ticket). The client has no say. |
+| `Session Key Type` | AES-256 | **RC4-HMAC** | The **enctypes the client advertises** in its AS-REQ / TGS-REQ. The KDC picks the strongest one the client claims to support. |
+
+### Why these two fields are different
+
+- **`KerbTicket Encryption Type`** is the algorithm used to encrypt the **ticket itself**. The ticket is sealed with the long-term key of the server principal: the TDO key for a referral ticket, the machine account key for a service ticket. The server has to be able to decrypt its own ticket, so the KDC has no choice — it picks from the enctypes for which a long-term key exists in `supplementalCredentials` for that principal.
+
+- **`Session Key Type`** is the algorithm used for the **ephemeral key** that the KDC generates and embeds *inside* the ticket so the client and the server can talk securely afterwards. The KDC chooses this enctype from the **client's announced supported types**. If the client says "I only do RC4", the KDC generates an RC4 session key — even when the server-side ticket itself is AES.
+
+### Why the downgrade matters
+
+The session key is what protects everything after the ticket presentation:
+
+- The Kerberos **authenticator** in the AP-REQ is encrypted with it.
+- The **PAC signature** (well, one of them) uses it.
+- The **SMB session signing / encryption keys**, the **LDAP signing keys**, and any application-level Kerberos-derived secret are **derived from this session key**.
+
+In the lab capture above, the actual SMB traffic between the workstation and `MM-DC4` was protected by an RC4-derived key, even though every ticket on disk showed AES-256. A passive attacker observing the wire saw RC4-encrypted SMB. An active attacker positioned for downgrade saw the whole exchange use a stream cipher with well-known biases.
+
+> 🧠 **The rule to remember.**
+> `KerbTicket Encryption Type` reflects what the **server can decrypt**.
+> `Session Key Type` reflects what the **client said it can decrypt**.
+> The KDC honors the **weakest** of the two demands. `klist` showing AES-256 in the ticket field is **not** a proof of hardening.
+
+### What it would take to block the downgrade
+
+Three different controls — none of them alone is sufficient.
+
+```mermaid
+flowchart LR
+    A[Client AS-REQ<br/>etype = RC4 only] --> B{KDC SupportedEncryptionTypes<br/>registry}
+    B -- Allows RC4 --> C{TDO msDS-SupportedEncryptionTypes}
+    B -- Blocks RC4 --> X1[❌ KDC_ERR_ETYPE_NOSUPP<br/>Event 4768 code 0x18]
+    C -- RC4 key exists --> D[Referral ticket issued<br/>Session key = RC4]
+    C -- AES only --> X2[❌ No RC4 key in TDO<br/>Referral fails]
+    D --> E[SMB / LDAP / RPC<br/>protected by RC4 session key]
+```
+
+| Control | Where | Scope | Stops the downgrade above? |
+|---|---|---|---|
+| `msDS-SupportedEncryptionTypes = 0x18` on the TDO | TDO in AD | Per-trust | ⚠️ **Partially.** Removes the RC4 long-term key from the TDO **after the next trust password rotation**, so the *KerbTicket* field can no longer be RC4. But the *session key* can still be RC4 if the KDC is allowed to issue one. |
+| `SupportedEncryptionTypes = 0x18` on the KDC's `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters` (via the GPO **Network security: Configure encryption types allowed for Kerberos**) | KDC (every DC) | Per-DC | ✅ **Yes.** The KDC will refuse any AS-REQ / TGS-REQ that does not include AES in the `etype` list — event `4768` / `4769` with `Result Code 0x18` (`KDC_ERR_ETYPE_NOSUPP`). |
+| The same GPO applied to **clients** | Clients | Per-client | ✅ Belt and braces — the client physically cannot advertise RC4. |
+
+### Event IDs to watch during the rollout
+
+| Event | Channel | Meaning during a hardening rollout |
+|---|---|---|
+| `4768` `Result Code 0x18` | DC Security log | KDC refused to issue a TGT because no acceptable enctype intersection. Expected on legacy clients once you enable AES-only on the KDC. |
+| `4769` `Failure code 0x18` | DC Security log | Same, on the service ticket request. The `Service Name` field tells you whether the failure is on a normal account or on `krbtgt/REMOTE.LOCAL` (cross-realm). |
+| `4769` `Failure code 0xD` | DC Security log | `KDC_ERR_BADOPTION` — sometimes seen during cross-realm transitions, often a routing / trust attribute issue, not enctype. |
+| `5805` | NETLOGON, DC | The trust password could not be verified — typical of a half-rotated trust. |
+
+### Cleanup after the lab test
+
+Whatever method you used to make the client advertise RC4 only, **undo it** before going further:
+
+- Revert any client-side registry value used for the test.
+- Reboot the test client so LSASS reloads its Kerberos configuration cleanly.
+- Run `klist purge` and redo the access; both `KerbTicket Encryption Type` **and** `Session Key Type` should be back to AES-256.
+
+> 🛡️ **Operational consequence for this article.**
+> Hardening the TDOs (the focus of the [Remediation procedure](#-remediation-procedure) below) is necessary but not sufficient. To fully eliminate RC4 across a trust, you also need the **KDC-side** enforcement (`SupportedEncryptionTypes = 0x18` on every DC) so the KDC actively refuses to mint RC4 session keys, even for clients that ask for them.
 
 ---
 

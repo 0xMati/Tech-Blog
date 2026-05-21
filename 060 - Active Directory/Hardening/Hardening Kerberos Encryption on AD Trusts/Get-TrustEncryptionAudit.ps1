@@ -119,8 +119,9 @@ function ConvertFrom-BitMask {
     )
     if ($null -eq $Value -or $Value -eq 0) { return @() }
     $hit = @()
-    foreach ($k in $FlagMap.Keys) {
-        if (($Value -band $k) -eq $k) { $hit += $FlagMap[$k] }
+    foreach ($entry in $FlagMap.GetEnumerator()) {
+        $bit = [int]$entry.Key
+        if (($Value -band $bit) -eq $bit) { $hit += $entry.Value }
     }
     return $hit
 }
