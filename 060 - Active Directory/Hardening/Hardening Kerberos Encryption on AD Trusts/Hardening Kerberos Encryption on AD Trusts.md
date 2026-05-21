@@ -39,11 +39,15 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 
 ## Why this matters 🔍
 
-Kerberos hardening usually focuses on local accounts: `msDS-SupportedEncryptionTypes` on users, computers, and service accounts; `DefaultDomainSupportedEncTypes` on the KDC; the GPO **Network security: Configure encryption types allowed for Kerberos**.
+Kerberos hardening usually focuses on local accounts, with three well-known controls:
+
+- 👤 **`msDS-SupportedEncryptionTypes`** on user accounts, computer accounts, and service accounts
+- 🏛️ **`DefaultDomainSupportedEncTypes`** on the KDC (registry value applied to accounts whose attribute is unset)
+- 📜 **GPO *Network security: Configure encryption types allowed for Kerberos*** applied to clients and DCs
 
 Those controls are necessary, but they all operate **inside one domain**. The moment a ticket has to cross a trust, the rules change. The KDC stops looking at the user's account and starts looking at the **TDO of the destination realm**. If that TDO still allows RC4, the referral ticket goes out in RC4 — even if every other knob in the environment screams "AES only".
 
-That is the trap. You harden the comptes, you harden the KDC, you harden the clients. You think you are done. And then a quick `klist` after a cross-forest logon shows a `krbtgt/REMOTE.LOCAL` ticket in `RC4_HMAC_MD5`, and you realize the trust has been silently downgrading the entire crypto story for years.
+That is the trap. You harden the accounts, you harden the KDC, you harden the clients. You think you are done. And then a quick `klist` after a cross-forest logon shows a `krbtgt/REMOTE.LOCAL` ticket in `RC4_HMAC_MD5`, and you realize the trust has been silently downgrading the entire crypto story for years.
 
 > 🕵️ **Threat angle.** Cross-realm RC4 is one of the favorite tools of red teamers: RC4 referral tickets are crackable offline (no salt, MD5-derived), the trust account password is rarely rotated in practice, and the resulting forged TGT can be reused to forge inter-realm tickets. This is the trust-key equivalent of a Golden Ticket — and it survives most "we did the AES migration" claims.
 
