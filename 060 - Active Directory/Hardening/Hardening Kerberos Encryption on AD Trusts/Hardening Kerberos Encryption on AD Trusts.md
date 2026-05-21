@@ -9,7 +9,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Forgetting just one TDO** leaves a downgrade path open. **Banning RC4 on the DCs without fixing the TDOs first** breaks cross-realm authentication.
 
-If you want to read just two sections, read [The 3 control points](#-the-3-control-points-and-why-gui-alone-is-not-enough), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-), [Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-) and [Remediation procedure](#-remediation-procedure).
+If you want to read just two sections, read [The referral ticket — the only thing that crosses the trust 🎫](#the-referral-ticket--the-only-thing-that-crosses-the-trust-), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-), [Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-) and [Remediation procedure](#-remediation-procedure).
 
 ---
 
@@ -176,6 +176,97 @@ This GPO writes `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\S
 | Event `4769` with `Failure code 0x18`, target `krbtgt/REMOTE.LOCAL` | Client refuses RC4, TDO offers RC4 | TDO on the source side + GPO Kerberos enctype on the client/DC |
 | Event `4769` `Failure code 0xD` (`KDC_ERR_BADOPTION`) on cross-realm | Often related to trust attributes / forest routing, not enctype | `trustAttributes`, `msDS-TrustForestTrustInfo` |
 | `Get-ADTrust` says `Trust OK` but `nltest /trusted_domains` shows `NO_TRUST` for that realm | Trust password desynchronization between the two sides | Re-establish with `netdom trust /Reset` |
+
+---
+
+## The referral ticket — the only thing that crosses the trust 🎫
+
+Every conversation about trust hardening eventually comes back to the same artefact: the **referral ticket**. It is the only Kerberos object that physically crosses the boundary between two realms, it is the only thing encrypted with the trust's long-term key, and it is the one piece of material an attacker can capture passively. Understanding it is the prerequisite for understanding why `msDS-SupportedEncryptionTypes` on the TDO matters at all.
+
+### What a referral actually is
+
+When a client in realm `A` wants to talk to a service `cifs/server.B.com` in realm `B`, the KDC of `A` **cannot** issue the final service ticket itself. It does not know the long-term key of the machine account `server$` in domain `B`. So Kerberos handles cross-realm authentication with a relay step:
+
+```mermaid
+sequenceDiagram
+    participant C as Client in A
+    participant KA as KDC of A
+    participant KB as KDC of B
+
+    C->>KA: TGS-REQ for cifs/server.B.com
+    Note over KA: Foreign realm → issue a referral
+    KA-->>C: 🎫 Referral TGT:<br/>krbtgt/B @ A<br/>encrypted with TDO key (A side)
+
+    C->>KB: TGS-REQ + referral as TGT
+    Note over KB: Decrypts referral with its<br/>copy of the TDO key (B side)
+    KB-->>C: Service ticket:<br/>cifs/server.B.com @ B<br/>encrypted with server$ key
+
+    C->>KB: AP-REQ with service ticket
+    KB-->>C: SMB session
+```
+
+The referral is just a special TGT. Its `Server` field is `krbtgt/<REMOTE_REALM> @ <LOCAL_REALM>`, and that exact format is the signature you spot in `klist`:
+
+```
+Server: krbtgt/MATHIASMOTRON.COM @ RED.LOCAL    ← this is a referral
+Server: cifs/MM-DC2.mathiasmotron.com @ ...     ← this is a final service ticket
+```
+
+The referral is encrypted with the **trust password key** of the TDO — specifically, with the version of that key chosen by the issuing KDC according to its `msDS-SupportedEncryptionTypes`. **That is what AES on the TDO actually protects.**
+
+### Referrals across topologies
+
+Different trust topologies generate different referral chains, but the principle is identical — every hop emits one referral, each sealed by its corresponding TDO key:
+
+| Topology | Referral chain | Hops |
+|---|---|---|
+| Intra-forest parent ↔ child | 1 referral, direct | 1 |
+| Intra-forest between two children (`a.foo.com` → `b.foo.com`) | Multiple referrals via the forest root TDOs | 2–3 |
+| Forest trust (direct) | 1 cross-forest referral | 1 |
+| Shortcut trust | 1 direct referral (bypasses the transitive chain) | 1 |
+| External trust (domain-to-domain, non-transitive) | 1 referral, no further hops allowed | 1 |
+| MIT realm trust | 1 referral toward the MIT realm, **no PAC** | 1 |
+
+A client crossing three trusts to reach a resource generates **three referrals**, each one independently encrypted with a different TDO key. Hardening one TDO in the chain and forgetting the others leaves a downgrade path open at the weakest link.
+
+### Why the referral is the *only* thing that crosses
+
+It is worth spelling out, because this is the crypto-architectural property that makes TDO hardening necessary:
+
+- The **client's user password** never crosses the trust — it lives only in `ntds.dit` of realm `A`
+- The **`krbtgt` key of A** never crosses the trust — it stays in realm `A`
+- The **`krbtgt` key of B** never crosses the trust — it stays in realm `B`
+- The **machine account key of `server$`** never crosses the trust — it stays in realm `B`
+
+The **TDO key** is the only secret **shared** between the two realms (in two copies, one per side). And the **referral ticket** is the only Kerberos object that physically traverses that shared boundary. If you can crack the TDO key, you have effectively replicated the trust on the attacker side.
+
+### Trust kerberoasting — same algorithm, different principal
+
+There is an exact parallel between the classical kerberoasting of a service account and what one can do against a TDO:
+
+| Aspect | Classical kerberoasting | Trust kerberoasting |
+|---|---|---|
+| Target principal | Service account with SPN | TDO (cross-realm principal) |
+| Captured artefact | TGS-REP for the SPN | Referral TGT (`krbtgt/REMOTE@LOCAL`) |
+| Encryption algorithm if RC4 was negotiated | RC4-HMAC-MD5 over the service key | RC4-HMAC-MD5 over the TDO key |
+| Offline crack mode | Hashcat mode `13100` (`Kerberos 5, etype 23, TGS-REP`) | Same mode `13100` — only the principal differs |
+| Payoff | Impersonate that one service | Forge inter-realm TGTs, decrypt past and future referrals until next trust password rotation |
+| Mitigation | `msDS-SupportedEncryptionTypes = 0x18` on the service + long random password | `msDS-SupportedEncryptionTypes = 0x18` on the TDO + trust password rotation |
+
+The cryptography is identical — same key derivation, same offline crack pattern. What changes is the **scope of the prize**: a service account compromise affects one service; a TDO compromise affects every cross-realm authentication, in both directions, until the next trust password rotation. And since trust passwords are not rotated automatically on most legacy trusts, "until next rotation" often means "for years".
+
+### The asymmetry that catches people out
+
+The referral is encrypted by the KDC that **issues** it, using **that side's** copy of the TDO key. Concretely, in a bidirectional trust between A and B:
+
+- Traffic `A → B`: referral issued by KDC of A, encrypted with the A-side TDO key, whose enctype is governed by `msDS-SupportedEncryptionTypes` on the **A-side TDO**.
+- Traffic `B → A`: referral issued by KDC of B, encrypted with the B-side TDO key, whose enctype is governed by `msDS-SupportedEncryptionTypes` on the **B-side TDO**.
+
+So hardening one TDO does not protect the reverse direction. **Both TDOs must be hardened**, on both sides of the trust. The audit script in this article reads only the local TDO — you must run it on both forests to get the complete picture, which is exactly the asymmetry observed between `mathiasmotron.com` and `red.local` in [Lab 2](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-).
+
+### One-line summary
+
+> 🎫 **The referral ticket is the only Kerberos object that crosses a trust. AES on the TDO ensures that this single object is sealed with an unbreakable long-term key. Without it, the trust password is one passive capture away from being cracked offline.**
 
 ---
 
@@ -451,21 +542,66 @@ This is the trap that catches even mature ESAE deployments: the audit script say
 
 ### Step 3 — Add the KDC enforcement on the red side
 
-The only control that actually closes the pattern is **`SupportedEncryptionTypes = 0x18` on the KDC itself**. On RED-DC1, in an elevated PowerShell session:
+The only control that actually closes the pattern is the **GPO `Network security: Configure encryption types allowed for Kerberos`**, scoped to the **Domain Controllers** OU. This GPO writes a registry value that the KDC honors at runtime to decide which enctypes it accepts to mint tickets and session keys.
+
+#### What is the current state of the GPO?
+
+Before changing anything, read the current effective value on RED-DC1 — you may already have a GPO in place from a previous KB5021131 migration phase. The GPO writes to the **Policy** registry path (not the legacy `Lsa\Kerberos\Parameters` path):
 
 ```powershell
-$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
-New-Item -Path $path -Force | Out-Null
-# 0x18 = AES128 + AES256 only — KDC refuses to issue tickets / session keys with any other enctype
-Set-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -Value 0x18 -Type DWord
-
-Restart-Service kdc -Force
-Restart-Service Netlogon -Force
+Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters' `
+    -Name SupportedEncryptionTypes -ErrorAction SilentlyContinue
 ```
 
-This value is the registry equivalent of the GPO **Network security: Configure encryption types allowed for Kerberos**. In production it is much cleaner to apply this through a GPO scoped to the **Domain Controllers** OU, so the setting is centrally managed and inventoried.
+In the lab, RED-DC1 returned `2147483644` = **`0x8000001C`**, which decodes as:
 
-Now redo the downgrade attempt from RED.ADM (still with the client-side `0x4` registry value in effect):
+| Bit | Meaning |
+|---|---|
+| `0x80000000` | Use the future encryption types (recommended post-CVE-2022-37966) |
+| `0x10` | AES256-CTS-HMAC-SHA1-96 |
+| `0x08` | AES128-CTS-HMAC-SHA1-96 |
+| **`0x04`** | **RC4-HMAC** ← this is what allowed the downgrade in Step 2 |
+
+This is the **transition value** Microsoft recommends during a KB5021131 rollout: AES is enabled and preferred, but RC4 is still accepted to avoid breaking legacy clients while you finish migrating. Many organizations get stuck on this value, mistakenly believing it equates to "AES-only".
+
+The target value to actually block RC4 is **`0x80000018`** — same as before, **minus the `0x04` bit**.
+
+#### Apply the change via GPMC
+
+1. Open **Group Policy Management Console** on a DC (or admin workstation with RSAT).
+2. Locate the GPO that already configures Kerberos enctypes on the **Domain Controllers** OU (in the lab it is linked at `red.local → Domain Controllers`). If none exists, create one — e.g. **`Kerberos - Enforce AES Only`** — and link it to the `Domain Controllers` OU.
+3. Edit the GPO. Navigate to:
+
+    `Computer Configuration → Policies → Windows Settings → Security Settings → Local Policies → Security Options`
+
+4. Locate **Network security: Configure encryption types allowed for Kerberos**.
+5. **Define the policy** and check **only**:
+    - ✅ AES128_HMAC_SHA1
+    - ✅ AES256_HMAC_SHA1
+    - ✅ Future encryption types
+    - ❌ **Uncheck** RC4_HMAC_MD5
+    - ❌ Uncheck DES_CBC_CRC and DES_CBC_MD5
+
+6. OK / Apply / close.
+
+#### Force the refresh and verify
+
+```powershell
+# On RED-DC1
+gpupdate /target:computer /force
+
+# Re-read the same value
+Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters' `
+    -Name SupportedEncryptionTypes
+```
+
+The value should now be **`2147483632` = `0x80000018`** — RC4 bit removed.
+
+> 🧠 **Why the GPO and not a manual `Set-ItemProperty`.** The KDC reads two registry paths: the **Policy** path (`SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters`, written by Group Policy) and the **Lsa** path (`SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters`, where some legacy tooling writes). On most modern environments the Policy path is the effective source of truth, and a manual edit to the Lsa path will be ignored if a GPO is already in force — exactly because the GPO refresh will overwrite or take precedence on the next cycle. Always change Kerberos enctype policy at the GPO level.
+
+#### Re-run the downgrade attempt
+
+From RED.ADM (the client-side RC4-only registry value from Step 2 is still in effect):
 
 ```powershell
 klist purge
@@ -483,7 +619,7 @@ False
 Cached Tickets: (0)
 ```
 
-**No tickets at all.** Not even the initial TGT. The red KDC refused to issue anything because the client only advertised RC4 in its `etype` list, and the KDC's `SupportedEncryptionTypes = 0x18` told it to refuse anything that does not include AES.
+**No tickets at all.** Not even the initial TGT. The red KDC refused to issue anything because the client only advertised RC4 in its `etype` list, and the GPO-driven `SupportedEncryptionTypes = 0x80000018` now tells the KDC to refuse anything that does not include AES.
 
 ### Step 4 — Forensic evidence in the Security log
 
@@ -536,11 +672,43 @@ The **17 retries in ~2 seconds** are LSASS / NETLOGON not giving up. This burst 
 
 Putting the three steps side by side makes the conclusion impossible to miss:
 
-| Step | TDO `0x18` (red side) | KDC `SupportedEncryptionTypes` (red side) | Client advertises | `KerbTicket Enc` | `Session Key` | Access | Verdict |
+| Step | TDO `0x18` (red side) | KDC enctype GPO (red side) | Client advertises | `KerbTicket Enc` | `Session Key` | Access | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1 — baseline | ✅ | ❌ (OS default) | AES + RC4 | AES-256 | AES-256 | ✅ | Looks fine |
-| 2 — downgrade | ✅ | ❌ (OS default) | **RC4 only** | AES-256 | **RC4** | ✅ | **Silent downgrade** |
-| 3 — KDC enforced | ✅ | ✅ `0x18` | RC4 only | n/a | n/a | ❌ refused | **Closed** |
+| 1 — baseline | ✅ | `0x8000001C` (RC4 + AES + future) | AES + RC4 | AES-256 | AES-256 | ✅ | Looks fine — client just happened to prefer AES |
+| 2 — downgrade | ✅ | `0x8000001C` (RC4 + AES + future) | **RC4 only** | AES-256 | **RC4** | ✅ | **Silent downgrade** — GPO still allows RC4 |
+| 3 — GPO tightened | ✅ | **`0x80000018`** (AES + future, RC4 removed) | RC4 only | n/a | n/a | ❌ refused | **Closed** by one GPO checkbox |
+
+### What `msDS-SupportedEncryptionTypes = 0x18` on the TDO really buys you
+
+After Lab 2, it is tempting to dismiss the TDO attribute as cosmetic. That would be wrong. The attribute is **necessary but partial**, and it protects against a different threat model than the GPO does.
+
+**What `0x18` on the TDO actually guarantees**
+
+It guarantees that tickets traversing the trust are encrypted with an **AES long-term key** instead of an RC4 one. Concretely:
+
+- The inter-realm referral ticket (`krbtgt/REMOTE @ LOCAL`) is sealed with the AES key of the TDO, not the RC4 one — even if both still exist in `supplementalCredentials`.
+- The KDC is forbidden from picking the RC4 key of the TDO to encrypt a ticket toward that realm.
+
+**The threats this closes**
+
+| Threat | How TDO `0x18` helps |
+|---|---|
+| **Cross-realm Kerberoasting** | A passive attacker who captures referral tickets cannot crack the TDO key offline — AES has no MD5 weakness, no salt-less hash. |
+| **Trust key cracking** | RC4-HMAC keys derive directly from the NT hash of the trust password (no salt). AES is computationally out of reach. |
+| **Forged inter-realm TGT (cross-domain Golden Ticket)** | If the TDO RC4 key is recovered, an attacker can forge inter-realm TGTs accepted by the remote KDC. AES + rotation makes this key effectively unrecoverable. |
+| **Legacy PAC validation attacks** | Some historical patterns (CVE-2014-6324 family) relied on RC4-HMAC-MD5 inside PAC signatures. AES changes that ground. |
+
+**The threats this does NOT close**
+
+- ❌ **Session key downgrade.** Demonstrated by Lab 2 Step 2 — the session key is governed by client `etype` advertisement + KDC policy, not by the TDO attribute.
+- ❌ **RC4 key removal from `supplementalCredentials`.** Setting `0x18` alone does not delete existing RC4 keys. You must **rotate the trust password** after changing the attribute to actually purge RC4 from the materialized key material.
+- ❌ **A compromised DC dumping `supplementalCredentials`.** An attacker with `replicating directory changes` rights or DC-local SYSTEM access can extract every key (AES, RC4, DES) regardless of the attribute.
+
+**The one-liner**
+
+> 🔑 **AES on the TDO protects the *secrets* of the trust. AES on the KDC GPO protects the *sessions* that transit the trust. You need both.**
+
+The TDO attribute is a passive-threat control. The KDC GPO is an active-threat control. They stack — and only the combination delivers a hardened trust.
 
 ### The takeaway from Lab 2
 
@@ -560,7 +728,7 @@ Remove-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -ErrorAction Si
 Restart-Computer
 ```
 
-The KDC enforcement on RED-DC1 (`SupportedEncryptionTypes = 0x18`) can stay — that is the target state. Roll it out cleanly via GPO to **all** DCs of the forest, not via direct registry edits, when moving from lab to production.
+The GPO change on the **Domain Controllers** OU (`0x8000001C → 0x80000018`) is the **target state** and should stay. If you only made the change temporarily for this lab and need to roll back, revert the GPO from `AES + future` to `RC4 + AES + future` and run `gpupdate /force` on the DCs. **Do not roll back unless absolutely necessary** — once you have proven the downgrade pattern in your own environment, leaving the GPO at `0x18` is the whole point of the exercise.
 
 ---
 
