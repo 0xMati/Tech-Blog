@@ -115,15 +115,43 @@ Three independent signals you can correlate:
 
 **How to fix it**
 
-Always pair an attribute change with a trust password rotation:
+Always pair an attribute change with a trust password rotation, in the **same maintenance window**:
+
+**Step 1 — declare the new policy on the TDO.** Pick *one* of the three equivalent forms (they all write the same `msDS-SupportedEncryptionTypes` attribute):
 
 ```cmd
-:: Step 1 — flip the attribute (declare)
+:: Classic CLI — ksetup writes the LDAP attribute on the TDO (NOT to be confused with /listenctypes which reads the local client registry)
 ksetup /setenctypeattr remote.lab AES256-CTS-HMAC-SHA1-96 AES128-CTS-HMAC-SHA1-96
+```
 
-:: Step 2 — rotate the password (materialize) — same maintenance window
+```powershell
+# PowerShell — same effect, scriptable
+$tdo = (Get-ADTrust -Identity 'remote.lab').DistinguishedName
+Set-ADObject -Identity $tdo -Replace @{ 'msDS-SupportedEncryptionTypes' = 0x18 }
+```
+
+```cmd
+:: netdom — same effect, accepts remote credentials
+netdom trust local.lab /Domain:remote.lab /EncType:AES256
+```
+
+**Step 2 — rotate the trust password to materialize the AES keys.**
+
+```cmd
 netdom trust local.lab /Domain:remote.lab /Reset /UserO:LOCAL\admin /PasswordO:* /UserD:REMOTE\admin /PasswordD:*
 ```
+
+> ⚠️ **`/Reset` can briefly break the trust** if either side is unreachable or the credentials are wrong. Do it inside a maintenance window, and make sure both DCs (local and remote) are healthy and replicating. This is why the two steps belong to the same change ticket — you do not want to flip the attribute on Monday and discover on Friday that the rotation never happened.
+
+**Step 3 — verify the rotation actually took place.**
+
+```powershell
+# whenChanged must be RECENT (within minutes of the Reset)
+Get-ADTrust -Identity 'remote.lab' -Properties whenChanged, msDS-SupportedEncryptionTypes |
+    Format-List Name, whenChanged, msDS-SupportedEncryptionTypes
+```
+
+A `whenChanged` timestamp that matches the moment you ran `/Reset` confirms the LSA wrote a new password and re-derived all enctype keys. Repeat the check on a DC of the **remote** side — it must also have a fresh `whenChanged`, otherwise the rotation only updated one side and the trust is half-rotated (a state worse than not having rotated at all).
 
 The [Remediation procedure](#-remediation-procedure) section formalizes this as a four-step sequence — the rotation is **not** an optional follow-up, it is what turns a declarative `0x18` into actual AES cryptography on the wire.
 
