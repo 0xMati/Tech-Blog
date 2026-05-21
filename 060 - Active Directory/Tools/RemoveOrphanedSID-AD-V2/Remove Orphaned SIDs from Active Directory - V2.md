@@ -8,9 +8,17 @@ This script is an improved V2 version inspired by the excellent work of Ali Tajr
 
 We rebuilt it from the ground up for **better performance**, **proper error handling**, **trusted domain support**, and a **clear reporting output**.
 
+## ✅ Prerequisites
+
+- **RSAT-AD-PowerShell** module installed (the script uses `Get-ADObject`, `Get-ADDomain`, `Get-ADTrust`).
+- **Domain Admin** (or equivalent rights) in the target domain for `-Remove`. `-List` works with read access on the objects you want to scan.
+- For `-ForestWide` and `-IncludeTrustedDomains`, the executing account needs **read access on all targeted domains** — typically `Enterprise Admins` or per-domain delegation.
+- LDAP/LSA reachability to every trusted DC at scan time (the script’s trust-reachability check will warn you otherwise).
+- Recommended: run from an admin workstation joined to the **target forest root** so DC locator works without hops.
+
 ---
 
-### 🎯 What Are Orphaned SIDs?
+## 🎯 What Are Orphaned SIDs?
 
 When a user or group is deleted from Active Directory (or from a trusted domain), their SID doesn't automatically get cleaned up from ACLs where it was granted permissions. The result:
 
@@ -25,7 +33,7 @@ These orphaned SIDs can come from:
 
 ---
 
-### ⚡ What Does the Script Do?
+## ⚡ What Does the Script Do?
 
 The script scans all AD objects under a given search base, reads their ACLs, and identifies ACEs that reference unresolved SIDs. It can either **list** them (report mode) or **remove** them.
 
@@ -47,7 +55,7 @@ The script scans all AD objects under a given search base, reads their ACLs, and
 
 ---
 
-### 🔧 Parameters
+## 🔧 Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -65,7 +73,7 @@ The script scans all AD objects under a given search base, reads their ACLs, and
 
 ---
 
-### 🔄 How It Works
+## 🔄 How It Works
 
 **1. Initialization**
 The script retrieves the current domain DN and SID using `defaultNamingContext` (not `rootDomainNamingContext`), then enumerates all domains in the forest to collect their SIDs. This ensures orphaned SIDs from child/parent domains within the forest are correctly identified.
@@ -100,7 +108,7 @@ At the end, the script displays:
 
 ---
 
-### 💡 Usage Examples
+## 💡 Usage Examples
 
 **List orphaned SIDs in the current domain (report only):**
 ```powershell
@@ -144,7 +152,7 @@ At the end, the script displays:
 
 ---
 
-### 💥 Important Notes About Trusted Domains
+## 💥 Important Notes About Trusted Domains
 
 When using `-IncludeTrustedDomains`, the detection relies on **Windows SID resolution**. When the DC reads an ACL, it contacts all reachable trusted domains to resolve SIDs.
 
@@ -164,7 +172,7 @@ When using `-IncludeTrustedDomains`, the detection relies on **Windows SID resol
 
 ---
 
-### 📋 Example Output
+## 📋 Example Output
 
 **Trust reachability check (with `-IncludeTrustedDomains`):**
 ```
@@ -236,16 +244,26 @@ All trusts are reachable.
 
 ---
 
-### 🔗 Credits & References
+## 📚 Credits & References
 
 This script is inspired by the original work of **Ali Tajran**:
 🔗 https://www.alitajran.com/remove-orphaned-sids/
 
 V2 adds performance optimizations, error handling, trusted domain support, and enhanced reporting.
 
+**Microsoft references:**
+
+- [Security descriptors and access masks (Win32)](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptors)
+- [Well-known SIDs](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-identifiers#well-known-sids)
+- [`Get-Acl` cmdlet](https://learn.microsoft.com/powershell/module/microsoft.powershell.security/get-acl)
+- [`Set-Acl` cmdlet](https://learn.microsoft.com/powershell/module/microsoft.powershell.security/set-acl)
+- [`SupportsShouldProcess` (CmdletBinding)](https://learn.microsoft.com/powershell/scripting/learn/deep-dives/everything-about-shouldprocess)
+- [`Get-ADTrust` cmdlet](https://learn.microsoft.com/powershell/module/activedirectory/get-adtrust)
+- [Active Directory DC Locator process](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/finding-domain-controllers)
+
 ---
 
-### 📝 Changelog
+## 📝 Changelog
 
 | Version | Date | Changes |
 |---------|------|---------|

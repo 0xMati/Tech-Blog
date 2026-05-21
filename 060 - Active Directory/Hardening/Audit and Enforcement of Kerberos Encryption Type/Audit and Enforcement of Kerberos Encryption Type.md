@@ -1,12 +1,11 @@
 # Audit and Enforcement of Kerberos Encryption Type
-Published: 2025-12-03
+🗓️ Published: 2025-12-03
 
 Kerberos hardening got a lot more interesting with KB5021131. On paper, the change is simple: reduce legacy RC4 usage and move the ecosystem toward AES. In practice, it is one of those deceptively clean security stories where the directory can look compliant while the wire still tells a very different story.
 
 That is why this topic matters. You can set a registry value, update a few account attributes, and still watch RC4 tickets being issued in production because an old SPN-bearing account never rotated its secret, a service stayed stuck on legacy crypto, or a client path kept negotiating something weaker than expected. In other words: the config may look sharp, but the packets are still out there doing weird things.
 
-Microsoft reference:
-https://support.microsoft.com/en-us/topic/kb5021131-how-to-manage-the-kerberos-protocol-changes-related-to-cve-2022-37966-fd837ac3-cdec-4e76-a6ec-86e67501407d
+Microsoft reference: [KB5021131 — How to manage the Kerberos protocol changes related to CVE-2022-37966](https://support.microsoft.com/en-us/topic/kb5021131-how-to-manage-the-kerberos-protocol-changes-related-to-cve-2022-37966-fd837ac3-cdec-4e76-a6ec-86e67501407d)
 
 ## Why this topic matters 🔍
 
@@ -175,9 +174,13 @@ That wording matters. The attribute expresses capability and intent, but it is o
 
 Common values:
 
-- `0x18` = AES128 + AES256
-- `0x04` = RC4 only
+- `0x18` = AES128 + AES256 (the target state for a hardened account)
+- `0x1C` = RC4 + AES128 + AES256 (very common in mixed environments — still allows downgrade to RC4)
+- `0x1F` = DES + RC4 + AES128 + AES256 (legacy, should be eliminated)
+- `0x04` = RC4 only (clear remediation target)
 - `0` or absent = unset, historically ambiguous, now less dangerous after KB5021131 but still not ideal for long-term enforcement
+
+> 💡 The flag is a bitmask, so any value with the `0x04` bit set still permits RC4. A typical mistake is leaving accounts at `0x1C` thinking “it supports AES” — it does, but it also still supports RC4, and the KDC will happily serve RC4 if anything else in the chain still asks for it.
 
 Why it matters for the article:
 
@@ -420,9 +423,24 @@ The sequence matters. If you jump straight to enforcement before you have eviden
 - Looking only at account configuration and ignoring 4768 and 4769.
 - Treating absent values as fully remediated just because KB5021131 improved the default.
 - Enforcing AES-only on the KDC before identifying the SPN-bearing accounts still tied to RC4.
+- Confusing `0x1C` (RC4 + AES) with “AES-only” — the RC4 bit is still set.
+- Forgetting **legacy clients**: pre-KB Windows 7 / Server 2008 R2 (and some non-Windows Kerberos stacks) do not negotiate AES. If any are still in scope, an AES-only enforcement on the KDC or on the client policy will break them. Inventory and decommission those endpoints before flipping the switch.
 
 ## Practical takeaway ✅
 
 If your goal is to enforce AES-only Kerberos safely, you need evidence from both configuration and live traffic.
 
 That is exactly what the companion script in this folder is built to provide: not a theoretical compliance snapshot, but a technical view of what your KDCs, your identities, and your ticket stream are actually doing. If the goal is AES-only Kerberos without surprises, this is the kind of evidence you want before touching enforcement.
+
+## 📚 References
+
+- [KB5021131 — Kerberos protocol changes related to CVE-2022-37966](https://support.microsoft.com/en-us/topic/kb5021131-how-to-manage-the-kerberos-protocol-changes-related-to-cve-2022-37966-fd837ac3-cdec-4e76-a6ec-86e67501407d)
+- [CVE-2022-37966 — Windows Kerberos Elevation of Privilege Vulnerability](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2022-37966)
+- [`msDS-SupportedEncryptionTypes` attribute (AD Schema)](https://learn.microsoft.com/en-us/windows/win32/adschema/a-msds-supportedencryptiontypes)
+- [Decrypting the Selection of Supported Kerberos Encryption Types (Microsoft TechCommunity)](https://techcommunity.microsoft.com/blog/askds/decrypting-the-selection-of-supported-kerberos-encryption-types/1628797)
+- [Network security: Configure encryption types allowed for Kerberos](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-security-configure-encryption-types-allowed-for-kerberos)
+- [Audit Kerberos Authentication Service (Event 4768)](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4768)
+- [Audit Kerberos Service Ticket Operations (Event 4769)](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4769)
+- [MS-KILE: Kerberos Protocol Extensions](https://learn.microsoft.com/openspecs/windows_protocols/ms-kile/)
+- [RFC 4757 — RC4-HMAC Kerberos encryption (legacy)](https://www.rfc-editor.org/rfc/rfc4757)
+- [RFC 3962 — AES Encryption for Kerberos 5](https://www.rfc-editor.org/rfc/rfc3962)

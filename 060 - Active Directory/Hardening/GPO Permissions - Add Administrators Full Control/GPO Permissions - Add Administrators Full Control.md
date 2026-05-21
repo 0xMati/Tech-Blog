@@ -101,7 +101,7 @@ Found 127 GPO(s).
 
   [FIXED]   Default Domain Policy
   [FIXED]   Workstation Security Baseline
-  [MISSING] Server Hardening Policy (Current: None)    <-- dry run
+  [MISSING] Server Hardening Policy (Current: None)
 
 ============================================================
  Summary
@@ -161,6 +161,8 @@ The ACE we add:
 ```
   (A;CI;RPWPCCDCLCLOLORCWOWDSDDTDTSW;;;BA)  ← Built-in Administrators
 ```
+
+> ℹ️ **About the `BA` short-name.** In SDDL, `BA` always resolves to the **local computer’s `BUILTIN\Administrators` group** (well-known SID `S-1-5-32-544`). On a domain controller, that group contains `Domain Admins` and `Enterprise Admins` by default, so the ACE effectively grants Full Control to anyone elevated to local-admin on a DC. This is the intended outcome here, but it’s worth knowing if you compare SDDLs across hosts.
 
 #### SDDL Rights Breakdown
 
@@ -241,14 +243,15 @@ SDDL validation : OK (6 ACEs)
 
 ### Important Notes
 
-> 🔴 **This is a schema modification.** Schema changes are replicated to all domain controllers in the forest and cannot be easily reversed.
+> 🔴 **This is a schema modification.** Schema changes are replicated to all domain controllers in the forest and cannot be rolled back in the classic sense — there is no “undo” for schema updates. To revert the BA ACE you must explicitly run `-Revert -Apply`, which rewrites the `defaultSecurityDescriptor` attribute. The **AD Recycle Bin does not protect schema attributes**, so always rely on the backup file the script produces.
 
 - Only **new** GPOs created after the change will inherit the updated permissions
 - **Existing** GPOs are not affected — use the remediation script (Step 1) for those
 - Always run in dry-run mode first to review the proposed SDDL
 - The script creates a backup file of the current SDDL before applying changes
-- Allow time for schema replication across all DCs before testing
+- Allow time for schema replication across all DCs before testing (`repadmin /showrepl` on `CN=Schema,CN=Configuration,...`)
 - Use `-Revert -Apply` to remove the BA ACE from the schema if needed (the backup file is also created before reverting)
+- The full default security descriptor of `groupPolicyContainer` also contains *object-specific* ACEs (e.g. `Enterprise Domain Controllers` for `gPLink` operations) that the script preserves intact — it only **appends** the BA ACE
 
 ---
 
@@ -289,3 +292,14 @@ Remove-GPO -Guid $testGPO.Id -Domain "contoso.com"
 ```
 
 Expected output should show `BUILTIN\Administrators` with `GpoEditDeleteModifySecurity`.
+
+## 📚 References
+
+- [Default security descriptor (Win32 / AD Schema)](https://learn.microsoft.com/en-us/windows/win32/adschema/a-defaultsecuritydescriptor)
+- [Security Descriptor Definition Language (SDDL) syntax](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-string-format)
+- [SDDL ACE strings (rights + SID short names)](https://learn.microsoft.com/en-us/windows/win32/secauthz/ace-strings)
+- [`groupPolicyContainer` schema class](https://learn.microsoft.com/en-us/windows/win32/adschema/c-grouppolicycontainer)
+- [Group Policy delegation and permissions](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc771422(v=ws.11))
+- [`Set-GPPermission` cmdlet](https://learn.microsoft.com/powershell/module/grouppolicy/set-gppermission)
+- [Extending the Active Directory schema](https://learn.microsoft.com/en-us/windows/win32/ad/extending-the-schema) — background on schema modifications
+- [Schema Admins group — best practices](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/appendix-c--protected-accounts-and-groups-in-active-directory)
