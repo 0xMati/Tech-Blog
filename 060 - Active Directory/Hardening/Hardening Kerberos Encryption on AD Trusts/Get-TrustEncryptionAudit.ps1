@@ -171,7 +171,8 @@ Write-Host "====================================================================
 try {
     $domainInfo = Get-ADDomain @adParams -ErrorAction Stop
     Write-Host (" Local domain   : {0}" -f $domainInfo.DNSRoot)
-    Write-Host (" Queried server : {0}" -f ($adParams.Server ? $adParams.Server : 'auto'))
+    $serverLabel = if ($adParams.Server) { $adParams.Server } else { 'auto' }
+    Write-Host (" Queried server : {0}" -f $serverLabel)
 }
 catch {
     Write-Warning "Could not query the local AD domain: $($_.Exception.Message)"
