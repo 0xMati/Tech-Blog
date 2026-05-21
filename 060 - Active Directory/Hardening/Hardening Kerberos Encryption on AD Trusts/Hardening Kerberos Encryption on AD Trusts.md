@@ -157,6 +157,52 @@ The [Remediation procedure](#-remediation-procedure) section formalizes this as 
 
 > 🧠 **The rule.** `msDS-SupportedEncryptionTypes` is a **policy attribute**, not a key generator. AES keys appear in `supplementalCredentials` **only** when the trust password is (re)set with the attribute already in place. **Attribute without rotation = false sense of security.** Always treat the two changes as one atomic operation in the change ticket.
 
+### The false friends: GUI checkbox and `ksetup /listenctypes`
+
+Two artefacts that look like "the AES switch for the trust" are constantly cited by admins as proof that a trust is hardened. **They are not.** Understanding what they actually do is the fastest way to avoid wasting a maintenance window flipping the wrong switch.
+
+#### The GUI checkbox — *"The other domain supports Kerberos AES Encryption"*
+
+Found in *Active Directory Domains and Trusts* → trust properties → General tab.
+
+| Aspect | Reality |
+|---|---|
+| What it modifies | A single bit in `trustAttributes`: `0x100` = `USES_AES_KEYS` (a.k.a. `TRUST_ATTRIBUTE_USES_AES_KEYS` in MS-ADTS) |
+| What it modifies on `msDS-SupportedEncryptionTypes` | **Nothing.** |
+| Effect on referral encryption (Windows Server 2003 / 2008) | Historical hint to the legacy KDC: *"the other side speaks AES, you may pick an AES key when deriving from the trust password"* |
+| Effect on referral encryption (Windows Server 2012 R2+) | **None.** The modern KDC reads `msDS-SupportedEncryptionTypes` directly and ignores this bit |
+| Effect on session key | None. The session key is governed by client `etype` advertisement + KDC GPO |
+| Why it still exists | Declarative flag consumed by third-party tooling (Quest, Semperis, Tenable, BloodHound) to fill the "AES enabled" column of their reports |
+
+**Verdict.** Checking this box in 2026 is **cosmetic**. It does not change the referral enctype, it does not generate AES keys, it does not protect anything. It is purely a documentary marker. **The directory and the third-party report will look good — and the trust will still ship RC4 if `msDS-SupportedEncryptionTypes` is not set.**
+
+#### `ksetup /listenctypes`
+
+A command that returns a list of enctypes — at first glance, exactly what you want to "check the state of a trust".
+
+| Aspect | Reality |
+|---|---|
+| What it reads | `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\SupportedEncryptionTypes` on the **machine where you run it** |
+| What this registry value represents | The **client-side** enctype capabilities — what *this machine* advertises in its Kerberos requests |
+| Relation to the TDO `msDS-SupportedEncryptionTypes` | **None.** It does not touch AD. It does not look at any TDO. |
+| Legitimate use cases | (1) troubleshoot a legacy client that mysteriously negotiates RC4; (2) validate that a "Configure encryption types allowed for Kerberos" GPO is effectively applied to the machine; (3) inspect a hardened Linux/UNIX joined to AD via SSSD |
+
+**The sibling command that actually targets the TDO** is `ksetup /getenctypeattr <realm>` (read) and `ksetup /setenctypeattr <realm> <enctypes>` (write). Easy to confuse — `/listenctypes` is **machine-local registry**, `/getenctypeattr` is **AD attribute on a TDO**.
+
+**Verdict.** `ksetup /listenctypes` is a useful diagnostic for the **local Kerberos client**, not for a trust. Running it on a DC and reading "aes256, aes128, rc4-hmac" only tells you what that DC advertises when acting as a Kerberos client — it says nothing about what the DC's KDC service will issue when encrypting a referral.
+
+#### Side-by-side summary
+
+| Tool | What it actually does | "Is the trust hardened?" answer |
+|---|---|---|
+| GUI checkbox *"The other domain supports Kerberos AES Encryption"* | Sets `trustAttributes` bit `0x100`. Declarative only, ignored by Windows Server 2012 R2+ KDCs | ❌ Not the right question to ask of this box |
+| `ksetup /listenctypes` | Reads local client registry `Lsa\Kerberos\Parameters\SupportedEncryptionTypes` | ❌ Not even looking at the trust |
+| `Get-ADTrust -Properties msDS-SupportedEncryptionTypes` | Reads the TDO attribute | ✅ Authoritative for the declared policy |
+| `ksetup /getenctypeattr <realm>` | Reads the same TDO attribute via the LSA API | ✅ Authoritative for the declared policy |
+| Runtime `klist` cross-realm test | Shows the **actual** `KerbTicket Encryption Type` and `Session Key Type` on a real referral | ✅ Only way to confirm AES keys are *materialized* and sessions are *negotiated* in AES |
+
+> 🪤 **The one-liner.** *Anything that does not name `msDS-SupportedEncryptionTypes` on the TDO is a distraction. Anything that does, but does not verify a fresh `whenChanged` after a rotation, is incomplete. Only a runtime `klist` from a cross-realm access confirms the trust is actually hardened on the wire.*
+
 ### The Kerberos cross-realm flow
 
 ```mermaid
