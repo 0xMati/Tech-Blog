@@ -3,7 +3,7 @@
 
 ## TL;DR
 
-If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never touched the **Trusted Domain Objects (TDOs)**, your forest still issues **RC4 referral tickets** across every trust. The directory looks clean, the DCs look clean, and yet `4769` keeps showing RC4 for `krbtgt/REMOTE.LOCAL`. That is the gap this article closes.
+If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never touched the **Trusted Domain Objects (TDOs)**, your forest still issues **RC4 referral tickets** across every trust. The directory looks clean, the DCs look clean, and yet event `4769` (Kerberos service ticket request) keeps showing RC4 for `krbtgt/REMOTE.LOCAL`. That is the gap this article closes.
 
 > 🧠 **Quick primer — a Kerberos ticket carries two encrypted things.**
 > A ticket is not a single blob: it is an envelope that contains a session key. Each layer is controlled by a different setting and protects against a different threat.
@@ -33,9 +33,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 - 🎯 **At the TDO layer, the real attribute is `msDS-SupportedEncryptionTypes`** — not the GUI checkbox, not `ksetup /listenctypes`, not the KDC default.
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Order matters.** Forgetting just one TDO leaves a downgrade path open. Tightening the KDC GPO (banning RC4 on the DCs) **before** all TDOs are hardened breaks cross-realm authentication. **TDO first, then KDC GPO.**
-- 🪤 **TDO hardened ≠ trust hardened.** A TDO at `0x18` blocks RC4 on the referral ticket but does **not** block RC4 on the session key. You also need the GPO *Network security: Configure encryption types allowed for Kerberos* at `0x80000018` on the Domain Controllers OU. Demonstrated in [Lab 2](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-) and [Lab 3](#lab-3--a-production-forest-trust-stuck-in-transition-the-most-common-state-in-the-wild-).
-
-If you want to read just a few sections, read [The referral ticket — the only thing that crosses the trust 🎫](#the-referral-ticket--the-only-thing-that-crosses-the-trust-), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-), [Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-), [Lab 3 — A production forest trust stuck in transition (the most common state in the wild) 🧪](#lab-3--a-production-forest-trust-stuck-in-transition-the-most-common-state-in-the-wild-) and [Remediation procedure](#-remediation-procedure).
+- 🪤 **TDO hardened ≠ trust hardened.** A TDO at `0x18` blocks RC4 on the referral ticket but does **not** block RC4 on the session key. You also need the GPO *Network security: Configure encryption types allowed for Kerberos* at `0x80000018` (AES128 + AES256 + future, RC4 removed) on the Domain Controllers OU. Demonstrated in [Lab 2](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-) and [Lab 3](#lab-3--a-production-forest-trust-stuck-in-transition-the-most-common-state-in-the-wild-).
 
 ---
 
