@@ -276,32 +276,47 @@ Treat the bit as a *flag for humans and report tools*, not as a runtime KDC cont
 
 ---
 
-## What breaks if you forget the TDO 💥
+## How DC-side hardening interacts with trust TDOs 💥
 
-There are three classic "I hardened Kerberos on the DCs" patterns, and each one interacts differently with stale trust TDOs.
+There are three classic "I hardened Kerberos on the DCs" patterns, and each one interacts differently with stale trust TDOs. Two of them (B and C) can break cross-realm authentication overnight if the TDOs were not modernized first; one of them (A) silently does nothing for trusts and is often mistaken for a hardening win.
 
 ### Scenario A — Setting `DefaultDomainSupportedEncTypes = 0x18` on the DCs
 
 `HKLM\SYSTEM\CurrentControlSet\Services\Kdc\DefaultDomainSupportedEncTypes = 0x18`
 
-- This value only applies to **accounts where `msDS-SupportedEncryptionTypes` is unset or `0`**
-- TDOs almost always have `msDS-SupportedEncryptionTypes` explicitly set (often to a value that includes RC4)
-- **Outcome**: TDOs are **ignored** by this default. Trust traffic continues in whatever the TDO says.
-- **Symptom**: nothing breaks, but nothing improves. False sense of security.
+- This value is consulted by the KDC **only for accounts where `msDS-SupportedEncryptionTypes` is unset or `0`** — it is a *fallback default*, not an override
+- TDOs almost always have `msDS-SupportedEncryptionTypes` explicitly set (the trust creation wizard writes a value, even if it is the historical `0x4` RC4-only)
+- **Outcome**: this registry has **no practical effect on trusts**. Whatever is on the TDO wins
+- **Symptom**: nothing breaks, nothing improves. The "hardening" exists only on paper. Tooling that reads the registry will report "AES enforced", while the trust referral stays in RC4
 
 ### Scenario B — GPO *Network security: Configure encryption types allowed for Kerberos* set to AES only
 
-This GPO writes `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\SupportedEncryptionTypes` and controls the **Kerberos client** capability set of the machine.
+This GPO writes `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\SupportedEncryptionTypes`. **A DC plays two distinct Kerberos roles** and this single registry value governs only one of them:
 
-- When the DC needs to talk to another realm's KDC, it acts as a Kerberos client
-- If the client capabilities exclude RC4, **the DC refuses to use a referral TGT encrypted in RC4**
-- **Outcome**: cross-realm authentication breaks the moment the client tries to use a stale-RC4 trust
-- **Symptom**: `KDC_ERR_ETYPE_NOSUPP` (0xE) in event `4769`, `Target Name: krbtgt/REMOTE.LOCAL`, often followed by silent NTLM fallback (event `4624` Logon Type 3 with `Authentication Package: NTLM`)
+| Role | Registry value consulted |
+|---|---|
+| DC acting as **KDC** (issuing tickets) | `Services\Kdc\DefaultDomainSupportedEncTypes` (scenario A) — and the per-account `msDS-SupportedEncryptionTypes` on each principal it issues tickets for |
+| DC acting as **Kerberos client** (talking to another realm's KDC, presenting tickets, decrypting referrals it receives) | `Control\Lsa\Kerberos\Parameters\SupportedEncryptionTypes` — this is what the GPO sets |
 
-### Scenario C — Enabling enforcement modes for CVE-2022-37966 / 37967 (`KrbtgtFullPacSignature`, etc.)
+So when this GPO is tightened to AES-only:
 
-- Not strictly an enctype change, but trust keys derived from old passwords without AES material trip the same code paths
-- **Symptom**: weird intermittent cross-realm failures, often blamed on "DNS" or "replication"
+- The DC, **as a client**, refuses to accept or decrypt a referral TGT encrypted in RC4
+- Cross-realm authentication breaks the moment a TDO still hands out an RC4-encrypted referral
+- **Symptom**: `KDC_ERR_ETYPE_NOSUPP` (0xE) in event `4769` with `Target Name: krbtgt/REMOTE.LOCAL`, often followed by silent NTLM fallback (event `4624` Logon Type 3 with `Authentication Package: NTLM`)
+- **Order matters**: always upgrade all TDOs to `msDS-SupportedEncryptionTypes = 0x18` **and** rotate their passwords *before* enforcing this GPO. The reverse order is one of the most common ways to take down a forest's Monday morning logon spike
+
+### Scenario C — Enabling enforcement modes for the November 2022 Kerberos patches
+
+Two CVEs were released in November 2022 and are frequently confused with each other:
+
+| CVE | Patch family | What enforcement does | How a stale-RC4 trust trips it |
+|---|---|---|---|
+| **CVE-2022-37966** | Kerberos RC4 weakness (Elevation of Privilege) | Sets the runtime default to **assume AES support** on trusts and on accounts, even when `msDS-SupportedEncryptionTypes` is unset. This is the change Steve Syfuhs publicly referenced (*"In Nov 2022 we changed it so trusts assume AES support by default"*) | A trust whose TDO password has not been rotated since AES was declared has **no AES key** in `supplementalCredentials`. The KDC tries AES, finds no key, and the referral fails with `KDC_ERR_ETYPE_NOSUPP` (0xE) |
+| **CVE-2022-37967** | Kerberos PAC signature weakness | Enables `KrbtgtFullPacSignature` enforcement — the KDC now requires a full PAC signature on cross-realm referrals | A trust that has not been reset since the patch may not produce a valid signature; cross-realm logons fail with PAC-validation errors (typically `KDC_ERR_PADATA_TYPE_NOSUPP` / `KDC_ERR_GENERIC` or event `14` on the validator side) |
+
+**Symptom common to both**: cross-realm logons that worked yesterday start failing today. Operators often blame DNS, replication, or "the other team", because nothing visibly changed on their side — the change was a patch deployment that flipped from *audit* mode to *enforcement* mode. See Microsoft's guidance in [KB5021131](https://support.microsoft.com/en-us/topic/kb5021131-how-to-manage-the-kerberos-protocol-changes-related-to-cve-2022-37966-fd837ac3-cdec-4e76-a6ec-86e67501407d) for the timeline and `RegistryKey` knobs.
+
+**Mitigation order**: refresh every TDO (`msDS-SupportedEncryptionTypes = 0x18` + `netdom trust /Reset`) **before** the enforcement deadline. Once the AES key is materialized on both sides and the password is fresh, both CVE-2022-37966 and CVE-2022-37967 enforcement become non-events.
 
 ### Symptom → cause mapping
 
@@ -311,7 +326,6 @@ This GPO writes `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\S
 | `klist` shows TGT cross-realm in `RC4_HMAC_MD5` | Remote TDO still RC4-only **or** trust password not rotated since AES enablement | `Get-ADTrust -Properties msDS-SupportedEncryptionTypes`, `whenChanged` on the TDO |
 | Event `4769` with `Failure code 0xE`, target `krbtgt/REMOTE.LOCAL` | Client refuses RC4, TDO offers RC4 | TDO on the source side + GPO Kerberos enctype on the client/DC |
 | Event `4769` `Failure code 0xD` (`KDC_ERR_BADOPTION`) on cross-realm | Often related to trust attributes / forest routing, not enctype | `trustAttributes`, `msDS-TrustForestTrustInfo` |
-| `Get-ADTrust` says `Trust OK` but `nltest /trusted_domains` shows `NO_TRUST` for that realm | Trust password desynchronization between the two sides | Re-establish with `netdom trust /Reset` |
 
 ---
 
