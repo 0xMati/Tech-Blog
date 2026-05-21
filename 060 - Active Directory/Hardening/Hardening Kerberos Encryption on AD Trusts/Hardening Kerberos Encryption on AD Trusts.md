@@ -6,7 +6,29 @@
 If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never touched the **Trusted Domain Objects (TDOs)**, your forest still issues **RC4 referral tickets** across every trust. The directory looks clean, the DCs look clean, and yet `4769` keeps showing RC4 for `krbtgt/REMOTE.LOCAL`. That is the gap this article closes.
 
 > 🧠 **Quick primer — a Kerberos ticket carries two encrypted things.**
-> Every ticket has a **ticket encryption** (the envelope itself, sealed with the long-term key of the destination server — for a cross-realm referral, that key is the TDO key) and a **session key** (an ephemeral key the KDC generates and embeds *inside* the ticket, used afterwards to protect SMB / LDAP / RPC traffic between the client and the server). Hardening the TDO controls the **ticket encryption**. The KDC GPO controls the **session key**. They are two different controls covering two different threats.
+> A ticket is not a single blob: it is an envelope that contains a session key. Each layer is controlled by a different setting and protects against a different threat.
+>
+> | Layer | What it is | Controlled by | Protects against |
+> |---|---|---|---|
+> | **Ticket encryption** (`KerbTicket Encryption Type` in `klist`) | The envelope itself, sealed with the **long-term key of the destination server** — for a cross-realm referral, that key is the TDO key | `msDS-SupportedEncryptionTypes` on the **TDO** | Offline cracking of the trust key (a.k.a. trust kerberoasting) |
+> | **Session key** (`Session Key Type` in `klist`) | An **ephemeral key** the KDC generates and embeds *inside* the ticket, used after authentication to protect SMB / LDAP / RPC traffic between client and server | What the client advertises in its request **+** the KDC GPO *Network security: Configure encryption types allowed for Kerberos* | Live cryptanalysis of the session traffic (RC4 weaknesses) |
+>
+> Hardening the TDO without hardening the KDC GPO closes the first threat and leaves the second one wide open. This is exactly the trap Labs 2 and 3 demonstrate.
+>
+> ```text
+> ┌─────────────────────────────────────────────────────────────────┐
+> │  Kerberos ticket (envelope sealed with the server long-term key)│
+> │                                                                 │
+> │   KerbTicket Encryption Type  ←  controlled by msDS-Supported   │
+> │                                  EncryptionTypes on the TDO     │
+> │                                                                 │
+> │   ┌─────────────────────────────────────────────────────────┐   │
+> │   │ Session key (used to protect SMB/LDAP/RPC after auth)   │   │
+> │   │ Session Key Type   ←  controlled by what the client     │   │
+> │   │                       advertises + the KDC GPO          │   │
+> │   └─────────────────────────────────────────────────────────┘   │
+> └─────────────────────────────────────────────────────────────────┘
+> ```
 
 - 🎯 **The real attribute is `msDS-SupportedEncryptionTypes` on the TDO** — not the GUI checkbox, not `ksetup /listenctypes`, not the KDC default.
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
