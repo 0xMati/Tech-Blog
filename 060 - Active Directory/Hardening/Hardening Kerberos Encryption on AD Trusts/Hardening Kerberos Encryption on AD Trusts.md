@@ -30,7 +30,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 > └─────────────────────────────────────────────────────────────────┘
 > ```
 
-- 🎯 **At the TDO layer, only `msDS-SupportedEncryptionTypes` controls the referral enctype.** Everything else (GUI checkbox, `ksetup /listenctypes`, KDC default) is a distraction.
+- 🎯 **At the TDO layer, `msDS-SupportedEncryptionTypes` is the authoritative control for the referral enctype.** The GUI checkbox *"The other domain supports Kerberos AES Encryption"* is a *way to write* that attribute (it is not just decorative — see [The GUI checkbox](#the-gui-checkbox--the-other-domain-supports-kerberos-aes-encryption)), but it is opaque, sometimes greyed out, and slow to take effect. Other artefacts (`ksetup /listenctypes`, KDC GPO default) do not look at the TDO at all and are distractions.
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Order matters.** Forgetting just one TDO leaves a downgrade path open. Tightening the KDC GPO (banning RC4 on the DCs) **before** all TDOs are hardened breaks cross-realm authentication. **TDO first, then KDC GPO.**
 - 🪤 **TDO hardened ≠ trust hardened.** A TDO at `0x18` blocks RC4 on the referral ticket but does **not** block RC4 on the session key. You also need the GPO *Network security: Configure encryption types allowed for Kerberos* at `0x80000018` (AES128 + AES256 + future, RC4 removed) on the Domain Controllers OU. Demonstrated in [Lab 2](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-) and [Lab 3](#lab-3--a-production-forest-trust-stuck-in-transition-the-most-common-state-in-the-wild-).
@@ -165,16 +165,23 @@ Two artefacts that look like "the AES switch for the trust" are constantly cited
 
 Found in *Active Directory Domains and Trusts* → trust properties → General tab.
 
-| Aspect | Reality |
-|---|---|
-| What it modifies | A single bit in `trustAttributes`: `0x100` = `USES_AES_KEYS` (a.k.a. `TRUST_ATTRIBUTE_USES_AES_KEYS` in MS-ADTS) |
-| What it modifies on `msDS-SupportedEncryptionTypes` | **Nothing.** |
-| Effect on referral encryption (Windows Server 2003 / 2008) | Historical hint to the legacy KDC: *"the other side speaks AES, you may pick an AES key when deriving from the trust password"* |
-| Effect on referral encryption (Windows Server 2012 R2+) | **None.** The modern KDC reads `msDS-SupportedEncryptionTypes` directly and ignores this bit |
-| Effect on session key | None. The session key is governed by client `etype` advertisement + KDC GPO |
-| Why it still exists | Declarative flag consumed by third-party tooling (Quest, Semperis, Tenable, BloodHound) to fill the "AES enabled" column of their reports |
+This box is **the most misunderstood control in the entire trust-hardening discussion**, and that includes earlier drafts of this article. The truthful answer to *"what does it actually do?"* is: **it depends on the Windows version, and Microsoft has never fully documented its runtime semantics publicly.** What follows is the picture that emerges from cross-referencing the [MS-ADTS spec](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/), Microsoft-internal engineering discussions, and observed lab behavior.
 
-**Verdict.** Checking this box in 2026 is **cosmetic**. It does not change the referral enctype, it does not generate AES keys, it does not protect anything. It is purely a documentary marker. **The directory and the third-party report will look good — and the trust will still ship RC4 if `msDS-SupportedEncryptionTypes` is not set.**
+| Era | Effective behavior of the checkbox |
+|---|---|
+| **Windows Server 2003 / 2008** | Sets `trustAttributes` bit `0x100` = `TRUST_ATTRIBUTE_USES_AES_KEYS`. Legacy KDCs consult this bit when deriving the trust referral key |
+| **Windows Server 2012 R2 → November 2022** | In addition to the `0x100` bit, checking the box also touches `msDS-SupportedEncryptionTypes` on the TDO (writing AES-allowing values). This is **not documented in MS-ADTS** but is confirmed in Microsoft-internal Directory Services discussions (Kiran Surendran / Herbert Mauerer, 2016: *"The TDO gets a `msDs-SupportedEncryptionTypes` allowing AES and new referral TGS get the encryption type"*) and described publicly by Ryan Ries (Microsoft, 2018) as *"it enforces AES-only and breaks RC4 and DES across the forest trust"*. The change is **not instant** — labs have reported needing one or two DC reboots before the new enctype was effectively honored on referrals |
+| **Windows Server 2012 R2 onwards, post-November 2022 (KB5021131 / CVE-2022-37966)** | Microsoft changed Windows to **assume AES support by default on trusts**, regardless of the checkbox state. Confirmed publicly by Steve Syfuhs (Microsoft Kerberos architect, 2026): *"In Nov 2022 we changed it so trusts assume AES support by default."* See [Beyond RC4 for Windows Authentication (Microsoft, Dec 2025)](https://www.microsoft.com/en-us/windows-server/blog/2025/12/03/beyond-rc4-for-windows-authentication/). The checkbox still writes the underlying attributes, but the runtime KDC no longer strictly depends on them to attempt AES |
+
+**A note on availability.** The checkbox is **frequently greyed out** — most commonly because the trusted forest's DFL is too low, or because the trust type does not support it (e.g., an external trust to a non-Windows realm). When greyed out, the only way to declare AES on the TDO is via the LDAP attribute directly (`ksetup /setenctypeattr`, `Set-ADObject`, or `netdom trust /EncType`).
+
+**Why this matters for hardening in 2026.**
+
+1. **The checkbox is not a placebo.** A widespread internet claim (including an earlier draft of this article) was that it only sets the `0x100` bit and does nothing else. Microsoft engineering discussions and lab behavior contradict this — it also touches `msDS-SupportedEncryptionTypes`, at least on Windows Server 2012 R2 and later. Always read both `trustAttributes` and `msDS-SupportedEncryptionTypes` **after** clicking it to know what it actually wrote.
+2. **The checkbox is not sufficient hardening either.** It writes the policy attribute, but it does **not** rotate the trust password — so the AES keys may not be materialized in `supplementalCredentials` even if the attribute is set. You still need a `netdom trust /Reset` (see [How to fix it](#how-to-fix-it)).
+3. **Prefer the LDAP attribute path for scripted, auditable change.** `ksetup /setenctypeattr` and `Set-ADObject` are explicit about *what value you wrote*, are scriptable, and take effect on the next LSA refresh without the multi-reboot delay reported with the GUI path. The checkbox is fine for a one-off, but a `Get-ADTrust -Properties msDS-SupportedEncryptionTypes, trustAttributes` afterwards is mandatory either way.
+
+**Bottom line.** The checkbox is a legitimate (if opaque and slow) way to declare AES on a trust. It is **not** purely cosmetic, but it is **not** a magic AES switch either — without a follow-up password rotation, the declaration remains paper-only. And on post-November-2022 Windows, the checkbox state is becoming progressively irrelevant to the *runtime* KDC decision, even though it still controls the *declared* state seen by directory tooling.
 
 #### `ksetup /listenctypes`
 
@@ -195,7 +202,7 @@ A command that returns a list of enctypes — at first glance, exactly what you 
 
 | Tool | What it actually does | "Is the trust hardened?" answer |
 |---|---|---|
-| GUI checkbox *"The other domain supports Kerberos AES Encryption"* | Sets `trustAttributes` bit `0x100`. Declarative only, ignored by Windows Server 2012 R2+ KDCs | ❌ Not the right question to ask of this box |
+| GUI checkbox *"The other domain supports Kerberos AES Encryption"* | Sets `trustAttributes` bit `0x100`; on Windows Server 2012 R2+ also touches `msDS-SupportedEncryptionTypes` (undocumented but confirmed). Slow to take effect, sometimes greyed out, no rotation | ⚠️ Writes the policy attribute, but a `Get-ADTrust` verification + a password rotation are still required |
 | `ksetup /listenctypes` | Reads local client registry `Lsa\Kerberos\Parameters\SupportedEncryptionTypes` | ❌ Not even looking at the trust |
 | `Get-ADTrust -Properties msDS-SupportedEncryptionTypes` | Reads the TDO attribute | ✅ Authoritative for the declared policy |
 | `ksetup /getenctypeattr <realm>` | Reads the same TDO attribute via the LSA API | ✅ Authoritative for the declared policy |
@@ -260,8 +267,9 @@ This is the attribute the KDC consults to pick the enctype of the referral TGT. 
 
 - **Where**: same TDO, different attribute
 - **GUI**: *Active Directory Domains and Trusts* → trust properties → **"The other domain supports Kerberos AES Encryption"**
-- **What it does**: declares that the **other** side supports AES. This is purely **informational** — it does not by itself force AES usage
-- **Effect if checked but `msDS-SupportedEncryptionTypes` is still RC4-only**: nothing useful. You declared "they support AES", but you also declared "I only support RC4 myself". The intersection wins. RC4 it is.
+- **What it does**: writes the `0x100` bit in `trustAttributes` declaring that the **other** side supports AES. On Windows Server 2012 R2+, the GUI action *also* touches `msDS-SupportedEncryptionTypes` (see [The GUI checkbox](#the-gui-checkbox--the-other-domain-supports-kerberos-aes-encryption) for the full timeline and caveats)
+- **What it does NOT do**: rotate the trust password. Even when both attributes are set, no AES key material exists in `supplementalCredentials` until the next `netdom trust /Reset`
+- **Effect on post-November 2022 KDCs**: progressively irrelevant at runtime — Windows now assumes AES support on trusts by default — but still visible to directory tooling and still useful as a declared-state marker
 
 ### Control 3 — the trust password (the cryptographic reality)
 
@@ -273,14 +281,14 @@ This is the attribute the KDC consults to pick the enctype of the referral TGT. 
 
 | Tool | What it modifies | Sufficient on its own? |
 |---|---|---|
-| **GUI** — *Domains and Trusts* checkbox | `trustAttributes` bit `0x100` | ❌ No. Declarative only. |
+| **GUI** — *Domains and Trusts* checkbox | `trustAttributes` bit `0x100` and (on 2012 R2+) `msDS-SupportedEncryptionTypes` | ⚠️ Writes the policy attribute but no rotation; opaque and slow. Verify with `Get-ADTrust` after clicking |
 | **`ksetup /setenctypeattr <realm> AES256-CTS-HMAC-SHA1-96 AES128-CTS-HMAC-SHA1-96`** | `msDS-SupportedEncryptionTypes` | ⚠️ One side only. Must repeat on the other side + rotate password. |
 | **`netdom trust <local> /Domain:<remote> /EncType:AES256`** | `msDS-SupportedEncryptionTypes` | ⚠️ Same as ksetup. Slightly more flexible (remote creds). |
 | **`Set-ADObject "CN=remote.local,CN=System,DC=local" -Replace @{ 'msDS-SupportedEncryptionTypes' = 0x18 }`** | `msDS-SupportedEncryptionTypes` | ⚠️ Same as ksetup. Native PowerShell, scriptable. |
 | **`netdom trust <local> /Domain:<remote> /Reset`** | Rotates the trust password (re-derives all enctype keys) | ✅ This is the missing step everyone forgets. |
 | **`ksetup /listenctypes`** | Reads the **local client** registry value | ❌ Not the TDO — common confusion source |
 
-> ⚠️ **The trap of the GUI.** Checking the "other domain supports AES" box feels like the AES switch. It is not. It changes `trustAttributes` and nothing else. Without `msDS-SupportedEncryptionTypes = 0x18` **and** a password rotation, your trust still ships RC4.
+> ⚠️ **The trap of the GUI.** Checking the "other domain supports AES" box feels like the AES switch. It is not — but not for the reason most people think. The box *does* write the LDAP attribute on Windows Server 2012 R2 and later (contrary to popular belief), but it does so opaquely, sometimes with a multi-reboot delay before the KDC honors it, and it never rotates the trust password. Without a follow-up `netdom trust /Reset`, the AES keys are never derived and your trust still ships RC4. **Verify the result with `Get-ADTrust -Properties msDS-SupportedEncryptionTypes, trustAttributes` after clicking — never trust the click alone.**
 
 ---
 
