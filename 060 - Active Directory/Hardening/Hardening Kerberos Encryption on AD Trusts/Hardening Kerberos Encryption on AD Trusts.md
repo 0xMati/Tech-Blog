@@ -9,7 +9,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Forgetting just one TDO** leaves a downgrade path open. **Banning RC4 on the DCs without fixing the TDOs first** breaks cross-realm authentication.
 
-If you want to read just two sections, read [The 3 control points](#-the-3-control-points-and-why-gui-alone-is-not-enough), [Lab walkthrough — `KerbTicket Encryption` vs `Session Key` 🧪](#lab-walkthrough--kerbticket-encryption-vs-session-key-) and [Remediation procedure](#-remediation-procedure).
+If you want to read just two sections, read [The 3 control points](#-the-3-control-points-and-why-gui-alone-is-not-enough), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-) and [Remediation procedure](#-remediation-procedure).
 
 ---
 
@@ -179,7 +179,7 @@ This GPO writes `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters\S
 
 ---
 
-## Lab walkthrough — `KerbTicket Encryption` vs `Session Key` 🧪
+## Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪
 
 This is the single biggest source of false confidence in trust hardening: an admin runs `klist` after a cross-domain access, sees `AES-256-CTS-HMAC-SHA1-96` on every ticket, and concludes the trust is hardened. **It is not.** `klist` shows two encryption-related fields per ticket, and they answer **completely different questions**.
 
@@ -221,7 +221,23 @@ Everything is AES-256. Easy conclusion: "the trust is fine." **This conclusion i
 
 ### Step 2 — A legacy-acting client
 
-Without touching the trust at all, simulate a client that only advertises RC4 in its Kerberos requests (think: an old Windows 7 box, a misconfigured Linux SSSD client, a third-party SSO appliance, or an attacker-controlled host). Then redo the exact same access:
+Without touching the trust at all, simulate a client that only advertises RC4 in its Kerberos requests (think: an old Windows 7 box, a misconfigured Linux SSSD client, a third-party SSO appliance, or an attacker-controlled host).
+
+> ⚠️ **Lab only.** The registry value below forces the client to advertise **only RC4** in its Kerberos `etype` field. Use it on a throw-away test workstation and revert it immediately after — see [Cleanup after the lab test](#cleanup-after-the-lab-test). Never apply this on a production host.
+
+On the test workstation, in an elevated PowerShell session:
+
+```powershell
+$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
+New-Item -Path $path -Force | Out-Null
+# 0x4 = RC4-HMAC only (bit for AES128 = 0x8, AES256 = 0x10 are intentionally omitted)
+Set-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -Value 0x4 -Type DWord
+
+# LSASS only reads this value on cold start — reboot is the cleanest reset
+Restart-Computer
+```
+
+After reboot, log on again as the same user, then redo the exact same access:
 
 ```powershell
 klist purge
@@ -304,11 +320,23 @@ flowchart LR
 
 ### Cleanup after the lab test
 
-Whatever method you used to make the client advertise RC4 only, **undo it** before going further:
+The registry value forced on the test client in Step 2 must be removed — leaving an RC4-only client lying around is a self-inflicted vulnerability. On the same test workstation, in an elevated PowerShell session:
 
-- Revert any client-side registry value used for the test.
-- Reboot the test client so LSASS reloads its Kerberos configuration cleanly.
-- Run `klist purge` and redo the access; both `KerbTicket Encryption Type` **and** `Session Key Type` should be back to AES-256.
+```powershell
+$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
+Remove-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -ErrorAction SilentlyContinue
+Restart-Computer
+```
+
+After reboot, validate the cleanup:
+
+```powershell
+klist purge
+Test-Path "\\mm-dc4.child.mathiasmotron.com\sysvol"
+klist
+```
+
+Both `KerbTicket Encryption Type` **and** `Session Key Type` should now be back to AES-256 on every ticket. If a `Session Key Type` still shows RC4, the registry value is still in effect or a GPO is re-applying it — check `gpresult /h` and the `Network security: Configure encryption types allowed for Kerberos` policy.
 
 > 🛡️ **Operational consequence for this article.**
 > Hardening the TDOs (the focus of the [Remediation procedure](#-remediation-procedure) below) is necessary but not sufficient. To fully eliminate RC4 across a trust, you also need the **KDC-side** enforcement (`SupportedEncryptionTypes = 0x18` on every DC) so the KDC actively refuses to mint RC4 session keys, even for clients that ask for them.
