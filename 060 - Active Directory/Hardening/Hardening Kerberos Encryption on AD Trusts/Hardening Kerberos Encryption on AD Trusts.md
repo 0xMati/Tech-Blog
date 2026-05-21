@@ -30,7 +30,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 > └─────────────────────────────────────────────────────────────────┘
 > ```
 
-- 🎯 **At the TDO layer, the real attribute is `msDS-SupportedEncryptionTypes`** — not the GUI checkbox, not `ksetup /listenctypes`, not the KDC default.
+- 🎯 **At the TDO layer, only `msDS-SupportedEncryptionTypes` controls the referral enctype.** Everything else (GUI checkbox, `ksetup /listenctypes`, KDC default) is a distraction.
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Order matters.** Forgetting just one TDO leaves a downgrade path open. Tightening the KDC GPO (banning RC4 on the DCs) **before** all TDOs are hardened breaks cross-realm authentication. **TDO first, then KDC GPO.**
 - 🪤 **TDO hardened ≠ trust hardened.** A TDO at `0x18` blocks RC4 on the referral ticket but does **not** block RC4 on the session key. You also need the GPO *Network security: Configure encryption types allowed for Kerberos* at `0x80000018` (AES128 + AES256 + future, RC4 removed) on the Domain Controllers OU. Demonstrated in [Lab 2](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-) and [Lab 3](#lab-3--a-production-forest-trust-stuck-in-transition-the-most-common-state-in-the-wild-).
