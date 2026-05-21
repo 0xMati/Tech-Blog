@@ -217,16 +217,17 @@ The enctype of the **referral TGT** in step 4 is the one that depends on the TDO
 
 ## All trust types side by side 📊
 
-| Type | `trustType` | `trustAttributes` bits | Transitive? | Where do the TDOs live? | RC4 risk |
+| Type | `trustType` | Typical `trustAttributes` | Transitive? | Where do the TDOs live? | AES on the wire? |
 |---|---|---|---|---|---|
-| **Forest trust** | 2 (AD) | `FOREST_TRANSITIVE` (`0x8`) | ✅ Within forests | Root domain of each forest | High if old — created pre-2016 default to RC4 + AES |
-| **External trust** | 2 (AD) | none of the above | ❌ | Each participating domain | High — often legacy, often forgotten |
-| **Realm trust (MIT/Heimdal)** | 3 (MIT) | `NON_TRANSITIVE` or transitive depending on creation | Variable | Local domain only (the remote side is non-Windows) | Highest — depends on the MIT side's `krb5.conf` |
-| **Parent ↔ Child (intra-forest)** | 2 (AD) | `WITHIN_FOREST` (`0x20`) | ✅ Auto | Each domain in the forest | Often overlooked — auto-created, never audited |
-| **Shortcut / Cross-link trust** | 2 (AD) | `WITHIN_FOREST` (`0x20`) | ✅ | Each domain involved | Same as parent/child |
-| **Downlevel / NT4-style** | 1 | usually `NON_TRANSITIVE` | ❌ | Local domain | Very high — DES/RC4 only |
+| **Forest trust** | `2` (`UPLEVEL` / AD) | `0x8` = `FOREST_TRANSITIVE`, optionally `+0x4` (`QUARANTINED`) or `+0x100` (`USES_AES_KEYS`) | ✅ Within forests | Root domain of each forest | Yes if `msDS-SupportedEncryptionTypes` is set on **both** TDOs + password rotated since |
+| **External trust** | `2` (`UPLEVEL` / AD) | `0x0` (legacy) or `+0x4` (`QUARANTINED`) or `+0x40` (`TREAT_AS_EXTERNAL`) | ❌ | Each participating domain | Yes if both TDOs are configured. Most often left in the legacy `0x0` state and forgotten |
+| **Realm trust (MIT / Heimdal)** | `3` (`MIT`) | `0x1` (`NON_TRANSITIVE`) by default; can be created transitive | Variable (set at creation) | Local domain only — the remote side is non-Windows | Depends on the MIT KDC's `krb5.conf` enctypes **and** the Windows TDO's `msDS-SupportedEncryptionTypes`. Both must agree |
+| **Parent ↔ Child (intra-forest)** | `2` (`UPLEVEL` / AD) | `0x20` = `WITHIN_FOREST` | ✅ Auto | Each domain in the forest | Yes if `msDS-SupportedEncryptionTypes` is set. Auto-created TDOs are **not** automatically modernized — they keep whatever was the default when the forest was built |
+| **Shortcut / Cross-link trust** | `2` (`UPLEVEL` / AD) | `0x20` = `WITHIN_FOREST` | ✅ | Each domain involved | Same constraints as parent/child |
 
-> 💡 **Yes, intra-forest trusts count.** A forest built in 2008 and never reset to AES carries RC4 trust keys between every parent and every child. Auto-created does **not** mean auto-modernized.
+> 💡 **Yes, intra-forest trusts count.** A forest built on Windows Server 2008 schema and never reset to AES still carries RC4 trust keys between every parent and every child. Auto-created does **not** mean auto-modernized.
+
+> 📖 **Reference for the bit values.** All `trustAttributes` flags are documented in [\[MS-ADTS\] 6.1.6.7.9 trustAttributes](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/e9a2d23c-c31e-4a6f-88a0-6646fdb51a3c). The values shown above are the ones you actually encounter on real trusts — additional flags exist but are rarely seen outside specific scenarios (`PIM_TRUST`, `USES_RC4_ENCRYPTION`, etc.).
 
 ---
 
