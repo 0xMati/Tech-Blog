@@ -9,7 +9,7 @@ If you hardened Kerberos on your domain (KB5021131 / CVE-2022-37966) but never t
 - 🔁 **Both sides of every trust must be updated**, and **the trust password must be rotated** afterwards so AES keys are actually materialized.
 - 🧨 **Forgetting just one TDO** leaves a downgrade path open. **Banning RC4 on the DCs without fixing the TDOs first** breaks cross-realm authentication.
 
-If you want to read just two sections, read [The 3 control points](#-the-3-control-points-and-why-gui-alone-is-not-enough), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-) and [Remediation procedure](#-remediation-procedure).
+If you want to read just two sections, read [The 3 control points](#-the-3-control-points-and-why-gui-alone-is-not-enough), [Lab 1 — `KerbTicket Encryption` vs `Session Key` on an intra-forest trust 🧪](#lab-1--kerbticket-encryption-vs-session-key-on-an-intra-forest-trust-), [Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-) and [Remediation procedure](#-remediation-procedure).
 
 ---
 
@@ -340,6 +340,244 @@ Both `KerbTicket Encryption Type` **and** `Session Key Type` should now be back 
 
 > 🛡️ **Operational consequence for this article.**
 > Hardening the TDOs (the focus of the [Remediation procedure](#-remediation-procedure) below) is necessary but not sufficient. To fully eliminate RC4 across a trust, you also need the **KDC-side** enforcement (`SupportedEncryptionTypes = 0x18` on every DC) so the KDC actively refuses to mint RC4 session keys, even for clients that ask for them.
+
+---
+
+## Lab 2 — A hardened TDO is still not enough (forest trust to a Red Forest) 🧪
+
+The Lab 1 setup left an obvious question open: *"that downgrade worked because the TDO was at `0x0` — what if the TDO is properly hardened to `0x18`?"* This lab answers that question on a real forest trust, with a non-trivial topology, and the result is uncomfortable: **the TDO attribute alone does not block the session key downgrade**. The only thing that actually closes the pattern is **KDC-side enforcement**.
+
+### Setup
+
+The lab uses an **ESAE-style Red Forest** layout — the kind of architecture that is supposed to be the gold standard for Tier 0 protection:
+
+- Production forest `mathiasmotron.com` — DCs `MM-DC2`, `MM-DC3`
+- Admin forest `red.local` — DC `RED-DC1`
+- **One-way forest trust**: `mathiasmotron.com` trusts `red.local` (Outbound on the prod side, Inbound on the red side)
+- `trustAttributes` on the prod-side TDO: `0x458` = `FOREST_TRANSITIVE | CROSS_ORGANIZATION | TREAT_AS_EXTERNAL | PIM_TRUST`
+- **Selective Authentication is enabled on the trust** (typical Red Forest hygiene)
+- `msDS-SupportedEncryptionTypes` on the TDO: **`0x18` (AES only) on the red side**, **`0x0` (unset) on the prod side**
+- Workstation: `RED.ADM.red.local`, user `RED\mathiasadmin`
+- Resource targeted from RED: `\\MM-DC2.mathiasmotron.com\sysvol`
+
+> 🧠 **Why the asymmetry on the TDO matters.** A trust has *two* TDOs, one per side, and each one is configured independently. In a Red Forest where the red team owns the admin forest but not the prod forest, this is extremely common: the red team hardens its TDO, the prod team forgets to mirror the change. The audit script in this article surfaces that asymmetry by running it on both sides — see also [Audit procedure](#-audit-procedure) below.
+
+### Side note — Selective Authentication blocks the test before Kerberos even talks
+
+The first attempt at this lab failed with an unhelpful Explorer dialog:
+
+> *The computer you are signing into is protected by an authentication firewall. The specified account is not allowed to authenticate to the computer.*
+
+That message is Windows' rendering of **Kerberos `KDC_ERR_POLICY` (0xC)**, triggered by **Selective Authentication** on the forest trust. With Selective Authentication on, every cross-forest principal needs an explicit `Allowed to authenticate` ACE on every target computer (or on a parent OU). Without that ACE, the prod KDC refuses to issue the service ticket, regardless of encryption types.
+
+This is **a different defense layer**, not an encryption control — and it stacks on top of the Kerberos enctype controls discussed here. For the rest of Lab 2 the trust was temporarily switched to **Forest-wide authentication** via `Set-ADTrust -Identity red.local -SelectiveAuthentication $false` on a prod DC, so we could isolate the encryption question. **Restore Selective Authentication after the test.**
+
+### Step 1 — Baseline observation, normal client
+
+A normal RED.ADM client, no registry tweaks, accesses the prod DC share:
+
+```powershell
+klist purge
+Test-Path "\\MM-DC2.mathiasmotron.com\sysvol"
+klist
+```
+
+The interesting tickets:
+
+```
+#0> Server: krbtgt/MATHIASMOTRON.COM @ RED.LOCAL
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
+    Session Key Type:           AES-256-CTS-HMAC-SHA1-96
+    Cache Flags: 0x200 -> DISABLE-TGT-DELEGATION
+    Kdc Called: RED-DC1.red.local
+
+#2> Server: cifs/MM-DC2.mathiasmotron.com @ MATHIASMOTRON.COM
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
+    Session Key Type:           AES-256-CTS-HMAC-SHA1-96
+    Cache Flags: 0x200 -> DISABLE-TGT-DELEGATION
+    Kdc Called: MM-DC2.mathiasmotron.com
+```
+
+Two notable observations:
+
+1. **The referral TDO key is genuinely AES-256.** Ticket #0 is the inter-realm referral. It is encrypted with the long-term key of the TDO stored on the red side (because the red KDC is the issuer). The fact that the `KerbTicket Encryption Type` is AES-256 proves that the red-side TDO has materialized AES keys in `supplementalCredentials` — not just declared them via `msDS-SupportedEncryptionTypes = 0x18`. A trust password rotation has actually happened on the red side after the hardening.
+2. **`Cache Flags: 0x200 → DISABLE-TGT-DELEGATION`** is propagated from the referral to the final service ticket. This is the Kerberos delegation lockdown that the `PIM_TRUST` attribute (`0x400`) and / or the matching KDC policy enable. It means even an over-permissive prod service cannot abuse this ticket via S4U2Proxy. **It is not an encryption control, but it is part of the Red Forest hardening story** and it survives the downgrade attempts below — which is reassuring.
+
+The cross-forest Kerberos chain at this point looks like:
+
+```mermaid
+sequenceDiagram
+    participant C as RED.ADM<br/>mathiasadmin@RED.LOCAL
+    participant RKDC as RED-DC1<br/>KDC red.local
+    participant PKDC as MM-DC2<br/>KDC mathiasmotron.com
+
+    C->>RKDC: AS-REQ (etype list)
+    RKDC-->>C: TGT krbtgt/RED.LOCAL ✅ AES-256
+
+    C->>RKDC: TGS-REQ for cifs/MM-DC2.mathiasmotron.com<br/>(foreign realm → referral)
+    RKDC-->>C: Referral krbtgt/MATHIASMOTRON.COM@RED.LOCAL<br/>✅ AES-256 + DISABLE-TGT-DELEGATION
+
+    C->>PKDC: TGS-REQ with referral as TGT
+    PKDC-->>C: TGS cifs/MM-DC2 ✅ AES-256
+
+    C->>PKDC: AP-REQ (SMB) + AES authenticator
+    PKDC-->>C: SMB session ✅ AES-protected
+```
+
+Everything is AES-256 from end to end. The TDO is hardened. The clients are modern. **What could possibly go wrong?**
+
+### Step 2 — Same setup, RC4-only client
+
+Without touching the trust, the TDO, or the prod side, simulate a legacy-acting client by applying the same registry value as in Lab 1:
+
+```powershell
+# On RED.ADM, elevated PS — LAB ONLY
+$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
+New-Item -Path $path -Force | Out-Null
+Set-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -Value 0x4 -Type DWord
+Restart-Computer
+```
+
+After reboot, redo exactly the same access. **The access succeeds (`Test-Path True`)**, and the tickets in cache:
+
+```
+#0> Server: krbtgt/MATHIASMOTRON.COM @ RED.LOCAL
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96     ← unchanged
+    Session Key Type:           RSADSI RC4-HMAC(NT)           ← DOWNGRADED
+    Cache Flags: 0x200 -> DISABLE-TGT-DELEGATION
+
+#2> Server: cifs/MM-DC2.mathiasmotron.com @ MATHIASMOTRON.COM
+    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96     ← unchanged
+    Session Key Type:           RSADSI RC4-HMAC(NT)           ← DOWNGRADED
+    Cache Flags: 0x200 -> DISABLE-TGT-DELEGATION
+```
+
+**This is the key result of the entire article.** The TDO is at `0x18`. The TDO long-term keys are genuinely AES (Step 1 proved it). The prod machine account is AES. The forest trust is supposedly hardened. And yet, **every session is in fact protected by RC4**.
+
+The same conclusion as Lab 1 holds — `KerbTicket Encryption Type` and `Session Key Type` answer different questions — but the implication is stronger here:
+
+> 🎯 **`msDS-SupportedEncryptionTypes = 0x18` on the TDO is a *necessary* but *not sufficient* control.** It guarantees that the tickets (TGT inter-realm, service tickets) are encrypted with AES long-term keys. It does **not** prevent the KDC from issuing an RC4 session key inside an AES-encrypted ticket when the client advertises only RC4.
+
+This is the trap that catches even mature ESAE deployments: the audit script says `AES-only [OK]`, `klist` shows `AES-256` in the field most admins inspect, and yet the actual cryptographic protection of the channel is RC4.
+
+### Step 3 — Add the KDC enforcement on the red side
+
+The only control that actually closes the pattern is **`SupportedEncryptionTypes = 0x18` on the KDC itself**. On RED-DC1, in an elevated PowerShell session:
+
+```powershell
+$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
+New-Item -Path $path -Force | Out-Null
+# 0x18 = AES128 + AES256 only — KDC refuses to issue tickets / session keys with any other enctype
+Set-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -Value 0x18 -Type DWord
+
+Restart-Service kdc -Force
+Restart-Service Netlogon -Force
+```
+
+This value is the registry equivalent of the GPO **Network security: Configure encryption types allowed for Kerberos**. In production it is much cleaner to apply this through a GPO scoped to the **Domain Controllers** OU, so the setting is centrally managed and inventoried.
+
+Now redo the downgrade attempt from RED.ADM (still with the client-side `0x4` registry value in effect):
+
+```powershell
+klist purge
+Test-Path "\\MM-DC2.mathiasmotron.com\sysvol"
+klist
+```
+
+Result:
+
+```
+False
+```
+
+```
+Cached Tickets: (0)
+```
+
+**No tickets at all.** Not even the initial TGT. The red KDC refused to issue anything because the client only advertised RC4 in its `etype` list, and the KDC's `SupportedEncryptionTypes = 0x18` told it to refuse anything that does not include AES.
+
+### Step 4 — Forensic evidence in the Security log
+
+On RED-DC1, the Security log captures the refusal as event **4768** (TGT request) with a very specific signature:
+
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4768} -MaxEvents 50 |
+  Where-Object { $_.Message -match 'mathiasadmin' } |
+  Select-Object TimeCreated, Id,
+    @{n='Code';e={
+        if ($_.Message -match '(?:Failure Code|Result Code):\s+(0x[\da-f]+)') { $matches[1] }
+    }},
+    @{n='TicketEnc';e={
+        if ($_.Message -match 'Ticket Encryption Type:\s+(0x[\da-f]+)') { $matches[1] }
+    }} | Format-Table -AutoSize
+```
+
+Output during the test:
+
+```
+TimeCreated            Id Code TicketEnc
+-----------            -- ---- ---------
+5/21/2026 9:49:16 AM 4768 0xE  0xFFFFFFFF
+5/21/2026 9:49:16 AM 4768 0xE  0xFFFFFFFF
+5/21/2026 9:49:16 AM 4768 0xE  0xFFFFFFFF
+... (17 retries in ~2 seconds) ...
+5/21/2026 9:48:26 AM 4768 0xE  0xFFFFFFFF
+5/21/2026 9:46:30 AM 4768 0x0  0x12      ← baseline (AES-256)
+5/21/2026 9:35:20 AM 4768 0x0  0x12      ← baseline (AES-256)
+5/21/2026 9:20:04 AM 4768 0x0  0x12      ← baseline (AES-256)
+```
+
+Two fields, one signature:
+
+- **`Result Code 0xE`** = `KDC_ERR_ETYPE_NOSUPP` (RFC 4120 §7.5.9). The KDC could not find a common encryption type with the client.
+- **`Ticket Encryption Type 0xFFFFFFFF`** = "no encryption type chosen / no intersection". This is the canonical pair that proves the refusal was driven by encryption type policy, not by a bad password, a locked account, or a network issue.
+
+The **17 retries in ~2 seconds** are LSASS / NETLOGON not giving up. This burst pattern is a great SOC signature: a sudden cluster of `4768` events with `Result Code 0xE` and `Ticket Encryption Type 0xFFFFFFFF`, all from the same client, is either a misconfigured legacy client that needs to be migrated, or an attacker actively probing for RC4 downgrade on a sensitive account.
+
+> 📚 **A note on encryption type codes.** Numbers seen in the events:
+> - `0x12` = 18 = `AES256-CTS-HMAC-SHA1-96`
+> - `0x11` = 17 = `AES128-CTS-HMAC-SHA1-96`
+> - `0x17` = 23 = `RC4-HMAC`
+> - `0x03` =  3 = `DES-CBC-MD5`
+> - `0xFFFFFFFF` = no enctype agreed
+>
+> These are the **RFC 3961 / RFC 4757 enctype numbers**, not the bit positions used in `msDS-SupportedEncryptionTypes`. Easy to confuse — the attribute uses bitmask positions (0x4, 0x8, 0x10), the events use enctype numbers (0x17, 0x11, 0x12). The audit script outputs both worlds in a normalized way to avoid the confusion.
+
+### Lab 2 — outcome matrix
+
+Putting the three steps side by side makes the conclusion impossible to miss:
+
+| Step | TDO `0x18` (red side) | KDC `SupportedEncryptionTypes` (red side) | Client advertises | `KerbTicket Enc` | `Session Key` | Access | Verdict |
+|---|---|---|---|---|---|---|---|
+| 1 — baseline | ✅ | ❌ (OS default) | AES + RC4 | AES-256 | AES-256 | ✅ | Looks fine |
+| 2 — downgrade | ✅ | ❌ (OS default) | **RC4 only** | AES-256 | **RC4** | ✅ | **Silent downgrade** |
+| 3 — KDC enforced | ✅ | ✅ `0x18` | RC4 only | n/a | n/a | ❌ refused | **Closed** |
+
+### The takeaway from Lab 2
+
+Hardening a forest trust against RC4 is a **two-layer** job:
+
+1. **TDO layer** — `msDS-SupportedEncryptionTypes = 0x18` on both sides of the TDO + trust password rotation. This makes the *long-term keys* AES-only and unlocks the cryptographic separation that the rest of the trust hardening assumes.
+2. **KDC layer** — `Network security: Configure encryption types allowed for Kerberos = 0x18` applied via GPO to the **Domain Controllers** OU on **both forests**. This is what actually refuses RC4 session keys and visibly fails the downgrade attempt with event `4768` code `0xE`.
+
+For a Red Forest specifically, this means **both forests need both layers**. Hardening only the admin forest (as was the case in the lab at the start) leaves the prod forest happy to issue RC4-flavored sessions to anyone holding a referral, which defeats much of the cryptographic separation the Red Forest pattern is supposed to provide.
+
+### Cleanup after Lab 2
+
+```powershell
+# On RED.ADM — remove the RC4-only client downgrade
+$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters'
+Remove-ItemProperty -Path $path -Name 'SupportedEncryptionTypes' -ErrorAction SilentlyContinue
+Restart-Computer
+```
+
+On the prod side, **re-enable Selective Authentication** on the trust (do not leave the lab change in place):
+
+```powershell
+Set-ADTrust -Identity red.local -SelectiveAuthentication $true
+```
+
+The KDC enforcement on RED-DC1 (`SupportedEncryptionTypes = 0x18`) can stay — that is the target state. Roll it out cleanly via GPO to **all** DCs of the forest, not via direct registry edits, when moving from lab to production.
 
 ---
 
