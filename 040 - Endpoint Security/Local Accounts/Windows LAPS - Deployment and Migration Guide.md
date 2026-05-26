@@ -1,5 +1,9 @@
+---
+title: "Windows LAPS – Deployment and Migration Guide"
+date: 2026-03-23
+---
+
 # Windows LAPS – Deployment and Migration Guide
-🗓️ Published: 2026-03-23
 
 Hey everyone!
 
@@ -763,3 +767,4 @@ The tool detects your current environment state automatically (schema, DFL, LAPS
 🔗 [Migrate from Legacy LAPS](https://learn.microsoft.com/en-us/windows-server/identity/laps/laps-scenarios-legacy)
 🔗 [Windows LAPS CSP (Intune)](https://learn.microsoft.com/en-us/windows/client-management/mdm/laps-csp)
 🔗 [Windows LAPS Troubleshooting](https://learn.microsoft.com/en-us/windows-server/identity/laps/laps-troubleshooting)
+

@@ -1,5 +1,9 @@
+---
+title: "ADCS Web Enrollment Hardening"
+date: 2026-02-27
+---
+
 # ADCS Web Enrollment Hardening
-🗓️ Published: 2026-02-27
 
 ## Introduction
 

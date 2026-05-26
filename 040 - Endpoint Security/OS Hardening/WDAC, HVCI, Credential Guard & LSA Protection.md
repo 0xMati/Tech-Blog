@@ -1,6 +1,10 @@
+---
+title: "WDAC, HVCI, Credential Guard & LSA Protection — Comprehensive Guide"
+date: 2026-03-23
+---
+
 # WDAC, HVCI, Credential Guard & LSA Protection — Comprehensive Guide
 
-🗓️ Published: 2026-03-23
 
 Hey everyone! In this article we're going to deep dive into four critical Windows security features that every AD admin and security engineer should know: **Device Guard (WDAC)**, **HVCI (Hypervisor-protected Code Integrity)**, **Credential Guard**, and **LSA Protection (RunAsPPL)**. We'll cover what they do, what they protect against, their impact on your environment, how to deploy them — and yes, whether you can (and should) run them on Domain Controllers.
 
@@ -870,3 +874,4 @@ if ($dg) {
 - 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/appcontrol-wizard — App Control Policy Wizard Tool
 - 🔗 https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/credentials-protection-and-management — Credentials Protection Overview
 - 🔗 https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/design/microsoft-recommended-driver-block-rules — Microsoft Recommended Driver Block Rules (HVCI)
+
