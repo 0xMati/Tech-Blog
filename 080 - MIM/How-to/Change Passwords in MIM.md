@@ -1,5 +1,9 @@
+---
+title: "Rotating All Service Account Passwords in Microsoft Identity Manager (MIM)"
+date: 2025-05-06
+---
+
 # Rotating All Service Account Passwords in Microsoft Identity Manager (MIM)
-🗓️ Published: 2025-05-06
 
 Rotating service account passwords in a Microsoft Identity Manager (MIM) 2016 environment is a sensitive yet essential maintenance task. This article provides a step-by-step guide to perform the rotation and outlines the potential impacts to anticipate.
 
@@ -27,7 +31,7 @@ Get-WmiObject -Class Win32_Service -Filter "Name='FIMSynchronizationService' or 
 
 > You can find the MIM Portal App Pool Account here in IIS Manager :
 
-![](assets/Change%20Passwords%20in%20MIM/2025-05-07-14-47-35.png)
+![](../assets/change-passwords-in-mim/2025-05-07-14-47-35.png)
 
 > You find all related SQL Account with this powershell command:
 
@@ -37,25 +41,25 @@ Get-WmiObject -Class Win32_Service | Where-Object { $_.DisplayName -like "SQL Se
 
 > Use the Synchronization Service Manager (`miisclient.exe`) to inspect each Management Agent (MA) and verify the account credentials.
 
-> Retrieve Sharepoint Accounts information with Poershell :
+> Retrieve SharePoint account information with PowerShell:
 
 ```powershell
 Add-PSSnapin Microsoft.SharePoint.PowerShell
 (Get-SPFarm).DefaultServiceAccount
 ```
 
-Or with the GUI in Sharepoint Central Admin :
+Or with the GUI in SharePoint Central Administration:
 
  - Go to SharePoint Central Administration
  - Security > Configure Managed Accounts
  - Check the Default Account
 
-![](assets/Change%20Passwords%20in%20MIM/2025-05-07-14-57-03.png)
+![](../assets/change-passwords-in-mim/2025-05-07-14-57-03.png)
 
 
 ---
 
-### Recommandation during generation of New Passwords
+### Recommendations for Generating New Passwords
 - Use a secure password manager or vault.
 - Ensure passwords meet security and complexity requirements.
 - Store them securely (e.g., Azure Key Vault, KeePass).
@@ -237,3 +241,4 @@ Keeping service accounts up-to-date with secure passwords is a best practice for
 Sources:
 https://www.sharepointdiary.com/2017/08/change-farm-account-password-in-sharepoint-using-powershell.html
 https://learn.microsoft.com/en-us/answers/questions/1695987/change-sharepoint-2019-service-account-password
+

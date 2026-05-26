@@ -64,7 +64,7 @@ A community tool is available to generate valid RelayState URLs:
 
 👉 [ADFS RelayState Generator (CodePlex)](https://adfsrelaystate.codeplex.com/releases/view/93202)
 
-![](assets/What%20is%20ADFS%20Relay%20State/2025-04-08-16-34-55.png)
+![](../assets/what-is-adfs-relay-state/2025-04-08-16-34-55.png)
 
 Example URL structure:
 

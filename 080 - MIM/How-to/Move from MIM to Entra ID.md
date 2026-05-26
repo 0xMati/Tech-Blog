@@ -1,5 +1,9 @@
+---
+title: "Move from MIM to Entra ID - Practical Migration Playbook"
+date: 2026-05-06
+---
+
 # Move from MIM to Entra ID — Practical Migration Playbook
-🗓️ Published: 2026-05-06
 
 This guide helps you move from Microsoft Identity Manager (MIM) to Microsoft Entra ID capabilities with a pragmatic, phased approach.
 

@@ -1,5 +1,9 @@
+---
+title: "Installing MIM Synchronization Service - Step by Step"
+date: 2026-04-22
+---
+
 # Installing MIM Synchronization Service — Step by Step
-🗓️ Published: 2026-04-22
 
 This guide walks you through the complete installation of **Microsoft Identity Manager (MIM) 2016 Synchronization Service**, from preparing the domain to running the installer. It's written to be easy to follow — even if it's your first time deploying MIM. 🚀
 

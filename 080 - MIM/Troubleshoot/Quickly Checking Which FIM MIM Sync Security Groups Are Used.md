@@ -1,5 +1,9 @@
+---
+title: "Quickly Checking Which FIM/MIM Sync Security Groups Are Used"
+date: 2025-08-04
+---
+
 # Quickly Checking Which FIM/MIM Sync Security Groups Are Used
-🗓️ Published: 2025-08-04  
 
 Based on the Identity Underground note: [Note-to-self: quickly checking which FIM Sync Security groups used](https://identityunderground.wordpress.com/2015/09/15/note-to-self-quickly-checking-which-fim-sync-security-groups-used/)
 
@@ -19,7 +23,7 @@ While Microsoft recommends using AD groups, it is not always the case in some en
 - On the Synchronization Service server, open **Component Services** or run **dcomcnfg**
 - Navigate to: `Component Services → Computers → My Computer → DCOM Config`
 
-![](assets/Quickly%20Checking%20Which%20FIM%20MIM%20Sync%20Security%20Groups%20Are%20Used/2025-08-05-00-53-46.png)
+![](../assets/quickly-checking-which-fim-mim-sync-security-groups-are-used/2025-08-05-00-53-46.png)
 
 ### 2. Switch to Details View
 - If the console is showing icons, switch to **Details view** for easier navigation.
@@ -28,16 +32,16 @@ While Microsoft recommends using AD groups, it is not always the case in some en
 - Find **Forefront Identity Synchronization Manager** (FIMSync Service).
 - Right-click → **Properties**, then go to the **Security** tab.
 
-![](assets/Quickly%20Checking%20Which%20FIM%20MIM%20Sync%20Security%20Groups%20Are%20Used/2025-08-05-00-54-11.png)
+![](../assets/quickly-checking-which-fim-mim-sync-security-groups-are-used/2025-08-05-00-54-11.png)
 
-![](assets/Quickly%20Checking%20Which%20FIM%20MIM%20Sync%20Security%20Groups%20Are%20Used/2025-08-05-00-54-35.png)
+![](../assets/quickly-checking-which-fim-mim-sync-security-groups-are-used/2025-08-05-00-54-35.png)
 
 ### 4. Check Launch and Activation Permissions
 - In the Security tab, locate the **Launch and Activation Permissions** section.
 - Click **Edit** to view the assigned groups.  
   If the Edit button is greyed out, you may need to adjust registry permissions.
 
-  ![](assets/Quickly%20Checking%20Which%20FIM%20MIM%20Sync%20Security%20Groups%20Are%20Used/2025-08-05-00-55-11.png)
+  ![](../assets/quickly-checking-which-fim-mim-sync-security-groups-are-used/2025-08-05-00-55-11.png)
 
 ### 5. Review the Groups
 The list should show the security groups that can launch, activate, or access the service, for example:
@@ -53,8 +57,7 @@ The list should show the security groups that can launch, activate, or access th
 ## Important Notes
 
 - The groups can be **local groups** or **Active Directory groups**.
-- Groups cannot be changed directly in DCOM.  
-
+- Groups cannot be changed directly in DCOM.
 - To modify them, run the **Synchronization Service installation in repair mode** to reconfigure security (DCOM settings, registry, NTFS ACLs).
 
 ---
@@ -63,3 +66,4 @@ The list should show the security groups that can launch, activate, or access th
 
 This process provides a quick and reliable way to audit which groups control access to the FIM/MIM Synchronization Service.
 It is recommended to regularly review these groups to ensure security best practices.
+

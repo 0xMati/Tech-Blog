@@ -19,15 +19,15 @@ The goal of this article is to explain the steps to enable detailed error pages 
 
 ### Without Custom Error Pages
 
-Whilst the default error page is user-friendly, it's administrator unfriendly. The error is shown whenever something is wrong between the FIM Portal and the FIM Service.
+While the default error page is user-friendly, it is not very helpful for administrators. The error appears whenever something goes wrong between the FIM Portal and the FIM Service.
 
 > _The Portal cannot connect to the middle tier using the web service interface. This failure prevents all portal scenarios from functioning correctly._  
-> _The cause may be due to a missing or invalid server url, a downed server, or an invalid server firewall configuration._  
+> _The cause may be due to a missing or invalid server URL, a downed server, or an invalid server firewall configuration._  
 > _Ensure the portal configuration is present and points to the resource management service._
 
-![](assets/Enable%20FIM%20Detailed%20Error%20Pages/2025-04-22-17-42-54.png)
+![](../assets/enable-fim-detailed-error-pages/2025-04-22-17-42-54.png)
 
-![](assets/Enable%20FIM%20Detailed%20Error%20Pages/2025-04-22-17-43-02.png)
+![](../assets/enable-fim-detailed-error-pages/2025-04-22-17-43-02.png)
 
 
 The `web.config` file of the FIM Portal is typically located at:
@@ -67,10 +67,10 @@ To enable detailed error pages:
 </httpModules>
 ```
 
-4. Perform an IISreset  
+4. Run IIS reset (`iisreset`)  
 5. Reproduce the issue to see detailed errors.
 
-![](assets/Enable%20FIM%20Detailed%20Error%20Pages/2025-04-22-17-42-02.png)
+![](../assets/enable-fim-detailed-error-pages/2025-04-22-17-42-02.png)
 
 
 You should now get a clear hint about what is going wrong.
@@ -104,6 +104,7 @@ To restore user-friendly error pages:
 </httpModules>
 ```
 
-4. Perform an IISreset
+4. Run IIS reset (`iisreset`)
 
 ---
+

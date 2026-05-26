@@ -1,9 +1,9 @@
 ---
-title: "Tracking down a duplicate ObjectSid in MIM"
+title: "Tracking down a duplicate ObjectSID in MIM"
 date: 2025-04-22
 ---
 
-## Tracking down a duplicate ObjectSid in MIM
+## Tracking down a duplicate ObjectSID in MIM
 
 Most people working with **Microsoft Identity Manager (MIM)** will be familiar with the dreaded _"Value Violates Uniqueness"_ errors during export via the **FIM MA** (Management Agent). When the conflict is with a simple string attribute like `AccountName`, it’s straightforward to track it down in the MIM Portal.
 
@@ -21,7 +21,7 @@ Searching for a **binary SID** value through the Portal or using XPath isn’t p
 ### 1. Identify the SID
 First, locate the **conflicting SID** in the **Pending Export** object of the **FIM MA Connector Space**. You’ll find it represented as a hex string (e.g. `01 05 00 00 ...`).
 
-![](assets/Tracking%20duplicate%20ObjectSID/2025-04-22-15-45-36.png)
+![](../assets/tracking-duplicate-objectsid/2025-04-22-15-45-36.png)
 
 Strip out the spaces to get a clean string:
 
@@ -56,4 +56,5 @@ The output of the query should reveal enough metadata to identify the conflictin
 ---
 
 **Source**: https://www.wapshere.com/missmiis/tracking-down-a-duplicate-objectsid
+
 

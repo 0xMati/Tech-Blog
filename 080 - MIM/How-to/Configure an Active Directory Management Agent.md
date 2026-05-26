@@ -1,5 +1,9 @@
+---
+title: "Configure an Active Directory Management Agent in MIM Sync"
+date: 2026-04-22
+---
+
 # Configure an Active Directory Management Agent in MIM Sync
-🗓️ Published: 2026-04-22
 
 The **Active Directory Domain Services (AD DS) Management Agent** is the most common connector you'll configure in MIM Sync. It connects MIM to your Active Directory forest to import, synchronize, and export identity data (users, groups, contacts, etc.).
 

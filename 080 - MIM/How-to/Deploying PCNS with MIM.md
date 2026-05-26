@@ -1,5 +1,9 @@
+---
+title: "Deploying Password Change Notification Service (PCNS) with MIM"
+date: 2026-04-22
+---
+
 # Deploying Password Change Notification Service (PCNS) with MIM
-🗓️ Published: 2026-04-22
 
 Password synchronization is one of the most valuable features of Microsoft Identity Manager (MIM). At the heart of it sits **PCNS** — the Password Change Notification Service — a small but critical component that captures password changes on Active Directory domain controllers and forwards them to MIM for distribution to target systems.
 
@@ -652,11 +656,11 @@ Or via GUI: ADUC → target OU → Security → Advanced → add the MA account 
 
 ## 📚 References
 
-- [Deploy PCNS on a Domain Controller](https://docs.microsoft.com/en-us/microsoft-identity-manager/deploying-mim-password-change-notification-service-on-domain-controller)
-- [Password Synchronization Overview](https://docs.microsoft.com/en-us/previous-versions/mim/jj590203(v=ws.10))
-- [pcnscfg.exe Reference](https://docs.microsoft.com/en-us/previous-versions/mim/jj590227(v=ws.10))
-- [Install PCNS Schema Extension](https://docs.microsoft.com/en-us/previous-versions/mim/jj590288(v=ws.10))
-- [MIM Password Management](https://docs.microsoft.com/en-us/microsoft-identity-manager/infrastructure/mim2016-password-management)
+- [Deploy PCNS on a Domain Controller](https://learn.microsoft.com/en-us/microsoft-identity-manager/deploying-mim-password-change-notification-service-on-domain-controller)
+- [Password Synchronization Overview](https://learn.microsoft.com/en-us/previous-versions/mim/jj590203(v=ws.10))
+- [pcnscfg.exe Reference](https://learn.microsoft.com/en-us/previous-versions/mim/jj590227(v=ws.10))
+- [Install PCNS Schema Extension](https://learn.microsoft.com/en-us/previous-versions/mim/jj590288(v=ws.10))
+- [MIM Password Management](https://learn.microsoft.com/en-us/microsoft-identity-manager/infrastructure/mim2016-password-management)
 - [FIM/MIM Troubleshooting Tracing](https://blogs.technet.microsoft.com/aho/2010/09/29/troubleshooting-fimservice-fimportal-password-reset-client/)
 - [A Tale of Two Forests (Bidirectional Password Sync)](https://identitydude.com/2019/04/20/a-tale-of-two-forests/)
 - [Firewall Ports Reference for FIM/MIM](https://projectkbblog.wordpress.com/2017/01/06/firewall-ports-reference-fimmim-active-directory/)

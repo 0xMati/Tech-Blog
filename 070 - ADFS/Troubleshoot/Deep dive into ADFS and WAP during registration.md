@@ -6,7 +6,7 @@
 
 ## Introduction
 
-This article examines how Microsoft Web Application Proxy (WAP) establishes trust—“registration”—with Active Directory Federation Services (AD FS). You’ll see how WAP generates its own certificate, performs the HTTPS calls to AD FS, and retrieves its configuration.
+This article examines how Microsoft Web Application Proxy (WAP) establishes trust ("registration") with Active Directory Federation Services (AD FS). You will see how WAP generates its own certificate, performs the HTTPS calls to AD FS, and retrieves its configuration.
 
 ---
 
@@ -41,9 +41,9 @@ All tools run under the administrator account used by the Remote Access Manageme
    - If credentials are wrong, another 401 appears as expected.  
    - If correct, AD FS accepts the request.
 
-![](assets/Deep%20dive%20into%20ADFS%20and%20WAP%20during%20registration/2025-06-24-20-17-05.png)
+![](../assets/deep-dive-into-adfs-and-wap-during-registration/2025-06-24-20-17-05.png)
 
-![](assets/Deep%20dive%20into%20ADFS%20and%20WAP%20during%20registration/2025-06-24-20-17-12.png)
+![](../assets/deep-dive-into-adfs-and-wap-during-registration/2025-06-24-20-17-12.png)
 
 3. **Request payload** contains:
    ```json
@@ -53,9 +53,9 @@ All tools run under the administrator account used by the Remote Access Manageme
    ```
    WAP has generated a new 2048-bit self-signed certificate (public & private key).
 
-![](assets/Deep%20dive%20into%20ADFS%20and%20WAP%20during%20registration/2025-06-24-20-17-48.png)
+![](../assets/deep-dive-into-adfs-and-wap-during-registration/2025-06-24-20-17-48.png)
 
-![](assets/Deep%20dive%20into%20ADFS%20and%20WAP%20during%20registration/2025-06-24-20-17-55.png)
+![](../assets/deep-dive-into-adfs-and-wap-during-registration/2025-06-24-20-17-55.png)
 ---
 
 ## Retrieving Configuration
@@ -77,11 +77,11 @@ All tools run under the administrator account used by the Remote Access Manageme
      ```
 3. Re-run the proxy wizard; the GET succeeds and returns a JSON blob describing all supported endpoints and settings.
 
-![](assets/Deep%20dive%20into%20ADFS%20and%20WAP%20during%20registration/2025-06-24-20-18-34.png)
+![](../assets/deep-dive-into-adfs-and-wap-during-registration/2025-06-24-20-18-34.png)
 
-![](assets/Deep%20dive%20into%20ADFS%20and%20WAP%20during%20registration/2025-06-24-20-18-47.png)
+![](../assets/deep-dive-into-adfs-and-wap-during-registration/2025-06-24-20-18-47.png)
 
-![](assets/Deep%20dive%20into%20ADFS%20and%20WAP%20during%20registration/2025-06-24-20-18-55.png)
+![](../assets/deep-dive-into-adfs-and-wap-during-registration/2025-06-24-20-18-55.png)
 
 ---
 

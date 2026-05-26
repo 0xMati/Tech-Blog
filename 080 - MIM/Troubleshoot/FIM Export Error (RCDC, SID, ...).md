@@ -9,7 +9,7 @@ date: 2025-04-22
 
 When trying to export RCDC configuration, the following error is displayed:
 
-![](assets/FIM%20Export%20Error%20(RCDC,%20SID,%20...)/2025-04-22-17-51-24.png)
+![](../assets/fim-export-error-rcdc-sid/2025-04-22-17-51-24.png)
 
 ### After Enabling Tracing
 
@@ -22,7 +22,7 @@ Description: HTTP 404. The resource you are looking for (or one of its dependenc
 Requested URL: /identitymanagement/ashx/Download.ashx
 ```
 
-![](assets/FIM%20Export%20Error%20(RCDC,%20SID,%20...)/2025-04-22-17-51-35.png)
+![](../assets/fim-export-error-rcdc-sid/2025-04-22-17-51-35.png)
 
 ### Root Cause and Resolution
 
@@ -30,7 +30,7 @@ This issue occurs because **SharePoint Server 2019** uses a different mechanism 
 
 To resolve this issue, follow the guidance from Microsoft:
 
-👉 [Prepare the SharePoint Server for MIM Portal](https://docs.microsoft.com/en-us/microsoft-identity-manager/prepare-server-sharepoint)
+👉 [Prepare the SharePoint Server for MIM Portal](https://learn.microsoft.com/en-us/microsoft-identity-manager/prepare-server-sharepoint)
 
 ### Important
 
