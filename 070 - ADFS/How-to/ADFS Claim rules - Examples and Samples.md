@@ -1,7 +1,7 @@
-# ADFS Claim rules - Some Examples, somes samples  
+# ADFS Claim Rules - Some Examples, Some Samples  
 🗓️ Published: 2025-05-06
 
-## 🗂️ Table contents
+## 🗂️ Table of Contents
 
 1. [ Regular Expressions in ADFS Claim Rules](#regular-expressions-in-adfs-claim-rules)
 2. [ ADFS Claim Rules — Practical Examples](#adfs-claim-rules--practical-examples)

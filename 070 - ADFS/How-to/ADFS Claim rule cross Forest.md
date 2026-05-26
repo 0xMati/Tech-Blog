@@ -45,8 +45,7 @@ c:[Type == "http://TESTDOMAIN/phase1"]
 ### 🔹 Rule 3: Strip trailing data after the CN
 ```adfs
 c:[Type == "http://TESTDOMAIN/phase2"]
- => add(Type = "http://TESTDOMAIN/phase3", Value = regexreplace(c.Value, ",[^
-]*", ""));
+ => add(Type = "http://TESTDOMAIN/phase3", Value = regexreplace(c.Value, ",.*", ""));
 ```
 
 ### 🔹 Rule 4: Remove the "CN=" prefix
@@ -87,8 +86,7 @@ c:[Type == "http://RED/phase1"]
 ### 🔹 Phase 3: Clean up the DN
 ```adfs
 c:[Type == "http://RED/phase2"]
- => issue(Type = "http://RED/phase3", Value = regexreplace(c.Value, ",[^
-]*", ""));
+ => issue(Type = "http://RED/phase3", Value = regexreplace(c.Value, ",.*", ""));
 ```
 
 ### 🔹 Phase 4: Remove the "CN=" prefix
