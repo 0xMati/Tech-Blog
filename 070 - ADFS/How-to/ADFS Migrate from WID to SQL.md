@@ -12,7 +12,7 @@
   Get-AdfsSyncProperties
   ```
 
-![](assets/ADFS%20Migrate%20from%20WID%20to%20SQL/2025-09-09-11-49-44.png)
+![](../assets/adfs-migrate-from-wid-to-sql/2025-09-09-11-49-44.png)
 
 ## A. Primary AD FS node (drain first)
 1. **Stop AD FS service** on the primary:
@@ -20,13 +20,13 @@
    net stop adfssrv
    ```
 
- ![](assets/ADFS%20Migrate%20from%20WID%20to%20SQL/2025-09-09-11-50-09.png)
+ ![](../assets/adfs-migrate-from-wid-to-sql/2025-09-09-11-50-09.png)
 
 2. **Detach WID databases** (run on the AD FS server, local WID named pipe):
    ```cmd
    sqlcmd -S np:\\.\pipe\MICROSOFT##WID\tsql\query -E -Q "USE master; EXEC sp_detach_db 'AdfsArtifactStore'; EXEC sp_detach_db 'AdfsConfigurationV3';"
    ```
-![](assets/ADFS%20Migrate%20from%20WID%20to%20SQL/2025-09-09-11-51-42.png)
+![](../assets/adfs-migrate-from-wid-to-sql/2025-09-09-11-51-42.png)
 
 
 3. **Copy DB files** from the AD FS server to the SQL data folder:
@@ -35,7 +35,7 @@
      - `AdfsArtifactStore.mdf`, `AdfsArtifactStore_log.ldf`
    - To: e.g., `C:\Program Files\Microsoft SQL Server\MSSQL\Data\` (on the SQL Server).
 
-![](assets/ADFS%20Migrate%20from%20WID%20to%20SQL/2025-09-09-11-51-13.png)
+![](../assets/adfs-migrate-from-wid-to-sql/2025-09-09-11-51-13.png)
 
 ## B. SQL Server (once)
 4. **Attach the databases** and **enable Service Broker** for the configuration DB:
@@ -58,7 +58,7 @@
    GO
    ```
 
-![](assets/ADFS%20Migrate%20from%20WID%20to%20SQL/2025-09-09-11-52-33.png)
+![](../assets/adfs-migrate-from-wid-to-sql/2025-09-09-11-52-33.png)
 
 
 5. **Grant rights** to the AD FS service account (replace `DOMAIN\gmsa-adfs$` as needed):
@@ -78,7 +78,7 @@
    $adfs.ConfigurationDatabaseConnectionString = "Data Source=$Sql;Initial Catalog=$Cfg;Integrated Security=True;Min Pool Size=20"
    $adfs.Put() | Out-Null
    ```
-![](assets/ADFS%20Migrate%20from%20WID%20to%20SQL/2025-09-09-11-53-28.png)
+![](../assets/adfs-migrate-from-wid-to-sql/2025-09-09-11-53-28.png)
 
 7. **Start AD FS service**:
    ```powershell
@@ -90,7 +90,7 @@
    $Art = "AdfsArtifactStore"
    Set-AdfsProperties -ArtifactDbConnection "Data Source=$Sql;Initial Catalog=$Art;Integrated Security=True;Min Pool Size=20"
    ```
-![](assets/ADFS%20Migrate%20from%20WID%20to%20SQL/2025-09-09-11-53-51.png)
+![](../assets/adfs-migrate-from-wid-to-sql/2025-09-09-11-53-51.png)
 
 9. **Validate** and return to the load balancer:
    ```powershell
@@ -99,7 +99,7 @@
    - Event Viewer → **AD FS/Admin**: Event **100** on startup.
    - Optional: test `/adfs/ls/IdpInitiatedSignon.aspx`.
 
-![](assets/ADFS%20Migrate%20from%20WID%20to%20SQL/2025-09-09-11-54-26.png)
+![](../assets/adfs-migrate-from-wid-to-sql/2025-09-09-11-54-26.png)
 
 ## D. Each **secondary** AD FS node (repeat)
 10. Drain from LB, then **stop AD FS**:
