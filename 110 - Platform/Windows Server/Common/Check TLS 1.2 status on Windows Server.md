@@ -1,7 +1,11 @@
-# Check TLS 1.2 status on Windows Server
-🗓️ Published: 2025-09-30
+---
+title: "Check TLS 1.2 status on Windows Server"
+date: 2025-09-30
+---
 
-## Context
+# Check TLS 1.2 status on Windows Server
+
+## PowerShell Script
 
 ### Why TLS 1.2 matters
 TLS 1.2 is the minimum you should target for modern Windows workloads and Microsoft cloud endpoints. Older protocol versions (TLS 1.0/1.1) are deprecated and often blocked by security baselines and compliance rules.
@@ -36,7 +40,7 @@ function Get-SChannelTls12Status {
     $Enabled = $v.Enabled
     $DisabledByDefault = $v.DisabledByDefault
 
-    # Correction : toute valeur non nulle de Enabled (y compris 0xFFFFFFFF) = Enabled
+    # Any non-zero Enabled value (including 0xFFFFFFFF) means Enabled
     $enabledNonZero = $false
     try { $enabledNonZero = ([int64]$Enabled) -ne 0 } catch { $enabledNonZero = $false }
 
@@ -104,7 +108,7 @@ function Test-Tls12Handshake {
     $tcp = New-Object Net.Sockets.TcpClient
     $tcp.Connect($TargetHost, 443)
 
-    # Validation de cert simplifiée (accepte tout) — on teste le protocole, pas le trust
+    # Simplified cert validation (accept all) - validates protocol negotiation, not certificate trust
     $ssl = New-Object Net.Security.SslStream($tcp.GetStream(), $false, ({ $true }))
     $ssl.AuthenticateAsClient(
       $TargetHost,
@@ -129,13 +133,13 @@ function Test-Tls12Handshake {
   [pscustomobject]$result
 }
 
-# -------- Rapport console --------
-Write-Host "=== TLS 1.2 - Rapport rapide ===" -ForegroundColor Cyan
+# -------- Console report --------
+Write-Host "=== TLS 1.2 - Quick report ===" -ForegroundColor Cyan
 Write-Host ("Process: PowerShell {0} (x64:{1})" -f $PSVersionTable.PSVersion, [Environment]::Is64BitProcess)
 Write-Host ("SecurityProtocol (process) : {0}" -f [Net.ServicePointManager]::SecurityProtocol)
 Write-Host ""
 
-Write-Host "1) SChannel (niveau OS) — TLS 1.2" -ForegroundColor Yellow
+Write-Host "1) SChannel (OS level) - TLS 1.2" -ForegroundColor Yellow
 $sch = @(
   Get-SChannelTls12Status -Role Client
   Get-SChannelTls12Status -Role Server
@@ -147,8 +151,8 @@ Write-Host "2) .NET Framework flags" -ForegroundColor Yellow
 Get-DotNetCryptoFlags | Format-Table Path,SchUseStrongCrypto,SystemDefaultTlsVersions -AutoSize
 Write-Host ""
 
-Write-Host ("3) Handshake réel TLS 1.2 vers {0}:443" -f $TargetHost) -ForegroundColor Yellow
+Write-Host ("3) Real TLS 1.2 handshake to {0}:443" -f $TargetHost) -ForegroundColor Yellow
 Test-Tls12Handshake -TargetHost $TargetHost | Format-List
 ```
 
-![](assets/Check%20TLS%201.2%20status%20on%20Windows%20Server/2025-09-30-14-21-27.png)
+![](../../assets/check-tls-1-2-status-on-windows-server/2025-09-30-14-21-27.png)

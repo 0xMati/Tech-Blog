@@ -1,5 +1,9 @@
+---
+title: "Group Membership in OIDC Tokens - Claims, Roles & Graph API"
+date: 2026-04-20
+---
+
 # Group Membership in OIDC Tokens — Claims, Roles & Graph API
-🗓️ Published: 2026-04-20
 
 ## Introduction
 

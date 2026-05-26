@@ -1,13 +1,16 @@
-# OAuth 2.0 & OpenID Connect — Overview and Introduction
+---
+title: "OAuth 2.0 & OpenID Connect - Overview and Introduction"
+date: 2025-05-28
+---
 
-🗓️ Published: 2025-05-28
+# OAuth 2.0 & OpenID Connect — Overview and Introduction
 
 Imagine you want to let an app use some of your data from another service — like letting a photo app access your pictures on a cloud storage — but without giving the app your password. How can you do that safely?  
 
 
--> Remember how awful delegation to apps was back in the early 2000s—like when Yelp asked for your mailbox credentials to access your contacts:
+Remember how awful delegation to apps was back in the early 2000s, like when Yelp asked for your mailbox credentials to access your contacts:
 
-![](assets/Overview%20of%20OAuth/2025-06-23-20-32-56.png)
+![](../assets/overview-oauth-oidc/2025-06-23-20-32-56.png)
 
 
 That’s where **OAuth 2.0** comes in. It’s a framework that lets you authorize an application to access your data on another service, without sharing your password directly. Instead, you give the app a special key — called an **access token** — that allows it limited access to your data for a certain time.  
@@ -95,7 +98,7 @@ The **Authorization Code Grant** flow helps with this by using a secret code as 
 5. The server checks the code and secret, then sends back the **access token**.  
 6. The app uses the access token to get your data from the resource server.  
 
-![](assets/Overview%20of%20OAuth/2025-05-28-17-52-12.png)
+![](../assets/overview-oauth-oidc/2025-05-28-17-52-12.png)
 
 ### Why This Is Safe
 
@@ -123,7 +126,7 @@ That’s why we have **PKCE** — it’s like a secret handshake between the app
 
 This way, even if someone steals the authorization code, they can’t get a token without the secret code verifier.
 
-![](assets/Overview%20of%20OAuth/2025-06-23-18-21-58.png)
+![](../assets/overview-oauth-oidc/2025-06-23-18-21-58.png)
 
 ### Real-Life Example
 
@@ -144,7 +147,7 @@ The **Implicit Grant** flow lets these apps get an access token right away — w
 3. Instead of sending a code, the server sends the **access token** directly back in the URL fragment.  
 4. The app grabs the token from the URL and uses it to access your data.
 
-![](assets/Overview%20of%20OAuth/2025-06-24-10-56-34.png)
+![](../assets/overview-oauth-oidc/2025-06-24-10-56-34.png)
 
 ### Why It’s Riskier
 
@@ -171,7 +174,7 @@ The **Client Credentials Grant** flow is made for this kind of situation.
 3. If everything is okay, it sends back an **access token**.  
 4. The app uses this token to access the resource server.
 
-![](assets/Overview%20of%20OAuth/2025-06-24-11-11-59.png)
+![](../assets/overview-oauth-oidc/2025-06-24-11-11-59.png)
 
 ### No User Needed!
 
@@ -197,7 +200,7 @@ The **Device Code Grant** flow solves this problem.
 4. The device keeps asking the authorization server if permission was granted.  
 5. Once you approve, the device gets an **access token** and can access your data.
 
-![](assets/Overview%20of%20OAuth/2025-06-24-11-56-43.png)
+![](../assets/overview-oauth-oidc/2025-06-24-11-56-43.png)
 
 ### Real-Life Example
 
@@ -218,7 +221,7 @@ It asks you to give your username and password directly to the app. That means t
 3. If they are correct, the server sends back an **access token**.  
 4. The app uses the token to access your data.
 
-![](assets/Overview%20of%20OAuth/2025-06-24-12-15-33.png)
+![](../assets/overview-oauth-oidc/2025-06-24-12-15-33.png)
 
 ### Why Avoid This Flow?
 
@@ -258,7 +261,7 @@ Now that we know OAuth 2.0 is a friendly guard who gives you a magic key (an acc
 
 With OpenID Connect, you get both **“Who are you?”** and **“What can you do?”** in one smooth, secure step! 🚀  
 
-![](assets/Overview%20of%20OAuth/2025-06-24-12-52-03.png)
+![](../assets/overview-oauth-oidc/2025-06-24-12-52-03.png)
 
 ---
 

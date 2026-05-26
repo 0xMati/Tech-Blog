@@ -1,5 +1,9 @@
+---
+title: "OIDC Custom Claims Automation in Entra ID"
+date: 2026-04-20
+---
+
 # OIDC Custom Claims Automation in Entra ID
-🗓️ Published: 2026-04-20
 
 ## Introduction
 

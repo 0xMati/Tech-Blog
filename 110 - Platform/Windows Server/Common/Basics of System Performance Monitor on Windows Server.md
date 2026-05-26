@@ -1,5 +1,9 @@
-# Monitoring Windows Server Performance: Essential Counters  
-🗓️ Published: 2025-08-04  
+---
+title: "Monitoring Windows Server Performance: Essential Counters"
+date: 2025-08-04
+---
+
+# Monitoring Windows Server Performance: Essential Counters
 
 ## Introduction
 

@@ -1,5 +1,9 @@
+---
+title: "Federated Credentials in Entra ID - Google IDP Demo"
+date: 2025-10-20
+---
+
 # Federated Credentials in Entra ID - Google IDP Demo
-🗓️ Published: 2025-10-20
 
 ## Introduction
 
@@ -128,7 +132,7 @@ Click Create.
 
 Once created, switch to this new project.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-33-39.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-33-39.png)
 
 #### Configure the OAuth Consent Screen
 
@@ -137,33 +141,33 @@ Even though we only use it to access the OAuth Playground later, it must exist a
 
 - In your project, go to : APIs & Services → OAuth consent screen.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-35-26.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-35-26.png)
 
-- Clic on "Get Started"
+- Click "Get Started"
 - App name → MyGoogleEntraFederatedApp
 - User support email → your Google account email
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-37-58.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-37-58.png)
 
 - Audience → External
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-38-26.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-38-26.png)
 
 - Developer contact information → same email
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-39-13.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-39-13.png)
 
 - Finish and create
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-39-36.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-39-36.png)
 
 Your OAuth consent screen is now active and published, which allows you to use your main Google account in the OAuth Playground without being added as a test user.
 
 - Once the app is created, open the Audience section in the left menu and click Publish app to switch the Publishing status from Testing → In production.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-43-34.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-43-34.png)
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-43-45.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-43-45.png)
 
 #### Create OAuth Credentials for the Playground
 
@@ -173,25 +177,25 @@ This credential will allow the OAuth Playground to authenticate against Google�
 - In your project, go to APIs & Services → Credentials
 or directly https://console.cloud.google.com/apis/credentials
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-45-16.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-45-16.png)
 
 - Click Create credentials → OAuth client ID.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-46-24.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-46-24.png)
 
     - When prompted:
         - Application type → Web application
         - Name → OAuthPlaygroundClient
     - Under Authorized redirect URIs, add: https://developers.google.com/oauthplayground
 
-    ![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-47-06.png)
+    ![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-47-06.png)
 
 You’ll receive:
  - a Client ID (e.g., 1088720670871-xxxx.apps.googleusercontent.com)
  - a Client Secret
 Keep these values — we’ll use them in the OAuth Playground later.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-48-08.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-48-08.png)
 
 #### Create the Service Account
 
@@ -201,19 +205,19 @@ Later, this account’s tokens will be trusted by Entra ID through a federated c
 - In your project, go to IAM & Admin → Service Accounts
 or directly https://console.cloud.google.com/iam-admin/serviceaccounts
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-49-42.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-49-42.png)
 
 - Click Create Service Account.
     - Fill in:
         - Service account name → MyGoogleEntraFederatedApp-SA
         - Service account ID → automatically filled
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-50-55.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-50-55.png)
 
 - Click Create and Continue.
 - Leave roles/permissions/Principals access empty (we don’t need any resource access).
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-51-44.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-51-44.png)
 
 - Click Done.
 
@@ -222,7 +226,7 @@ You now have a dedicated Service Account that will later:
 - issue ID tokens via the IAM Service Account Credentials API, and
 - be linked to a Workload Identity Pool to federate toward Microsoft Entra ID.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-22-54-03.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-22-54-03.png)
 
 #### Enable the IAM Service Account Credentials API
 
@@ -232,15 +236,15 @@ It exposes the generateIdToken endpoint we’ll use later in the OAuth Playgroun
 - Open the Google Cloud Console → APIs & Services → Library
 https://console.cloud.google.com/apis/library
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-14-49.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-14-49.png)
 
 - Search for IAM Service Account Credentials API.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-15-16.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-15-16.png)
 
-- Be sure that is it Enabled, clic on "Manage"
+- Make sure it is enabled, then click "Manage"
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-15-36.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-15-36.png)
 
 Your project can now generate signed ID tokens for any Service Account in your project.
 Next, we’ll allow your Google account to use this API to mint tokens for the Service Account.
@@ -258,11 +262,11 @@ google-federated-oidc-app-sa@<your-project>.iam.gserviceaccount.com
 
 - Open the Permissions tab and verify that the account has Service Account Token Creator role
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-24-27.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-24-27.png)
 
 - Go to IAM and add Service Account Token Creator role to your personal account for demo (the one you use in OAuth Playground)
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-26-14.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-26-14.png)
 
 Click Save.
 
@@ -277,23 +281,23 @@ Configure OAuth Playground:
     - Click the gear (top-right) → check Use your own OAuth credentials.
     - Paste the Client ID and Client Secret you created before → Close.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-29-53.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-29-53.png)
 
 - Authorize with a minimal scope: https://www.googleapis.com/auth/cloud-platform
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-30-58.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-30-58.png)
 
     - Click Authorize APIs → sign in → Allow
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-31-38.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-31-38.png)
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-32-03.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-32-03.png)
 
     - click Exchange authorization code for tokens
 
 You should now see an Access token.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-33-58.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-33-58.png)
 
 
 - Call generateIdToken (Service Account)
@@ -307,14 +311,14 @@ You should now see an Access token.
   "includeEmail": true
 }
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-38-12.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-38-12.png)
 
     - Click Send the request.
 The response should contain:
 
 { "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6..." }
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-39-08.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-39-08.png)
 
 - Verify the token claims
 
@@ -325,7 +329,7 @@ The response should contain:
         
 You will use this sub value when creating the Federated Credential in Entra ID.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-40-39.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-40-39.png)
 
 ### Entra ID Configuration
 
@@ -338,13 +342,13 @@ We’ll now create an Entra ID Application Registration that trusts Google as an
     - Supported account types → Accounts in this organizational directory only.
     - Redirect URI → leave empty.
 
- ![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-42-18.png)   
+ ![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-42-18.png)   
 
  - Add a Federated Credential
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-43-27.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-43-27.png)
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-43-48.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-43-48.png)
 
 This connects the Google-issued token to Entra ID’s token endpoint.
 
@@ -356,7 +360,7 @@ This connects the Google-issued token to Entra ID’s token endpoint.
 | **Name**     | `Google-Federated-Credential`                                   |
 | **Audience** | `api://AzureADTokenExchange` (default)                          |
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-45-06.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-45-06.png)
 
 This allows your app to exchange that Google ID token for an Entra ID access token.
 
@@ -401,11 +405,11 @@ Bearer
 3599
 eyJ0eXAiOiJKV1QiLCJub25jZSI6Ik1DWEpyejZlbUs5b1B5TGlvMS1fUVFF...
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-48-20.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-48-20.png)
 
 If you see "Bearer", you successfully exchanged a Google OIDC token for an Entra ID access token — no secret or certificate used.
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-49-09.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-49-09.png)
 
 - Verify the issued token
     - Paste the resulting token into jwt.ms and check:
@@ -415,7 +419,7 @@ If you see "Bearer", you successfully exchanged a Google OIDC token for an Entra
 
 The identity matches the sub value from your Google JWT
 
-![](assets/Federated%20Credentials%20in%20Entra%20ID%20-%20Google%20Demo/2025-10-20-23-50-32.png)
+![](../assets/federated-credentials-entra-id-google-demo/2025-10-20-23-50-32.png)
 
 
 ## Conclusion

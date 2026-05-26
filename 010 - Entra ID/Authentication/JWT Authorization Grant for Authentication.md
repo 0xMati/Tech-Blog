@@ -1,5 +1,9 @@
+---
+title: "JWT Authorization Grant for Authentication in Entra ID"
+date: 2025-10-21
+---
+
 # JWT Authorization Grant for Authentication in Entra ID
-🗓️ Published: 2025-10-21
 
 ## Introduction
 Ever felt like sharing secrets is so… 2010? 😎 In the world of modern identity and cloud security, we’re all about **zero trust** and **no secrets**. That’s where the **JWT Authorization Grant** comes in — a slick way to authenticate without passing around those pesky `client_secret` strings like hot potatoes.
@@ -55,7 +59,7 @@ The client can now call APIs securely without using a client_secret.
   - **Client ID**
   - **Tenant ID**
 
-![](assets/JWT%20Authorization%20Grant%20for%20Authentication/2025-10-21-12-29-22.png)
+![](../assets/jwt-authorization-grant-authentication/2025-10-21-12-29-22.png)
 
 ### 2. Create certificate and Upload Your Public Key
 
@@ -95,12 +99,12 @@ if ($loaded.PrivateKey) {
     Write-Host "Provider     : $($loaded.PrivateKey.CspKeyContainerInfo.ProviderName)"
 }
 ```
-![](assets/JWT%20Authorization%20Grant%20for%20Authentication/2025-10-21-12-38-17.png)
+![](../assets/jwt-authorization-grant-authentication/2025-10-21-12-38-17.png)
 
 - Navigate to **Certificates & Secrets** in your App Registration.
 - Click **Upload certificate** and add your `.cer` file.
 
-![](assets/JWT%20Authorization%20Grant%20for%20Authentication/2025-10-21-12-52-15.png)
+![](../assets/jwt-authorization-grant-authentication/2025-10-21-12-52-15.png)
 
 ### 3. Build the JWT
 
@@ -273,7 +277,7 @@ try {
 
 - Check that you have an Access Token from Entra ID :
 
-![](assets/JWT%20Authorization%20Grant%20for%20Authentication/2025-10-21-13-32-46.png)
+![](../assets/jwt-authorization-grant-authentication/2025-10-21-13-32-46.png)
 
 ---
 
