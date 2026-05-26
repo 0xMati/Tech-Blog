@@ -52,7 +52,7 @@ Steps:
 3. Create or edit a policy
 4. Under **Session controls**, enable **Require token protection**
 
-![](assets/Token%20Protection%20Conditional%20Access/2025-04-22-17-32-02.png)
+![](../assets/Token%20Protection%20Conditional%20Access/2025-04-22-17-32-02.png)
 
 
 ---
@@ -74,3 +74,4 @@ You can monitor token protection events through **Sign-in logs** in the Entra po
 ### 📚 References
 
 - [Microsoft Learn - Token Protection](https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-token-protection)
+

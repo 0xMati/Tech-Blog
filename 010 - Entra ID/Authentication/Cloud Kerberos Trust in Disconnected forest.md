@@ -24,7 +24,7 @@ This lab assumes:
 
 - 1 Entra ID Connect server (located in fabrikam.com) that synchronizes user objects from fabrikam.com to Entra ID and synchronizes computer objects from contoso.local to enable Hybrid Join.
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-11-48.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-11-48.png)
 ---
 
 # Prerequisites
@@ -77,15 +77,15 @@ This section does not focus on how to provision objects with MIM. The main objec
 
 Ex : Contoso MA
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-20-23-56-03.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-20-23-56-03.png)
 
 Ex : Fabrikam MA 
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-20-23-56-35.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-20-23-56-35.png)
 
 Ex of a User account in Fabrikam with custom values populated:
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-02-10.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-02-10.png)
 
 ---
 
@@ -110,16 +110,16 @@ This can be achieved with a custom sync rule. In this example, I chose to implem
 | ~~msDS-cloudExtensionAttribute3 -->~~  | ~~forestfqdn -->~~                                  | ~~??~~                              | ~~Export to Entra ID~~     |
 
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-11-23-18.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-11-23-18.png)
 
 → This sync rule can be scoped to test users by using a scoping filter. In this example, the rule is limited to affect only two accounts, ensuring that attribute flow changes are applied in a controlled manner :
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-09-47-36.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-09-47-36.png)
 
 → This Sync rule should have a **lower** precedence than the default rules
 For example, assign a precedence value lower than `100` to ensure it takes priority over system-generated rules:
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-09-50-49.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-09-50-49.png)
 
 
 # Entra ID Connect – Implement Hybrid Join Configuration
@@ -128,13 +128,13 @@ For example, assign a precedence value lower than `100` to ensure it takes prior
 
 * Option 1 – Configure the Service Connection Point (SCP) in the domain
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-13-24.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-13-24.png)
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-14-06.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-14-06.png)
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-14-21.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-14-21.png)
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-15-27.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-15-27.png)
 
 * Option 2 – Deploy registry keys via GPO to domain-joined computers
 
@@ -142,23 +142,23 @@ HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CDJ\AAD
 TenantId (REG_SZ): Entra tenant ID  
 TenantName (REG_SZ): Entra tenant name (e.g., *.onmicrosoft.com)    
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-16-29.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-16-29.png)
 
 ## Perform Hybrid Join of computer
 
 - Hybrid Join is automatically attempted at every logon or lock/unlock event. However, you can manually trigger it by running the following scheduled task:
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-25-32.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-25-32.png)
 
 - Verify that Hybrid Join completed successfully using Event Viewer:
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-27-46.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-27-46.png)
 
 - And also with the dsregcmd command:
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-29-05.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-29-05.png)
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-29-19.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-29-19.png)
 
 ---
 
@@ -175,11 +175,11 @@ Set-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName 
 
 → Verify the presence of the AzureADKerberos RODC object
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-18-03.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-18-03.png)
 
 → Verify the krbtgt_AzureAD object is created successfully
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-18-20.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-18-20.png)
 
 ---
 
@@ -189,7 +189,7 @@ Set-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName 
 
 - Enable Windows Hello for Business in Intune with settings that fit your needs:
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-21-28.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-21-28.png)
 
 ## On the Active Directory Side for Hybrid Join and Entra ID Joined Devices
 
@@ -198,11 +198,11 @@ This can be achieved using a GPO or Intune policy:
 
 * Enable MDM enrollment for domain-joined devices:
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-31-32.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-31-32.png)
 
 * Enable Windows Hello for Business and Cloud Kerberos Trust support:
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-33-38.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-33-38.png)
 
 
 ---
@@ -213,20 +213,20 @@ This can be achieved using a GPO or Intune policy:
 
 - Perform Entra ID Join on the device  
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-40-24.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-40-24.png)
 
 - Sign in with a synced user  
 - Complete Windows Hello for Business registration  
 - Log off and log on using WHfB credentials  
 - Verify the presence of the Azure PRT, Cloud TGT, and On-prem TGT
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-40-53.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-40-53.png)
 
 - Use klist to request an on-prem TGS and verify it was issued successfully
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-27-01.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-27-01.png)
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-28-41.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-01-28-41.png)
 
 ## Entra Hybrid Joined Device
 
@@ -235,9 +235,10 @@ This can be achieved using a GPO or Intune policy:
 - Log off and log on using WHfB credentials  
 - Use `dsregcmd` to verify the presence of Azure PRT, Cloud TGT, and On-prem TGT
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-38-28.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-38-28.png)
 
 - Use klist cloud_debug and klist to verify issued tickets
 
-![](assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-39-11.png)
+![](../assets/Cloud%20Kerberos%20Trust%20in%20Disconnected%20forest/2025-05-21-00-39-11.png)
+
 

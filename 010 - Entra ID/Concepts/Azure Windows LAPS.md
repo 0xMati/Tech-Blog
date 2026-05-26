@@ -16,7 +16,7 @@
 
 ## 2. New Features and Improvements
 
-![](assets/Azure%20Windows%20LAPS/2025-04-08-14-00-17.png)
+![](../assets/Azure%20Windows%20LAPS/2025-04-08-14-00-17.png)
 
 ### 2.1 AD or Azure AD Storage
 - Passwords can be stored in **on-prem AD** (domain-joined), **Azure AD** (Azure AD-joined), or **both** for hybrid-joined devices.  
@@ -50,7 +50,7 @@
 2. **Set** password rotation interval, encryption, history, and so on.
 3. **Apply** the GPO to target OUs or devices.
 
-![](assets/Azure%20Windows%20LAPS/2025-04-08-14-02-41.png)
+![](../assets/Azure%20Windows%20LAPS/2025-04-08-14-02-41.png)
 
 ### 3.3 New AD Schema Attributes
 - `msLAPS-Password` (plain text password)  
@@ -64,11 +64,11 @@
 - **New ADUC tab** to view or reset the password on a computer account.  
 - **PowerShell module** (`LAPS`) for scripting and automation (read, reset, configure policies).
 
-![](assets/Azure%20Windows%20LAPS/2025-04-08-14-03-08.png)
+![](../assets/Azure%20Windows%20LAPS/2025-04-08-14-03-08.png)
 
-![](assets/Azure%20Windows%20LAPS/2025-04-08-14-03-43.png)
+![](../assets/Azure%20Windows%20LAPS/2025-04-08-14-03-43.png)
 
-![](assets/Azure%20Windows%20LAPS/2025-04-08-14-04-01.png)
+![](../assets/Azure%20Windows%20LAPS/2025-04-08-14-04-01.png)
 ---
 
 
@@ -95,7 +95,7 @@ GUID: f3531ec6-6330-4f8e-8d39-7a671fbac605
 
 
 
-![](assets/Azure%20Windows%20LAPS/2025-04-08-14-05-02.png)
+![](../assets/Azure%20Windows%20LAPS/2025-04-08-14-05-02.png)
 
 
 ## 5. Migration from Legacy LAPS
@@ -141,3 +141,4 @@ GUID: f3531ec6-6330-4f8e-8d39-7a671fbac605
 ### Special Thanks
 
 A special thank-you to **Didier Gautier** for his support and contributions to this presentation.
+

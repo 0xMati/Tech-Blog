@@ -55,7 +55,7 @@ Update-MgDomain -DomainId 0x1mati.online -AuthenticationType Managed
 
 ```
 
-![](assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-10-00-16.png)
+![](../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-10-00-16.png)
 
 ### ❌ Option 2: Use MSOnline module (**deprecated and no longer functional**)
 
@@ -111,7 +111,7 @@ Import-Module Microsoft.Graph.Identity.DirectoryManagement
 
 Export your current ADFS Signin Certificate:
 
-![](assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-09-51-08.png)
+![](../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-09-51-08.png)
 
 Run powershell commands:
 
@@ -137,7 +137,7 @@ Run powershell commands:
       -PreferredAuthenticationProtocol "wsFed"
     ```
 
-![](assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-09-54-10.png)
+![](../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-09-54-10.png)
 
 > **Note:**  
 > - `-MetadataExchangeUri` lets Entra ID import your AD FS metadata for certificate auto-rollover.  
@@ -187,3 +187,4 @@ To establish trust on the AD FS side, configure a **Relying Party Trust** for yo
 
 - [Microsoft Docs – Convert Domain to Managed](https://learn.microsoft.com/en-us/azure/active-directory/hybrid/how-to-connect-fed-to-managed)
 - [Microsoft Graph PowerShell SDK](https://learn.microsoft.com/en-us/powershell/microsoftgraph/)
+
