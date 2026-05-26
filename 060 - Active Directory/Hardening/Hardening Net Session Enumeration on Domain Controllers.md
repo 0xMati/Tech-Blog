@@ -1,5 +1,9 @@
+---
+title: "Hardening Net Session Enumeration (NetCease-style) on Domain Controllers"
+date: 2025-12-11
+---
+
 # Hardening Net Session Enumeration (NetCease-style) on Domain Controllers
-🗓️ Published: 2025-12-11
 
 ### Understanding the risk, what NetCease does, and a menu-driven PowerShell script
 
@@ -503,6 +507,7 @@ Yes. The script:
 - Impact: Blocks low-priv users from enumerating active sessions; admins still can  
 - Ops: No reboot, only **LanmanServer** restart  
 - Safety: Script includes **backup + revert** and a status check
+
 
 
 

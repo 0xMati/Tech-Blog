@@ -1,5 +1,9 @@
+---
+title: "Entra ID Password Protection - Logic for Normalization, Substitutions, Variants, and Phonetic Matching"
+date: 2025-08-07
+---
+
 # Entra ID Password Protection – Logic for Normalization, Substitutions, Variants, and Phonetic Matching
-🗓️ Published: 2025-08-07
 
 Entra ID Password Protection evaluates passwords not only by their complexity (length, character types) but also by how closely they match known weak passwords or user-defined banned terms, even when obfuscated. The evaluation includes normalization, tokenization, substitutions, and phonetic analysis.
 

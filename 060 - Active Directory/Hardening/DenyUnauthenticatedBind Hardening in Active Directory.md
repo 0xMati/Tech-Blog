@@ -1,5 +1,9 @@
+---
+title: "🛡️ DenyUnauthenticatedBind Hardening in Active Directory"
+date: 2025-12-11
+---
+
 # 🛡️ DenyUnauthenticatedBind Hardening in Active Directory
-🗓️ Published: 2025-12-11
 
 ## Understanding the RootDSE finding in Security Audit tools
 
@@ -376,3 +380,4 @@ This setting is a small but impactful hardening step that brings AD closer to *�
 ---
 
 Feel free to reuse, fork, or adapt this explanation for workshops, internal documentation, or security reviews.
+

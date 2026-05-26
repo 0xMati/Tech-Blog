@@ -1,5 +1,9 @@
+---
+title: "Remote Credential Guard vs Restricted Admin RDP — Deep Dive"
+date: 2026-04-01
+---
+
 # Remote Credential Guard vs Restricted Admin RDP — Deep Dive
-🗓️ Published: 2026-04-01
 
 Let's talk about one of the most underrated attack surfaces in enterprise environments: **your RDP sessions**.
 
@@ -412,3 +416,4 @@ Both are free, built into Windows, and take 10 minutes to deploy via GPO. There'
 - 🔗 https://learn.microsoft.com/en-us/windows/security/identity-protection/remote-credential-guard
 - 🔗 https://learn.microsoft.com/en-us/windows-server/identity/laps/laps-overview
 - 🔗 https://download.microsoft.com/download/7/7/A/77ABC5BD-8320-41AF-863C-6ECFB10CB4B9/Mitigating-Pass-the-Hash-Attacks-and-Other-Credential-Theft-Version-2.pdf
+

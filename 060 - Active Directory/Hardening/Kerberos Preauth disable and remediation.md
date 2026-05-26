@@ -1,5 +1,9 @@
+---
+title: "🛡️ Remediating Kerberos Pre-Authentication Disabled Accounts"
+date: 2025-05-26
+---
+
 # 🛡️ Remediating Kerberos Pre-Authentication Disabled Accounts
-🗓️ Published: 2025-05-26
 
 ## Overview
 
@@ -84,3 +88,4 @@ auditpol /set /subcategory:"Kerberos Authentication Service" /success:enable /fa
 ## Summary
 
 Re-enabling pre-authentication on AD accounts is a critical step toward mitigating AS-REP Roasting attacks. By gradually applying changes, monitoring authentication events, and engaging application owners, you can secure your environment without impacting production systems.
+

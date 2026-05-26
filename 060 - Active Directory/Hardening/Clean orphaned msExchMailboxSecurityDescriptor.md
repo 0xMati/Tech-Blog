@@ -1,5 +1,9 @@
+---
+title: "Clean orphaned msExchMailboxSecurityDescriptor"
+date: 2025-07-01
+---
+
 # Clean orphaned msExchMailboxSecurityDescriptor
-🗓️ Published: 2025-07-01
 
 ## 1. Introduction
 In large Active Directory environments with Exchange, it’s common to find **orphaned permissions**—ACE entries in mailbox security descriptors that reference SIDs for accounts that no longer exist. These leftover ACEs clutter your ACLs and can generate false positives in security audits or tools like OraDAD.
@@ -53,7 +57,7 @@ $results | Format-Table -AutoSize
 
 You should see which SIDs resolve and identify any orphans before proceeding.
 
-![](assets/Clean%20orphaned%20msExchMailboxSecurityDescriptor/2025-07-01-12-13-42.png)
+![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-13-42.png)
 
 ---
 
@@ -161,21 +165,23 @@ Write-Host "`nAll users processed." -ForegroundColor White
 
 - Test mode:
 
-![](assets/Clean%20orphaned%20msExchMailboxSecurityDescriptor/2025-07-01-12-17-10.png)
+![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-17-10.png)
 
-![](assets/Clean%20orphaned%20msExchMailboxSecurityDescriptor/2025-07-01-12-17-34.png)
+![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-17-34.png)
 
 - Delete mode:
 
-![](assets/Clean%20orphaned%20msExchMailboxSecurityDescriptor/2025-07-01-12-18-43.png)
+![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-18-43.png)
 
-![](assets/Clean%20orphaned%20msExchMailboxSecurityDescriptor/2025-07-01-12-18-56.png)
+![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-18-56.png)
 
-![](assets/Clean%20orphaned%20msExchMailboxSecurityDescriptor/2025-07-01-12-19-10.png)
+![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-19-10.png)
 
 ## 5. Next steps
 
 * Run in TEST mode first to review orphaned SIDs.
 * Switch to DELETE to commit actual cleanup.
+
+
 
 

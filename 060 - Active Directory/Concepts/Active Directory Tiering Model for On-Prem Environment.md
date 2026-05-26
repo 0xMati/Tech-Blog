@@ -1,3 +1,8 @@
+---
+title: "Active Directory Tiering Model for On-Premises Environments"
+date: 2026-05-26
+---
+
 # Active Directory Tiering Model for On-Premises Environments
 
 ## Introduction
@@ -3362,3 +3367,4 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 - [BloodHound](https://github.com/SpecterOps/BloodHound)
 - [PingCastle](https://www.pingcastle.com/)
 - [MATI — Microsoft Active Directory Threat Inspector](https://github.com/0xMati/Tech-Blog/tree/main/Security/Active%20Directory/Microsoft%20Active%20Directory%20Threat%20Inspector)
+

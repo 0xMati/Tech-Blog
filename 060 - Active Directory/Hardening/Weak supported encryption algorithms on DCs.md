@@ -1,5 +1,9 @@
+---
+title: "Weak supported encryption algorithms on DCs"
+date: 2025-05-05
+---
+
 # Weak supported encryption algorithms on DCs 
-🗓️ Published: 2025-05-05
 
 
 This article is based on updates introduced in the **January 2025 Cumulative Update** for Windows Server 2016 and newer.  
@@ -13,7 +17,7 @@ These enhancements now make it possible to centrally identify:
 
 ### Example: Kerberos TGT Request (`4768` Event)
 
-![](assets/Weak%20supported%20encryption%20algorithms%20on%20DCs/2025-05-05-21-35-56.png)
+![](../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-21-35-56.png)
 
 | **Section**             | **Field**                            | **Description**                                                                                                                                    |
 | ----------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -33,7 +37,7 @@ These enhancements now make it possible to centrally identify:
 
 ### Example: Kerberos Service Ticket Request (`4769` Event)
 
-![](assets/Weak%20supported%20encryption%20algorithms%20on%20DCs/2025-05-05-21-36-33.png)
+![](../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-21-36-33.png)
 
 | **Section**             | **Field**                       | **Description**                                                                                                                                               |
 | ----------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -216,7 +220,7 @@ $results | Format-Table -AutoSize
 
 Example :
 
-![](assets/Weak%20supported%20encryption%20algorithms%20on%20DCs/2025-05-05-14-52-18.png)
+![](../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-14-52-18.png)
 
 
 ---
@@ -415,7 +419,7 @@ if ($weakTickets.Count -gt 0) {
 
 Example : 
 
-![](assets/Weak%20supported%20encryption%20algorithms%20on%20DCs/2025-05-05-22-22-35.png)
+![](../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-22-22-35.png)
 
 ---
 
@@ -544,4 +548,6 @@ https://techcommunity.microsoft.com/blog/coreinfrastructureandsecurityblog/decry
 https://techcommunity.microsoft.com/blog/coreinfrastructureandsecurityblog/active-directory-hardening-series---part-4-%E2%80%93-enforcing-aes-for-kerberos/4114965
 https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4769
 https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4768
+
+
 

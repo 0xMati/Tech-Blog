@@ -1,3 +1,8 @@
+---
+title: "MATI — Microsoft Active Directory Threat Inspector"
+date: 2026-05-26
+---
+
 # MATI — Microsoft Active Directory Threat Inspector
 
 **MATI** is a PowerShell-based Active Directory security assessment tool. It collects configuration data from your forest, evaluates it against **93 detection rules** across 10 categories, and generates scored HTML / CSV / JSON reports — all from a single read-only scan.

@@ -1,3 +1,8 @@
+---
+title: "Active Directory Just In Time Administration in a Single Forest"
+date: 2026-05-26
+---
+
 # Active Directory Just In Time Administration in a Single Forest
 
 ## Introduction
@@ -486,3 +491,4 @@ Expand only after the pilot is stable.
 For a single forest, without an administration forest and without MIM PAM, the sensible first approach is native JIT through temporary AD group membership with TTL.
 
 Use the basic self-elevation model for a pilot if needed. Move to a broker model with workflow and `gMSA` when you want better governance, separation of duties, and auditability.
+

@@ -1,5 +1,9 @@
+---
+title: "🛡️ dSHeuristics Hardening in Active Directory"
+date: 2025-12-11
+---
+
 # 🛡️ dSHeuristics Hardening in Active Directory
-🗓️ Published: 2025-12-11
 
 ### A friendly-but-deep-dive explanation + PowerShell remediation toolkit
 
@@ -145,9 +149,9 @@ LDAP Client
       ├─ Default → no protection
       └─ AuditOnly → logged but still allowed
 ```
-![](assets/dSHeuristics%20Hardening%20in%20Active%20Directory/2025-12-11-15-08-33.png)
+![](../assets/dsheuristics-hardening-active-directory/2025-12-11-15-08-33.png)
 
-![](assets/dSHeuristics%20Hardening%20in%20Active%20Directory/2025-12-11-15-08-47.png)
+![](../assets/dsheuristics-hardening-active-directory/2025-12-11-15-08-47.png)
 
 ### After hardening (11)
 
@@ -481,5 +485,7 @@ Most enterprises today run with this enforcement flag enabled.
   - **Revert** cleanly if needed  
 
 Small change, giant security win.
+
+
 
 
