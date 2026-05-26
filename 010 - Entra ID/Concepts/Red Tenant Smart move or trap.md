@@ -1,10 +1,14 @@
+---
+title: "Admin-Only Second Tenant (“Red Tenant”): Smart Move or Trap?"
+date: 2025-08-29
+---
+
 # Admin-Only Second Tenant (“Red Tenant”): Smart Move or Trap?
-🗓️ Published: 2025-08-29
 
 ## TL;DR & Position
 A dedicated admin-only second tenant sounds clean on a whiteboard, but in real life it’s a bad idea. Microsoft guidance is to **avoid a second tenant for administration** and instead **harden a single production tenant** using the Enterprise Access Model (EAM) and Zero Trust controls.
 
-![](assets/Red%20Tenant%20Smart%20move%20or%20trap/2025-08-29-01-03-39.png)
+![](../assets/red-tenant-smart-move-or-trap/2025-08-29-01-03-39.png)
 
 **Why:** a “red tenant” doubles licenses and operations, complicates incident response, weakens assurance in subtle ways (Conditional Access, device trust, logging), and creates an illusion of safety while the production tenant remains your blast radius.
 
@@ -89,3 +93,4 @@ A practical baseline that beats two tenants every time:
 
 ## Closing
 Second tenants feel neat in theory. In practice, they slow you down and blur your controls. Secure the plane you actually fly: **one tenant, EAM‑aligned, with PAWs, PIM, tight Conditional Access, and full‑fidelity logging**. If someone insists on a red tenant, treat it like a **temporary containment with a written exit date**—and get back to one tenant fast.
+

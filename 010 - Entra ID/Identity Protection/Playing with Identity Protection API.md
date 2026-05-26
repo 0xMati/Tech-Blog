@@ -1,5 +1,9 @@
+---
+title: "Playing with Identity Protection API"
+date: 2025-12-13
+---
+
 # Playing with Identity Protection API
-🗓️ Published: 2025-12-13
 
 This article is a practical, field-tested walkthrough of the most useful Microsoft Entra ID Identity Protection API queries, using the Microsoft Graph PowerShell SDK.  
 All examples are based on real outputs and validated filters.
@@ -240,3 +244,4 @@ Get-MgRiskDetection -Top 50 |
 - Multiple detections for a single sign-in are expected.
 - Client-side de-duplication is essential for accurate reporting.
 - These queries are ideal foundations for threat hunting and SOC investigations.
+

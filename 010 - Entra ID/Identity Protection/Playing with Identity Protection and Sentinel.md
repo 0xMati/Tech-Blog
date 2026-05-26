@@ -1,5 +1,9 @@
+---
+title: "Playing with Identity Protection and Sentinel"
+date: 2025-12-13
+---
+
 # Playing with Identity Protection and Sentinel
-🗓️ Published: 2025-12-13
 
 This article provides a practical set of **Microsoft Sentinel KQL queries** focused on **Microsoft Entra ID Identity Protection** data.  
 All examples are designed for **threat hunting, investigation, and SOC workflows**, using the native Sentinel tables.
@@ -178,3 +182,4 @@ AADUserRiskEvents
 - Multiple detections per user or IP are expected and should be de-duplicated.
 - Combining **AADUserRiskEvents** and **AADRiskyUsers** provides the most operational value.
 - These queries are strong foundations for **Sentinel Analytics rules** and **SOC playbooks**.
+

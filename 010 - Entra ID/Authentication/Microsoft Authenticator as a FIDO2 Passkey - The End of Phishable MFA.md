@@ -1,8 +1,12 @@
+---
+title: "Microsoft Authenticator as a FIDO2 Passkey — The End of Phishable MFA"
+date: 2026-03-25
+---
+
 # Microsoft Authenticator as a FIDO2 Passkey — The End of Phishable MFA
 
 **Your phone is now a security key. Let's talk about what that actually means.**
 
-Published: 2026-03-25 | `FIDO2` `Passkeys` `Phishing-Resistant MFA` `Zero Trust` `Entra ID`
 
 > 🎯 **TL;DR** — Classic MFA (push, SMS, OTP) is routinely bypassed by AiTM proxies and cookie theft. FIDO2 passkeys use **cryptographic origin binding** — mathematically impossible to phish. Microsoft Authenticator now acts as a **device-bound FIDO2 passkey**: same security as a YubiKey, zero extra hardware. Combine with Device Compliance + Token Protection for full coverage.
 
@@ -647,3 +651,4 @@ Three layers. Full coverage. No single point of failure.
 - [Microsoft — WebAuthn Redirection in RDP](https://learn.microsoft.com/en-us/azure/virtual-desktop/redirection-configure-webauthn)
 - [FIDO Alliance — How Passkeys Work](https://www.passkeycentral.org/introduction-to-passkeys/how-passkeys-work)
 - [W3C — Web Authentication (WebAuthn) specification](https://www.w3.org/TR/webauthn-3/)
+

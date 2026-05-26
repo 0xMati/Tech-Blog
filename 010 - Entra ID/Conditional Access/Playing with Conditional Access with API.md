@@ -1,6 +1,10 @@
+---
+title: "Playing with Conditional Access with API"
+date: 2025-12-13
+---
+
 # Playing with Conditional Access with API
 *Managing Entra ID Conditional Access like code using Microsoft Graph*
-🗓️ Published: 2025-12-13
 
 ---
 
@@ -221,3 +225,4 @@ Update-MgIdentityConditionalAccessPolicy `
 
 > If Conditional Access is critical to your security posture,
 > **it deserves the same engineering discipline as code.**
+

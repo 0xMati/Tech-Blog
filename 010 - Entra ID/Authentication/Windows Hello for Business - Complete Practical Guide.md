@@ -1,8 +1,12 @@
+---
+title: "🔐 Windows Hello for Business (WHfB) — Deep Dive Field Guide"
+date: 2026-05-05
+---
+
 # 🔐 Windows Hello for Business (WHfB) — Deep Dive Field Guide
 
 **Passwordless is easy to say. WHfB internals are where the real security story lives.**
 
-Published: 2026-05-05 | Windows Hello for Business, TPM, Entra ID, Kerberos, Conditional Access, Zero Trust
 
 > **⚡ TL;DR**
 >
@@ -1207,3 +1211,4 @@ If your program objective is strong authentication at enterprise scale:
 2. 📱 **Scale WHfB** for managed Windows + FIDO2 for portability/cross-platform.
 3. 📋 **Govern exceptions as temporary debt** — with owners and deadlines.
 4. 🔧 **Treat recovery as security engineering**, not helpdesk afterthought.
+
