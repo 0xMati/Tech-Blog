@@ -17,7 +17,7 @@ These enhancements now make it possible to centrally identify:
 
 ### Example: Kerberos TGT Request (`4768` Event)
 
-![](../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-21-35-56.png)
+![](../../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-21-35-56.png)
 
 | **Section**             | **Field**                            | **Description**                                                                                                                                    |
 | ----------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -37,7 +37,7 @@ These enhancements now make it possible to centrally identify:
 
 ### Example: Kerberos Service Ticket Request (`4769` Event)
 
-![](../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-21-36-33.png)
+![](../../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-21-36-33.png)
 
 | **Section**             | **Field**                       | **Description**                                                                                                                                               |
 | ----------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -220,7 +220,7 @@ $results | Format-Table -AutoSize
 
 Example :
 
-![](../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-14-52-18.png)
+![](../../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-14-52-18.png)
 
 
 ---
@@ -419,7 +419,7 @@ if ($weakTickets.Count -gt 0) {
 
 Example : 
 
-![](../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-22-22-35.png)
+![](../../assets/weak-supported-encryption-algorithms-dcs/2025-05-05-22-22-35.png)
 
 ---
 
