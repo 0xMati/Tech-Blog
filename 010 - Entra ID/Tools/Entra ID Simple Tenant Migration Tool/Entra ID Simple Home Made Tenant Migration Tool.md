@@ -1,8 +1,11 @@
 # Entra ID Simple Tenant Migration Tool
 
+> **Version**: 1.1.2 - Refer to `$script:EIDMVersion` in `Start-EIDMigrationTool.ps1` for the authoritative value.
+
 ## Table of Contents
 
 - [Introduction](#introduction)
+- [Scope & Limitations](#scope--limitations)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
 - [How the Tool Works](#how-the-tool-works)
@@ -23,7 +26,7 @@
 
 ## Introduction
 
-The **Entra ID Simple Tenant Migration Tool** is an interactive PowerShell orchestrator that migrates an entire Microsoft 365 tenant (the **SOURCE**) into another tenant (the **TARGET**). It covers three core workloads:
+The **Entra ID Simple Tenant Migration Tool** is an interactive PowerShell orchestrator that migrates an entire Microsoft 365 tenant (the **SOURCE**) into another tenant (the **TARGET**). It covers four core workloads:
 
 | Workload | Status |
 |----------|--------|
@@ -48,11 +51,45 @@ A cross-tenant migration involves dozens of interconnected operations across mul
 
 ---
 
+## Scope & Limitations
+
+This tool focuses on the four workloads listed in the Introduction. To set proper expectations, the items below are **explicitly out of scope** and must be handled separately if required.
+
+### What this tool does NOT migrate
+
+- **Microsoft Teams** chats, channels, channel files, channel messages, meetings, teams memberships (use dedicated Teams migration tooling)
+- **Conditional Access** policies, Authentication Methods, MFA registrations, Security Defaults, named locations
+- **App registrations** and **Enterprise Apps** (other than the migration app the tool creates itself), custom app role assignments, OAuth2 permission grants
+- **Intune / Endpoint Manager** configurations, device enrollments, compliance/configuration profiles, app protection policies
+- **Power Platform** (Power Apps, Power Automate flows, Dataverse data, environments)
+- **Yammer / Viva Engage** communities, conversations, files
+- **OneNote notebooks** stored in classic SharePoint Notebook stores (only OneDrive/SPO file content is moved)
+- **Mailbox audit logs**, archive policies, retention tags/labels, eDiscovery cases, in-place holds, Litigation Hold history
+- **Exchange transport rules**, connectors, accepted domains, journaling, message trace history (must be reconfigured on TARGET)
+- **Public Folders**
+- **Mailbox delegations** (Full Access, Send As, Send on Behalf) - rebuilt in target only if recipients exist there
+- **License assignments** beyond the explicit Exchange / OneDrive SKU assignment steps - complex licensing scenarios require manual review
+- **Custom directory schema extensions** and Entra ID extension attributes not present in the standard `Get-MgUser` projection
+- **Privileged Identity Management (PIM)** assignments, role-assignable groups, custom RBAC roles
+- **Domain ownership** transfer - target domains must be added/verified manually in the TARGET tenant before migration
+
+### Technical limits enforced by Microsoft cross-tenant APIs
+
+- SharePoint sites **> 5 TB** or **> 1 million items** cannot be moved
+- **Group-connected SharePoint sites** where the target M365 Group does not exist will fail (the group must be created beforehand in Phase 2)
+- **Source sites in Read-only mode** are rejected
+- **Mailbox migration is one-way** - no incremental delta sync is possible after the cutover (`Complete-MigrationBatch`)
+- **OneDrive and SharePoint moves are MOVE operations**, not copies - a redirect site is left on SOURCE
+- The **Cross-Tenant Shared Data Migration** license (SharePoint sites) is only sold to **Enterprise Agreement (EA)** customers
+
+---
+
 ## Prerequisites
 
 ### PowerShell Version
 
-- **PowerShell 5.1** (Windows PowerShell) — required. The tool uses `#requires -Version 5.1`.
+- **Windows PowerShell 5.1** - required and the only validated runtime. The tool uses `#requires -Version 5.1`.
+- **PowerShell 7+** may technically load the modules but has **not been tested** with this tool. Some dependencies (notably the `ActiveDirectory` RSAT module) are most reliable on Windows PowerShell 5.1. Use PS7 at your own risk.
 
 ### PowerShell Modules
 
@@ -113,18 +150,33 @@ Copy the entire folder to a working directory (e.g., `C:\Temp\Entra ID Simple Te
 
 ### 2. Create the configuration
 
-Run the entry point:
+You have two ways to create the `config\config.psd1` file the tool needs.
+
+**Option A — Copy the sample (recommended)**
+
+A ready-to-edit template is shipped at `config\config.sample.psd1`. Copy it and edit the placeholders with your real tenants:
 
 ```powershell
-.\Start-EIDMigrationTool.ps1
+Copy-Item .\config\config.sample.psd1 .\config\config.psd1
+notepad .\config\config.psd1
 ```
 
-On first run, the tool detects that no `config\config.psd1` exists and launches the **Configuration Wizard**. It asks for:
+Replace `contoso.onmicrosoft.com` / `fabrikam.onmicrosoft.com` with your source / target tenants and toggle the `Workloads.*` flags. Each section has inline comments explaining what it does.
+
+**Option B — Interactive wizard**
+
+If `config\config.psd1` does not exist when you launch the tool, the **Configuration Wizard** runs automatically and asks for:
 
 - **Source tenant** domain (e.g., `contoso.onmicrosoft.com`)
 - **Target tenant** domain (e.g., `fabrikam.onmicrosoft.com`)
 - **Which workloads** to enable (Discovery, Identity Preparation, Exchange Migration, OneDrive Migration, SharePoint Migration)
 - **Output root** path for run data (default: `.\output\runs`)
+
+### 3. Launch the tool
+
+```powershell
+.\Start-EIDMigrationTool.ps1
+```
 
 On subsequent runs, you see a configuration lifecycle menu:
 
@@ -135,7 +187,7 @@ On subsequent runs, you see a configuration lifecycle menu:
 | **Edit** | Modify specific settings |
 | **Recreate** | Start the config wizard from scratch |
 
-### 3. Start or resume a run
+### 4. Start or resume a run
 
 From the main menu:
 
@@ -147,7 +199,7 @@ From the main menu:
 | **4 - Execute a phase** | Opens the phase selection menu to run a specific migration phase |
 | **5 - Exit** | Quit the tool |
 
-### 4. Execute phases in order
+### 5. Execute phases in order
 
 The recommended order is:
 
@@ -163,6 +215,22 @@ The recommended order is:
 ---
 
 ## How the Tool Works
+
+### High-Level Flow
+
+The diagram below summarises how the 8 phases relate to each other. Phase 2 (Identity Preparation) is the gating phase: all subsequent workloads depend on the target identities it provisions. The cross-tenant SharePoint trust is established in Phase 5 and reused by Phase 7.
+
+```mermaid
+flowchart LR
+    P1[Phase 1<br/>Discovery] --> P2[Phase 2<br/>Identity Prep]
+    P2 --> P3[Phase 3<br/>Exchange Plan]
+    P2 --> P5[Phase 5<br/>OneDrive Plan]
+    P2 --> P7[Phase 7<br/>SharePoint Plan]
+    P3 --> P4[Phase 4<br/>Exchange Exec]
+    P5 --> P6[Phase 6<br/>OneDrive Exec]
+    P7 --> P8[Phase 8<br/>SharePoint Exec]
+    P5 -. MnA trust reused .-> P7
+```
 
 ### Step Engine
 
@@ -223,7 +291,7 @@ These functions are **private to the tool** (the tool is dot-sourced, not import
 
 ---
 
-## Phase 1 — Discovery
+## Phase 1 - Discovery
 
 **Purpose**: Build a complete, read-only inventory of the SOURCE tenant. No modifications are made to either tenant.
 
@@ -233,7 +301,7 @@ These functions are **private to the tool** (the tool is dot-sourced, not import
 
 ### Steps
 
-#### 1.1 — Export Entra ID Users
+#### 1.1 - Export Entra ID Users
 
 | | |
 |-|-|
@@ -249,7 +317,7 @@ Exports all Entra ID users from the source tenant using `Get-MgUser -All` with 2
 > Get-MgUser -All -Property Id,UserPrincipalName,DisplayName,Mail,ProxyAddresses,OnPremisesSyncEnabled,AccountEnabled,AssignedLicenses | Export-Csv .\users.csv -NoTypeInformation
 > ```
 
-#### 1.2 — Export Domains
+#### 1.2 - Export Domains
 
 | | |
 |-|-|
@@ -263,7 +331,7 @@ Exports all verified and unverified domains via `Get-MgDomain -All`.
 
 > **Manual equivalent**: Entra admin center > Settings > Domain names
 
-#### 1.3 — Export Groups
+#### 1.3 - Export Groups
 
 | | |
 |-|-|
@@ -275,7 +343,7 @@ Exports all groups (Security, Microsoft 365, Distribution, Dynamic, Mail-enabled
 
 > **Manual equivalent**: Entra admin center > Groups > All groups > Download groups
 
-#### 1.4 — Export Group Members
+#### 1.4 - Export Group Members
 
 | | |
 |-|-|
@@ -287,7 +355,7 @@ For each non-dynamic group, exports all members via `Get-MgGroupMember`. Dynamic
 
 > **Why**: When recreating groups in the target, you need to know who belongs to which group so you can repopulate memberships.
 
-#### 1.5 — Export Exchange Mailboxes
+#### 1.5 - Export Exchange Mailboxes
 
 | | |
 |-|-|
@@ -305,7 +373,7 @@ Exports all User, Shared, Room, and Equipment mailboxes with statistics (size, i
 > Get-EXOMailbox -ResultSize Unlimited | Select-Object UserPrincipalName, PrimarySmtpAddress, RecipientTypeDetails, ExchangeGuid | Export-Csv .\mailboxes.csv -NoTypeInformation
 > ```
 
-#### 1.6 — Export Exchange Recipients
+#### 1.6 - Export Exchange Recipients
 
 | | |
 |-|-|
@@ -317,7 +385,7 @@ Exports all mail-enabled recipients (excluding system mailboxes like DiscoveryMa
 
 > **Why**: Provides a complete picture of all mail-enabled objects, which helps plan the Exchange migration and identify objects that might conflict in the target.
 
-#### 1.7 — Export Mail Contacts
+#### 1.7 - Export Mail Contacts
 
 | | |
 |-|-|
@@ -334,7 +402,7 @@ Exports all mail contacts via `Get-MailContact -ResultSize Unlimited`. Mail cont
 > Get-MailContact -ResultSize Unlimited | Select-Object DisplayName, Alias, ExternalEmailAddress, PrimarySmtpAddress | Export-Csv .\contacts.csv -NoTypeInformation
 > ```
 
-#### 1.8 — Export OneDrive Sites
+#### 1.8 - Export OneDrive Sites
 
 | | |
 |-|-|
@@ -346,7 +414,7 @@ Exports all OneDrive personal sites (URL, owner, quota, storage used) via `Get-S
 
 > **Why**: Identifies which users have OneDrive data and how much, so you can plan the OneDrive migration scope and estimate timelines.
 
-#### 1.9 — Export SharePoint Sites
+#### 1.9 - Export SharePoint Sites
 
 | | |
 |-|-|
@@ -360,7 +428,7 @@ Exports all SharePoint sites (excluding OneDrive personal sites) with hub associ
 
 ---
 
-## Phase 2 — Identity Preparation
+## Phase 2 - Identity Preparation
 
 **Purpose**: Create all user identities, groups, guests, and mail contacts in the TARGET tenant so they are ready to receive migrated data.
 
@@ -377,7 +445,7 @@ This phase uses a **Plan → Review → Execute** pattern for every object type:
 
 For users that are **synced from on-premises AD** (identified by `OnPremisesSyncEnabled = True` in the Discovery export).
 
-#### 02-01 — Build Users On-Prem Provisioning Plan
+#### 02-01 - Build Users On-Prem Provisioning Plan
 
 Reads `EntraUsers_SOURCE.csv`, filters for synced users, and builds a provisioning plan. The tool:
 
@@ -387,14 +455,14 @@ Reads `EntraUsers_SOURCE.csv`, filters for synced users, and builds a provisioni
 
 > **Manual equivalent**: You would need to manually list all synced users, decide their target UPN, verify the UPN suffix exists in the target AD forest, and prepare a spreadsheet with all the attribute mappings.
 
-#### 02-02 — Confirm Users On-Prem Provisioning Plan Review
+#### 02-02 - Confirm Users On-Prem Provisioning Plan Review
 
 Opens the plan CSV in Notepad. The operator reviews each user and can:
 - Change the `TargetUPN` or `TargetSAM`
 - Set `ProvisioningAction` to `Skip` for users that shouldn't be migrated
 - Verify attribute mappings (DisplayName, Department, etc.)
 
-#### 02-03 — Create Users On-Prem
+#### 02-03 - Create Users On-Prem
 
 Creates AD users via `New-ADUser` with all mapped attributes (GivenName, Surname, Department, JobTitle, etc.). For users with mailboxes, sets mail-related attributes so Entra Connect will sync them as **MailUser** objects. Generates temporary passwords.
 
@@ -408,15 +476,15 @@ Outputs: `Users_OnPrem_ProvisioningPlan.csv`, `Users_OnPrem_CreationResults.csv`
 
 For users that exist **only in Entra ID** (not synced from AD). Created directly in the target tenant via Microsoft Graph.
 
-#### 02-04 — Build Cloud-Only Users Provisioning Plan
+#### 02-04 - Build Cloud-Only Users Provisioning Plan
 
 Filters `EntraUsers_SOURCE.csv` for non-synced, non-guest users. Builds plan with target UPN mapping.
 
-#### 02-05 — Confirm Cloud-Only Users Provisioning Plan Review
+#### 02-05 - Confirm Cloud-Only Users Provisioning Plan Review
 
 Opens plan in Notepad for operator review.
 
-#### 02-06 — Create Cloud-Only Users
+#### 02-06 - Create Cloud-Only Users
 
 Creates users in the target Entra ID via `New-MgUser` with a temporary password and `ForceChangePasswordNextSignIn = $true`.
 
@@ -430,15 +498,15 @@ Outputs: `Users_CloudOnly_ProvisioningPlan.csv`, `Users_CloudOnly_CreationResult
 
 For **B2B guest** users (`#EXT#` accounts) from the source tenant.
 
-#### 02-07 — Build Guests Provisioning Plan
+#### 02-07 - Build Guests Provisioning Plan
 
 Filters for guest users and builds an invitation plan.
 
-#### 02-08 — Confirm Guests Provisioning Plan Review
+#### 02-08 - Confirm Guests Provisioning Plan Review
 
 Opens plan in Notepad for operator review.
 
-#### 02-09 — Create Guests
+#### 02-09 - Create Guests
 
 Invites guest users to the target tenant via `New-MgInvitation`.
 
@@ -450,11 +518,11 @@ Invites guest users to the target tenant via `New-MgInvitation`.
 
 For security and distribution groups that are synced from AD.
 
-#### 02-10 / 02-11 / 02-12 — Plan, Review, Create Groups
+#### 02-10 / 02-11 / 02-12 - Plan, Review, Create Groups
 
 Creates AD groups via `New-ADGroup` in the target AD forest.
 
-#### 02-13 / 02-14 / 02-15 — Plan, Review, Apply Membership
+#### 02-13 / 02-14 / 02-15 - Plan, Review, Apply Membership
 
 Populates group memberships via `Add-ADGroupMember`, cross-referencing the source group membership data with the newly created target users.
 
@@ -462,11 +530,11 @@ Populates group memberships via `Add-ADGroupMember`, cross-referencing the sourc
 
 For groups that exist only in Entra ID (not synced from AD).
 
-#### 02-16 / 02-17 / 02-18 — Plan, Review, Create Cloud Groups
+#### 02-16 / 02-17 / 02-18 - Plan, Review, Create Cloud Groups
 
 Creates groups in the target Entra ID via `New-MgGroup`.
 
-#### 02-19 / 02-20 / 02-21 — Plan, Review, Apply Cloud Membership
+#### 02-19 / 02-20 / 02-21 - Plan, Review, Apply Cloud Membership
 
 Populates cloud group memberships via `New-MgGroupMember`.
 
@@ -474,7 +542,7 @@ Populates cloud group memberships via `New-MgGroupMember`.
 
 ### Entra Connect Scope Assessment (Step 02-22)
 
-#### 02-22 — AAD Connect Scope Assessment
+#### 02-22 - AAD Connect Scope Assessment
 
 An interactive assessment that walks through the Entra Connect configuration checklist:
 
@@ -495,17 +563,17 @@ The tool provides a **verdict** (OK / Action needed) based on the answers.
 
 For **mail contacts** (external email addresses in the Global Address List).
 
-#### 02-23 — Build Contacts Provisioning Plan
+#### 02-23 - Build Contacts Provisioning Plan
 
 Reads `EXO-MailContacts_SOURCE.csv` from Discovery. For each contact, checks whether it already exists in the target Exchange Online by matching on `ExternalEmailAddress`. Builds a plan with `ProvisioningAction = CreateInTarget` or `Skip`.
 
 The tool normalizes aliases (removes invalid characters, ensures uniqueness) using the `Normalize-EIDMAlias` helper.
 
-#### 02-24 — Confirm Contacts Provisioning Plan Review
+#### 02-24 - Confirm Contacts Provisioning Plan Review
 
 Opens the plan in Notepad. The operator can change aliases, mark contacts as Skip, or adjust display names.
 
-#### 02-25 — Recreate Contacts
+#### 02-25 - Recreate Contacts
 
 Creates mail contacts in the target Exchange Online via `New-MailContact` with:
 - DisplayName, Name, Alias
@@ -526,7 +594,7 @@ Outputs: `Contacts_ProvisioningPlan.csv`, `Contacts_Provisioning_Results.csv`
 
 ---
 
-## Phase 3 — Exchange Migration Plan
+## Phase 3 - Exchange Migration Plan
 
 **Purpose**: Set up all the infrastructure needed for cross-tenant mailbox migration. This is the most complex setup phase, involving app registrations, organization relationships, and migration endpoints.
 
@@ -536,7 +604,7 @@ Outputs: `Contacts_ProvisioningPlan.csv`, `Contacts_Provisioning_Results.csv`
 
 > See: [Cross-tenant mailbox migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-mailbox-migration?view=o365-worldwide)
 
-### Step 03-01 — Exchange Migration Prerequisites
+### Step 03-01 - Exchange Migration Prerequisites
 
 An interactive questionnaire that validates readiness:
 
@@ -555,7 +623,7 @@ Answers are saved to `config.psd1` and to `ExchangeMigration_Prerequisites_Asses
 >
 > **Manual equivalent**: Check the [official prerequisites list](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-mailbox-migration?view=o365-worldwide#prepare-the-target-destination-tenant-by-creating-the-migration-application-and-secret) and verify each item manually.
 
-### Step 03-02 — Create Target Application
+### Step 03-02 - Create Target Application
 
 Creates the migration application in the **TARGET** Entra ID:
 
@@ -573,7 +641,7 @@ Creates the migration application in the **TARGET** Entra ID:
 >
 > See: [Create the migration application](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-mailbox-migration?view=o365-worldwide#prepare-the-target-destination-tenant-by-creating-the-migration-application-and-secret)
 
-### Step 03-03 — Endpoint & Organization Relationships
+### Step 03-03 - Endpoint & Organization Relationships
 
 Sets up the migration infrastructure on both sides:
 
@@ -591,7 +659,7 @@ Sets up the migration infrastructure on both sides:
 
 > **Manual equivalent**: This involves running about 10 different Exchange PowerShell commands in a specific order on both tenants, plus navigating to an admin consent URL. See the [step-by-step instructions](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-mailbox-migration?view=o365-worldwide#prepare-the-target-tenant).
 
-### Step 03-04 — Build Mailbox Migration CSV
+### Step 03-04 - Build Mailbox Migration CSV
 
 Cross-references Phase 2 creation results with Discovery mailbox data to build the migration roster:
 
@@ -600,7 +668,7 @@ Cross-references Phase 2 creation results with Discovery mailbox data to build t
 - Applies skip rules (e.g., users that failed creation, users without mailboxes)
 - Produces a CSV with `ExoStatus = READY` or `SKIPPED` for each user
 
-### Step 03-05 — Check Target Recipients
+### Step 03-05 - Check Target Recipients
 
 For each `READY` user, queries the TARGET Exchange Online via `Get-Recipient` to verify the user exists and is in the correct state:
 
@@ -611,7 +679,7 @@ For each `READY` user, queries the TARGET Exchange Online via `Get-Recipient` to
 | **SoftDeletedMailbox** | Previous mailbox needs cleanup |
 | **NotFound** | User doesn't exist in TARGET EXO — needs fixing |
 
-### Step 03-06 — Prepare Mail Users
+### Step 03-06 - Prepare Mail Users
 
 Two operations to prepare the target MailUsers for migration:
 
@@ -636,7 +704,7 @@ Two operations to prepare the target MailUsers for migration:
 
 ---
 
-## Phase 4 — Exchange Migration Execution
+## Phase 4 - Exchange Migration Execution
 
 **Purpose**: Execute, monitor, and complete the actual mailbox migrations.
 
@@ -644,7 +712,7 @@ Two operations to prepare the target MailUsers for migration:
 
 **Output folder**: `<RunRoot>/04-ExchangeMigrationExecution/`
 
-### Step 04-01 — Start Migration Batch
+### Step 04-01 - Start Migration Batch
 
 1. Adds source mailbox users to the **scoping security group** on SOURCE via `Add-DistributionGroupMember`
 2. Generates a batch CSV file (format required by Exchange: `EmailAddress` column with target UPNs)
@@ -663,13 +731,13 @@ Two operations to prepare the target MailUsers for migration:
 >
 > See: [Initiate cross-tenant mailbox migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-mailbox-migration?view=o365-worldwide#initiate-cross-tenant-moves)
 
-### Step 04-02 — Check Migration Batches
+### Step 04-02 - Check Migration Batches
 
 Queries `Get-MigrationBatch` and `Get-MigrationUser` on the TARGET tenant. Displays per-batch and per-user status with aggregated counts (Synced, Syncing, Failed, Completed, etc.). Exports status CSVs.
 
 > **Tip**: Run this step repeatedly to track migration progress. Mailbox migrations can take hours or days depending on size.
 
-### Step 04-03 — Stop / Complete / Remove Batches
+### Step 04-03 - Stop / Complete / Remove Batches
 
 Interactive step to manage batch lifecycle:
 
@@ -681,7 +749,7 @@ Interactive step to manage batch lifecycle:
 
 > **Why**: `Complete-MigrationBatch` triggers the final cutover — the source mailbox becomes a MailUser (forwarding), and the target MailUser becomes a full mailbox. This is the point of no easy return.
 
-### Step 04-04 — Assign Licenses
+### Step 04-04 - Assign Licenses
 
 After mailbox migration completes, users need an **Exchange Online license** in the target tenant to access their mailbox:
 
@@ -693,7 +761,7 @@ After mailbox migration completes, users need an **Exchange Online license** in 
 >
 > See: [Assign licenses to users](https://learn.microsoft.com/en-us/microsoft-365/admin/manage/assign-licenses-to-users?view=o365-worldwide)
 
-### Step 04-05 -- Cleanup Migration Config
+### Step 04-05 - Cleanup Migration Config
 
 Removes the cross-tenant mailbox migration infrastructure created in Phase 3:
 
@@ -708,7 +776,7 @@ Removes the cross-tenant mailbox migration infrastructure created in Phase 3:
 
 ---
 
-## Phase 5 — OneDrive Migration Plan
+## Phase 5 - OneDrive Migration Plan
 
 **Purpose**: Set up cross-tenant trust and identity mapping for OneDrive content migration using Microsoft's Mergers & Acquisitions (MnA) framework.
 
@@ -716,14 +784,14 @@ Removes the cross-tenant mailbox migration infrastructure created in Phase 3:
 
 > See: [Cross-tenant OneDrive migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-onedrive-migration?view=o365-worldwide)
 
-### Step 05-01 — Build Users Mapping
+### Step 05-01 - Build Users Mapping
 
 Loads Phase 2 creation results (both on-prem and cloud-only) and builds a **SourceUPN → TargetUPN** mapping file. Each row gets a status:
 
 - `OK` — User was created successfully, ready for OneDrive migration
 - `FAILED` — User creation failed, excluded from migration
 
-### Step 05-02 — Setup Cross-Tenant Trust
+### Step 05-02 - Setup Cross-Tenant Trust
 
 Establishes the MnA trust between both SharePoint Online tenants:
 
@@ -748,7 +816,7 @@ Establishes the MnA trust between both SharePoint Online tenants:
 >
 > See: [Set up cross-tenant OneDrive migration trust](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-onedrive-migration-step2?view=o365-worldwide)
 
-### Step 05-03 — Build CTIM Mapping
+### Step 05-03 - Build CTIM Mapping
 
 Generates the **Cross-Tenant Identity Map** (CTIM) file — a headerless CSV in the specific format required by SharePoint:
 
@@ -762,7 +830,7 @@ The operator is prompted for the source tenant GUID.
 >
 > See: [Create the identity mapping file](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-onedrive-migration-step3?view=o365-worldwide)
 
-### Step 05-04 -- Assign Licenses
+### Step 05-04 - Assign Licenses
 
 Assigns OneDrive/SharePoint licenses to target users so their OneDrive sites can be provisioned:
 
@@ -776,19 +844,19 @@ Assigns OneDrive/SharePoint licenses to target users so their OneDrive sites can
 
 ---
 
-## Phase 6 — OneDrive Migration Execution
+## Phase 6 - OneDrive Migration Execution
 
 **Purpose**: Execute, monitor, and clean up OneDrive content migrations. Steps can be run individually and repeatedly.
 
 **Output folder**: `<RunRoot>/06-OneDriveMigrationExecution/`
 
-### Step 06-01 — Start OneDrive Migrations
+### Step 06-01 - Start OneDrive Migrations
 
 1. **Uploads the CTIM identity map** to the TARGET tenant via `Add-SPOTenantIdentityMap`
 2. **Retrieves CrossTenantHostUrl** from TARGET
 3. **Starts per-user content moves** on the SOURCE via `Start-SPOCrossTenantUserContentMove` for each user in the mapping
 
-Requires typing **YES** in uppercase to confirm (safety measure — this initiates actual data movement).
+Requires a **y/n** confirmation prompt before initiating the cross-tenant content moves (safety measure - this is an actual data movement operation).
 
 > **Manual equivalent**:
 > ```powershell
@@ -800,13 +868,13 @@ Requires typing **YES** in uppercase to confirm (safety measure — this initiat
 >
 > See: [Start cross-tenant OneDrive migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-onedrive-migration-step5?view=o365-worldwide)
 
-### Step 06-02 — Check Migration Status
+### Step 06-02 - Check Migration Status
 
 Queries `Get-SPOCrossTenantUserContentMoveState` on **both** tenants and combines the results. Shows status for each user (NotStarted, InProgress, Completed, Failed).
 
 > **Tip**: Run this step repeatedly until all moves show `Completed`. OneDrive migrations can take several hours depending on data volume.
 
-### Step 06-03 — Reset Cross-Tenant Trust
+### Step 06-03 - Reset Cross-Tenant Trust
 
 After all migrations are complete, removes the MnA trust from both tenants:
 
@@ -817,7 +885,7 @@ After all migrations are complete, removes the MnA trust from both tenants:
 
 ---
 
-## Phase 7 -- SharePoint Migration Plan
+## Phase 7 - SharePoint Migration Plan
 
 **Purpose**: Discover SharePoint sites on the SOURCE tenant, build a migration mapping, verify cross-tenant trust, upload identity mappings, and check compatibility before migration.
 
@@ -827,7 +895,7 @@ After all migrations are complete, removes the MnA trust from both tenants:
 >
 > See: [Cross-tenant SharePoint migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration?view=o365-worldwide)
 
-### Step 07-01 -- Discover & Build Sites Mapping
+### Step 07-01 - Discover & Build Sites Mapping
 
 1. Connects to SOURCE SharePoint Admin
 2. Enumerates all SharePoint sites via `Get-SPOSite -Limit All` (excluding OneDrive personal sites, search centers, and app catalogs)
@@ -852,7 +920,7 @@ The operator can:
 > Get-SPOSite -Limit All | Select-Object Url, Template, Owner, StorageUsageCurrent | Export-Csv .\sites.csv -NoTypeInformation
 > ```
 
-### Step 07-02 -- Verify Cross-Tenant Trust
+### Step 07-02 - Verify Cross-Tenant Trust
 
 Verifies the MnA cross-tenant trust on both SOURCE and TARGET tenants using `Verify-SPOCrossTenantRelationship` (or `Test-SPOCrossTenantRelationship` on newer SPO module versions). The trust must return **GoodToProceed** on both sides.
 
@@ -874,7 +942,7 @@ Verifies the MnA cross-tenant trust on both SOURCE and TARGET tenants using `Ver
 >
 > See: [Verify trust](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step3?view=o365-worldwide)
 
-### Step 07-03 -- Build & Upload Identity Map
+### Step 07-03 - Build & Upload Identity Map
 
 Builds a cross-tenant identity mapping CSV for SharePoint (users + groups) and uploads it to the TARGET tenant via `Add-SPOTenantIdentityMap`.
 
@@ -910,7 +978,7 @@ Group,<SourceTenantId>,<SourceGroupObjectId>,<TargetGroupObjectId>,GroupName,Sec
 >
 > See: [Prepare identity mapping](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step5?view=o365-worldwide)
 
-### Step 07-04 -- Verify Compatibility
+### Step 07-04 - Verify Compatibility
 
 Runs `Get-SPOCrossTenantCompatibilityStatus` from the SOURCE tenant to check whether the tenants are compatible for migration. Expected result: **Compatible**.
 
@@ -926,7 +994,7 @@ Runs `Get-SPOCrossTenantCompatibilityStatus` from the SOURCE tenant to check whe
 
 ---
 
-## Phase 8 -- SharePoint Migration Execution
+## Phase 8 - SharePoint Migration Execution
 
 **Purpose**: Execute, monitor, cancel, and clean up SharePoint site migrations. Steps can be run individually and repeatedly.
 
@@ -934,7 +1002,7 @@ Runs `Get-SPOCrossTenantCompatibilityStatus` from the SOURCE tenant to check whe
 
 > **Important**: This is a **MOVE**, not a copy. Content is moved from SOURCE to TARGET. A redirect link is left on SOURCE. Incremental/delta migrations are not possible.
 
-### Step 08-01 -- Start SharePoint Site Migrations
+### Step 08-01 - Start SharePoint Site Migrations
 
 1. Checks that the operator has the **Cross-Tenant Shared Data Migration** license
 2. Loads the sites mapping CSV from step 07-01 (only rows with `Migrate=YES`)
@@ -954,7 +1022,7 @@ Runs `Get-SPOCrossTenantCompatibilityStatus` from the SOURCE tenant to check whe
 >
 > See: [Start a cross-tenant SharePoint migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step6?view=o365-worldwide)
 
-### Step 08-02 -- Check Migration Status
+### Step 08-02 - Check Migration Status
 
 Queries `Get-SPOCrossTenantUserContentMoveState` on both SOURCE and TARGET tenants (same cmdlet as OneDrive). Filters results to show only SharePoint sites (excludes OneDrive personal sites). Displays color-coded status per site and exports status CSVs.
 
@@ -984,7 +1052,7 @@ Queries `Get-SPOCrossTenantUserContentMoveState` on both SOURCE and TARGET tenan
 >
 > See: [Start a cross-tenant SharePoint migration](https://learn.microsoft.com/en-us/microsoft-365/enterprise/cross-tenant-sharepoint-migration-step6?view=o365-worldwide)
 
-### Step 08-03 -- Stop/Cancel Migrations
+### Step 08-03 - Stop/Cancel Migrations
 
 Interactive step to cancel pending or queued migrations:
 - **Standard sites**: `Stop-SPOCrossTenantSiteContentMove -SourceSiteUrl <url>`
@@ -1001,7 +1069,7 @@ Interactive step to cancel pending or queued migrations:
 > Stop-SPOCrossTenantGroupContentMove -SourceGroupAlias "MyGroup"
 > ```
 
-### Step 08-04 -- Cleanup (Post-Migration)
+### Step 08-04 - Cleanup (Post-Migration)
 
 Two cleanup operations, each requiring confirmation:
 
@@ -1045,10 +1113,10 @@ The configuration file `config/config.psd1` is a PowerShell Data File with this 
     }
     Tenants = @{
         Source = @{
-            TenantIdOrDomain = 'source.onmicrosoft.com'
+            TenantIdOrDomain = 'contoso.onmicrosoft.com'
         }
         Target = @{
-            TenantIdOrDomain = 'target.onmicrosoft.com'
+            TenantIdOrDomain = 'fabrikam.onmicrosoft.com'
         }
     }
     Workloads = @{

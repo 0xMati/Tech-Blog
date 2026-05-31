@@ -2,6 +2,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$script:EIDMVersion = '1.1.2'
+
 Clear-Host
 
 $RepoRoot   = $PSScriptRoot
@@ -23,7 +25,7 @@ $ConfigPath = Join-Path $RepoRoot "config\config.psd1"
 Write-Host ""
 Write-Host "  +------------------------------------------------------------+" -ForegroundColor DarkCyan
 Write-Host "  |                                                            |" -ForegroundColor DarkCyan
-Write-Host "  |" -NoNewline -ForegroundColor DarkCyan; Write-Host "    Entra ID Simple Tenant Migration Tool              " -NoNewline -ForegroundColor Cyan; Write-Host "|" -ForegroundColor DarkCyan
+Write-Host "  |" -NoNewline -ForegroundColor DarkCyan; Write-Host ("    Entra ID Simple Tenant Migration Tool   v{0}     " -f $script:EIDMVersion) -NoNewline -ForegroundColor Cyan; Write-Host "|" -ForegroundColor DarkCyan
 Write-Host "  |" -NoNewline -ForegroundColor DarkCyan; Write-Host "    Cross-Tenant Migration Orchestrator                " -NoNewline -ForegroundColor DarkGray; Write-Host "|" -ForegroundColor DarkCyan
 Write-Host "  |                                                            |" -ForegroundColor DarkCyan
 Write-Host "  +------------------------------------------------------------+" -ForegroundColor DarkCyan
@@ -159,7 +161,7 @@ while ($true) {
 
     Write-Host ""
     Write-Host "  +------------------------------------------------------------+" -ForegroundColor DarkCyan
-    Write-Host "  |" -NoNewline -ForegroundColor DarkCyan; Write-Host "    Entra ID Simple Tenant Migration Tool              " -NoNewline -ForegroundColor Cyan; Write-Host "|" -ForegroundColor DarkCyan
+    Write-Host "  |" -NoNewline -ForegroundColor DarkCyan; Write-Host ("    Entra ID Simple Tenant Migration Tool   v{0}     " -f $script:EIDMVersion) -NoNewline -ForegroundColor Cyan; Write-Host "|" -ForegroundColor DarkCyan
     Write-Host "  +------------------------------------------------------------+" -ForegroundColor DarkCyan
     Write-Host ""
 

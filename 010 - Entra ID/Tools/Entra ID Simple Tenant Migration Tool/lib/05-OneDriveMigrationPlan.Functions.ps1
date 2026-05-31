@@ -29,6 +29,18 @@
 # ==========================================================================
 
 function Get-EIDMOneDriveMigrationPlanSteps {
+    <#
+    .SYNOPSIS
+        Returns the ordered step descriptors for the OneDrive Migration Plan phase.
+    .DESCRIPTION
+        Each descriptor is a hashtable consumed by Invoke-EIDMPhase / Invoke-EIDMStep,
+        with keys Id, Phase, Handler, Requires (and optionally AllowRerun).
+        The OneDrive Migration Plan phase builds the source-to-target user mapping,
+        sets up the SharePoint cross-tenant trust, produces the CTIM identity map
+        and assigns the required target licenses.
+    .PARAMETER Ctx
+        The migration context object (run root, config, connections).
+    #>
     param(
         [Parameter(Mandatory)]$Ctx
     )

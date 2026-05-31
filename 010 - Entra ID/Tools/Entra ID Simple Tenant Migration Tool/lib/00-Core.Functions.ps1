@@ -66,11 +66,13 @@ function Read-EIDMYesNo {
 function Read-EIDMSimpleYesNo {
     <#
     .SYNOPSIS  Lightweight Y/N prompt (no tag/detail overhead).
-    .DESCRIPTION  Returns $true for Y, $false for N. Loops until valid input.
+    .DESCRIPTION  Returns $true for Y, $false for N. No implicit default:
+                  the prompt loops until the user types Y or N. The square
+                  brackets in "[y/n]" are a visual cue, NOT a default value.
     #>
     param([Parameter(Mandatory)][string]$Question)
     do {
-        $r = Read-Host ("{0} (Y/N)" -f $Question)
+        $r = Read-Host ("{0} [y/n]" -f $Question)
         if (-not $r) { continue }
         $r = $r.Trim()
     } while ($r -notmatch '^[YyNn]$')
@@ -422,7 +424,7 @@ function Select-EIDMConfigAction {
     Write-Host "      The existing config file will be overwritten." -ForegroundColor DarkGray
     Write-Host ""
 
-    Write-Host "  " -NoNewline; Write-Host " 5 " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " Cancel and exit" -ForegroundColor DarkGray
+    Write-Host "  " -NoNewline; Write-Host " 5 " -NoNewline -ForegroundColor Gray -BackgroundColor DarkGray; Write-Host " Exit" -ForegroundColor DarkGray
     Write-Host ""
 
     while ($true) {

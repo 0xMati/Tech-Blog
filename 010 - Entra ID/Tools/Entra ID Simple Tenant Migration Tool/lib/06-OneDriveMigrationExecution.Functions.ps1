@@ -18,6 +18,17 @@
 # ==========================================================================
 
 function Get-EIDMOneDriveMigrationExecutionSteps {
+    <#
+    .SYNOPSIS
+        Returns the ordered step descriptors for the OneDrive Migration Execution phase.
+    .DESCRIPTION
+        Each descriptor is a hashtable consumed by Invoke-EIDMPhase / Invoke-EIDMStep,
+        with keys Id, Phase, Handler, Requires (and optionally AllowRerun).
+        The OneDrive Migration Execution phase starts and monitors OneDrive cross-tenant
+        content moves, and resets the SharePoint cross-tenant trust when done.
+    .PARAMETER Ctx
+        The migration context object (run root, config, connections).
+    #>
     param(
         [Parameter(Mandatory)]$Ctx
     )
@@ -239,20 +250,43 @@ function Step-06-01-StartOneDriveMigrations {
     # --- Pass 2: batch-remove conflicting target sites, then retry ---
     if ($conflicts.Count -gt 0) {
         Write-EIDMSection "Remove Conflicting Target OneDrive Sites"
-        Write-Host ("  {0} user(s) with target site conflict. Switching to TARGET to remove..." -f $conflicts.Count) -ForegroundColor Yellow
 
-        Disconnect-EIDMSharePointIfNeeded
-        Ensure-EIDMSharePointTargetConnection -Ctx $Ctx
-
+        # ---- Build the list of OneDrive sites that would be removed ----
         $tgtTenant = $Ctx.Config.Tenants.Target.TenantIdOrDomain
         $tgtName = $tgtTenant
         if ($tgtName -match '^([^\.]+)\.onmicrosoft\.com$') { $tgtName = $Matches[1] }
 
-        foreach ($user in $conflicts) {
+        $plannedRemovals = foreach ($user in $conflicts) {
             $tgtUpn     = $user.TargetUPN
             $userPart   = ($tgtUpn -replace '@.*$','') -replace '\.','_'
             $domainPart = ($tgtUpn -replace '^[^@]+@','') -replace '\.','_'
-            $odSiteUrl  = "https://{0}-my.sharepoint.com/personal/{1}_{2}" -f $tgtName, $userPart, $domainPart
+            [pscustomobject]@{
+                User    = $tgtUpn
+                SiteUrl = "https://{0}-my.sharepoint.com/personal/{1}_{2}" -f $tgtName, $userPart, $domainPart
+            }
+        }
+
+        # ---- DESTRUCTIVE: warn + list + confirm ----
+        Write-EIDMTag -Tag "DESTRUCTIVE" -Text ("About to permanently remove {0} OneDrive site(s) on the TARGET tenant. This cannot be undone." -f $plannedRemovals.Count) -Color Red
+        Write-Host ""
+        Write-Host "  Sites that will be removed:" -ForegroundColor Yellow
+        foreach ($p in $plannedRemovals) {
+            Write-Host ("    - {0}" -f $p.SiteUrl) -ForegroundColor DarkGray
+        }
+        Write-Host ""
+
+        $confirmed = Read-EIDMSimpleYesNo ("Permanently remove these {0} OneDrive site(s) on TARGET?" -f $plannedRemovals.Count)
+        if (-not $confirmed) {
+            Write-EIDMTag -Tag "SKIP" -Text "OneDrive site removal cancelled by user." -Color Yellow
+            return $script:EIDMStatus_WaitingUser
+        }
+
+        Write-Host ("  Switching to TARGET to remove {0} site(s)..." -f $plannedRemovals.Count) -ForegroundColor Yellow
+        Disconnect-EIDMSharePointIfNeeded
+        Ensure-EIDMSharePointTargetConnection -Ctx $Ctx
+
+        foreach ($p in $plannedRemovals) {
+            $odSiteUrl = $p.SiteUrl
 
             Write-Host ("  Removing: {0}" -f $odSiteUrl) -ForegroundColor DarkGray
             try {

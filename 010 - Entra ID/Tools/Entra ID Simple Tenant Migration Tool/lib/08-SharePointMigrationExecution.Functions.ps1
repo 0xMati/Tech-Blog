@@ -15,6 +15,18 @@
 # ==========================================================================
 
 function Get-EIDMSharePointMigrationExecutionSteps {
+    <#
+    .SYNOPSIS
+        Returns the ordered step descriptors for the SharePoint Migration Execution phase.
+    .DESCRIPTION
+        Each descriptor is a hashtable consumed by Invoke-EIDMPhase / Invoke-EIDMStep,
+        with keys Id, Phase, Handler, Requires (and optionally AllowRerun).
+        The SharePoint Migration Execution phase starts, monitors and stops cross-tenant
+        SharePoint site moves, performs post-migration cleanup and fixes site admins
+        on the target tenant.
+    .PARAMETER Ctx
+        The migration context object (run root, config, connections).
+    #>
     param(
         [Parameter(Mandatory)]$Ctx
     )

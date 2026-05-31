@@ -482,6 +482,18 @@ function Step-02-02-ConfirmUsersOnPremProvisioningPlanReview {
 }
 
 function Get-EIDMIdentityPreparationSteps {
+    <#
+    .SYNOPSIS
+        Returns the ordered step descriptors for the Identity Preparation phase.
+    .DESCRIPTION
+        Each descriptor is a hashtable consumed by Invoke-EIDMPhase / Invoke-EIDMStep,
+        with keys Id, Phase, Handler, Requires (and optionally AllowRerun).
+        The Identity Preparation phase builds provisioning plans (on-prem users,
+        cloud-only users, guests, groups) and creates the corresponding objects in
+        the on-premises Active Directory and in the target Entra ID tenant.
+    .PARAMETER Ctx
+        The migration context object (run root, config, connections).
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$Ctx

@@ -13,6 +13,19 @@
 # ==========================================================================
 
 function Get-EIDMSharePointMigrationPlanSteps {
+    <#
+    .SYNOPSIS
+        Returns the ordered step descriptors for the SharePoint Migration Plan phase.
+    .DESCRIPTION
+        Each descriptor is a hashtable consumed by Invoke-EIDMPhase / Invoke-EIDMStep,
+        with keys Id, Phase, Handler, Requires (and optionally AllowRerun).
+        The SharePoint Migration Plan phase discovers SPO sites (excluding OneDrive),
+        verifies the cross-tenant trust, builds and uploads the identity map and
+        verifies site compatibility before any cross-tenant move can start.
+        Note: requires a separate 'Cross-Tenant Shared Data Migration' license.
+    .PARAMETER Ctx
+        The migration context object (run root, config, connections).
+    #>
     param(
         [Parameter(Mandatory)]$Ctx
     )

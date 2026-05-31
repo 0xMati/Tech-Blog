@@ -8,6 +8,22 @@ $script:ErrorActionPreference = 'Stop'
 # ------------------------------------------------------------
 
 function Get-EIDMDiscoverySteps {
+    <#
+    .SYNOPSIS
+        Returns the ordered step descriptors for the Discovery phase.
+    .DESCRIPTION
+        Each descriptor is a hashtable consumed by Invoke-EIDMPhase / Invoke-EIDMStep,
+        with keys:
+            Id       - unique step identifier (shown in menu and state file)
+            Phase    - phase folder name under the run root
+            Handler  - name of the function to invoke for this step
+            Requires - list of connection names that must be established first
+                       (e.g. GraphSource, ExchangeSource, SPOSource)
+        The Discovery phase exports source-tenant inventory (users, groups, mailboxes,
+        recipients, contacts, OneDrive sites) to per-phase CSVs for later phases.
+    .PARAMETER Ctx
+        The migration context object (run root, config, connections).
+    #>
     param(
         [Parameter(Mandatory)]$Ctx
     )

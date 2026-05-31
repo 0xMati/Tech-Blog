@@ -32,6 +32,18 @@
 # ==========================================================================
 
 function Get-EIDMExchangeMigrationExecutionSteps {
+    <#
+    .SYNOPSIS
+        Returns the ordered step descriptors for the Exchange Migration Execution phase.
+    .DESCRIPTION
+        Each descriptor is a hashtable consumed by Invoke-EIDMPhase / Invoke-EIDMStep,
+        with keys Id, Phase, Handler, Requires (and optionally AllowRerun).
+        The Exchange Migration Execution phase starts, monitors and stops cross-tenant
+        mailbox migration batches, assigns target licenses, and cleans up the temporary
+        migration configuration (security group, organization relationships, app reg).
+    .PARAMETER Ctx
+        The migration context object (run root, config, connections).
+    #>
     param(
         [Parameter(Mandatory)]$Ctx
     )
@@ -801,6 +813,18 @@ function Step-04-03-StopMigrationBatches {
             Write-EIDMTag -Tag "ERROR" -Text "Invalid selection." -Color Red
             return $script:EIDMStatus_Failed
         }
+    }
+
+    # ---- Extra warning for destructive actions (Remove / StopAndRemove) ----
+    if ($actionName -eq "Remove" -or $actionName -eq "StopAndRemove") {
+        Write-Host ""
+        Write-EIDMTag -Tag "DESTRUCTIVE" -Text ("About to permanently delete {0} migration batch(es) and their history. In-flight migrations will be cancelled. This cannot be undone." -f $filteredBatches.Count) -Color Red
+        Write-Host ""
+        Write-Host "  Batches that will be removed:" -ForegroundColor Yellow
+        foreach ($b in $filteredBatches) {
+            Write-Host ("    - {0}  [Status: {1}]" -f $b.Identity, $b.Status) -ForegroundColor DarkGray
+        }
+        Write-Host ""
     }
 
     $confirmText = "Apply '{0}' to {1} batch(es)?" -f $actionName, $filteredBatches.Count

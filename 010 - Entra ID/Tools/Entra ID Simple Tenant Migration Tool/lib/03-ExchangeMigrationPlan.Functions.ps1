@@ -13,8 +13,8 @@ function Get-EIDMSourceRoutingAddress {
                from the EmailAddresses proxy list or constructs it from PrimarySmtpAddress.
     .PARAMETER EmailAddresses  Semicolon-separated proxy addresses from EXO Discovery CSV or mailbox object.
     .PARAMETER PrimarySmtpAddress  Fallback source SMTP address.
-    .PARAMETER SourceOnMsDomain  e.g. mamotron.onmicrosoft.com (used to derive .mail. domain).
-    .OUTPUTS   The routing address WITHOUT the "SMTP:" prefix (e.g. user@mamotron.mail.onmicrosoft.com)
+    .PARAMETER SourceOnMsDomain  e.g. contoso.onmicrosoft.com (used to derive .mail. domain).
+    .OUTPUTS   The routing address WITHOUT the "SMTP:" prefix (e.g. user@contoso.mail.onmicrosoft.com)
     #>
     param(
         [string]$EmailAddresses,
@@ -71,6 +71,18 @@ function Get-EIDMSourceRoutingAddress {
 }
 
 function Get-EIDMExchangeMigrationPlanSteps {
+    <#
+    .SYNOPSIS
+        Returns the ordered step descriptors for the Exchange Migration Plan phase.
+    .DESCRIPTION
+        Each descriptor is a hashtable consumed by Invoke-EIDMPhase / Invoke-EIDMStep,
+        with keys Id, Phase, Handler, Requires (and optionally AllowRerun).
+        The Exchange Migration Plan phase prepares Exchange cross-tenant prerequisites:
+        target app registration with admin consent, organization relationships,
+        mailbox migration CSV, target recipient checks and MailUser preparation.
+    .PARAMETER Ctx
+        The migration context object (run root, config, connections).
+    #>
     param(
         [Parameter(Mandatory)]$Ctx
     )
@@ -166,7 +178,8 @@ function Grant-EIDMMailboxMigrationPermission {
     }
 
     if (-not $appRole) {
-        Write-EIDMTag -Tag "ERROR" -Text "Could not find Mailbox.Migration app role on Exchange Online SP." -Color Red
+        Write-EIDMTag -Tag "ERROR" -Text "Could not find the 'Mailbox.Migration' application role on the Exchange Online service principal (AppId 00000002-0000-0ff1-ce00-000000000000)." -Color Red
+        Write-EIDMTag -Tag "HINT"  -Text "Verify that Exchange Online is provisioned in the target tenant (Get-MgServicePrincipal -Filter \"appId eq '00000002-0000-0ff1-ce00-000000000000'\" must return one object). If the tenant has no EXO, the cross-tenant migration cannot proceed." -Color Yellow
         return $null
     }
 
@@ -2282,9 +2295,9 @@ function Step-03-06-PrepareMailUsers {
                     # --- Clean source-domain SMTP proxy addresses from target MailUser ---
                     # Skip for OnPrem/DirSync users - their proxyAddresses are mastered on-prem.
                     # All SMTP proxyAddresses on a target MailUser MUST belong to target tenant domains.
-                    # Source-domain proxies (e.g. @mamotron.onmicrosoft.com) cause MRS move failures.
+                    # Source-domain proxies (e.g. @contoso.onmicrosoft.com) cause MRS move failures.
                     if (-not $isOnPrem) {
-                        $sourceDomain = $Ctx.Config.Tenants.Source.TenantIdOrDomain   # e.g. mamotron.onmicrosoft.com
+                        $sourceDomain = $Ctx.Config.Tenants.Source.TenantIdOrDomain   # e.g. contoso.onmicrosoft.com
                         $sourceBaseName = ($sourceDomain -replace '\.onmicrosoft\.com$', '')
                         $currentMailUser = Get-MailUser -Identity $tgtUpn -ErrorAction SilentlyContinue
                         if ($currentMailUser) {
