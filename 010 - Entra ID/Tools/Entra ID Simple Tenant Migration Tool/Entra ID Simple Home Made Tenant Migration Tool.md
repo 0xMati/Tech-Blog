@@ -210,6 +210,17 @@ All data flows between phases through CSV files stored in the run folder. This d
 - Provides a **complete audit trail** of what was discovered, planned, and executed
 - Enables **Plan → Review → Execute** triads where the operator validates each CSV before the tool acts on it
 
+### Naming Conventions
+
+All functions exposed by the tool follow the prefix `<Verb>-EIDM<Noun>` (EIDM = **E**ntra **ID** **M**igration). The tool intentionally uses two non-standard PowerShell verbs that you may see flagged by `Import-Module` warnings or by **PSScriptAnalyzer** (`PSUseApprovedVerbs`):
+
+| Verb | Where it is used | Why it was chosen |
+|------|------------------|-------------------|
+| `Ensure-` | `Ensure-EIDM*Connection`, `Ensure-EIDMPrerequisites`, `Ensure-EIDMRunStateFile`, `Ensure-EIDMDependencies`, `Ensure-EIDMPowerShellGalleryReady` | These functions are idempotent: they check a precondition and only act if it is not already satisfied. `Ensure-` reads more naturally at call sites than `Confirm-` (which conveys interactive confirmation) or `Initialize-` (which implies a fresh state). |
+| `Normalize-` | `Normalize-EIDMAlias` | Pure string-normalisation helper. `ConvertTo-` was considered but did not improve readability for a private helper. |
+
+These functions are **private to the tool** (the tool is dot-sourced, not imported as a module), so the verb warnings are cosmetic and have no functional impact. They are documented here so reviewers running `Invoke-ScriptAnalyzer` know the deviations are deliberate.
+
 ---
 
 ## Phase 1 — Discovery
