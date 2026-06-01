@@ -170,24 +170,40 @@ Set-SPOSite -Identity https://contoso.sharepoint.com/sites/<site> `
 
 ### 3.4 Defender for Cloud Apps
 
+Also referred to as **MDCA** (or its older name, MCAS — Microsoft Cloud App Security). The most feature-rich of the lot, and the most often misunderstood.
+
 **What it does**
 
-- Adds session-level controls through Conditional Access App Control.
-- Supports download blocking, watermarking, label-based restrictions, and more.
+MDCA Conditional Access App Control integrates with Entra Conditional Access to enforce **two distinct families of policies**:
+
+| Policy type | What it does | Browser sessions | Native clients (sync, Office desktop, Teams desktop, mobile) |
+|---|---|---|---|
+| **Access Policy** | Allow / Block / Test decision at sign-in, filterable by user, group, app, IP, location, device, activity, URL pattern | ✅ | ✅ **Yes** — the `Client app = Mobile and desktop` filter applies the same access logic to native client sessions |
+| **Session Policy** | In-session controls: block download, watermark, block copy/paste, label-aware DLP, real-time inspection of in-flight content | ✅ | ❌ Requires HTTP rewrite through the MDCA reverse proxy (`*.mcas.ms`) — impossible on native encrypted client traffic |
+
+**Common misconception**: *"MDCA is browser-only."* False — that limitation applies **only to session policies**. Access policies cover native clients too, via the MDCA ↔ CA integration at sign-in.
 
 **What it is good at**
 
-- Fine-grained session behavior when you need to go beyond allow/block.
-- Advanced download protection with label awareness.
+- **Session policies** (the unique value): the only Microsoft control plane that can do *"view in browser allowed, download blocked"*, watermarking, label-aware in-session DLP, copy/paste blocking, real-time activity inspection. None of CA, Auth Context, or AER can do these.
+- **Activity-level filtering**: policies can target individual actions (download, upload, share externally, print) rather than just "access to the app".
+- **Forensic visibility** at session level: who did what, when, from where, on which file.
 
 **What it does not solve best**
 
-- It adds real operational complexity.
-- Often overkill if the main requirement is just allow/block based on site type and user type.
+- For **access/block decisions only**, MDCA access policies are functionally equivalent to plain CA access policies with the same conditions — so no added value, just an extra plane of control to operate and correlate during troubleshooting.
+- **URL pattern filtering** to distinguish internal vs external sites is more fragile than SPO `ConditionalAccessPolicy` tagging — it depends on site naming conventions and breaks silently if a site is misnamed or created via self-service.
+- **Operational complexity**: a third console alongside Entra CA and SPO Admin. Three places to look when something is denied, three policy languages to keep aligned.
+- **Reverse proxy edge cases** (browser sessions only): some SPFx web parts, custom iframes/embeds, very large downloads, and third-party app catalog scenarios can break under proxy rewriting. Known issues are documented by Microsoft.
 
 **Verdict** 🔬
 
-Powerful optional layer — but don't reach for it if you don't need the advanced session controls.
+Pick MDCA when the requirement is **beyond access/block** — specifically when you need session-level enforcement (view-only with no download, watermarking, label-aware DLP, copy/paste blocking, activity forensics). For pure access/block matrices, CA + AER + Authentication Context cover the ground with fewer moving parts.
+
+A common, sound combination:
+
+- **CA + AER + Authentication Context** for the access decision (who can reach what, from where)
+- **MDCA session policies** on top for sensitive sites where session behavior matters (e.g. external collaboration sites: allow guests to view but block downloads to unmanaged devices)
 
 ---
 
