@@ -598,7 +598,7 @@ For comparison, on a `PoP realm=` challenge (standard Proof-of-Possession nonce 
 | CA policy state on the targeted Auth Context | Entra evaluates? | `acrs` claim in the AT? | SPO emits claims challenge? | OneDrive sync result |
 |---|---|---|---|---|
 | `On` (grant satisfied, fresh session) | ✅ Enforcement | ✅ Yes | ❌ No (AT already conforms) | ✅ **Works** (lab-reproduced) |
-| `On` (grant satisfied, but pre-existing cached AT without `acrs`) | ✅ Enforcement | ⚠️ Cached AT used until expiry / refresh | ✅ Yes (on the cached AT) | ⚠️ **Field reports of intermittent failures** — same "library locked" loop, resolved only by detagging the ODFB (not by leaving the CA on `On`) |
+| `On` (grant satisfied, but pre-existing cached AT without `acrs`) | ✅ Enforcement | ⚠️ Cached AT used until expiry / refresh | ✅ Yes (on the cached AT) | ⚠️ **Field reports of intermittent failures** — same "library locked" loop on a subset of users; typically resolved by clearing the OneDrive client cache, re-signing in the sync, or in last resort temporarily detagging the ODFB |
 | `On` (grant **not** satisfied) | ✅ Enforcement (block) | ❌ No (token request denied) | n/a | 🚫 Token denied at Entra — no SPO call |
 | `Report-only` | ✅ Log only | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** (lab-reproduced) |
 | `Off` | ❌ Not evaluated | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** (lab-reproduced) |
