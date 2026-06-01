@@ -448,28 +448,33 @@ You can also use sensitivity labels with Sites and Groups scope if you prefer a 
 
 #### 🔎 Inventory: list all sites currently tagged with an Authentication Context
 
-Before (and after) any change, you want a clear picture of which sites carry which context. The `ConditionalAccessPolicy` and `AuthenticationContextName` properties returned by `Get-SPOSite` tell you exactly that.
+Before (and after) any change, you want a clear picture of which sites carry which context. The `ConditionalAccessPolicy` and `AuthenticationContextName` properties tell you exactly that — but there is a catch.
+
+> ⚠️ **Known SPO module quirk**: when you call `Get-SPOSite -Limit All`, the cmdlet returns a **lite projection** of each site. `ConditionalAccessPolicy` and `AuthenticationContextName` are **always empty** in that mode. These two properties are only populated when you query each site individually with `Get-SPOSite -Identity <url>`. The scripts below re-query every site, which is slow on large tenants but is the only way to get reliable data.
 
 ```powershell
 Connect-SPOService -Url https://contoso-admin.sharepoint.com
 
 # SharePoint sites tagged with an Authentication Context
 Get-SPOSite -Limit All -IncludePersonalSite $false |
+    ForEach-Object { Get-SPOSite -Identity $_.Url } |
     Where-Object { $_.ConditionalAccessPolicy -eq 'AuthenticationContext' } |
-    Select-Object Url, AuthenticationContextName, Owner, Template, StorageUsageCurrent, SharingCapability |
+    Select-Object Url, AuthenticationContextName, Template, StorageUsageCurrent, SharingCapability |
     Sort-Object AuthenticationContextName, Url |
     Format-Table -AutoSize
 
 # OneDrive personal sites tagged with an Authentication Context
 Get-SPOSite -Limit All -IncludePersonalSite $true -Filter "Url -like '-my.sharepoint.com/personal/'" |
+    ForEach-Object { Get-SPOSite -Identity $_.Url } |
     Where-Object { $_.ConditionalAccessPolicy -eq 'AuthenticationContext' } |
-    Select-Object Url, AuthenticationContextName, Owner |
+    Select-Object Url, AuthenticationContextName |
     Sort-Object Url
 
-# Full export for governance / audit
+# Full export for governance / audit (slow on large tenants - re-queries every site)
 Get-SPOSite -Limit All -IncludePersonalSite $true |
+    ForEach-Object { Get-SPOSite -Identity $_.Url } |
     Where-Object { $_.ConditionalAccessPolicy -eq 'AuthenticationContext' } |
-    Select-Object Url, AuthenticationContextName, Owner, Template, StorageUsageCurrent, SharingCapability |
+    Select-Object Url, AuthenticationContextName, Template, StorageUsageCurrent, SharingCapability |
     Export-Csv -Path .\SPO_AuthContext_Inventory.csv -NoTypeInformation -Encoding UTF8
 ```
 
