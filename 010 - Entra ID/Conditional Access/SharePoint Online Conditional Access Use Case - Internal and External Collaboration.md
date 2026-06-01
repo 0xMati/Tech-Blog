@@ -20,6 +20,8 @@ The difficult part is not knowing those features exist. The difficult part is co
 > **📌 Scope**: this article covers one specific design scenario, not every SharePoint and Teams Conditional Access pattern. The design choices here are driven by a concrete set of business requirements described in section 1.
 
 > **TL;DR**: the target scenarios are achievable, but not with a simple model like "block internal sites, allow external sites". The clean design is based on **site-level Authentication Context**, **separate Conditional Access policies for members and guests**, and a **clear internal vs external collaboration model** in SharePoint and Teams.
+>
+> ⚠️ Authentication Context is a **narrowly-scoped** control with **substantial client-compatibility limitations** (OneDrive sync, Office Scripts, Outlook, Power Platform, mobile apps, etc.). Read **[Section 8 — Limitations](#8-⚠️-limitations-known-issues--operational-considerations)** before tagging any production site.
 
 ---
 
@@ -98,7 +100,7 @@ Before jumping into the recommended design, let's be honest about what each tool
 
 **Verdict** 🏆
 
-This is the key control for this scenario. Everything else builds around it.
+This is the key control for this scenario. Everything else builds around it — but **read [Section 8](#8-⚠️-limitations-known-issues--operational-considerations) before assuming it's free of side effects**. Tagging a site is a breaking change for any client that does not handle claims challenges.
 
 ---
 
@@ -267,6 +269,8 @@ Suggested naming:
 
 - `AC-InternalSites`
 - `AC-ExternalCollabSites`
+
+> ⚠️ Tagging a site is **not a neutral operation**. The moment the tag is applied, every client must understand the claims-challenge flow; unsupported clients break immediately, regardless of the CA policy state. See **[Section 8](#8-⚠️-limitations-known-issues--operational-considerations)** for the full impact analysis.
 
 ### 🔐 Layer 3 - Separate CA Policies for Members and Guests
 
@@ -520,8 +524,9 @@ After creating and enabling all three policies:
    - Wait 1-2 minutes for the revocation to propagate.
    - Test again in a fresh browser window or private mode.
    - Cached tokens can sometimes mask new policy evaluations, and revoking forces a fresh token acquisition.
+3. Validate **non-browser** consumers explicitly: OneDrive sync client, Teams desktop (Files tab), Office desktop, and any Office Scripts / Power Platform consumer. Token caches in these clients do not refresh on the same cycle as the browser — see [8.1](#field-observed-issue--onedrive-sync--auth-context-on-odfb--report-only-hypothesis).
 
-> **Note on CAE and network changes**: Continuous Access Evaluation (CAE) can trigger Conditional Access reevaluation when network conditions change, but behavior depends on client and resource support. Sign-in frequency is a separate periodic reauthentication control and does not replace CAE. If policy behavior seems inconsistent after a network change, validate with a fresh browser session and, if needed, revoke active sessions for the test user.
+> 💡 Continuous Access Evaluation (CAE) propagates session revocation faster than token lifetime in supported clients, but it does **not** retroactively inject a missing `acrs` claim into a cached access token. If a user's sync client is stuck after a policy change, the only fixes are a fresh sign-in of the client, a token cache reset, or in last resort a site detag.
 
 ### Step 6 - Optional Global Baseline with App-Enforced Restrictions 🛡️
 
@@ -538,7 +543,7 @@ Again, this is useful as a baseline, not as the main way to express the scenario
 
 ## 8. ⚠️ Limitations, Known Issues & Operational Considerations
 
-Authentication Context is a powerful but unforgiving control. Most issues encountered in production fall into one of the categories below. This section is built from real field feedback, not just the Microsoft documentation (which lags reality on several points).
+Authentication Context is a powerful but **narrowly-scoped** control — it is a niche access primitive for *specific sensitive resources*, not a tenant-wide security baseline. It only works for clients and apps that explicitly understand the claims challenge protocol; everything else either silently bypasses the policy (apps holding pre-issued tokens) or breaks outright (apps that cannot handle claims challenges). This section is built from a combination of the [official Microsoft limitations](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations) and real field feedback — the two do not always agree.
 
 ### 8.1 Tagging a site = breaking change for legacy / claims-unaware clients
 
@@ -611,68 +616,106 @@ The takeaway is counter-intuitive and **uncomfortable**: as long as the ODFB car
 > - Switching to `On` does **not** retroactively fix users whose sync already holds a cached AT without `acrs` — they may need a token cache reset, a sign-out/sign-in of the sync, or — if neither resolves — a temporary detag of their ODFB. This matches a field scenario reported during a Report-only → On rollout in June 2026: same symptom, CA already in `On`, only detagging the ODFB resolved it for the impacted users.
 > - To validate impact on ODFB consumers safely, **either pilot directly in `On` on a controlled scope and excluded users with active OneDrive sync from the broader `Report-only` scope**, or accept the risk of user incidents during the Report-only phase.
 
+#### Field-observed issue — Office Scripts broken regardless of CA mode
+
+Office Scripts is documented by Microsoft as not supporting Conditional Access claims challenges ([source](https://learn.microsoft.com/en-us/office/dev/scripts/testing/platform-limits?tabs=business#conditional-access)), but the documentation does not make it clear that the **CA mode is irrelevant** — only the **presence of the tag** matters.
+
+Lab reproduction (June 2026, ODFB tagged with `AC-InternalSites`):
+
+| Scenario | ODFB tagged | CA mode | Result |
+|---|---|---|---|
+| 1 | ✅ Yes | `On` (grant satisfied) | ❌ "Oops, something went wrong / unexpected error occurred" when creating or running a script |
+| 2 | ❌ No (detagged) | `On` | ✅ Script creation works (Run availability is a separate session/cache concern, unrelated to Auth Context) |
+| 3 | ✅ Yes (retagged) | `On` | ❌ Same error as scenario 1 |
+
+Same OneDrive, same user, same CA in `On` with grant satisfied — **OneDrive sync works in scenario 1, but Office Scripts does not**. The Office Scripts runtime executes server-side without a user-interactive auth surface, so even when Entra would mint a token with `acrs` (as it does in `On` mode for the browser path), the runtime cannot consume that flow.
+
+> ⚠️ **Practical consequence**: do **not** rely on switching the CA to `On` to fix Office Scripts. The only mitigation is to **not tag** (or to **detag**) the sites where Office Scripts is required.
+
 ### 8.2 Client compatibility — what actually works in 2026
 
-The official Microsoft limitation pages are notoriously out of date. The matrix below consolidates field-verified behavior.
+The matrix below consolidates the [official Microsoft limitations page](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations) (last updated May 13, 2026) and flags the items where field testing has diverged from the documentation.
+
+> 📘 **Primary reference**: [Conditional Access policies and SharePoint — Limitations](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations). Everything in the tables below that is **not** explicitly tagged "field-observed" comes from that page (or from the linked Microsoft Learn pages for Office Scripts and sensitivity labels).
 
 #### ✅ Properly supported
 
 - **Modern browsers** (Edge, Chrome, Firefox up-to-date)
-- **Office desktop** (Word / Excel / PowerPoint / Outlook) on Microsoft 365 Apps via WAM (Click-to-Run, current channel)
+- **Office desktop** (Word / Excel / PowerPoint) on Microsoft 365 Apps via WAM (Click-to-Run, current channel) — see Outlook caveat below
 - **Teams desktop** (new client) — Files tab, channel documents, files shared in chat
 - **Teams web** — Files experience
-- **OneDrive Sync client** version **23.x or later** (claims challenge correctly handled in `On`-mode CA scenarios — see [8.1 field-observed issue](#field-observed-issue--onedrive-sync--auth-context-on-odfb--report-only-hypothesis) for a Report-only edge case)
-- **SharePoint mobile / OneDrive mobile** apps (current versions)
-- **Viva Engage** — file access path
 
-#### ⚠️ Limited, conditional, or under-documented
+#### ⚠️ Limited, conditional, or where field experience diverges from MS documentation
 
-| Component | Status | Notes |
-|---|---|---|
-| **Outlook on the web — OneDrive attachments** | Variable | Test in your context |
-| **Microsoft Search** on tagged sites | Indexed normally, but per-user queries may filter results when the user has not stepped up |
-| **OneNote sections stored in SPO** | Variable | Depends on client version |
-| **Sensitivity labels with Auth Context (container labels)** | Works, but [hidden dependencies apply](https://learn.microsoft.com/en-us/purview/sensitivity-labels-teams-groups-sites#more-information-about-the-dependencies-for-the-authentication-context-option) |
+| Component | MS doc status | Field-observed | Notes |
+|---|---|---|---|
+| **OneDrive sync client** | 🚫 "The OneDrive sync app won't sync sites with an authentication context" ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) | ⚠️ **Works only in `On` mode with grant satisfied**, breaks in `Report-only` / `Off` / no policy — see [8.1 field-observed issue](#field-observed-issue--onedrive-sync--auth-context-on-odfb--report-only-hypothesis) | MS statement is blanket "doesn't work"; lab repro shows it actually works under specific conditions (sync v23.x+, CA `On`, grant satisfied, fresh session) |
+| **Viva Engage** | 🚫 Listed as not supported by MS | ✅ **File access path works** (June 2026 field report) | Possible MS doc lag |
+| **Microsoft Search** on tagged sites | Not in MS limitations list | ⚠️ Indexed normally, but per-user queries may filter results when the user has not stepped up | Inference |
+| **Sensitivity labels with Auth Context (container labels)** | Works, but [dependencies apply](https://learn.microsoft.com/en-us/purview/sensitivity-labels-teams-groups-sites#more-information-about-the-dependencies-for-the-authentication-context-option) | — | Cross-feature interactions; respect the dependency matrix |
 
-#### 🚫 Not supported / will break
+#### 🚫 Not supported / will break (per Microsoft documentation)
 
-| Component | Reason |
+| Component | Reason / source |
 |---|---|
-| **Office Scripts** (create / edit / run) | Service-side runtime does not handle claims challenges. [Documented limitation](https://learn.microsoft.com/en-us/office/dev/scripts/testing/platform-limits?tabs=business#conditional-access) |
-| **OneDrive Sync client < 23.x** | Old auth stack |
+| **Older versions of Office apps** | See [the list of supported versions](https://learn.microsoft.com/en-us/microsoft-365/compliance/sensitivity-labels-teams-groups-sites#more-information-about-the-dependencies-for-the-authentication-context-option) |
 | **Office desktop ≤ 2019 (MSI)** | ADAL only — no claims challenge support |
+| **Outlook on Windows, Mac, Android, iOS** | "Don't support communication with SharePoint sites protected by an Authentication Context" ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **SharePoint mobile apps (iOS and Android)** | Explicitly listed by MS |
+| **Office Scripts** (create / edit / run) | Service-side runtime does not handle claims challenges. [Documented limitation](https://learn.microsoft.com/en-us/office/dev/scripts/testing/platform-limits?tabs=business#conditional-access). Lab-confirmed: the tag alone breaks Office Scripts regardless of CA mode (`On`, `Report-only`, `Off`) — see [8.1 Office Scripts note](#field-observed-issue--office-scripts-broken-regardless-of-ca-mode) |
+| **OneDrive Sync client < 23.x** | Old auth stack |
 | **WebDAV / "Open with Explorer"** | Legacy auth path |
 | **SharePoint Designer, InfoPath** | Legacy auth |
-| **Third-party migration / DLP tools** with delegated auth (ShareGate, Mover, AvePoint, etc.) | Most do not implement claims challenges; check vendor support explicitly |
+| **Adding the OneNote app to a Teams channel** | Fails if the associated SP site has an Authentication Context ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **Teams channel meeting recording upload** | Fails on sites with an Authentication Context ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **SharePoint folder renaming in Teams** | Fails if the site has an Authentication Context ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **Teams webinar scheduling** | Fails if OneDrive has an Authentication Context ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **Multiple-file download** | Doesn't work when both Authentication Context and *"Use Conditional Access App Control"* session control are enabled in the CA policy; also doesn't work if Auth Context is set directly on a site **without an active CA policy** using that context, or **if the policy exists but is disabled** ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **File copy/move cross-geo** | Currently doesn't work when an Authentication Context is applied to the destination site ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **Exporting to Excel as an Excel Web Query (IQY)** | Doesn't currently support Authentication Context ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **Visualize SharePoint List in Power BI** | Feature doesn't currently support Authentication Context ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **Enterprise application catalog site collection** | Cannot associate an Authentication Context to this site collection ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations)) |
+| **SharePoint tenant root site** | Authentication Context cannot be applied to the root site (e.g. `https://contoso.sharepoint.com`) — only to non-root site collections. There is therefore no way to scope an Auth Context to the entire tenant via the root ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example)) |
+| **Third-party migration / DLP tools** with delegated auth (ShareGate, Mover, AvePoint, etc.) | Most do not implement claims challenges; check vendor support explicitly. MS explicitly points third-party developers to the [Developer guide to Conditional Access authentication context](https://learn.microsoft.com/en-us/entra/identity-platform/developer-guide-conditional-access-authentication-context) |
 
 ### 8.3 Power Platform impact
 
-This is the most under-documented area. The root cause is the same in all cases:
+> ⚠️ **Heads-up — this section is mostly architectural inference and field experience, not formally documented by Microsoft.**
+>
+> The only two officially-sourced statements we have are:
+> - **MS Auth Context limitations doc** explicitly lists **"Visualize SharePoint list in Power BI"** as not working ([source](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations))
+> - **MS SharePoint connector doc** (Power Automate / Power Apps / Logic Apps / Copilot Studio) contains one generic warning: *"Conditional access policies, such as multi-factor authentication or device compliance policies, might block access to data available through this connector"* ([source](https://learn.microsoft.com/en-us/connectors/sharepointonline/#general-known-issues-and-limitations))
+>
+> Everything else below is **deduced from the connector architecture** (delegated token cached by Power Platform, no interactive UI to satisfy a claims challenge in a non-interactive run) and from field reports. Validate in your own tenant before relying on these statements.
 
-> Power Platform connections hold a delegated token for the owning user. When SharePoint returns `insufficient_claims`, the connector **cannot** trigger an interactive re-authentication for a scheduled, headless, or background execution.
+Common root cause (hypothesis):
 
-#### Power Automate
+> Power Platform connections hold a delegated token issued at connection-creation time for the owning user. When SharePoint returns `insufficient_claims` for a tagged site, the connector — running in a backend service, with no interactive UI — has no way to drive the user through Entra `acr_values` step-up. The action fails or the cached token bypasses the new requirement until expiry.
 
-- **User-triggered flows** (manual button, instant) in an active browser tab — typically OK if the user has already stepped up in that session
-- **Scheduled flows, event-triggered flows, "When a file is created/modified"** on a tagged site — 🚫 **fail silently** with `403 Unauthorized` or `Access denied` on the SharePoint action. No clear error pointing to Auth Context
-- **Fix**: use a **service principal connection** (Sites.Selected app-only permission), exclude the service identity from the CA scope, or do not tag sites consumed by automated flows
+#### Power Automate *(field inference)*
 
-#### Power Apps
+- **User-triggered flows** (manual button, instant) launched from an active browser tab — typically OK if the user has already stepped up in that session and the token cache holds the `acrs` claim
+- **Scheduled flows, event-triggered flows, "When a file is created/modified"** on a tagged site — **expected to fail** with `403 Unauthorized` or `Access denied` on the SharePoint action, with no clear error pointing to Auth Context
+- **Mitigation**: use a **service principal connection** (Sites.Selected app-only permission, which is not subject to user CA), exclude the service identity from the CA scope, or do not tag sites consumed by automated flows
 
-- **Canvas apps** with the SharePoint connector consumed through the Power Apps player: typically broken because the player cannot relaunch the Entra auth flow with `acr_values`
-- **Workaround**: pre-step the user via a `Launch()` to the SharePoint home before the app needs the data, or migrate the connector to app-only auth
+#### Power Apps *(field inference)*
+
+- **Canvas apps** with the SharePoint connector consumed through the Power Apps player: expected to break when the player cannot relaunch the Entra auth flow with `acr_values` mid-session
+- **Mitigation hypotheses**: pre-step the user via a `Launch()` to the SharePoint home before the app needs the data, or migrate the connector to app-only auth
 
 #### Power BI
 
-- **Datasets** sourcing `SharePoint folder` / `SharePoint list` refreshed via the **on-premises data gateway**: rely on stored credentials (often a service account without MFA). If that account does not satisfy a CA policy that issues the ACR claim, refresh **fails**
-- **Fix**: exclude the service account from the `AC-InternalSites` scope, or build a dedicated CA policy that issues the claim for that identity under a trusted-location condition
+- **"Visualize SharePoint list in Power BI"** — 🚫 **officially not supported** with Auth Context ([MS doc](https://learn.microsoft.com/en-us/sharepoint/authentication-context-example#limitations))
+- *(field inference)* **Datasets** sourcing `SharePoint folder` / `SharePoint list` refreshed via the **on-premises data gateway** rely on stored credentials (often a service account without MFA); if that account does not satisfy the CA policy that issues the ACR claim, refresh is expected to fail
+- **Mitigation**: exclude the service account from the `AC-InternalSites` scope, or build a dedicated CA policy issuing the claim for that identity under a trusted-location condition
 
 #### Generic Power Platform checklist before tagging a site
 
 ```
 For each site about to be tagged with an Authentication Context:
   1. List the flows / apps / datasets that consume it
-  2. For each dependency:
+  2. Test each one against a pilot-tagged site BEFORE production rollout
+  3. For each broken dependency:
      a. Migrate the connection to app-only auth (Sites.Selected), OR
      b. Exclude the service identity from the CA scope, OR
      c. Do NOT tag the site (partial rollback)
@@ -680,13 +723,15 @@ For each site about to be tagged with an Authentication Context:
 
 ### 8.4 Pre-flight checklist before tagging a site
 
-- [ ] Inventory of consumers run (Office Scripts, Power Automate, Power Apps, Power BI, third-party tools)
+- [ ] Inventory of consumers run (Office Scripts, Power Automate, Power Apps, Power BI, third-party tools, Outlook — yes, all platforms)
 - [ ] OneDrive Sync client version ≥ 23.x deployed to the affected users (Intune / inventory check)
 - [ ] Office desktop on Click-to-Run current channel (no MSI 2019 leftover)
-- [ ] The matching CA policy is **`On`** before broad rollout (`Report-only` does not enforce the block path — see [8.1](#81-tagging-a-site--breaking-change-for-legacy--claims-unaware-clients))
+- [ ] The matching CA policy is **`On`** before broad rollout. `Report-only` is **not safe** with Auth Context: it neither validates the block path nor protects OneDrive sync users (see [8.1 OneDrive sync field issue](#field-observed-issue--onedrive-sync--auth-context-on-odfb--report-only-hypothesis))
+- [ ] **OneDrive sync incident plan**: even with the CA in `On` + grant satisfied, users with a pre-existing cached access token may need a sync sign-out/sign-in or token cache reset to recover. Communicate this to support before rollout
 - [ ] **Break-glass exclusion**: an emergency CA policy issues the claim for break-glass admin accounts (otherwise you lock yourself out)
 - [ ] **Service identity exclusions** documented (Power Platform connections, RPA accounts, migration tools, backup tools)
-- [ ] Test plan covering all three experiences validated: direct SPO browsing, Teams Files tab, OneDrive sync
+- [ ] Test plan covering all four experiences validated: direct SPO browsing, Teams Files tab, OneDrive sync, Office Scripts (if used on the site)
+- [ ] **Root site / non-target sites confirmed un-impacted**: Auth Context cannot tag the tenant root — confirm the design doesn't depend on tenant-wide coverage via Auth Context (see [8.2](#82-client-compatibility--what-actually-works-in-2026))
 - [ ] CSV inventory of currently tagged sites archived (see script in [Step 3](#step-3---assign-authentication-contexts-to-sites-))
 
 ### 8.5 Emergency rollback
@@ -750,24 +795,21 @@ Quick reference when someone asks which control to use:
   - Teams file access,
   - Teams chat access.
 
-> ⚠️ **Important behavior note: unsupported clients vs real coverage gaps**
+> ⚠️ **Important behavior note: failure modes are not uniformly clean**
 >
-> In most Microsoft-documented limitations, when Authentication Context cannot be processed correctly, behavior is **fail-closed**:
+> Microsoft documentation tends to imply a **fail-closed** behavior for unsupported clients (access denied, challenge rejected). In practice, field experience shows three distinct failure patterns — only one of which is actually clean:
 >
-> - access is blocked (`access denied`), or
-> - challenge flow fails and access is rejected.
+> 1. **Clean fail-closed** (the documented case): unsupported client hits the challenge, gets `403`/`access denied`, user sees a clear error. Example: Office Scripts ("Oops, something went wrong") — annoying but unambiguous.
+> 2. **Broken loop / stuck state** (the OneDrive sync case): client parses the challenge but cannot satisfy it, retries indefinitely, surfaces as a generic error ("library is locked", "signing in"). Neither blocked nor open — just stuck. See [8.1 OneDrive sync field issue](#field-observed-issue--onedrive-sync--auth-context-on-odfb--report-only-hypothesis).
+> 3. **Silent coverage gap** (the design risk): a site is not tagged, or no CA policy targets the context — access is allowed normally and the user has no indication the resource was supposed to be protected.
 >
-> This is usually **not** a silent bypass. The bigger risk is often elsewhere:
+> Practical consequences:
 >
-> - **Availability/functional risk**: legitimate business scenarios break because the client or feature is unsupported.
-> - **Design risk**: you believe content is protected, but some sites or flows are not covered because they are untagged or not targeted by an active policy.
+> - **Availability risk** (cases 1 & 2): legitimate business scenarios break; case 2 is much harder to diagnose than case 1.
+> - **Security coverage risk** (case 3): incorrect scoping leaves resources unprotected silently.
+> - **Diagnostic rule of thumb**: if removing the tag from the site fixes the problem but disabling the CA does not, you are looking at a client-side claims-challenge handling issue — not a policy logic problem.
 >
-> Practical rule:
->
-> - unsupported client on a protected site -> typically a user-facing incident (blocked access),
-> - incorrect scoping (site not tagged / no linked policy) -> actual security coverage risk.
->
-> Related design rule:
+> Design rule (unchanged):
 >
 > - Authentication Context can add requirements to selected sites (step-up),
 > - it cannot remove stricter grant requirements already enforced by a broader SharePoint baseline policy.
@@ -779,12 +821,13 @@ Quick reference when someone asks which control to use:
 
 ### Known Constraints Checklist
 
-- Authentication Context cannot be applied to the SharePoint root site (`https://tenant.sharepoint.com`).
+- Authentication Contexts are capped at **25 per tenant** (identifiers `c1` to `c25`); plan naming and reuse accordingly.
+- Authentication Context cannot be applied to the SharePoint **tenant root site** (`https://tenant.sharepoint.com`) — only to non-root site collections.
 - Authentication contexts used by labels must be created, configured, and **published to apps** in Entra.
 - Label-based Conditional Access settings don't auto-validate dependencies; missing dependencies can result in no effective enforcement.
 - If a label setting is less restrictive than an existing tenant-level baseline, the tenant-level setting takes precedence.
-- Plan for propagation delays and token timing effects; retesting often requires a fresh sign-in.
-- Validate supported clients and feature paths explicitly (web, desktop, mobile, sync, Outlook, Teams file workflows).
+- Plan for propagation delays and token timing effects; retesting often requires a fresh sign-in (and sometimes a sync client sign-out for OneDrive).
+- Validate supported clients and feature paths explicitly (web, desktop, mobile, sync, Outlook, Teams file workflows, Office Scripts, Power Platform).
 - Treat unsupported-client outcomes as availability risk; treat incorrect site/policy scoping as security coverage risk.
 
 ---
