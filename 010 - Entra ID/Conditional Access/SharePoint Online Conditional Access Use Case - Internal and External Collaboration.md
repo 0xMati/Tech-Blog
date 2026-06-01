@@ -597,15 +597,19 @@ For comparison, on a `PoP realm=` challenge (standard Proof-of-Possession nonce 
 
 | CA policy state on the targeted Auth Context | Entra evaluates? | `acrs` claim in the AT? | SPO emits claims challenge? | OneDrive sync result |
 |---|---|---|---|---|
-| `On` (grant satisfied) | ✅ Enforcement | ✅ Yes | ❌ No (AT already conforms) | ✅ **Works** |
+| `On` (grant satisfied, fresh session) | ✅ Enforcement | ✅ Yes | ❌ No (AT already conforms) | ✅ **Works** (lab-reproduced) |
+| `On` (grant satisfied, but pre-existing cached AT without `acrs`) | ✅ Enforcement | ⚠️ Cached AT used until expiry / refresh | ✅ Yes (on the cached AT) | ⚠️ **Field reports of intermittent failures** — same "library locked" loop, resolved only by detagging the ODFB (not by leaving the CA on `On`) |
 | `On` (grant **not** satisfied) | ✅ Enforcement (block) | ❌ No (token request denied) | n/a | 🚫 Token denied at Entra — no SPO call |
-| `Report-only` | ✅ Log only | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** |
-| `Off` | ❌ Not evaluated | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** |
+| `Report-only` | ✅ Log only | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** (lab-reproduced) |
+| `Off` | ❌ Not evaluated | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** (lab-reproduced) |
 | No CA policy targeting the context | — | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** |
 
-The takeaway is counter-intuitive: as long as the ODFB carries the Auth Context tag, **only an `On` CA policy that grants the user can make the sync work**. Disabling the CA policy (or running it in `Report-only`) does **not** prevent the claims challenge — SPO emits it based on the tag, not on the CA state — and the sync's broken `Bearer + claims` handling triggers the loop in all three non-`On` cases.
+The takeaway is counter-intuitive and **uncomfortable**: as long as the ODFB carries the Auth Context tag, even `On` with a satisfied grant is **not a guaranteed safe state** — users whose sync has a cached AT issued before the policy took effect can still hit the loop. Disabling or relaxing the CA does **not** prevent the claims challenge — SPO emits it based on the tag, not on the CA state. The only fully reliable mitigation when the sync is impacted is to **detag the ODFB** ([see 8.5 Emergency rollback](#85-emergency-rollback)).
 
-> ⚠️ **Practical consequence**: piloting an `AC-InternalSites`-targeting CA policy in `Report-only` (or testing the effect of disabling it) on users with an actively-syncing ODFB will generate **false-positive user incidents** ("library locked") that disappear only when the policy is switched to `On` **or** the ODFB is detagged (see [8.5 Emergency rollback](#85-emergency-rollback)). To validate impact on ODFB consumers, either pilot directly in `On` on a controlled scope, or exclude users with active OneDrive sync from the `Report-only` scope.
+> ⚠️ **Practical consequences**:
+> - Piloting an `AC-InternalSites`-targeting CA policy in `Report-only` (or testing the effect of disabling it) on users with an actively-syncing ODFB will generate **false-positive user incidents** ("library locked") that disappear when the policy is switched to `On` **for fresh sessions**.
+> - Switching to `On` does **not** retroactively fix users whose sync already holds a cached AT without `acrs` — they may need a token cache reset, a sign-out/sign-in of the sync, or — if neither resolves — a temporary detag of their ODFB. This matches a field scenario reported during a Report-only → On rollout in June 2026: same symptom, CA already in `On`, only detagging the ODFB resolved it for the impacted users.
+> - To validate impact on ODFB consumers safely, **either pilot directly in `On` on a controlled scope and excluded users with active OneDrive sync from the broader `Report-only` scope**, or accept the risk of user incidents during the Report-only phase.
 
 ### 8.2 Client compatibility — what actually works in 2026
 
