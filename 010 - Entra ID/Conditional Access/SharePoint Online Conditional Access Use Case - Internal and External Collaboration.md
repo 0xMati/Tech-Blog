@@ -446,6 +446,35 @@ Set-SPOSite -Identity https://contoso.sharepoint.com/sites/PartnerProject `
 
 You can also use sensitivity labels with Sites and Groups scope if you prefer a label-driven approach.
 
+#### 🔎 Inventory: list all sites currently tagged with an Authentication Context
+
+Before (and after) any change, you want a clear picture of which sites carry which context. The `ConditionalAccessPolicy` and `AuthenticationContextName` properties returned by `Get-SPOSite` tell you exactly that.
+
+```powershell
+Connect-SPOService -Url https://contoso-admin.sharepoint.com
+
+# SharePoint sites tagged with an Authentication Context
+Get-SPOSite -Limit All -IncludePersonalSite $false |
+    Where-Object { $_.ConditionalAccessPolicy -eq 'AuthenticationContext' } |
+    Select-Object Url, AuthenticationContextName, Owner, Template, StorageUsageCurrent, SharingCapability |
+    Sort-Object AuthenticationContextName, Url |
+    Format-Table -AutoSize
+
+# OneDrive personal sites tagged with an Authentication Context
+Get-SPOSite -Limit All -IncludePersonalSite $true -Filter "Url -like '-my.sharepoint.com/personal/'" |
+    Where-Object { $_.ConditionalAccessPolicy -eq 'AuthenticationContext' } |
+    Select-Object Url, AuthenticationContextName, Owner |
+    Sort-Object Url
+
+# Full export for governance / audit
+Get-SPOSite -Limit All -IncludePersonalSite $true |
+    Where-Object { $_.ConditionalAccessPolicy -eq 'AuthenticationContext' } |
+    Select-Object Url, AuthenticationContextName, Owner, Template, StorageUsageCurrent, SharingCapability |
+    Export-Csv -Path .\SPO_AuthContext_Inventory.csv -NoTypeInformation -Encoding UTF8
+```
+
+> 💡 Keep this CSV alongside your CA policy definitions — it's the only authoritative mapping between a site and the Authentication Context (and therefore the CA policies) that governs it. Microsoft does not surface this view natively in the Entra portal.
+
 ### Step 4 - Create Conditional Access Policies 🔐
 
 #### CA Policy A - InternalProject Sites - Block Untrusted
@@ -502,7 +531,127 @@ Again, this is useful as a baseline, not as the main way to express the scenario
 
 ---
 
-## 8. 🧩 Where Restricted Access Control and Defender for Cloud Apps Still Fit
+## 8. ⚠️ Limitations, Known Issues & Operational Considerations
+
+Authentication Context is a powerful but unforgiving control. Most issues encountered in production fall into one of the categories below. This section is built from real field feedback, not just the Microsoft documentation (which lags reality on several points).
+
+### 8.1 Why `report-only` breaks access on tagged sites
+
+This is the most common — and most surprising — incident at first rollout.
+
+**Mechanism**:
+
+1. You tag a site with `AC-InternalSites` (= ACR claim `c1`)
+2. A client requests the site → SharePoint responds **`401 insufficient_claims`** demanding `c1`
+3. The client re-triggers authentication against Entra ID with `acr_values=c1`
+4. Entra ID looks for a Conditional Access policy **in `On` mode** that targets that Authentication Context and whose grant is satisfied by the user — **this is the only path that mints the `acrs=c1` claim into the token**
+5. If the matching policy is in `report-only` (or absent), the claim is **never issued**. The client loops on the challenge or surfaces an error like `We couldn't sign you in. Please try again.`
+
+**Behavior matrix**:
+
+| CA policy state | Outcome on a tagged site |
+|---|---|
+| `On` + grant satisfied | ✅ Claim issued, access allowed |
+| `On` + grant denied | 🚫 Clean block (expected behavior) |
+| `Report-only` | ❌ Access broken — claim never issued |
+| No CA policy targeting the context | ❌ Access broken — claim never issued |
+
+> **Rule**: **never** use `Report-only` for a CA policy that targets an Authentication Context. The `Report-only` mode is designed for classic block/grant policies, not for policies that must *emit a claim*. To validate an Auth Context policy safely, scope it tightly (single test user, single test site) and turn it `On`.
+
+### 8.2 Client compatibility — what actually works in 2026
+
+The official Microsoft limitation pages are notoriously out of date. The matrix below consolidates field-verified behavior.
+
+#### ✅ Properly supported
+
+- **Modern browsers** (Edge, Chrome, Firefox up-to-date)
+- **Office desktop** (Word / Excel / PowerPoint / Outlook) on Microsoft 365 Apps via WAM (Click-to-Run, current channel)
+- **Teams desktop** (new client) — Files tab, channel documents, files shared in chat
+- **Teams web** — Files experience
+- **OneDrive Sync client** version **23.x or later** (claims challenge correctly handled)
+- **SharePoint mobile / OneDrive mobile** apps (current versions)
+- **Viva Engage** — file access path
+
+#### ⚠️ Limited, conditional, or under-documented
+
+| Component | Status | Notes |
+|---|---|---|
+| **Outlook on the web — OneDrive attachments** | Variable | Test in your context |
+| **Microsoft Search** on tagged sites | Indexed normally, but per-user queries may filter results when the user has not stepped up |
+| **OneNote sections stored in SPO** | Variable | Depends on client version |
+| **Sensitivity labels with Auth Context (container labels)** | Works, but [hidden dependencies apply](https://learn.microsoft.com/en-us/purview/sensitivity-labels-teams-groups-sites#more-information-about-the-dependencies-for-the-authentication-context-option) |
+
+#### 🚫 Not supported / will break
+
+| Component | Reason |
+|---|---|
+| **Office Scripts** (create / edit / run) | Service-side runtime does not handle claims challenges. [Documented limitation](https://learn.microsoft.com/en-us/office/dev/scripts/testing/platform-limits?tabs=business#conditional-access) |
+| **OneDrive Sync client < 23.x** | Old auth stack |
+| **Office desktop ≤ 2019 (MSI)** | ADAL only — no claims challenge support |
+| **WebDAV / "Open with Explorer"** | Legacy auth path |
+| **SharePoint Designer, InfoPath** | Legacy auth |
+| **Third-party migration / DLP tools** with delegated auth (ShareGate, Mover, AvePoint, etc.) | Most do not implement claims challenges; check vendor support explicitly |
+
+### 8.3 Power Platform impact
+
+This is the most under-documented area. The root cause is the same in all cases:
+
+> Power Platform connections hold a delegated token for the owning user. When SharePoint returns `insufficient_claims`, the connector **cannot** trigger an interactive re-authentication for a scheduled, headless, or background execution.
+
+#### Power Automate
+
+- **User-triggered flows** (manual button, instant) in an active browser tab — typically OK if the user has already stepped up in that session
+- **Scheduled flows, event-triggered flows, "When a file is created/modified"** on a tagged site — 🚫 **fail silently** with `403 Unauthorized` or `Access denied` on the SharePoint action. No clear error pointing to Auth Context
+- **Fix**: use a **service principal connection** (Sites.Selected app-only permission), exclude the service identity from the CA scope, or do not tag sites consumed by automated flows
+
+#### Power Apps
+
+- **Canvas apps** with the SharePoint connector consumed through the Power Apps player: typically broken because the player cannot relaunch the Entra auth flow with `acr_values`
+- **Workaround**: pre-step the user via a `Launch()` to the SharePoint home before the app needs the data, or migrate the connector to app-only auth
+
+#### Power BI
+
+- **Datasets** sourcing `SharePoint folder` / `SharePoint list` refreshed via the **on-premises data gateway**: rely on stored credentials (often a service account without MFA). If that account does not satisfy a CA policy that issues the ACR claim, refresh **fails**
+- **Fix**: exclude the service account from the `AC-InternalSites` scope, or build a dedicated CA policy that issues the claim for that identity under a trusted-location condition
+
+#### Generic Power Platform checklist before tagging a site
+
+```
+For each site about to be tagged with an Authentication Context:
+  1. List the flows / apps / datasets that consume it
+  2. For each dependency:
+     a. Migrate the connection to app-only auth (Sites.Selected), OR
+     b. Exclude the service identity from the CA scope, OR
+     c. Do NOT tag the site (partial rollback)
+```
+
+### 8.4 Pre-flight checklist before tagging a site
+
+- [ ] Inventory of consumers run (Office Scripts, Power Automate, Power Apps, Power BI, third-party tools)
+- [ ] OneDrive Sync client version ≥ 23.x deployed to the affected users (Intune / inventory check)
+- [ ] Office desktop on Click-to-Run current channel (no MSI 2019 leftover)
+- [ ] The matching CA policy is **`On`** before applying the tag (never tag with the policy in `Report-only`)
+- [ ] **Break-glass exclusion**: an emergency CA policy issues the claim for break-glass admin accounts (otherwise you lock yourself out)
+- [ ] **Service identity exclusions** documented (Power Platform connections, RPA accounts, migration tools, backup tools)
+- [ ] Test plan covering all three experiences validated: direct SPO browsing, Teams Files tab, OneDrive sync
+- [ ] CSV inventory of currently tagged sites archived (see script in [Step 3](#step-3---assign-authentication-contexts-to-sites-))
+
+### 8.5 Emergency rollback
+
+If a tag causes a major incident, the fastest mitigation is to remove the Auth Context from the site — this immediately stops the claims challenge:
+
+```powershell
+Connect-SPOService -Url https://contoso-admin.sharepoint.com
+
+Set-SPOSite -Identity https://contoso.sharepoint.com/sites/InternalProject `
+    -ConditionalAccessPolicy AllowFullAccess
+```
+
+Disabling the CA policy alone is **not enough** — the site will still demand the claim until the tag is removed.
+
+---
+
+## 9. 🧩 Where Restricted Access Control and Defender for Cloud Apps Still Fit
 
 These two didn't make it into the core architecture — but they're not useless either.
 
@@ -524,7 +673,7 @@ Not required to meet the scenario matrix here, but a natural next layer for orga
 
 ---
 
-## 9. 🧭 Recommended Decision Guide
+## 10. 🧭 Recommended Decision Guide
 
 Quick reference when someone asks which control to use:
 
@@ -536,7 +685,7 @@ Quick reference when someone asks which control to use:
 
 ---
 
-## 10. 💡 Best Practices
+## 11. 💡 Best Practices
 
 - Start every Conditional Access policy in **Report-only** mode.
 - Keep **trusted locations** accurate and documented.
@@ -587,7 +736,7 @@ Quick reference when someone asks which control to use:
 
 ---
 
-## 11. 🎯 Final Takeaway
+## 12. 🎯 Final Takeaway
 
 The main lesson is simple — and worth repeating:
 
