@@ -540,28 +540,72 @@ Again, this is useful as a baseline, not as the main way to express the scenario
 
 Authentication Context is a powerful but unforgiving control. Most issues encountered in production fall into one of the categories below. This section is built from real field feedback, not just the Microsoft documentation (which lags reality on several points).
 
-### 8.1 Why `report-only` breaks access on tagged sites
+### 8.1 Tagging a site = breaking change for legacy / claims-unaware clients
 
-This is the most common — and most surprising — incident at first rollout.
+The moment you tag a site with an Authentication Context, every client request hits the claims-challenge flow:
 
-**Mechanism**:
+1. Client requests the site
+2. SharePoint responds **`401 insufficient_claims`** demanding the ACR (e.g. `c1`)
+3. The client must follow the challenge: re-trigger authentication against Entra ID with `acr_values=c1`
+4. Entra ID evaluates the CA policy targeting that context; if the user satisfies it, the ACR claim is minted into the token
+5. The client retries the SharePoint call with the new token
 
-1. You tag a site with `AC-InternalSites` (= ACR claim `c1`)
-2. A client requests the site → SharePoint responds **`401 insufficient_claims`** demanding `c1`
-3. The client re-triggers authentication against Entra ID with `acr_values=c1`
-4. Entra ID looks for a Conditional Access policy **in `On` mode** that targets that Authentication Context and whose grant is satisfied by the user — **this is the only path that mints the `acrs=c1` claim into the token**
-5. If the matching policy is in `report-only` (or absent), the claim is **never issued**. The client loops on the challenge or surfaces an error like `We couldn't sign you in. Please try again.`
+**The trap**: any client that does not implement step 3 (the claims-challenge follow-up) breaks **the moment the site is tagged**, regardless of the CA policy mode (`On` or `Report-only`) and regardless of whether the policy would have granted or blocked the user.
 
-**Behavior matrix**:
+This is the root cause of most "first deployment" incidents:
 
-| CA policy state | Outcome on a tagged site |
-|---|---|
-| `On` + grant satisfied | ✅ Claim issued, access allowed |
-| `On` + grant denied | 🚫 Clean block (expected behavior) |
-| `Report-only` | ❌ Access broken — claim never issued |
-| No CA policy targeting the context | ❌ Access broken — claim never issued |
+- Office Scripts ([documented limitation](https://learn.microsoft.com/en-us/office/dev/scripts/testing/platform-limits?tabs=business#conditional-access))
+- Older OneDrive sync clients (< v23.x)
+- Office desktop ≤ 2019 (ADAL only)
+- Power Platform connections under headless auth
+- Some third-party SharePoint tools
 
-> **Rule**: **never** use `Report-only` for a CA policy that targets an Authentication Context. The `Report-only` mode is designed for classic block/grant policies, not for policies that must *emit a claim*. To validate an Auth Context policy safely, scope it tightly (single test user, single test site) and turn it `On`.
+**Diagnostic rule of thumb**: if removing the tag from the site fixes the problem but disabling the CA does not, you are looking at a claims-challenge support issue in the client — not a policy logic problem.
+
+#### Behaviour matrix: `On` vs `Report-only` vs no policy
+
+Once the client *does* handle the claims challenge correctly, the CA mode behaves as the rest of Conditional Access:
+
+| CA policy state | Grant satisfied by the user? | ACR claim issued? | Access to the tagged site |
+|---|---|---|---|
+| `On` | ✅ Yes | ✅ Yes | ✅ Allow |
+| `On` | ❌ No (block) | ❌ No | 🚫 Deny (real enforcement) |
+| `Report-only` | ✅ Yes | ✅ Yes | ✅ Allow |
+| `Report-only` | ❌ No (would be blocked) | ✅ **Still issued** | ✅ **Allow** (report-only never enforces — that is the whole point of the mode) |
+| No CA policy targeting the context | — | ❌ No | 🚫 Deny |
+
+> ⚠️ **Implication for testing**: `Report-only` is genuinely useful to validate *who would be impacted* (via the sign-in logs `Conditional Access Policy details` → `Report-only` results), but it does **not** validate the block path itself. To validate that an internal user on a non-trusted IP is truly blocked, you have to flip the policy to `On` in a scoped pilot (single test user, single test site).
+
+> 💡 **Operational consequence**: do not assume that "everything works in `Report-only`" means the policy is safe to turn `On`. The block scenarios remain untested. Always run a `On`-mode pilot on a small, controlled scope before broad rollout.
+
+#### Field-observed issue — OneDrive sync + Auth Context on ODFB + `Report-only` (hypothesis)
+
+During lab testing (June 2026, OneDrive sync `26.084.0504.0007`, ODFB tagged with `AC-InternalSites` = `c10`, user on trusted IP, CA policy in `Report-only`), the sync client got stuck on "Signing in" and the user got a recurring **"We couldn't sign you in / library is locked"** popup. Switching the same CA policy to `On` (without changing anything else) **resolved the issue immediately**.
+
+Forensic analysis of the OneDrive `.odl` logs (decoded with [ydkhatri/odl.py](https://github.com/ydkhatri/OneDrive)) shows the following pattern:
+
+- SPO returns `401` with `WWW-Authenticate: Bearer realm="…", claims="<base64>"`
+- The base64 decodes to `{"access_token":{"acrs":{"essential":true,"value":"c10"}}}` — SPO is correctly emitting the claims challenge
+- The sync **parses** the challenge (`AuthLibrary::InternalHelpers::GetClaimsValueFromString` succeeds)
+- The sync then calls `OneAuth::…::AuthenticateToService('https://<tenant>-my.sharepoint.com/', 'none')` — **the `claims=` value is not propagated to MSAL**, and **`InvalidateCredential` is never called**
+- MSAL returns the cached access token unchanged (no `acrs` claim)
+- The sync re-issues the same `GET` with the same token → re-401 → infinite loop → "library locked"
+
+For comparison, on a `PoP realm=` challenge (standard Proof-of-Possession nonce refresh), the sync correctly invalidates the credential and reacquires a fresh token. The defect appears specific to the `Bearer + claims` (Auth Context) challenge code path.
+
+**Working hypothesis**: the OneDrive sync client does not correctly handle the `Bearer + claims` challenge issued by SPO for an Auth Context tagged ODFB. The behavior depends entirely on whether Entra injects `acrs` into the AT at token-issuance time — which only happens in `On` mode:
+
+| CA policy state on the targeted Auth Context | Entra evaluates? | `acrs` claim in the AT? | SPO emits claims challenge? | OneDrive sync result |
+|---|---|---|---|---|
+| `On` (grant satisfied) | ✅ Enforcement | ✅ Yes | ❌ No (AT already conforms) | ✅ **Works** |
+| `On` (grant **not** satisfied) | ✅ Enforcement (block) | ❌ No (token request denied) | n/a | 🚫 Token denied at Entra — no SPO call |
+| `Report-only` | ✅ Log only | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** |
+| `Off` | ❌ Not evaluated | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** |
+| No CA policy targeting the context | — | ❌ No | ✅ Yes | ❌ **Loop → "library locked"** |
+
+The takeaway is counter-intuitive: as long as the ODFB carries the Auth Context tag, **only an `On` CA policy that grants the user can make the sync work**. Disabling the CA policy (or running it in `Report-only`) does **not** prevent the claims challenge — SPO emits it based on the tag, not on the CA state — and the sync's broken `Bearer + claims` handling triggers the loop in all three non-`On` cases.
+
+> ⚠️ **Practical consequence**: piloting an `AC-InternalSites`-targeting CA policy in `Report-only` (or testing the effect of disabling it) on users with an actively-syncing ODFB will generate **false-positive user incidents** ("library locked") that disappear only when the policy is switched to `On` **or** the ODFB is detagged (see [8.5 Emergency rollback](#85-emergency-rollback)). To validate impact on ODFB consumers, either pilot directly in `On` on a controlled scope, or exclude users with active OneDrive sync from the `Report-only` scope.
 
 ### 8.2 Client compatibility — what actually works in 2026
 
@@ -573,7 +617,7 @@ The official Microsoft limitation pages are notoriously out of date. The matrix 
 - **Office desktop** (Word / Excel / PowerPoint / Outlook) on Microsoft 365 Apps via WAM (Click-to-Run, current channel)
 - **Teams desktop** (new client) — Files tab, channel documents, files shared in chat
 - **Teams web** — Files experience
-- **OneDrive Sync client** version **23.x or later** (claims challenge correctly handled)
+- **OneDrive Sync client** version **23.x or later** (claims challenge correctly handled in `On`-mode CA scenarios — see [8.1 field-observed issue](#field-observed-issue--onedrive-sync--auth-context-on-odfb--report-only-hypothesis) for a Report-only edge case)
 - **SharePoint mobile / OneDrive mobile** apps (current versions)
 - **Viva Engage** — file access path
 
@@ -635,7 +679,7 @@ For each site about to be tagged with an Authentication Context:
 - [ ] Inventory of consumers run (Office Scripts, Power Automate, Power Apps, Power BI, third-party tools)
 - [ ] OneDrive Sync client version ≥ 23.x deployed to the affected users (Intune / inventory check)
 - [ ] Office desktop on Click-to-Run current channel (no MSI 2019 leftover)
-- [ ] The matching CA policy is **`On`** before applying the tag (never tag with the policy in `Report-only`)
+- [ ] The matching CA policy is **`On`** before broad rollout (`Report-only` does not enforce the block path — see [8.1](#81-tagging-a-site--breaking-change-for-legacy--claims-unaware-clients))
 - [ ] **Break-glass exclusion**: an emergency CA policy issues the claim for break-glass admin accounts (otherwise you lock yourself out)
 - [ ] **Service identity exclusions** documented (Power Platform connections, RPA accounts, migration tools, backup tools)
 - [ ] Test plan covering all three experiences validated: direct SPO browsing, Teams Files tab, OneDrive sync
