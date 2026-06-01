@@ -126,24 +126,45 @@ Useful as an additional hardening layer, but not the right tool to drive this sc
 
 ### 3.3 App-Enforced Restrictions
 
+Also known as **AER** in some field conversations. Probably the most underrated control of the lot — and the one most teams should reach for *before* Authentication Context.
+
 **What it does**
 
-- Provides web-only / limited SharePoint access from untrusted contexts.
-- Blocks download, sync, print, and copy while keeping browser access open.
+A CA session control that tells SharePoint Online *"this session is restricted"* via a token claim. SPO then applies a degraded experience defined separately in the SPO Admin Center (or per-site via PowerShell).
+
+**Plumbing**
+
+1. A CA policy targets **Office 365 SharePoint Online** with a condition (typically *unmanaged devices* or *untrusted networks*)
+2. Session control = **"Use app-enforced restrictions"** → injects a specific claim into the SPO token
+3. SPO reads the claim and applies the mode defined in **SPO Admin Center → Policies → Access control → Unmanaged devices**:
+   - `Allow full access` (no-op)
+   - `Allow limited, web-only access` (browser only — no download, no sync, no print, no Office desktop)
+   - `Block access`
+4. Per-site override available via PowerShell:
+
+```powershell
+Set-SPOSite -Identity https://contoso.sharepoint.com/sites/<site> `
+    -ConditionalAccessPolicy AllowLimitedAccess   # or BlockAccess / AllowFullAccess
+```
 
 **What it is good at**
 
-- Establishing a global SharePoint baseline with minimal per-site configuration.
-- Reducing exfiltration risk without a hard block.
+- **No claims challenge, no step-up ceremony, no token cache surgery** — SPO honors the claim natively. Works on every client (browser, Office desktop, Teams, sync) without breaking anything: each client either adapts (browser → web-only UI) or refuses the operation cleanly (sync → "this site requires browser access").
+- **Establishing a tenant-wide baseline** with minimal per-site configuration.
+- **Reducing exfiltration risk without a hard block**: users can still consult documents from untrusted contexts, but cannot extract them (no sync, no download, no print, no Office desktop open).
+- **Sidesteps every limitation listed in [Section 8](#8-⚠️-limitations-known-issues--operational-considerations)** — because it does not rely on the claims-challenge protocol.
 
-**What it does not solve alone**
+**What it does not solve**
 
-- It cannot model nuanced rules like:
-  - internal member blocked, guest allowed, only for selected collaboration sites.
+- Cannot differentiate **member vs guest on the same site** — the session control applies to whoever matches the CA conditions. If you need "block internal members from untrusted, allow guests on the same site", AER cannot express that. **This is the one scenario where Authentication Context is genuinely irreplaceable**.
+- Per-site granularity is **3-state only** (`AllowFullAccess` / `AllowLimitedAccess` / `BlockAccess`) — no nuance beyond that.
+- `AllowLimitedAccess` mode disables OneDrive sync on the affected scope — by design, but worth communicating to users.
 
 **Verdict** 🛡️
 
-Very useful as a global baseline layer. Not sufficient on its own to express this matrix.
+- For **internal sites where you don't need guest differentiation** → AER (`BlockAccess` or `AllowLimitedAccess`) is **simpler, cleaner, and more robust than Authentication Context**. Reach for it first.
+- For **external collaboration sites where the member-vs-guest split is the whole point** → AER cannot do the job; this is where Authentication Context earns its complexity.
+- A common, sensible hybrid: **AER on internal sites, Authentication Context on external collaboration sites**.
 
 ---
 
