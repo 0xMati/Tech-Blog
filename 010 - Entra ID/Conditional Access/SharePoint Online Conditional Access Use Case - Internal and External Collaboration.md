@@ -179,7 +179,7 @@ MDCA Conditional Access App Control integrates with Entra Conditional Access to 
 | Policy type | What it does | Browser sessions | Native clients (sync, Office desktop, Teams desktop, mobile) |
 |---|---|---|---|
 | **Access Policy** | Allow / Block / Test decision at sign-in, filterable by user, group, app, IP, location, device, activity, URL pattern | ✅ | ✅ **Yes** — the `Client app = Mobile and desktop` filter applies the same access logic to native client sessions |
-| **Session Policy** | In-session controls: block download, watermark, block copy/paste, label-aware DLP, real-time inspection of in-flight content | ✅ | ❌ Requires HTTP rewrite through the MDCA reverse proxy (`*.mcas.ms`) — impossible on native encrypted client traffic |
+| **Session Policy** | In-session controls enforced via the MDCA reverse proxy on browser sessions: block download, watermark on download, block copy/paste, real-time HTTP inspection, label-aware action gating during the proxied session | ✅ | ⚠️ Browser sessions only — equivalent outcomes on native clients are achievable via other Microsoft controls (Purview sensitivity labels, Endpoint DLP, Purview DLP for SPO/ODFB) but not via MDCA session policies |
 
 **Common misconception**: *"MDCA is browser-only."* False — that limitation applies **only to session policies**. Access policies cover native clients too, via the MDCA ↔ CA integration at sign-in.
 
