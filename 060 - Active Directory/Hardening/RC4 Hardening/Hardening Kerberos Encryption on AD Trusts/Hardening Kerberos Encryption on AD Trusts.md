@@ -1119,7 +1119,16 @@ Get-WinEvent -FilterHashtable @{ LogName='Security'; Id=4769; StartTime=(Get-Dat
 > - `0x11` AES128-CTS-HMAC-SHA1-96
 > - `0x12` AES256-CTS-HMAC-SHA1-96
 > - `0x17` RC4-HMAC
+> - `0x18` **RC4-HMAC-EXP** — same hex value as `msDS-SupportedEncryptionTypes = 0x18` (AES128 + AES256) but a completely different meaning in this namespace. Two different encodings sharing the same hex string is one of the most common sources of misread audit data
 > - `0xFFFFFFFF` unknown — usually means the audit subsystem could not parse the ticket
+
+> 🆕 **Post-January 2025 cumulative update — 4769 carries direct state-B evidence.** On Server 2016 and later DCs running the January 2025 cumulative update or newer, the 4769 event exposes additional fields that turn the state-B detection from inference into direct proof. Three fields matter for trust hardening:
+>
+> - **`MSDS-SupportedEncryptionTypes`** (under *Service Information*, where the service is `krbtgt/REMOTE`) — echoes the TDO attribute on the issuing side directly inside the event, so an event-only triage no longer requires a parallel `Get-ADTrust` call.
+> - **`Available Keys`** — lists the enctypes for which key material is *actually derived* in `supplementalCredentials`. If `AES-SHA1` is absent on a `krbtgt/REMOTE` service entry whose `MSDS-SupportedEncryptionTypes` already shows AES bits, that is the **state-B trap proven from a single event** (declared AES, no AES key, password not rotated since the flip). Equivalent to running the `whenChanged` correlation in [Anatomy of a trust](#how-to-detect-state-b), but with no offline correlation needed.
+> - **`Advertized Etypes`** — confirms the client side genuinely advertised AES, separating "client RC4-only" from "trust still RC4-capable" when triaging a referral that came out as `0x17`.
+>
+> The `Get-WinEvent` snippet above can be extended to project these fields when running on a post-January-2025 DC. Reference: *[Active Directory Hardening Series — Part 4 — Enforcing AES for Kerberos](https://techcommunity.microsoft.com/t5/core-infrastructure-and-security/active-directory-hardening-series-part-4-enforcing-aes-for/ba-p/4114965)* (Jerry DeVore, MSFT — Updated Jan 2025).
 
 ### Step 4 — Companion script
 
