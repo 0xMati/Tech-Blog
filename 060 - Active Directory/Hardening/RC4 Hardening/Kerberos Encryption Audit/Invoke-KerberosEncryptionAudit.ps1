@@ -253,13 +253,13 @@ function Get-EncStatus {
         [bool]$KdcDefaultsExplicitAesOnly = $false
     )
 
-    $hasAes128 = ($Value -ne $null) -and (($Value -band 0x08) -ne 0)
-    $hasAes256 = ($Value -ne $null) -and (($Value -band 0x10) -ne 0)
+    $hasAes128 = ($null -ne $Value) -and (($Value -band 0x08) -ne 0)
+    $hasAes256 = ($null -ne $Value) -and (($Value -band 0x10) -ne 0)
     $hasAes = $hasAes128 -or $hasAes256
-    $hasRc4 = ($Value -ne $null) -and (($Value -band 0x04) -ne 0)
-    $hasDes = ($Value -ne $null) -and ((($Value -band 0x01) -ne 0) -or (($Value -band 0x02) -ne 0))
+    $hasRc4 = ($null -ne $Value) -and (($Value -band 0x04) -ne 0)
+    $hasDes = ($null -ne $Value) -and ((($Value -band 0x01) -ne 0) -or (($Value -band 0x02) -ne 0))
 
-    if ($Value -eq $null -or $Value -eq 0) {
+    if ($null -eq $Value -or $Value -eq 0) {
         $serviceLike = $HasSPN -or $Category -in @('gMSA', 'sMSA')
         if ($serviceLike) {
             if ($KdcDefaultsExplicitAesOnly) {
@@ -967,7 +967,7 @@ function Resolve-AdServiceTargetSummary {
     }
 }
 
-function New-HtmlReport {
+function Build-HtmlReport {
     param(
         [hashtable]$Results,
         [string]$OutputPath
@@ -1524,8 +1524,6 @@ $results.Kpis.Add([PSCustomObject]@{
 $phaseAtLeast1 = (@($results.Rc4DisablementPhase | Where-Object { $_.Phase -ge 1 })).Count
 $phaseTotal = $results.Rc4DisablementPhase.Count
 $kdcsvc205Count = (@($results.KdcsvcEvents | Where-Object { $_.EventId -eq 205 })).Count
-$kdcsvcStaleKey = (@($results.KdcsvcEvents | Where-Object { $_.Pattern -eq 'D' })).Count
-$kdcsvcClientRc4 = (@($results.KdcsvcEvents | Where-Object { $_.Pattern -eq 'B' })).Count
 
 $results.Kpis.Add([PSCustomObject]@{
     Name = 'DCs at Phase >= 1 (RC4DefaultDisablementPhase)'
@@ -1645,7 +1643,7 @@ if ($results.Backlog.Count -gt 0) {
     }
 }
 
-New-HtmlReport -Results $results -OutputPath $htmlPath
+Build-HtmlReport -Results $results -OutputPath $htmlPath
 
 Write-Section -Title '=== Run complete ===' -Color Green
 Write-Section -Title '=== Mini-dashboard ===' -Color Cyan
