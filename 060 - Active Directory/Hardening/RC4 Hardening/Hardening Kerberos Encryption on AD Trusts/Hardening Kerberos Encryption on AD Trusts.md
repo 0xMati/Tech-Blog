@@ -1345,4 +1345,4 @@ Realm trusts to non-Windows KDCs are the odd one out: only **your side** is an A
 
 ### Related article in this repo
 
-- [`Tools/Invoke-KerberosEncryptionAudit.ps1`](../Tools/Invoke-KerberosEncryptionAudit.ps1) — the user / computer / service-account audit companion script (documented in Article 2 §6 of the RC4 Hardening series). This article covers the *trust* dimension specifically.
+- [`Kerberos Encryption Audit/Invoke-KerberosEncryptionAudit.ps1`](../Kerberos%20Encryption%20Audit/Invoke-KerberosEncryptionAudit.ps1) — the user / computer / service-account audit companion script (documented in Article 2 §6 of the RC4 Hardening series, full reference in [`Invoke-KerberosEncryptionAudit.md`](../Kerberos%20Encryption%20Audit/Invoke-KerberosEncryptionAudit.md)). This article covers the *trust* dimension specifically.
