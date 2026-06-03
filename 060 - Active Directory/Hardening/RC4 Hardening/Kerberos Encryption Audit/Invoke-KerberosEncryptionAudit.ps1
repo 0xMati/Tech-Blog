@@ -286,7 +286,17 @@ function Get-EncStatus {
         return 'Info (Unset/0, non-service account inherits KDC default)'
     }
     if ($hasAes) {
-        if ($hasRc4) { return 'Warning (AES present + RC4 allowed)' }
+        if ($hasRc4) {
+            # Computer accounts default to 0x1C (RC4+AES128+AES256) via Microsoft baseline GPO
+            # or Windows defaults. RC4 cracking on a machine password (random, 120 chars,
+            # rotated every 30d) is not realistic and the KDC drops RC4 from the negotiated
+            # set in Phase 2+. Demote to Info so 1000s of computer rows do not flood the
+            # Warning surface; the count is still visible in AccountStatusSummary.
+            if ($Category -eq 'Computer') {
+                return 'Info (Computer baseline 0x1C, Microsoft default)'
+            }
+            return 'Warning (AES present + RC4 allowed)'
+        }
         return 'Compliant (AES present)'
     }
     if ($hasRc4) {
@@ -1629,11 +1639,21 @@ $statusSummary = $accountRows |
 
 $statusSummary | ForEach-Object { $results.AccountStatusSummary.Add($_) | Out-Null }
 
+# PriorityAccounts surfaces only actionable rows. Failed* always wins. Otherwise we keep
+# accounts with SPN or gMSA/sMSA that are not Compliant, but exclude Info* statuses (by
+# definition non-actionable per-account: e.g. Computer baseline 0x1C, or Unset non-service
+# inheriting KDC default). This keeps the surface usable on large fleets (10k+ computers).
 $priorityAccounts = $accountRows |
     Where-Object {
         $_.Name -ne 'krbtgt' -and (
-            ($_.HasSPN -and $_.Status -ne 'Compliant (AES present)') -or
-            ($_.Category -in @('gMSA', 'sMSA') -and $_.Status -ne 'Compliant (AES present)')
+            ($_.Status -like 'Failed*') -or
+            (
+                ($_.Status -notlike 'Info*') -and
+                (
+                    ($_.HasSPN -and $_.Status -ne 'Compliant (AES present)') -or
+                    ($_.Category -in @('gMSA', 'sMSA') -and $_.Status -ne 'Compliant (AES present)')
+                )
+            )
         )
     } |
     Sort-Object Status, Category, Name
