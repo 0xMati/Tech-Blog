@@ -1,4 +1,4 @@
-# Requires -Version 5.1
+#Requires -Version 7.2
 [CmdletBinding()]
 param(
     [int]$Hours = 24,
@@ -10,6 +10,16 @@ param(
     [string]$OwnerMappingPath,
     [string]$OutputDir = $(Join-Path -Path $PSScriptRoot -ChildPath ("Outputs\KerberosEncryptionAudit_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss')))
 )
+
+# PowerShell 7+ is required for ForEach-Object -Parallel (per-DC concurrent collection).
+# The #Requires statement above already aborts on older hosts, but we double-check for clarity.
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    throw "This script requires PowerShell 7.2 or later. Current host: $($PSVersionTable.PSVersion). Install pwsh from https://aka.ms/pwsh and re-run from a pwsh session."
+}
+
+# Hardcoded concurrency cap for per-DC collection. Tuned for 95% of production environments
+# (small to mid forests, mixed WAN topology). Bump only if you know your DCs and bandwidth.
+$script:DcParallelThrottle = 4
 
 $ErrorActionPreference = 'Continue'
 
@@ -418,30 +428,44 @@ function Get-KdcDefaultAudit {
         }
     }
 
-    $rows = New-Object System.Collections.Generic.List[object]
-    foreach ($dc in $Dcs) {
-        Write-TaskMessage -Message ("Querying KDC default on {0}" -f $dc) -Color DarkGray
+    # Parallel per-DC: each iteration produces a [PSCustomObject] with the raw value or an error marker.
+    # Local helpers (Get-KdcDefaultStatus, Convert-EncryptionFlagsToText) live in the parent runspace,
+    # so we post-process AFTER the parallel block in the main thread.
+    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $using:DcParallelThrottle -Parallel {
+        $dc = $_
+        $rs = $using:remoteScript
+        Write-Host ("    [..] Querying KDC default on {0}" -f $dc) -ForegroundColor DarkGray
         try {
-            $rawResult = Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ErrorAction Stop
-            $status = Get-KdcDefaultStatus -Value $rawResult.RawValue
-            Write-TaskMessage -Message ("{0} -> {1}" -f $rawResult.Computer, $status) -Color $(if ($status -like 'Compliant*') { 'Green' } else { 'Yellow' })
-            $rows.Add([PSCustomObject]@{
-                Computer = $rawResult.Computer
-                RawValue = if ($null -ne $rawResult.RawValue) { '0x{0:X}' -f [int]$rawResult.RawValue } else { '(absent)' }
-                Decoded  = Convert-EncryptionFlagsToText -Value $rawResult.RawValue
-                Status   = $status
-                RegistryPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc\DefaultDomainSupportedEncTypes'
-            }) | Out-Null
+            $rawResult = Invoke-Command -ComputerName $dc -ScriptBlock $rs -ErrorAction Stop
+            [PSCustomObject]@{ Dc = $dc; Computer = $rawResult.Computer; RawValue = $rawResult.RawValue; Failed = $false }
         } catch {
-            Write-TaskMessage -Message ("{0} -> failed to query registry" -f $dc) -Color Red
+            Write-Host ("    [XX] {0} -> failed to query registry: {1}" -f $dc, $_.Exception.Message) -ForegroundColor Red
+            [PSCustomObject]@{ Dc = $dc; Computer = $dc; RawValue = $null; Failed = $true }
+        }
+    }
+
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($r in $parallelResults) {
+        if ($r.Failed) {
             $rows.Add([PSCustomObject]@{
-                Computer = $dc
+                Computer = $r.Computer
                 RawValue = '(n/a)'
                 Decoded  = '(error)'
                 Status   = 'Failed'
                 RegistryPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc\DefaultDomainSupportedEncTypes'
             }) | Out-Null
+            continue
         }
+
+        $status = Get-KdcDefaultStatus -Value $r.RawValue
+        Write-TaskMessage -Message ("{0} -> {1}" -f $r.Computer, $status) -Color $(if ($status -like 'Compliant*') { 'Green' } else { 'Yellow' })
+        $rows.Add([PSCustomObject]@{
+            Computer = $r.Computer
+            RawValue = if ($null -ne $r.RawValue) { '0x{0:X}' -f [int]$r.RawValue } else { '(absent)' }
+            Decoded  = Convert-EncryptionFlagsToText -Value $r.RawValue
+            Status   = $status
+            RegistryPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc\DefaultDomainSupportedEncTypes'
+        }) | Out-Null
     }
 
     return $rows
@@ -469,35 +493,46 @@ function Get-Rc4DisablementPhaseAudit {
         }
     }
 
-    $rows = New-Object System.Collections.Generic.List[object]
-    foreach ($dc in $Dcs) {
-        Write-TaskMessage -Message ("Querying RC4DefaultDisablementPhase on {0}" -f $dc) -Color DarkGray
+    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $using:DcParallelThrottle -Parallel {
+        $dc = $_
+        $rs = $using:remoteScript
+        Write-Host ("    [..] Querying RC4DefaultDisablementPhase on {0}" -f $dc) -ForegroundColor DarkGray
         try {
-            $rawResult = Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ErrorAction Stop
-            $statusObj = Get-Rc4DisablementPhaseStatus -Value $rawResult.RawValue
-            $color = if ($statusObj.Status -like 'Compliant*') { 'Green' }
-                     elseif ($statusObj.Status -like 'Warning*') { 'Yellow' }
-                     else { 'Gray' }
-            Write-TaskMessage -Message ("{0} -> {1}" -f $rawResult.Computer, $statusObj.Label) -Color $color
-            $rows.Add([PSCustomObject]@{
-                Computer     = $rawResult.Computer
-                RawValue     = if ($null -ne $rawResult.RawValue) { [string]$rawResult.RawValue } else { '(absent)' }
-                Phase        = $statusObj.Phase
-                PhaseLabel   = $statusObj.Label
-                Status       = $statusObj.Status
-                RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters\RC4DefaultDisablementPhase'
-            }) | Out-Null
+            $rawResult = Invoke-Command -ComputerName $dc -ScriptBlock $rs -ErrorAction Stop
+            [PSCustomObject]@{ Dc = $dc; Computer = $rawResult.Computer; RawValue = $rawResult.RawValue; Failed = $false }
         } catch {
-            Write-TaskMessage -Message ("{0} -> failed to query registry" -f $dc) -Color Red
+            Write-Host ("    [XX] {0} -> failed to query registry: {1}" -f $dc, $_.Exception.Message) -ForegroundColor Red
+            [PSCustomObject]@{ Dc = $dc; Computer = $dc; RawValue = $null; Failed = $true }
+        }
+    }
+
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($r in $parallelResults) {
+        if ($r.Failed) {
             $rows.Add([PSCustomObject]@{
-                Computer     = $dc
+                Computer     = $r.Computer
                 RawValue     = '(n/a)'
                 Phase        = $null
                 PhaseLabel   = '(error)'
                 Status       = 'Failed'
                 RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters\RC4DefaultDisablementPhase'
             }) | Out-Null
+            continue
         }
+
+        $statusObj = Get-Rc4DisablementPhaseStatus -Value $r.RawValue
+        $color = if ($statusObj.Status -like 'Compliant*') { 'Green' }
+                 elseif ($statusObj.Status -like 'Warning*') { 'Yellow' }
+                 else { 'Gray' }
+        Write-TaskMessage -Message ("{0} -> {1}" -f $r.Computer, $statusObj.Label) -Color $color
+        $rows.Add([PSCustomObject]@{
+            Computer     = $r.Computer
+            RawValue     = if ($null -ne $r.RawValue) { [string]$r.RawValue } else { '(absent)' }
+            Phase        = $statusObj.Phase
+            PhaseLabel   = $statusObj.Label
+            Status       = $statusObj.Status
+            RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters\RC4DefaultDisablementPhase'
+        }) | Out-Null
     }
 
     return $rows
@@ -660,18 +695,27 @@ function Get-KerberosEventAudit {
         return $output
     }
 
-    foreach ($dc in $Dcs) {
-        Write-TaskMessage -Message ("Collecting 4768/4769 from {0}" -f $dc) -Color DarkGray
+    # Parallel per-DC collection. Each iteration emits a single [PSCustomObject] containing the
+    # event batch and any error string. Aggregation happens in the main thread after the pipeline.
+    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $using:DcParallelThrottle -Parallel {
+        $dc  = $_
+        $rs  = $using:remoteScript
+        $hrs = $using:LookbackHours
+        $max = $using:MaxEvents
+        Write-Host ("    [..] Collecting 4768/4769 from {0}" -f $dc) -ForegroundColor DarkGray
         try {
-            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ArgumentList $LookbackHours, $MaxEvents -ErrorAction Stop)
-            if ($dcEvents.Count -gt 0) {
-                $rawEvents += $dcEvents
-            }
-            Write-TaskMessage -Message ("{0} -> {1} event(s) collected" -f $dc, $dcEvents.Count) -Color Green
+            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $rs -ArgumentList $hrs, $max -ErrorAction Stop)
+            Write-Host ("    [OK] {0} -> {1} event(s) collected" -f $dc, $dcEvents.Count) -ForegroundColor Green
+            [PSCustomObject]@{ Events = $dcEvents; Error = $null }
         } catch {
-            $errors += "Failed to collect 4768/4769 from ${dc}: $($_.Exception.Message)"
-            Write-TaskMessage -Message ("{0} -> collection failed" -f $dc) -Color Yellow
+            Write-Host ("    [!!] {0} -> collection failed" -f $dc) -ForegroundColor Yellow
+            [PSCustomObject]@{ Events = @(); Error = ("Failed to collect 4768/4769 from {0}: {1}" -f $dc, $_.Exception.Message) }
         }
+    }
+
+    foreach ($r in $parallelResults) {
+        if ($r.Events -and $r.Events.Count -gt 0) { $rawEvents += $r.Events }
+        if ($r.Error) { $errors += $r.Error }
     }
 
     foreach ($item in @($rawEvents)) {
@@ -765,19 +809,26 @@ function Get-KdcsvcEventAudit {
         return $output
     }
 
-    foreach ($dc in $Dcs) {
-        Write-TaskMessage -Message ("Collecting Kdcsvc 201-209 from {0}" -f $dc) -Color DarkGray
+    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $using:DcParallelThrottle -Parallel {
+        $dc  = $_
+        $rs  = $using:remoteScript
+        $hrs = $using:LookbackHours
+        $max = $using:MaxEvents
+        Write-Host ("    [..] Collecting Kdcsvc 201-209 from {0}" -f $dc) -ForegroundColor DarkGray
         try {
-            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $remoteScript -ArgumentList $LookbackHours, $MaxEvents -ErrorAction Stop)
-            if ($dcEvents.Count -gt 0) {
-                $rawEvents += $dcEvents
-            }
+            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $rs -ArgumentList $hrs, $max -ErrorAction Stop)
             $color = if ($dcEvents.Count -eq 0) { 'Green' } else { 'Yellow' }
-            Write-TaskMessage -Message ("{0} -> {1} Kdcsvc event(s) collected" -f $dc, $dcEvents.Count) -Color $color
+            Write-Host ("    [OK] {0} -> {1} Kdcsvc event(s) collected" -f $dc, $dcEvents.Count) -ForegroundColor $color
+            [PSCustomObject]@{ Events = $dcEvents; Error = $null }
         } catch {
-            $errors += "Failed to collect Kdcsvc 201-209 from ${dc}: $($_.Exception.Message)"
-            Write-TaskMessage -Message ("{0} -> Kdcsvc collection failed" -f $dc) -Color Yellow
+            Write-Host ("    [!!] {0} -> Kdcsvc collection failed" -f $dc) -ForegroundColor Yellow
+            [PSCustomObject]@{ Events = @(); Error = ("Failed to collect Kdcsvc 201-209 from {0}: {1}" -f $dc, $_.Exception.Message) }
         }
+    }
+
+    foreach ($r in $parallelResults) {
+        if ($r.Events -and $r.Events.Count -gt 0) { $rawEvents += $r.Events }
+        if ($r.Error) { $errors += $r.Error }
     }
 
     # Pattern map (see Article 1 §6 grid)
@@ -965,6 +1016,222 @@ function Resolve-AdServiceTargetSummary {
         LastLogonDate = if ($principal.PSObject.Properties['lastLogonDate']) { $principal.lastLogonDate } else { $null }
         SPNs = if ($principal.PSObject.Properties['servicePrincipalName'] -and $principal.servicePrincipalName) { $principal.servicePrincipalName -join '; ' } else { '' }
     }
+}
+
+function Invoke-TrustEncryptionAudit {
+    <#
+        Wrapper around the sister script Get-TrustEncryptionAudit.ps1.
+        Runs it with -ExportJson into a temp file, captures the rows, and
+        returns @{ Rows = ...; Errors = ... } so the parent script can fold
+        them into $results.Trusts. Read-only by construction.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$SisterScriptPath
+    )
+
+    $rows   = New-Object System.Collections.Generic.List[object]
+    $errors = New-Object System.Collections.Generic.List[string]
+
+    if (-not (Test-Path -Path $SisterScriptPath)) {
+        $errors.Add("Trust audit sister script not found at: $SisterScriptPath") | Out-Null
+        return @{ Rows = $rows; Errors = $errors }
+    }
+
+    $tempJson = Join-Path -Path $env:TEMP -ChildPath ("trust-audit-{0}.json" -f ([guid]::NewGuid().ToString('N')))
+    try {
+        Write-TaskMessage -Message ("Invoking sister script: {0}" -f $SisterScriptPath) -Color DarkGray
+        & $SisterScriptPath -ExportJson $tempJson | Out-Null
+
+        if (Test-Path -Path $tempJson) {
+            $raw = Get-Content -Path $tempJson -Raw -Encoding UTF8
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+                # ConvertFrom-Json may return a single object instead of an array if the dataset has one row
+                if ($parsed -isnot [System.Collections.IEnumerable] -or $parsed -is [string]) {
+                    $parsed = @($parsed)
+                }
+                foreach ($row in $parsed) { $rows.Add($row) | Out-Null }
+            }
+        } else {
+            $errors.Add("Trust audit produced no JSON output (no trusts in this domain or sister script returned early).") | Out-Null
+        }
+    } catch {
+        $errors.Add("Trust audit failed: $($_.Exception.Message)") | Out-Null
+    } finally {
+        if (Test-Path -Path $tempJson) {
+            Remove-Item -Path $tempJson -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    return @{ Rows = $rows; Errors = $errors }
+}
+
+function Build-Rc4Backlog {
+    <#
+        Produces the §0 deliverable: one row per RC4 dependency with deterministic
+        Blast-radius / Exposure / Fix-cost scoring (1-9). Inputs come from $Results
+        already populated by earlier steps:
+            - $Results.Rc4TargetServices  -> rows for services receiving RC4 TGS
+            - $Results.Trusts             -> rows for TDOs not in AES-only state
+            - $Results.Rc4RequestorAccounts -> rows for clients still requesting RC4
+        $OwnerMapping is a hashtable Pattern -> Owner where Pattern supports * wildcards.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Results,
+
+        [hashtable]$OwnerMapping = @{}
+    )
+
+    $backlog = New-Object System.Collections.Generic.List[object]
+
+    # Helper: resolve owner from mapping using wildcard match (-like). First match wins.
+    function Resolve-BacklogOwner {
+        param([string]$Dependency, [hashtable]$Mapping)
+        if (-not $Mapping -or $Mapping.Count -eq 0) { return 'TBD' }
+        foreach ($pattern in $Mapping.Keys) {
+            if ($Dependency -like $pattern) { return $Mapping[$pattern] }
+        }
+        return 'TBD'
+    }
+
+    # Helper: map verbal labels to numeric weights per §4 of Article 2
+    $blastWeight    = @{ 'Critical' = 3; 'Important' = 2; 'Standard' = 1 }
+    $exposureWeight = @{ 'Frequent' = 3; 'Occasional' = 2; 'Rare' = 1 }
+    $fixCostWeight  = @{ 'Low' = 3; 'Medium' = 2; 'High' = 1 }
+
+    # ---------------------------------------------------------------
+    # Source 1: services receiving RC4 TGS (Rc4TargetServices)
+    # ---------------------------------------------------------------
+    foreach ($svc in @($Results.Rc4TargetServices)) {
+        $events = [int]$svc.Events
+        $sam    = [string]$svc.SamAccountName
+        $service = [string]$svc.Service
+        $encHex  = [string]$svc.EncHex
+
+        # Type: krbtgt/<REALM> means cross-realm referral, handled in trust block too;
+        # account ending in $ = computer; otherwise service account
+        $type = if ($service -like 'krbtgt/*') { 'TDO referral' }
+                elseif ($sam -like '*$')       { 'Computer account' }
+                else                            { 'Service account' }
+
+        # Blast radius: krbtgt referrals and very high volumes -> Critical, otherwise Important
+        $blast = if ($type -eq 'TDO referral' -or $events -ge 5000) { 'Critical' }
+                 elseif ($events -ge 100)                            { 'Important' }
+                 else                                                { 'Standard' }
+
+        # Exposure: based on RC4 ticket count over the observation window
+        $exposure = if ($events -ge 500) { 'Frequent' }
+                    elseif ($events -ge 50) { 'Occasional' }
+                    else { 'Rare' }
+
+        # Fix cost: depends on the account's declared capability (EncHex)
+        # - Account is RC4-only declared (0x4) -> High (vendor / app coordination needed)
+        # - Account already advertises AES (0x1C, 0x18) -> Medium (likely password rotation + retest)
+        # - Anything else (unset, partial) -> Medium
+        $fixCost = if ($encHex -match '0x4$' -or $encHex -eq '0x4') { 'High' }
+                   elseif ($encHex -match '0x1[8C]') { 'Medium' }
+                   else { 'Medium' }
+
+        # Action: tied to fix cost decision tree
+        $action = if ($fixCost -eq 'High') {
+                      'Migrate consumer to AES (vendor / app track) or document temporary exception'
+                  } elseif ($encHex -match '0x18') {
+                      'AES already declared - investigate why RC4 still issued (client negotiation, stale key, downstream consumer)'
+                  } else {
+                      'Set msDS-SupportedEncryptionTypes to 0x18 (AES-only), rotate password to derive AES keys, validate, then drop RC4'
+                  }
+
+        $depKey = if ($sam) { $sam } else { $service }
+
+        $score = $blastWeight[$blast] + $exposureWeight[$exposure] + $fixCostWeight[$fixCost]
+
+        $backlog.Add([PSCustomObject]@{
+            Dependency   = $depKey
+            Type         = $type
+            RC4Evidence  = "$events RC4 TGS over $($Results.Hours)h ($encHex declared)"
+            BlastRadius  = $blast
+            Exposure     = $exposure
+            FixCost      = $fixCost
+            Score        = $score
+            Owner        = Resolve-BacklogOwner -Dependency $depKey -Mapping $OwnerMapping
+            Action       = $action
+        }) | Out-Null
+    }
+
+    # ---------------------------------------------------------------
+    # Source 2: trusts not in AES-only state
+    # ---------------------------------------------------------------
+    foreach ($trust in @($Results.Trusts)) {
+        $cls = [string]$trust.Classification
+        if ($cls -notin @('RC4-only','Mixed','Unset','Legacy-DES')) { continue }
+
+        $trustName = if ($trust.PSObject.Properties['Trust']) { [string]$trust.Trust }
+                     elseif ($trust.PSObject.Properties['Partner']) { [string]$trust.Partner }
+                     else { '(unknown trust)' }
+        $depKey = "Trust: $trustName"
+
+        # Trusts always score high - cross-realm impact is by definition Critical, and any
+        # active trust generates frequent referrals
+        $blast    = 'Critical'
+        $exposure = 'Frequent'
+        $fixCost  = if ($cls -eq 'Legacy-DES') { 'High' } else { 'Medium' }
+
+        $action = "Set msDS-SupportedEncryptionTypes to 0x18 on the TDO and rotate the trust password (BOTH sides). Current state: $cls ($($trust.EncBitsHex))."
+
+        $score = $blastWeight[$blast] + $exposureWeight[$exposure] + $fixCostWeight[$fixCost]
+
+        $backlog.Add([PSCustomObject]@{
+            Dependency   = $depKey
+            Type         = 'TDO'
+            RC4Evidence  = "TDO classification = $cls ($($trust.EncBitsHex)); LastChange $($trust.LastChange)"
+            BlastRadius  = $blast
+            Exposure     = $exposure
+            FixCost      = $fixCost
+            Score        = $score
+            Owner        = Resolve-BacklogOwner -Dependency $depKey -Mapping $OwnerMapping
+            Action       = $action
+        }) | Out-Null
+    }
+
+    # ---------------------------------------------------------------
+    # Source 3: client accounts still requesting RC4 (Pattern B candidates)
+    # Only keep the top requestors - low-volume noise belongs in the raw event log,
+    # not in the backlog.
+    # ---------------------------------------------------------------
+    foreach ($req in @($Results.Rc4RequestorAccounts | Where-Object { [int]$_.Events -ge 50 })) {
+        $events = [int]$req.Events
+        $depKey = [string]$req.Account
+
+        # If the same account already appears as a service target, skip - it would be a duplicate row.
+        if ($backlog | Where-Object { $_.Dependency -eq $depKey }) { continue }
+
+        $blast    = if ($events -ge 1000) { 'Important' } else { 'Standard' }
+        $exposure = if ($events -ge 500) { 'Frequent' }
+                    elseif ($events -ge 100) { 'Occasional' }
+                    else { 'Rare' }
+        $fixCost  = 'High'   # client-side legacy almost always needs vendor / OS work
+
+        $action = 'Identify the device(s) authenticating with this account (4768 by Client Address) and remediate the legacy stack (OS, krb5.conf, keytab)'
+
+        $score = $blastWeight[$blast] + $exposureWeight[$exposure] + $fixCostWeight[$fixCost]
+
+        $backlog.Add([PSCustomObject]@{
+            Dependency   = $depKey
+            Type         = 'Client account (Pattern B)'
+            RC4Evidence  = "$events RC4 AS/TGS as requestor over $($Results.Hours)h"
+            BlastRadius  = $blast
+            Exposure     = $exposure
+            FixCost      = $fixCost
+            Score        = $score
+            Owner        = Resolve-BacklogOwner -Dependency $depKey -Mapping $OwnerMapping
+            Action       = $action
+        }) | Out-Null
+    }
+
+    # Sort: highest score first, then alphabetical for stable output
+    return @($backlog | Sort-Object @{ Expression = 'Score'; Descending = $true }, Dependency)
 }
 
 function Build-HtmlReport {
