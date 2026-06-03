@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Version 1.1.4
+#Version 1.1.6
 [CmdletBinding()]
 param(
     [int]$Hours = 24,
@@ -1038,48 +1038,114 @@ function Resolve-AdServiceTargetSummary {
 
 function Invoke-TrustEncryptionAudit {
     <#
-        Wrapper around the sister script Get-TrustEncryptionAudit.ps1.
-        Runs it with -ExportJson into a temp file, captures the rows, and
-        returns @{ Rows = ...; Errors = ... } so the parent script can fold
-        them into $results.Trusts. Read-only by construction.
+        Self-contained TDO inventory. Reads msDS-SupportedEncryptionTypes and trustAttributes
+        on every Trusted Domain Object visible from the local domain, classifies each trust
+        (AES-only / Mixed / RC4-only / Legacy-DES / Unset) and returns @{ Rows; Errors } so
+        the parent can fold the rows into $results.Trusts. Read-only by construction.
+        Logic ported from Get-TrustEncryptionAudit.ps1; this script no longer needs that
+        sister script to be present.
     #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$SisterScriptPath
-    )
+    param()
 
     $rows   = New-Object System.Collections.Generic.List[object]
     $errors = New-Object System.Collections.Generic.List[string]
 
-    if (-not (Test-Path -Path $SisterScriptPath)) {
-        $errors.Add("Trust audit sister script not found at: $SisterScriptPath") | Out-Null
+    $encTypeFlags = [ordered]@{
+        0x01 = 'DES-CBC-CRC'
+        0x02 = 'DES-CBC-MD5'
+        0x04 = 'RC4-HMAC'
+        0x08 = 'AES128-CTS-HMAC-SHA1-96'
+        0x10 = 'AES256-CTS-HMAC-SHA1-96'
+        0x20 = 'AES256-CTS-HMAC-SHA1-96-SK'
+    }
+    $trustAttrFlags = [ordered]@{
+        0x00000001 = 'NON_TRANSITIVE'
+        0x00000002 = 'UPLEVEL_ONLY'
+        0x00000004 = 'QUARANTINED_DOMAIN'
+        0x00000008 = 'FOREST_TRANSITIVE'
+        0x00000010 = 'CROSS_ORGANIZATION'
+        0x00000020 = 'WITHIN_FOREST'
+        0x00000040 = 'TREAT_AS_EXTERNAL'
+        0x00000080 = 'USES_RC4_ENCRYPTION'
+        0x00000100 = 'USES_AES_KEYS'
+        0x00000200 = 'CROSS_ORGANIZATION_NO_TGT_DELEGATION'
+        0x00000400 = 'PIM_TRUST'
+        0x00000800 = 'CROSS_ORGANIZATION_ENABLE_TGT_DELEGATION'
+    }
+    $trustTypeMap = @{ 1 = 'Downlevel (NT4)'; 2 = 'AD'; 3 = 'MIT (Kerberos realm)'; 4 = 'DCE (legacy)' }
+    $trustDirMap  = @{ 0 = 'Disabled'; 1 = 'Inbound'; 2 = 'Outbound'; 3 = 'Bidirectional' }
+
+    $bitsToFlags = {
+        param([int]$Value, [object]$Map)
+        if ($null -eq $Value -or $Value -eq 0) { return @() }
+        $hit = @()
+        foreach ($entry in $Map.GetEnumerator()) {
+            $bit = [int]$entry.Key
+            if (($Value -band $bit) -eq $bit) { $hit += $entry.Value }
+        }
+        return $hit
+    }
+
+    $classifyEnc = {
+        param([int]$EncBits)
+        if ($null -eq $EncBits -or $EncBits -eq 0) { return 'Unset' }
+        $hasDES = ($EncBits -band 0x03) -ne 0
+        $hasRC4 = ($EncBits -band 0x04) -ne 0
+        $hasAES = ($EncBits -band 0x18) -ne 0
+        if ($hasDES) { return 'Legacy-DES' }
+        if ($hasRC4 -and $hasAES) { return 'Mixed' }
+        if ($hasRC4) { return 'RC4-only' }
+        if ($hasAES) { return 'AES-only' }
+        return 'Unknown'
+    }
+
+    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+        $errors.Add('Trust audit skipped: ActiveDirectory PowerShell module not available. Install RSAT-AD-PowerShell.') | Out-Null
         return @{ Rows = $rows; Errors = $errors }
     }
 
-    $tempJson = Join-Path -Path $env:TEMP -ChildPath ("trust-audit-{0}.json" -f ([guid]::NewGuid().ToString('N')))
     try {
-        Write-TaskMessage -Message ("Invoking sister script: {0}" -f $SisterScriptPath) -Color DarkGray
-        & $SisterScriptPath -ExportJson $tempJson | Out-Null
-
-        if (Test-Path -Path $tempJson) {
-            $raw = Get-Content -Path $tempJson -Raw -Encoding UTF8
-            if (-not [string]::IsNullOrWhiteSpace($raw)) {
-                $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
-                # ConvertFrom-Json may return a single object instead of an array if the dataset has one row
-                if ($parsed -isnot [System.Collections.IEnumerable] -or $parsed -is [string]) {
-                    $parsed = @($parsed)
-                }
-                foreach ($row in $parsed) { $rows.Add($row) | Out-Null }
-            }
-        } else {
-            $errors.Add("Trust audit produced no JSON output (no trusts in this domain or sister script returned early).") | Out-Null
-        }
+        Import-Module ActiveDirectory -ErrorAction Stop
     } catch {
-        $errors.Add("Trust audit failed: $($_.Exception.Message)") | Out-Null
-    } finally {
-        if (Test-Path -Path $tempJson) {
-            Remove-Item -Path $tempJson -Force -ErrorAction SilentlyContinue
+        $errors.Add("Trust audit failed to import ActiveDirectory module: $($_.Exception.Message)") | Out-Null
+        return @{ Rows = $rows; Errors = $errors }
+    }
+
+    Write-TaskMessage -Message 'Enumerating Trusted Domain Objects (Get-ADTrust)...' -Color DarkGray
+
+    try {
+        $trustProps = @('msDS-SupportedEncryptionTypes', 'trustAttributes', 'trustType', 'trustDirection', 'whenChanged', 'whenCreated', 'flatName', 'trustPartner')
+        $trusts = @(Get-ADTrust -Filter * -Properties $trustProps -ErrorAction Stop)
+    } catch {
+        $errors.Add("Get-ADTrust failed: $($_.Exception.Message)") | Out-Null
+        return @{ Rows = $rows; Errors = $errors }
+    }
+
+    if ($trusts.Count -eq 0) {
+        Write-TaskMessage -Message 'No trusts found in this domain.' -Color DarkGray
+        return @{ Rows = $rows; Errors = $errors }
+    }
+
+    foreach ($t in $trusts) {
+        $encInt  = [int]($t.'msDS-SupportedEncryptionTypes')
+        $attrInt = [int]$t.trustAttributes
+        $row = [PSCustomObject]@{
+            Trust          = $t.Name
+            Direction      = $trustDirMap[[int]$t.trustDirection]
+            TrustType      = $trustTypeMap[[int]$t.trustType]
+            IntraForest    = [bool]$t.IntraForest
+            Transitive     = (($attrInt -band 0x08) -eq 0x08) -or (($attrInt -band 0x01) -eq 0)
+            EncBitsHex     = '0x{0:X}' -f $encInt
+            EncFlags       = ((& $bitsToFlags $encInt $encTypeFlags) -join ', ')
+            AttrBitsHex    = '0x{0:X}' -f $attrInt
+            AttrFlags      = ((& $bitsToFlags $attrInt $trustAttrFlags) -join ', ')
+            Classification = (& $classifyEnc $encInt)
+            LastChange     = $t.whenChanged
+            Created        = $t.whenCreated
+            FlatName       = $t.flatName
+            Partner        = $t.trustPartner
         }
+        $rows.Add($row) | Out-Null
     }
 
     return @{ Rows = $rows; Errors = $errors }
@@ -1762,15 +1828,14 @@ Write-StatusLine -Label 'Collection warnings/errors' -Value ([string]$results.Er
 
 Write-Step -Number 4 -Title 'Trust posture audit' -Hint 'Inventorying TDOs (msDS-SupportedEncryptionTypes + classification)'
 if ($IncludeTrusts) {
-    $sisterScript = Join-Path -Path $PSScriptRoot -ChildPath '..\Hardening Kerberos Encryption on AD Trusts\Get-TrustEncryptionAudit.ps1'
-    $trustAudit = Invoke-TrustEncryptionAudit -SisterScriptPath $sisterScript
+    $trustAudit = Invoke-TrustEncryptionAudit
     $trustAudit.Errors | ForEach-Object { $results.Errors.Add($_) | Out-Null }
     foreach ($trust in $trustAudit.Rows) {
         $results.Trusts.Add($trust) | Out-Null
     }
     Write-StatusLine -Label 'Trusts inventoried' -Value ([string]$results.Trusts.Count) -Color Green
 } else {
-    Write-TaskMessage -Message 'Skipped (use -IncludeTrusts to invoke the sister script Get-TrustEncryptionAudit.ps1)' -Color DarkGray
+    Write-TaskMessage -Message 'Skipped (use -IncludeTrusts to inventory Trusted Domain Objects)' -Color DarkGray
 }
 
 Write-Step -Number 5 -Title 'Build report' -Hint 'Generating JSON and HTML output artifacts'

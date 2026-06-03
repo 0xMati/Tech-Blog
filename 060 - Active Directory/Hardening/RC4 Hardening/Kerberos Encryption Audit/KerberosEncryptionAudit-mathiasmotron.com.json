@@ -1,0 +1,413 @@
+{
+  "DomainControllers": [
+    "MM-DC1.mathiasmotron.com",
+    "MM-DC2.mathiasmotron.com",
+    "MM-DC3.mathiasmotron.com"
+  ],
+  "ConfigurationNamingContext": "CN=Configuration,DC=mathiasmotron,DC=com",
+  "DomainDistinguishedName": "DC=mathiasmotron,DC=com",
+  "Rc4TargetServices": [],
+  "Backlog": [],
+  "KdcsvcEvents": [],
+  "Errors": [
+    "Trust audit sister script not found at: C:\\Temp\\..\\Hardening Kerberos Encryption on AD Trusts\\Get-TrustEncryptionAudit.ps1"
+  ],
+  "PriorityAccounts": [
+    {
+      "Name": "svc.fake",
+      "Category": "User/Service",
+      "Enabled": true,
+      "HasSPN": true,
+      "EncValue": 4,
+      "EncHex": "0x4",
+      "Flags": "0x4 [RC4-HMAC]",
+      "Status": "Failed (RC4-only/No AES)",
+      "DistinguishedName": "CN=SVC Fake,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": "2022-10-29T21:59:38.4276392+00:00",
+      "LastLogonDate": null,
+      "SPNs": "http/fakespn.mathiasmotron.com; http/fakespn"
+    },
+    {
+      "Name": "AADCgMSA1$",
+      "Category": "gMSA",
+      "Enabled": true,
+      "HasSPN": false,
+      "EncValue": 28,
+      "EncHex": "0x1C",
+      "Flags": "0x1C [RC4-HMAC, AES128, AES256]",
+      "Status": "Warning (AES present + RC4 allowed)",
+      "DistinguishedName": "CN=AADCgMSA1,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": null,
+      "LastLogonDate": null,
+      "SPNs": ""
+    },
+    {
+      "Name": "CloudSyncgMSA$",
+      "Category": "gMSA",
+      "Enabled": true,
+      "HasSPN": false,
+      "EncValue": 28,
+      "EncHex": "0x1C",
+      "Flags": "0x1C [RC4-HMAC, AES128, AES256]",
+      "Status": "Warning (AES present + RC4 allowed)",
+      "DistinguishedName": "CN=CloudSyncgMSA,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": null,
+      "LastLogonDate": null,
+      "SPNs": ""
+    },
+    {
+      "Name": "SVC_ADMIN$",
+      "Category": "gMSA",
+      "Enabled": true,
+      "HasSPN": false,
+      "EncValue": 28,
+      "EncHex": "0x1C",
+      "Flags": "0x1C [RC4-HMAC, AES128, AES256]",
+      "Status": "Warning (AES present + RC4 allowed)",
+      "DistinguishedName": "CN=SVC_ADMIN$,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": null,
+      "LastLogonDate": null,
+      "SPNs": ""
+    },
+    {
+      "Name": "SVC_CloudSync$",
+      "Category": "gMSA",
+      "Enabled": true,
+      "HasSPN": false,
+      "EncValue": 28,
+      "EncHex": "0x1C",
+      "Flags": "0x1C [RC4-HMAC, AES128, AES256]",
+      "Status": "Warning (AES present + RC4 allowed)",
+      "DistinguishedName": "CN=SVC_CloudSync,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": null,
+      "LastLogonDate": null,
+      "SPNs": ""
+    },
+    {
+      "Name": "SVC_GMSA_ADFS$",
+      "Category": "gMSA",
+      "Enabled": true,
+      "HasSPN": false,
+      "EncValue": 28,
+      "EncHex": "0x1C",
+      "Flags": "0x1C [RC4-HMAC, AES128, AES256]",
+      "Status": "Warning (AES present + RC4 allowed)",
+      "DistinguishedName": "CN=SVC_GMSA_ADFS,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": null,
+      "LastLogonDate": null,
+      "SPNs": ""
+    },
+    {
+      "Name": "SVC_MDIACTION$",
+      "Category": "gMSA",
+      "Enabled": true,
+      "HasSPN": false,
+      "EncValue": 28,
+      "EncHex": "0x1C",
+      "Flags": "0x1C [RC4-HMAC, AES128, AES256]",
+      "Status": "Warning (AES present + RC4 allowed)",
+      "DistinguishedName": "CN=SVC_MDIACTION,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": null,
+      "LastLogonDate": null,
+      "SPNs": ""
+    },
+    {
+      "Name": "SVC.TSKGMSA$",
+      "Category": "gMSA",
+      "Enabled": true,
+      "HasSPN": false,
+      "EncValue": 28,
+      "EncHex": "0x1C",
+      "Flags": "0x1C [RC4-HMAC, AES128, AES256]",
+      "Status": "Warning (AES present + RC4 allowed)",
+      "DistinguishedName": "CN=SVC.TSKGMSA,CN=Managed Service Accounts,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": null,
+      "LastLogonDate": null,
+      "SPNs": ""
+    },
+    {
+      "Name": "AZUREADSSOACC$",
+      "Category": "Computer",
+      "Enabled": true,
+      "HasSPN": true,
+      "EncValue": null,
+      "EncHex": "(absent/0)",
+      "Flags": "(absent/0)",
+      "Status": "Warning (Unset/0, service relies on KDC default)",
+      "DistinguishedName": "CN=AZUREADSSOACC,OU=MISC,OU=SERVERS,OU=PRD,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": "2025-05-20T07:57:16.8925106+00:00",
+      "LastLogonDate": "2025-05-20T07:57:15.2830454+00:00",
+      "SPNs": "HTTP/www.tm.a.prd.aadg.akadns.net; HTTP/www.tm.a.prd.aadg.trafficmanager.net; HTTP/aadg.windows.net.nsatc.net; HTTP/autologon.prda.aadg.msidentity.com; HTTP/autologon.microsoftazuread-sso.com; RestrictedKrbHost/www.tm.a.prd.aadg.akadns.net; RestrictedKrbHost/www.tm.a.prd.aadg.trafficmanager.net; RestrictedKrbHost/aadg.windows.net.nsatc.net; RestrictedKrbHost/autologon.prda.aadg.msidentity.com; RestrictedKrbHost/autologon.microsoftazuread-sso.com"
+    },
+    {
+      "Name": "keytab",
+      "Category": "User/Service",
+      "Enabled": true,
+      "HasSPN": true,
+      "EncValue": null,
+      "EncHex": "(absent/0)",
+      "Flags": "(absent/0)",
+      "Status": "Warning (Unset/0, service relies on KDC default)",
+      "DistinguishedName": "CN=Keytab,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": "2024-06-27T12:19:54.3199782+00:00",
+      "LastLogonDate": "2024-06-26T09:47:44.2875158+00:00",
+      "SPNs": "HTTP/keytab2.mathiasmotron.com; HTTP/keytab1.mathiasmotron.com"
+    },
+    {
+      "Name": "svc.mimsync1",
+      "Category": "User/Service",
+      "Enabled": true,
+      "HasSPN": true,
+      "EncValue": null,
+      "EncHex": "(absent/0)",
+      "Flags": "(absent/0)",
+      "Status": "Warning (Unset/0, service relies on KDC default)",
+      "DistinguishedName": "CN=SVC MIMSYNC1,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": "2025-05-06T08:29:22.467006+00:00",
+      "LastLogonDate": "2026-05-25T13:32:48.4069449+00:00",
+      "SPNs": "PCNSCLNT/MM-MIM1.mathiasmotron.com"
+    },
+    {
+      "Name": "svc.sp2016",
+      "Category": "User/Service",
+      "Enabled": true,
+      "HasSPN": true,
+      "EncValue": null,
+      "EncHex": "(absent/0)",
+      "Flags": "(absent/0)",
+      "Status": "Warning (Unset/0, service relies on KDC default)",
+      "DistinguishedName": "CN=SVC SP2016,OU=SVC ACCOUNTS,OU=PRD,DC=mathiasmotron,DC=com",
+      "PasswordLastSet": "2018-12-14T08:50:17.7385135+00:00",
+      "LastLogonDate": "2026-05-25T13:31:25.9622469+00:00",
+      "SPNs": "HTTP/mim.mathiasmotron.com; HTTP/mim"
+    }
+  ],
+  "Warnings": [],
+  "Hours": 24,
+  "Rc4DisablementPhase": [
+    {
+      "Computer": "MM-DC1",
+      "RawValue": "(absent)",
+      "Phase": null,
+      "PhaseLabel": "(absent)",
+      "Status": "Info (registry absent)",
+      "RegistryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters\\RC4DefaultDisablementPhase"
+    },
+    {
+      "Computer": "MM-DC2",
+      "RawValue": "(absent)",
+      "Phase": null,
+      "PhaseLabel": "(absent)",
+      "Status": "Info (registry absent)",
+      "RegistryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters\\RC4DefaultDisablementPhase"
+    },
+    {
+      "Computer": "MM-DC3",
+      "RawValue": "(absent)",
+      "Phase": null,
+      "PhaseLabel": "(absent)",
+      "Status": "Info (registry absent)",
+      "RegistryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters\\RC4DefaultDisablementPhase"
+    }
+  ],
+  "Artifacts": [
+    {
+      "Type": "HTML report",
+      "Path": "C:\\Temp\\Outputs\\KerberosEncryptionAudit_20260603_131939\\KerberosEncryptionAudit.html"
+    },
+    {
+      "Type": "JSON report",
+      "Path": "C:\\Temp\\Outputs\\KerberosEncryptionAudit_20260603_131939\\KerberosEncryptionAudit.json"
+    }
+  ],
+  "Kpis": [
+    {
+      "Name": "DCs with AES-only KDC default",
+      "Value": "0/3",
+      "Target": "Every DC explicitly set to 0x18",
+      "Description": "Reads DefaultDomainSupportedEncTypes on each DC. If this is not 100%, some accounts with unset msDS-SupportedEncryptionTypes still rely on an implicit or mixed KDC fallback.",
+      "Status": "Warning"
+    },
+    {
+      "Name": "SPN accounts failed (RC4 or no AES)",
+      "Value": 1,
+      "Target": "0 SPN-bearing accounts",
+      "Description": "SPN-bearing identities where msDS-SupportedEncryptionTypes still lacks AES or is explicitly RC4-only. These are the cleanest directory-side blockers for AES-only service tickets.",
+      "Status": "Critical"
+    },
+    {
+      "Name": "SPN accounts unset",
+      "Value": 4,
+      "Target": "0 critical SPN-bearing accounts left implicit",
+      "Description": "SPN-bearing identities with msDS-SupportedEncryptionTypes absent or 0. They may still work, but ticket behavior depends on the KDC fallback instead of an explicit per-account declaration.",
+      "Status": "Warning"
+    },
+    {
+      "Name": "RC4 events",
+      "Value": 0,
+      "Target": "0 observed RC4 events",
+      "Description": "Live 4768/4769 events that actually used RC4 during the selected window. This is stronger evidence than configuration alone.",
+      "Status": "OK"
+    },
+    {
+      "Name": "Avoidable RC4 TGS",
+      "Value": 0,
+      "Target": "0 avoidable RC4 TGS events",
+      "Description": "RC4 TGS events where the event fields suggest AES support was already available end to end. These are usually the first RC4 cases to remediate.",
+      "Status": "OK"
+    },
+    {
+      "Name": "DCs at Phase >= 1 (RC4DefaultDisablementPhase)",
+      "Value": "0/3",
+      "Target": "Every DC at Phase >= 1 (audit) or higher",
+      "Description": "KB5073381 (Jan 2026) introduced HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters\\RC4DefaultDisablementPhase. Phase 0 = silent (Kdcsvc 201-209 not produced). Phase 1 = audit (warnings). Phase 2 = enforce (errors). Phase 0 or registry absent = inventory blind spot.",
+      "Status": "Warning"
+    },
+    {
+      "Name": "Kdcsvc 201-209 events observed",
+      "Value": 0,
+      "Target": "0 events (post AES migration)",
+      "Description": "Total Kdcsvc events 201-209 collected from the System log on DCs at Phase >= 1. Each event is a direct KDC-side flag of an RC4 negotiation, with the offending account pre-extracted. Pattern B (clients RC4-only) and Pattern D (services without AES keys) collapse onto these events.",
+      "Status": "OK"
+    },
+    {
+      "Name": "Kdcsvc 205 hygiene findings",
+      "Value": 0,
+      "Target": "0 events 205",
+      "Description": "Event 205 is logged once per Kdcsvc start when a DC has an explicit insecure DefaultDomainSupportedEncTypes (e.g. RC4 bit set). DC-side hygiene finding, not an account-level inventory row. Fix the registry on the offending DC.",
+      "Status": "OK"
+    },
+    {
+      "Name": "Trusts at AES-only (TDO attribute)",
+      "Value": "0/0",
+      "Target": "Every trust at msDS-SupportedEncryptionTypes = 0x18",
+      "Description": "TDO posture from sister script Get-TrustEncryptionAudit.ps1. Counts only the LOCAL side of each trust. Note: an AES-only attribute without a recent password rotation can still emit RC4 referrals because AES keys are not materialized until the trust password is rotated post-attribute change.",
+      "Status": "Info"
+    },
+    {
+      "Name": "Trusts with RC4 / DES / Unset capability",
+      "Value": 0,
+      "Target": "0 trusts in RC4-only / Mixed / Unset / Legacy-DES",
+      "Description": "Count of TDOs whose msDS-SupportedEncryptionTypes still allows RC4, DES, or is absent (which behaves like RC4 for cross-realm). Each one is a candidate for trust-side remediation in Article 3.",
+      "Status": "OK"
+    },
+    {
+      "Name": "Backlog rows at score 8-9 (immediate wave)",
+      "Value": "0/0",
+      "Target": "0 immediate-wave rows after remediation",
+      "Description": "Deterministic scoring against the §0 deliverable: Blast radius (Critical/Important/Standard) + Exposure (Frequent/Occasional/Rare) + Fix cost (Low/Medium/High). Score >= 8 means dedicated change window required. Owner column populated from -OwnerMappingPath when supplied (CSV with columns Pattern,Owner; Pattern supports * wildcards).",
+      "Status": "OK"
+    }
+  ],
+  "KdcsvcSummary": [],
+  "DomainName": "mathiasmotron.com",
+  "TotalRc4Events": 0,
+  "AvoidableRc4Tgs": 0,
+  "TicketBreakdownGlobal": [
+    {
+      "EncType": "AES256-CTS-HMAC-SHA1-96",
+      "Events": 6197,
+      "Percent": 99.98
+    },
+    {
+      "EncType": "UNKNOWN (no ticket/failed ticket)",
+      "Events": 1,
+      "Percent": 0.02
+    }
+  ],
+  "ForestName": "mathiasmotron.com",
+  "AccountStatusSummary": [
+    {
+      "Category": "Computer",
+      "Status": "Info (Computer baseline 0x1C, Microsoft default)",
+      "Count": 14
+    },
+    {
+      "Category": "Computer",
+      "Status": "Info (Unset/0, non-service account inherits KDC default)",
+      "Count": 1
+    },
+    {
+      "Category": "Computer",
+      "Status": "Warning (Unset/0, service relies on KDC default)",
+      "Count": 1
+    },
+    {
+      "Category": "gMSA",
+      "Status": "Compliant (AES present)",
+      "Count": 1
+    },
+    {
+      "Category": "gMSA",
+      "Status": "Warning (AES present + RC4 allowed)",
+      "Count": 7
+    },
+    {
+      "Category": "User/Service",
+      "Status": "Compliant (AES present)",
+      "Count": 3
+    },
+    {
+      "Category": "User/Service",
+      "Status": "Failed (No AES)",
+      "Count": 1
+    },
+    {
+      "Category": "User/Service",
+      "Status": "Failed (RC4-only/No AES)",
+      "Count": 1
+    },
+    {
+      "Category": "User/Service",
+      "Status": "Info (Unset/0, non-service account inherits KDC default)",
+      "Count": 36
+    },
+    {
+      "Category": "User/Service",
+      "Status": "Warning (Unset/0, service relies on KDC default)",
+      "Count": 3
+    }
+  ],
+  "Rc4RequestorAccounts": [],
+  "Trusts": [],
+  "TicketBreakdownByType": [
+    {
+      "TicketType": "TGS",
+      "EncType": "AES256-CTS-HMAC-SHA1-96",
+      "Events": 4863
+    },
+    {
+      "TicketType": "TGT",
+      "EncType": "AES256-CTS-HMAC-SHA1-96",
+      "Events": 1334
+    },
+    {
+      "TicketType": "TGT",
+      "EncType": "UNKNOWN (no ticket/failed ticket)",
+      "Events": 1
+    }
+  ],
+  "KdcDefaults": [
+    {
+      "Computer": "MM-DC2",
+      "RawValue": "(absent)",
+      "Decoded": "(absent/0)",
+      "Status": "Warning (AES default, not enforced)",
+      "RegistryPath": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Kdc\\DefaultDomainSupportedEncTypes"
+    },
+    {
+      "Computer": "MM-DC1",
+      "RawValue": "(absent)",
+      "Decoded": "(absent/0)",
+      "Status": "Warning (AES default, not enforced)",
+      "RegistryPath": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Kdc\\DefaultDomainSupportedEncTypes"
+    },
+    {
+      "Computer": "MM-DC3",
+      "RawValue": "(absent)",
+      "Decoded": "(absent/0)",
+      "Status": "Warning (AES default, not enforced)",
+      "RegistryPath": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Kdc\\DefaultDomainSupportedEncTypes"
+    }
+  ]
+}
