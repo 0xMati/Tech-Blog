@@ -431,7 +431,7 @@ function Get-KdcDefaultAudit {
     # Parallel per-DC: each iteration produces a [PSCustomObject] with the raw value or an error marker.
     # Local helpers (Get-KdcDefaultStatus, Convert-EncryptionFlagsToText) live in the parent runspace,
     # so we post-process AFTER the parallel block in the main thread.
-    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $using:DcParallelThrottle -Parallel {
+    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc = $_
         $rs = $using:remoteScript
         Write-Host ("    [..] Querying KDC default on {0}" -f $dc) -ForegroundColor DarkGray
@@ -493,7 +493,7 @@ function Get-Rc4DisablementPhaseAudit {
         }
     }
 
-    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $using:DcParallelThrottle -Parallel {
+    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc = $_
         $rs = $using:remoteScript
         Write-Host ("    [..] Querying RC4DefaultDisablementPhase on {0}" -f $dc) -ForegroundColor DarkGray
@@ -697,7 +697,7 @@ function Get-KerberosEventAudit {
 
     # Parallel per-DC collection. Each iteration emits a single [PSCustomObject] containing the
     # event batch and any error string. Aggregation happens in the main thread after the pipeline.
-    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $using:DcParallelThrottle -Parallel {
+    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc  = $_
         $rs  = $using:remoteScript
         $hrs = $using:LookbackHours
@@ -809,7 +809,7 @@ function Get-KdcsvcEventAudit {
         return $output
     }
 
-    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $using:DcParallelThrottle -Parallel {
+    $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc  = $_
         $rs  = $using:remoteScript
         $hrs = $using:LookbackHours
