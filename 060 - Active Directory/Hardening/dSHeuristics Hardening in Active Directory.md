@@ -24,7 +24,7 @@ CN=Configuration,<ForestDN>
 
 Each **character position** in this string toggles a specific LDAP or AD DSA behaviour — legacy compatibility, password rules, anonymous access, ACL handling, etc.
 
-If the attribute is **empty**, AD behaves using its **default (safe) configuration**.
+If the attribute is **empty**, AD applies its built-in default for every position. Since November 2021 (KB5008383) that default has been *audit-enabled* for the LDAP-ACL hardening described below — meaning AD logs warning events but does not block the operations. Audit-by-default is safer than the pre-2021 behaviour, but it is **not** the same as full enforcement.
 
 So far so good.
 
@@ -76,19 +76,6 @@ Timeline summary:
 
 ### Reading the dSHeuristics string
 
-The recommended secure value is the 29-character string:
-
-```text
-00000000010000000002000000011
-```
-
-Two positional rules govern this length:
-
-- The **10th** character must be `1` if the string is at least 10 characters long.
-- The **20th** character must be `2` if the string is at least 20 characters long.
-
-So a value shorter than 29 characters would not even reach char 28/29 — extending the string up to position 29 forces you to fill positions 10 and 20 with `1` and `2` respectively, hence the leading `0000000001000000000200000…` prefix.
-
 Quick read with PowerShell:
 
 ```powershell
@@ -96,7 +83,9 @@ $ds = "CN=Directory Service,CN=Windows NT,CN=Services," + (Get-ADRootDSE).config
 (Get-ADObject $ds -Properties dSHeuristics).dSHeuristics
 ```
 
-## dSHeuristics — Event Mapping
+The **recommended secure value** and the rules that govern its length are explained in detail in [section 3 below](#3-recommended-secure-value).
+
+### Event mapping per mode
 
 ### 🔴 `00000000010000000002000000022` — MITIGATIONS AND AUDIT DISABLED
 
@@ -127,21 +116,48 @@ $ds = "CN=Directory Service,CN=Windows NT,CN=Services," + (Get-ADRootDSE).config
 
 ## 3. Recommended secure value
 
-The widely adopted secure value is:
+Two forms are commonly published. Both produce **exactly the same security behaviour** — the only difference is the length of the string.
+
+| Form | Value | Length | Source |
+|---|---|---|---|
+| Minimal | `00000000010000000002000000011` | 29 | Microsoft documentation — the shortest string that reaches char 28/29. |
+| Extended | `0000000001000000000200000001130` | 31 | ANSSI / PingCastle reference — same content, padded to length 30+. |
+
+### Why two forms? A simple rule about length
+
+The `dSHeuristics` string has a strange built-in safety check. Every time the string crosses a multiple of 10, the character at that exact position must equal the multiplier:
+
+| If your string is at least… | …then the character at position… | …must be… |
+|---|---|---|
+| 10 characters long | 10 | `1` |
+| 20 characters long | 20 | `2` |
+| 30 characters long | 30 | `3` |
+| 40 characters long | 40 | `4` |
+
+This is just an internal anti-corruption marker — it does **not** activate any security feature. It only proves that the string was set intentionally and not truncated.
+
+### So what is each character actually doing?
+
+Decoding the ANSSI form `0000000001000000000200000001130`:
 
 ```
-00000000010000000002000000011
+0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0 1 1 3 0
+1 2 3 4 5 6 7 8 9|10                  |20                  |30|31
+                  ^                    ^                    ^
+                  marker (must be 1)   marker (must be 2)   marker (must be 3)
+                                                          ^^
+                                                          | char 29 = 1 → Implicit Ownership removal: ENFORCE
+                                                          char 28 = 1 → AuthZ verification: ENFORCE
 ```
 
-Why so long?  
-Because dSHeuristics entries must respect positional semantics.  
-This value simply ensures:
+Everything else is `0` (default). The only security-relevant characters in this string are **chars 28 and 29**. The `3` at position 30 is just the length marker — it is not a setting you can turn on or off.
 
-- Legacy-safe defaults everywhere  
-- SecurityDescriptor enforcement = **ON**  
-- LDAP exploitation attempts = **blocked**
+### Which one should I use?
 
-Zero drama, maximum safety.
+- **Pick the 29-character form** if you want the smallest possible value and your audit tooling (PingCastle, custom scripts) is happy with it. This is what Microsoft documents.
+- **Pick the 31-character form (ANSSI)** if your compliance baseline does an exact string match against the ANSSI reference value, or if you want the attribute pre-padded for future Microsoft additions at positions 31+.
+
+The script in this article ships with the 29-character form by default and lets you override it on demand.
 
 ---
 
@@ -158,24 +174,25 @@ Forest
 
 ---
 
-## 5. Before/After diagram
+## 5. Before / After diagram
 
-### Before hardening (00 or 01)
+### Before hardening — attribute empty or set to `00` (audit) / `22` (disabled)
 
 ```
 LDAP Client
    │  Modify securityDescriptor via LDAP?
    ▼
- DC: Allowed (Default / AuditOnly)
+ DC: Allowed
       │
-      ├─ Default → no protection
-      └─ AuditOnly → logged but still allowed
+      ├─ char 28/29 = 00 (or empty) → logged as Warning (3051/3054), not blocked
+      └─ char 28/29 = 22            → not logged, not blocked (insecure)
 ```
-![](../assets/dsheuristics-hardening-active-directory/2025-12-11-15-08-33.png)
 
-![](../assets/dsheuristics-hardening-active-directory/2025-12-11-15-08-47.png)
+![PingCastle finding flagging dSHeuristics not in enforce mode](../assets/dsheuristics-hardening-active-directory/2025-12-11-15-08-33.png)
 
-### After hardening (11)
+![Event Viewer entry for ID 3051 — audit-mode warning on a blocked-in-enforce LDAP add](../assets/dsheuristics-hardening-active-directory/2025-12-11-15-08-47.png)
+
+### After hardening — char 28/29 = `11` (enforce)
 
 ```
 LDAP Client
@@ -183,7 +200,7 @@ LDAP Client
    ▼
  DC: BLOCKED
       │
-      └─ Prevents CVE‑2021‑42291 style abuse
+      └─ logged as Informational (3050/3053) and prevents CVE-2021-42291 style abuse
 ```
 
 ---
@@ -259,7 +276,14 @@ function DC   ($m){ Write-Host ("[{0}] [  DC ] {1}" -f (ts), $m) -ForegroundColo
 $script:OriginalDSHeuristics = $null
 $script:OriginalCaptured     = $false
 
-$script:SecureDSHeuristics = "00000000010000000002000000011"
+# Two equivalent secure values (chars 28-29 = '11' enforce CVE-2021-42291):
+#   - Microsoft minimal form (29 chars):  00000000010000000002000000011
+#   - ANSSI / PingCastle form  (31 chars): 0000000001000000000200000001130
+# The trailing '30' on the ANSSI form is the mandatory positional marker for
+# length >= 30 (char 30 must equal '3') plus a default '0' at position 31.
+# Both produce identical security behaviour. Switch by uncommenting the line you want.
+$script:SecureDSHeuristics = "00000000010000000002000000011"     # Microsoft minimal
+# $script:SecureDSHeuristics = "0000000001000000000200000001130"  # ANSSI / PingCastle
 
 function Get-DirectoryServiceObject {
     $configNC  = (Get-ADRootDSE -Server $script:TargetDC).configurationNamingContext
@@ -551,12 +575,13 @@ If any audit event remains and cannot be remediated quickly, leave the forest in
 
 ## 8. TL;DR
 
-- dSHeuristics controls many LDAP behaviours, some security‑critical  
-- Characters **28–29** must be **“11”** for secure operation  
-- Use the script below to:
-  - **Check** current configuration  
-  - **Enable secure enforcement**  
-  - **Revert** cleanly if needed  
+- `dSHeuristics` is a string of magic switches stored in the Configuration partition.
+- Characters **28-29** govern the LDAP-ACL hardening introduced by **CVE-2021-42291**.
+  - `00` (or empty) → audit only, the Microsoft default since November 2021.
+  - **`11` → the recommended target state: illegal LDAP add/modify operations are blocked.**
+  - `22` → audit and enforcement disabled (insecure, troubleshooting only).
+- Two equivalent secure forms: `00000000010000000002000000011` (29 chars, Microsoft) or `0000000001000000000200000001130` (31 chars, ANSSI / PingCastle).
+- Use the script in [section 6](#6-full-powershell-script-check--secure--revert) to **check**, **enforce**, or **revert** cleanly, with replication consistency check across all DCs.
 
 Small change, giant security win.
 
