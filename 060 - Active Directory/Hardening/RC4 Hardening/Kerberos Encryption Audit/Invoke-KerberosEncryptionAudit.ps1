@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Version 1.1.2
+#Version 1.1.3
 [CmdletBinding()]
 param(
     [int]$Hours = 24,
