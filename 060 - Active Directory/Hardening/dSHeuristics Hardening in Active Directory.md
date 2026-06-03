@@ -32,7 +32,36 @@ So far so good.
 
 ## 2. Why some Security Audit tools flags it
 
-Some dSHeuristics positions directly affect **LDAP security**.
+Some dSHeuristics positions directly affect **LDAP security**. Before diving into the bit table, here is the concrete threat that makes chars 28-29 worth caring about.
+
+### The actual risk in one paragraph
+
+Before the November 2021 fix (KB5008383), Active Directory had **two long-standing LDAP behaviours** that, when combined, allowed a low-privileged user to escalate to *full control* over targeted objects:
+
+1. **No per-attribute authorization on LDAP Add.** When creating an object via LDAP `Add`, AD checked that the caller had *Create-Child* on the parent container — but it did **not** verify per-attribute write rights on the attributes included in the Add request. So a user could ship sensitive attributes (`nTSecurityDescriptor`, `msDS-AllowedToActOnBehalfOfOtherIdentity`, `servicePrincipalName`, `msDS-KeyCredentialLink`, …) inside the creation payload, even though they would have been blocked from setting those same attributes via a subsequent `Modify`.
+2. **Implicit owner rights.** The creator of an object becomes its *implicit owner* and silently retains `WRITE_DAC` and `READ_CONTROL` permissions even when no ACE grants them. Combined with the previous behaviour, the creator could rewrite the security descriptor of the object they just created at will.
+
+### Concrete attack chains this enables
+
+| Attack chain | What the attacker does | Outcome |
+|---|---|---|
+| **Resource-Based Constrained Delegation (RBCD) takeover** | Any authenticated user can create up to 10 computer accounts (default `ms-DS-MachineAccountQuota`). The attacker creates a computer object and **includes `msDS-AllowedToActOnBehalfOfOtherIdentity` in the Add payload**, granting their own SID rights to impersonate. | Impersonation of any user — including domain admins — onto the target computer. Path popularised by Elad Shamir / Will Schroeder ("Wagging the Dog"). |
+| **Shadow Credentials (`msDS-KeyCredentialLink`)** | Same Add-time injection, but on `msDS-KeyCredentialLink`. The attacker plants a public key on the object during creation. | PKINIT authentication as the object, leading to TGT issuance and full takeover of any object the attacker can create or temporarily own. |
+| **Implicit-owner ACL rewrite** | Even on objects the attacker did *not* create, if they ever briefly held ownership (legacy delegation, deleted-and-recreated containers, rogue admin rollback), they keep `WRITE_DAC` indefinitely. | They can re-grant themselves any ACE on the object at any later date, bypassing all subsequent ACL hardening. |
+| **Sensitive-attribute injection at creation** | `servicePrincipalName`, `userAccountControl` flags, `userCertificate`, `msDS-AllowedToDelegateTo`… all of these used to be settable at Add-time without a per-attribute check. | Various Kerberoast / unconstrained-delegation / certificate-based escalation paths, depending on the attribute. |
+
+These are not theoretical. They are the building blocks of practically every modern AD privilege-escalation chain documented by tooling like **BloodHound** (the famous *Owns* and *GenericWrite* edges), **Certipy**, **Rubeus**, **Impacket**, and Specterops's research. Most red-team paths in AD environments touch one of these primitives at some point.
+
+### What CVE-2021-42291 / chars 28-29 actually fix
+
+- **Char 28 = `1`** forces AD to perform the **same per-attribute authorization check on LDAP Add as it does on Modify**. The attacker can no longer smuggle sensitive attributes into the creation payload to bypass write checks they don't have.
+- **Char 29 = `1`** **removes implicit owner rights** during `nTSecurityDescriptor` modifications. The owner of an object no longer silently retains `WRITE_DAC`/`READ_CONTROL`; they need an explicit ACE like every other principal.
+
+Together, these two flags shut down the "create-or-own then weaponise" pattern that underlies most LDAP-based privilege escalation in AD.
+
+### Why audit mode is not enough
+
+Audit mode (`00`) **logs** these abuse attempts via events 3051 / 3054 but **does not block them**. An attacker who lands in audit mode still succeeds — the only thing that changes is that the SOC has a chance to spot the operation in logs. Audit mode exists as a transition stage to identify legitimate applications that rely on the old behaviour (see [section 7](#7-is-enforcement-safe)); it is **not** a defensive end-state.
 
 The important ones for modern AD security baselines are:
 
@@ -209,10 +238,11 @@ LDAP Client
 
 This script:
 
-✔ Shows current value  
-✔ Interprets characters 28–29  
-✔ Applies secure mode  
-✔ Reverts to original value captured at launch  
+✔ Shows current value and parsed mode  
+✔ Interprets characters 28-29  
+✔ Lets you apply **AUDIT mode** (`00`) or **ENFORCE mode** (`11`) explicitly  
+✔ Reverts to the original value captured at launch  
+✔ Checks dSHeuristics on every DC of the forest (replication consistency)  
 
 Paste into a PowerShell console running as **Enterprise Admin**.
 
@@ -276,14 +306,22 @@ function DC   ($m){ Write-Host ("[{0}] [  DC ] {1}" -f (ts), $m) -ForegroundColo
 $script:OriginalDSHeuristics = $null
 $script:OriginalCaptured     = $false
 
-# Two equivalent secure values (chars 28-29 = '11' enforce CVE-2021-42291):
+# Two equivalent enforce values (chars 28-29 = '11', CVE-2021-42291 enforced):
 #   - Microsoft minimal form (29 chars):  00000000010000000002000000011
 #   - ANSSI / PingCastle form  (31 chars): 0000000001000000000200000001130
 # The trailing '30' on the ANSSI form is the mandatory positional marker for
 # length >= 30 (char 30 must equal '3') plus a default '0' at position 31.
 # Both produce identical security behaviour. Switch by uncommenting the line you want.
-$script:SecureDSHeuristics = "00000000010000000002000000011"     # Microsoft minimal
-# $script:SecureDSHeuristics = "0000000001000000000200000001130"  # ANSSI / PingCastle
+$script:EnforceDSHeuristics = "00000000010000000002000000011"     # Microsoft minimal
+# $script:EnforceDSHeuristics = "0000000001000000000200000001130"  # ANSSI / PingCastle
+
+# Audit mode (chars 28-29 = '00'): warnings logged (events 3051/3054), no blocking.
+# This is the Microsoft default when the attribute is unset; setting it explicitly
+# makes the state visible to audit tooling without changing behaviour.
+$script:AuditDSHeuristics = "00000000010000000002000000000"
+
+# Backwards-compat alias (older snippets used $SecureDSHeuristics).
+$script:SecureDSHeuristics = $script:EnforceDSHeuristics
 
 function Get-DirectoryServiceObject {
     $configNC  = (Get-ADRootDSE -Server $script:TargetDC).configurationNamingContext
@@ -408,7 +446,8 @@ function Show-CurrentDSHeuristics {
     Info "Value : '$($s.Value)' (length: $($s.Length))"
     Info "Mode  : $($s.Mode)"
     Info "Char28: '$($s.Char28)' | Char29: '$($s.Char29)'"
-    Info "Recommended secure value: $script:SecureDSHeuristics"
+    Info "Audit value   (chars 28/29 = 00): $script:AuditDSHeuristics"
+    Info "Enforce value (chars 28/29 = 11): $script:EnforceDSHeuristics"
 }
 
 function Show-AllDCsStatus {
@@ -502,9 +541,10 @@ function Show-Menu {
     Write-Host ""
     Write-Host "==== dSHeuristics Control Script ===="
     Write-Host "1) Check current configuration (PDC)"
-    Write-Host "2) Apply secure value (Enforce mode)"
-    Write-Host "3) Revert to original value"
-    Write-Host "4) Check value on ALL DCs (replication check)"
+    Write-Host "2) Apply AUDIT mode    (chars 28/29 = 00 - log only, no blocking)"
+    Write-Host "3) Apply ENFORCE mode  (chars 28/29 = 11 - recommended target state)"
+    Write-Host "4) Revert to original value (captured at script launch)"
+    Write-Host "5) Check value on ALL DCs (replication check)"
     Write-Host "Q) Quit"
     Write-Host ""
 }
@@ -517,15 +557,23 @@ do {
         '1' { Show-CurrentDSHeuristics }
         '2' {
             Show-CurrentDSHeuristics
-            $c = Read-Host "Apply secure value? (Y/N)"
-            if ($c -eq 'Y') { Set-DSHeuristicsValue -NewValue $script:SecureDSHeuristics }
+            Warn "AUDIT mode will set chars 28/29 to '00' (log warnings 3051/3054, no blocking)."
+            $c = Read-Host "Apply AUDIT mode? (Y/N)"
+            if ($c -eq 'Y') { Set-DSHeuristicsValue -NewValue $script:AuditDSHeuristics }
         }
         '3' {
+            Show-CurrentDSHeuristics
+            Warn "ENFORCE mode will set chars 28/29 to '11' (block illegal LDAP add/modify, events 3050/3053)."
+            Warn "Make sure you have triaged events 3051/3054 in audit mode first (see article section 7)."
+            $c = Read-Host "Apply ENFORCE mode? (Y/N)"
+            if ($c -eq 'Y') { Set-DSHeuristicsValue -NewValue $script:EnforceDSHeuristics }
+        }
+        '4' {
             Show-CurrentDSHeuristics
             $c = Read-Host "Revert to original value? (Y/N)"
             if ($c -eq 'Y') { Set-DSHeuristicsValue -NewValue $script:OriginalDSHeuristics }
         }
-        '4' { Show-AllDCsStatus }
+        '5' { Show-AllDCsStatus }
         'Q' { Info "Exiting." }
     }
 
@@ -581,7 +629,7 @@ If any audit event remains and cannot be remediated quickly, leave the forest in
   - **`11` → the recommended target state: illegal LDAP add/modify operations are blocked.**
   - `22` → audit and enforcement disabled (insecure, troubleshooting only).
 - Two equivalent secure forms: `00000000010000000002000000011` (29 chars, Microsoft) or `0000000001000000000200000001130` (31 chars, ANSSI / PingCastle).
-- Use the script in [section 6](#6-full-powershell-script-check--secure--revert) to **check**, **enforce**, or **revert** cleanly, with replication consistency check across all DCs.
+- Use the script in [section 6](#6-full-powershell-script-check--secure--revert) to **check**, apply **audit** or **enforce** mode, **revert**, or audit replication consistency across all DCs.
 
 Small change, giant security win.
 
