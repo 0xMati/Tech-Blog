@@ -16,6 +16,7 @@
 
 .PARAMETER OutputPath
     Destination folder for the report. Created if missing.
+    Default: an 'output' subfolder next to the script ($PSScriptRoot\output).
 
 .PARAMETER RelyingPartyName
     Optional list of RP names to filter on. Wildcards supported.
@@ -49,7 +50,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$OutputPath = ".\AdfsAssessment",
+    [string]$OutputPath = (Join-Path $PSScriptRoot 'output'),
 
     [string[]]$RelyingPartyName,
 

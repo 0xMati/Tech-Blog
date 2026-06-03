@@ -71,7 +71,10 @@ Verdict aggregation:
 ## Usage
 
 ```powershell
-# Basic run
+# Basic run — output goes to .\output next to the script
+.\Invoke-AdfsRpMigrationAssessment.ps1
+
+# Override output path
 .\Invoke-AdfsRpMigrationAssessment.ps1 -OutputPath C:\Temp\AdfsReport
 
 # With sign-in usage stats from the Security event log
