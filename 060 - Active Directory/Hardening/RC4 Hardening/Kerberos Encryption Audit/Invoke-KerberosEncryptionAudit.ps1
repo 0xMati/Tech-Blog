@@ -432,9 +432,12 @@ function Get-KdcDefaultAudit {
     # Parallel per-DC: each iteration produces a [PSCustomObject] with the raw value or an error marker.
     # Local helpers (Get-KdcDefaultStatus, Convert-EncryptionFlagsToText) live in the parent runspace,
     # so we post-process AFTER the parallel block in the main thread.
+    # Note: PS 7 -Parallel forbids passing scriptblocks via $using:. We pass the textual representation
+    # and rebuild the scriptblock inside each runspace via [scriptblock]::Create().
+    $remoteScriptText = $remoteScript.ToString()
     $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc = $_
-        $rs = $using:remoteScript
+        $rs = [scriptblock]::Create($using:remoteScriptText)
         Write-Host ("    [..] Querying KDC default on {0}" -f $dc) -ForegroundColor DarkGray
         try {
             $rawResult = Invoke-Command -ComputerName $dc -ScriptBlock $rs -ErrorAction Stop
@@ -494,9 +497,10 @@ function Get-Rc4DisablementPhaseAudit {
         }
     }
 
+    $remoteScriptText = $remoteScript.ToString()
     $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc = $_
-        $rs = $using:remoteScript
+        $rs = [scriptblock]::Create($using:remoteScriptText)
         Write-Host ("    [..] Querying RC4DefaultDisablementPhase on {0}" -f $dc) -ForegroundColor DarkGray
         try {
             $rawResult = Invoke-Command -ComputerName $dc -ScriptBlock $rs -ErrorAction Stop
@@ -698,9 +702,11 @@ function Get-KerberosEventAudit {
 
     # Parallel per-DC collection. Each iteration emits a single [PSCustomObject] containing the
     # event batch and any error string. Aggregation happens in the main thread after the pipeline.
+    # Scriptblock is converted to text and rebuilt inside each runspace (PS 7 -Parallel limitation).
+    $remoteScriptText = $remoteScript.ToString()
     $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc  = $_
-        $rs  = $using:remoteScript
+        $rs  = [scriptblock]::Create($using:remoteScriptText)
         $hrs = $using:LookbackHours
         $max = $using:MaxEvents
         Write-Host ("    [..] Collecting 4768/4769 from {0}" -f $dc) -ForegroundColor DarkGray
@@ -810,9 +816,10 @@ function Get-KdcsvcEventAudit {
         return $output
     }
 
+    $remoteScriptText = $remoteScript.ToString()
     $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc  = $_
-        $rs  = $using:remoteScript
+        $rs  = [scriptblock]::Create($using:remoteScriptText)
         $hrs = $using:LookbackHours
         $max = $using:MaxEvents
         Write-Host ("    [..] Collecting Kdcsvc 201-209 from {0}" -f $dc) -ForegroundColor DarkGray
