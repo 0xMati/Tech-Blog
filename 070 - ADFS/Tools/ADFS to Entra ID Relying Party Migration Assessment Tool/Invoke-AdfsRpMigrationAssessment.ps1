@@ -117,6 +117,7 @@ function ConvertTo-SafeFileName {
 
 $script:KnownPatterns = @(
     @{ Name = 'PassThrough'              ; Regex = '(?ims)^\s*c:\s*\[\s*Type\s*==\s*"[^"]+"\s*\]\s*=>\s*issue\s*\(\s*claim\s*=\s*c\s*\)' }
+    @{ Name = 'PassThroughAll'           ; Regex = '(?ims)^\s*c:\s*\[\s*\]\s*=>\s*issue\s*\(\s*claim\s*=\s*c\s*\)' }
     @{ Name = 'PassThroughWithFilter'    ; Regex = '(?ims)c:\[Type\s*==\s*"[^"]+"\s*,\s*Value\s*[=~]+\s*"[^"]+"\]\s*=>\s*issue\(\s*claim\s*=\s*c\s*\)' }
     @{ Name = 'IssueAttributeFromAD'     ; Regex = '(?ims)c:\[Type\s*==\s*"[^"]+windowsaccountname[^"]*"[^\]]*\]\s*=>\s*issue\(\s*store\s*=\s*"Active Directory"\s*,\s*types\s*=\s*\(' }
     @{ Name = 'TransformWindowsAccount'  ; Regex = '(?ims)c:\[Type\s*==\s*"[^"]+windowsaccountname[^"]*"[^\]]*\]\s*=>\s*issue\(' }
@@ -168,16 +169,41 @@ function ConvertFrom-AdfsRuleSet {
 
     if ([string]::IsNullOrWhiteSpace($RuleSet)) { return @() }
 
-    # Split rules on @RuleTemplate / @RuleName boundaries while preserving content
-    $parts = [System.Text.RegularExpressions.Regex]::Split(
-        $RuleSet,
-        '(?ims)(?=@RuleTemplate|@RuleName)'
-    ) | Where-Object { $_.Trim() }
+    # Split rules into individual blocks. A rule starts with either:
+    #   @RuleTemplate = "..."         (wizard-generated rules; @RuleName follows on next line)
+    #   @RuleName = "..."             (custom rules with no template)
+    # We must NOT treat a @RuleName that immediately follows a @RuleTemplate as a new rule.
+    $lines = $RuleSet -split "`r?`n"
+    $blocks = New-Object System.Collections.Generic.List[string]
+    $current = New-Object System.Text.StringBuilder
+    $prevNonBlankWasTemplate = $false
 
-    if (-not $parts) { $parts = @($RuleSet) }
+    foreach ($line in $lines) {
+        $trim = $line.Trim()
+        $isTemplate = $trim -match '^@RuleTemplate\s*='
+        $isName     = $trim -match '^@RuleName\s*='
 
-    $results = foreach ($rule in $parts) {
-        $ruleText = $rule.Trim()
+        $startsRule = $isTemplate -or ($isName -and -not $prevNonBlankWasTemplate)
+
+        if ($startsRule -and $current.Length -gt 0) {
+            $blocks.Add($current.ToString().Trim())
+            $null = $current.Clear()
+        }
+
+        $null = $current.AppendLine($line)
+
+        if ($trim -ne '') {
+            $prevNonBlankWasTemplate = $isTemplate
+        }
+    }
+    if ($current.Length -gt 0) {
+        $tail = $current.ToString().Trim()
+        if ($tail) { $blocks.Add($tail) }
+    }
+
+    if ($blocks.Count -eq 0) { $blocks.Add($RuleSet.Trim()) }
+
+    $results = foreach ($ruleText in $blocks) {
         $name = if ($ruleText -match '@RuleName\s*=\s*"([^"]+)"') { $Matches[1] } else { $null }
 
         # Extract claim types referenced
@@ -240,7 +266,7 @@ function ConvertFrom-AdfsRuleSet {
 function New-TestResult {
     param(
         [string]$Name,
-        [ValidateSet('Pass','Warning','Fail','Skipped')] [string]$Status,
+        [ValidateSet('Pass','Info','Warning','Fail','Skipped')] [string]$Status,
         [string]$Message,
         $Detail = $null
     )
@@ -293,8 +319,8 @@ function Test-RpAlwaysRequireAuthentication {
 function Test-RpAutoUpdateEnabled {
     param($Rp)
     if ($Rp.AutoUpdateEnabled) {
-        return New-TestResult 'AutoUpdateEnabled' 'Warning' `
-            'Federation metadata auto-update enabled. Entra ID does not auto-update from RP metadata.'
+        return New-TestResult 'AutoUpdateEnabled' 'Info' `
+            'Federation metadata auto-update enabled. Informational: Entra ID does not consume RP federation metadata, so this setting becomes moot after migration (does not block).'
     }
     New-TestResult 'AutoUpdateEnabled' 'Pass' 'Auto-update disabled.'
 }
@@ -369,23 +395,24 @@ function Test-RpIssuanceAuthorizationRules {
 
 function Test-RpIssuanceTransformRules {
     param($Rp, $ParsedRules)
-    if (-not $ParsedRules -or $ParsedRules.Count -eq 0) {
+    $rules = @($ParsedRules)
+    if ($rules.Count -eq 0) {
         return New-TestResult 'IssuanceTransformRules' 'Pass' 'No transform rules.'
     }
-    $nonMigratable = @($ParsedRules | Where-Object { -not $_.IsMigratable })
+    $nonMigratable = @($rules | Where-Object { -not $_.IsMigratable })
     if ($nonMigratable.Count -eq 0) {
-        return New-TestResult 'IssuanceTransformRules' 'Pass' "$($ParsedRules.Count) rule(s), all match known migratable patterns."
+        return New-TestResult 'IssuanceTransformRules' 'Pass' "$($rules.Count) rule(s), all match known migratable patterns."
     }
     New-TestResult 'IssuanceTransformRules' 'Warning' `
-        "$($nonMigratable.Count) of $($ParsedRules.Count) rule(s) need manual review." `
+        "$($nonMigratable.Count) of $($rules.Count) rule(s) need manual review." `
         ($nonMigratable | Select-Object Name, Issues, KnownPattern, Text)
 }
 
 function Test-RpMonitoringEnabled {
     param($Rp)
     if ($Rp.MonitoringEnabled) {
-        return New-TestResult 'MonitoringEnabled' 'Warning' `
-            'Federation metadata monitoring enabled — not supported by Entra (informational).'
+        return New-TestResult 'MonitoringEnabled' 'Info' `
+            'Federation metadata monitoring enabled. Informational: feature is AD FS-only and becomes irrelevant in Entra ID (does not block migration).'
     }
     New-TestResult 'MonitoringEnabled' 'Pass' 'Monitoring disabled.'
 }
@@ -456,6 +483,77 @@ function Get-AdfsFarmServer {
     return ,@($env:COMPUTERNAME)
 }
 
+function Test-AdfsAuditConfiguration {
+    <#
+    Checks both audit prerequisites required for event 1200:
+      1. AD FS audit level (Get-AdfsProperties -AuditLevel must include 'Verbose' or 'Basic+Success')
+      2. Windows audit policy 'Application Generated' (Success must be enabled)
+    Returns hashtable: server -> @{ AdfsLevel; AppGenerated; Ok; Notes[] }
+    #>
+    param([string[]]$Servers)
+
+    $report = [ordered]@{}
+    foreach ($srv in $Servers) {
+        $isLocal = ($srv -ieq $env:COMPUTERNAME) -or ($srv -ieq "$env:COMPUTERNAME.$env:USERDNSDOMAIN") -or ($srv -ieq 'localhost')
+        $entry = [ordered]@{
+            Server       = $srv
+            AdfsLevel    = $null
+            AppGenerated = $null
+            Ok           = $false
+            Notes        = @()
+        }
+
+        # 1. AD FS audit level
+        try {
+            if ($isLocal) {
+                $props = Get-AdfsProperties -ErrorAction Stop
+            } else {
+                $props = Invoke-Command -ComputerName $srv -ScriptBlock { Get-AdfsProperties } -ErrorAction Stop
+            }
+            $entry.AdfsLevel = "$($props.AuditLevel)"
+        } catch {
+            $entry.Notes += "AD FS audit level: cannot read ($($_.Exception.Message.Split([char]0x0A)[0]))"
+        }
+
+        # 2. auditpol on Application Generated subcategory
+        try {
+            if ($isLocal) {
+                $raw = & auditpol.exe /get /subcategory:"Application Generated" 2>$null
+            } else {
+                $raw = Invoke-Command -ComputerName $srv -ScriptBlock { & auditpol.exe /get /subcategory:"Application Generated" 2>$null } -ErrorAction Stop
+            }
+            $line = $raw | Where-Object { $_ -match 'Application Generated' } | Select-Object -First 1
+            if ($line -match 'Success and Failure') { $entry.AppGenerated = 'Success+Failure' }
+            elseif ($line -match 'Success')         { $entry.AppGenerated = 'Success' }
+            elseif ($line -match 'Failure')         { $entry.AppGenerated = 'Failure only' }
+            elseif ($line -match 'No Auditing')     { $entry.AppGenerated = 'Disabled' }
+            else                                    { $entry.AppGenerated = 'Unknown' }
+        } catch {
+            $entry.Notes += "auditpol: cannot query ($($_.Exception.Message.Split([char]0x0A)[0]))"
+        }
+
+        # Decide overall status
+        $adfsOk = ($entry.AdfsLevel -match 'Verbose') -or ($entry.AdfsLevel -match 'Basic.*Success' -or $entry.AdfsLevel -match 'Successes')
+        $polOk  = $entry.AppGenerated -in @('Success','Success+Failure')
+        $entry.Ok = $adfsOk -and $polOk
+
+        if (-not $adfsOk -and $entry.AdfsLevel) { $entry.Notes += "AD FS AuditLevel='$($entry.AdfsLevel)' — needs Verbose (or Basic+Successes) for event 1200" }
+        if (-not $polOk  -and $entry.AppGenerated) { $entry.Notes += "auditpol 'Application Generated'=$($entry.AppGenerated) — needs Success enabled" }
+
+        # Console output
+        if ($entry.Ok) {
+            Write-Ok ("  {0}: audit OK (ADFS={1}, AppGen={2})" -f $srv, $entry.AdfsLevel, $entry.AppGenerated)
+        } else {
+            Write-Warn2 ("  {0}: audit NOT fully enabled (ADFS={1}, AppGen={2})" -f $srv, $entry.AdfsLevel, $entry.AppGenerated)
+            foreach ($n in $entry.Notes) { Write-Warn2 ("      - $n") }
+        }
+
+        $report[$srv] = [PSCustomObject]$entry
+    }
+
+    return $report
+}
+
 function Get-AdfsRpUsage {
     param(
         [int]$Days = 30,
@@ -486,7 +584,13 @@ function Get-AdfsRpUsage {
             $msg = $_.Exception.Message
             if ($msg -match 'No events were found') {
                 $perServer[$srv] = @{ Reached = $true; EventCount = 0; Error = $null }
-                Write-Warn2 ("  {0}: no event 1200 found (audit policy not enabled?)." -f $srv)
+                $auditOk = $false
+                if ($script:AuditConfig -and $script:AuditConfig[$srv]) { $auditOk = [bool]$script:AuditConfig[$srv].Ok }
+                if ($auditOk) {
+                    Write-Info  ('  {0}: no event 1200 in window (audit OK, no sign-in traffic in last {1} day(s)).' -f $srv, $Days)
+                } else {
+                    Write-Warn2 ('  {0}: no event 1200 found - audit not fully enabled (see audit check above).' -f $srv)
+                }
                 continue
             }
             $perServer[$srv] = @{ Reached = $false; EventCount = 0; Error = $msg }
@@ -612,6 +716,7 @@ tr.row.disabled td { opacity:0.5; }
 .badge.pass    { background:var(--ready-bg); color:var(--ready-fg); }
 .badge.warning { background:var(--rev-bg);   color:var(--rev-fg); }
 .badge.fail    { background:var(--add-bg);   color:var(--add-fg); }
+.badge.info    { background:#e0f2fe; color:#075985; }
 .badge.skipped { background:#e5e7eb; color:#374151; }
 .modal-bg { position:fixed; inset:0; background:rgba(15,23,42,0.6); display:none; align-items:flex-start; justify-content:center; padding:48px 24px; overflow-y:auto; z-index:50; }
 .modal-bg.open { display:flex; }
@@ -627,7 +732,9 @@ tr.row.disabled td { opacity:0.5; }
 .config-grid dt { color:var(--muted); }
 .config-grid dd { margin:0; word-break:break-word; }
 .tests { display:grid; gap:8px; }
-.test { display:grid; grid-template-columns:120px 1fr auto; gap:12px; align-items:start; padding:10px; border:1px solid #e2e8f0; border-radius:6px; }
+.test { display:grid; grid-template-columns:120px minmax(0,1fr) auto; gap:12px; align-items:start; padding:10px; border:1px solid #e2e8f0; border-radius:6px; }
+.test > * { min-width:0; }
+.test details { max-width:100%; overflow:hidden; }
 .test.pass    { border-left:3px solid var(--pass); }
 .test.warning { border-left:3px solid var(--warn); }
 .test.fail    { border-left:3px solid var(--fail); }
@@ -635,13 +742,13 @@ tr.row.disabled td { opacity:0.5; }
 .test .msg  { font-size:13px; color:#334155; }
 .test details { margin-top:6px; }
 .test summary { cursor:pointer; font-size:12px; color:var(--info); }
-.test pre { background:#f1f5f9; padding:8px; border-radius:4px; font-size:11px; overflow-x:auto; max-height:200px; }
+.test pre { background:#f1f5f9; padding:8px; border-radius:4px; font-size:11px; overflow-x:auto; max-height:200px; white-space:pre-wrap; word-break:break-word; max-width:100%; }
 .rule { background:#f8fafc; padding:10px; margin:8px 0; border-radius:6px; border:1px solid #e2e8f0; }
 .rule.bad  { border-left:3px solid var(--warn); }
 .rule.good { border-left:3px solid var(--pass); }
 .rule .header2 { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:6px; }
 .rule .name { font-size:12px; font-weight:600; }
-.rule pre { background:#fff; padding:8px; border-radius:4px; font-size:11px; overflow-x:auto; margin:6px 0 0; }
+.rule pre { background:#fff; padding:8px; border-radius:4px; font-size:11px; overflow-x:auto; margin:6px 0 0; white-space:pre-wrap; word-break:break-word; max-width:100%; }
 .rule .issues { font-size:12px; color:var(--add-fg); margin-top:6px; }
 .checklist { display:grid; gap:8px; }
 .checklist label { display:flex; gap:8px; align-items:flex-start; padding:8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; cursor:pointer; }
@@ -726,7 +833,7 @@ let SORT_KEY = 'Verdict', SORT_ASC = true;
 
 const VERDICT_LABELS = { Ready:'Ready', NeedsReview:'Needs review', AdditionalSteps:'Additional steps' };
 const VERDICT_CLASSES = { Ready:'ready', NeedsReview:'review', AdditionalSteps:'steps' };
-const STATUS_RANK = { Pass:0, Warning:1, Fail:2, Skipped:-1 };
+const STATUS_RANK = { Pass:0, Info:0, Warning:1, Fail:2, Skipped:-1 };
 const VERDICT_RANK = { Ready:0, NeedsReview:1, AdditionalSteps:2 };
 
 function getMetrics(rp){
@@ -890,7 +997,7 @@ function buildPlaybook(rp) {
   items.push('Configure SAML signing certificate in Entra (tenant cert by default)');
   const tests = rp.Tests||[];
   for (const t of tests) {
-    if (t.Status === 'Pass') continue;
+    if (t.Status === 'Pass' || t.Status === 'Info') continue;
     if (t.Name === 'AdditionalAuthenticationRules')   items.push('Recreate on-prem MFA rules as Conditional Access policies with Entra MFA');
     if (t.Name === 'AllowedAuthenticationClassReferences') items.push('Translate auth class restriction to Conditional Access (auth strength)');
     if (t.Name === 'AlwaysRequireAuthentication')     items.push('Configure Conditional Access Sign-in frequency to force re-auth');
@@ -978,7 +1085,7 @@ if (-not $IncludeMicrosoftRPs) {
 Write-Ok "Analysing $($rps.Count) RP(s)..."
 
 # Resolve farm members
-$farm = if ($FarmServers) { $FarmServers } else { Get-AdfsFarmServer }
+$farm = @(if ($FarmServers) { $FarmServers } else { Get-AdfsFarmServer })
 if ($farm.Count -gt 1) {
     Write-Ok ("Farm members detected ({0}): {1}" -f $farm.Count, ($farm -join ', '))
 } else {
@@ -988,7 +1095,22 @@ if ($farm.Count -gt 1) {
 # Usage stats (optional)
 $usage = @{}
 $script:UsageServerStatus = @{}
-if ($IncludeUsageStats) { $usage = Get-AdfsRpUsage -Days $UsageDays -Servers $farm }
+$script:AuditConfig = @{}
+if ($IncludeUsageStats) {
+    Write-Section 'Audit configuration check'
+    $script:AuditConfig = Test-AdfsAuditConfiguration -Servers $farm
+    $okCount = @($script:AuditConfig.Values | Where-Object { $_.Ok }).Count
+    if ($okCount -eq 0) {
+        Write-Warn2 "No farm member has full audit enabled. Sign-in usage will be empty."
+        Write-Warn2 "To enable on each ADFS server:"
+        Write-Warn2 "    Set-AdfsProperties -AuditLevel Verbose"
+        Write-Warn2 "    auditpol /set /subcategory:'Application Generated' /success:enable /failure:enable"
+        Write-Warn2 "    Restart-Service adfssrv"
+    } elseif ($okCount -lt $farm.Count) {
+        Write-Warn2 ("{0}/{1} farm member(s) have audit enabled. Stats will be partial." -f $okCount, $farm.Count)
+    }
+    $usage = Get-AdfsRpUsage -Days $UsageDays -Servers $farm
+}
 
 # Run tests
 $results = foreach ($rp in $rps) {

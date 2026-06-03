@@ -1,9 +1,65 @@
 #Requires -Version 7.2
-#Version 1.1.7
+#Version 1.1.9
+<#
+.SYNOPSIS
+    Read-only Kerberos encryption audit for an Active Directory domain.
+
+.DESCRIPTION
+    Correlates KDC defaults, AD account encryption capability (msDS-SupportedEncryptionTypes),
+    KB5073381 phase registry, Trusted Domain Objects, and live 4768/4769 + Kdcsvc 201-209
+    ticket evidence to surface RC4 dependencies that block AES-only enforcement.
+
+    The script never writes to AD, never modifies registry values on DCs, and never rotates
+    secrets. It only reads (via the ActiveDirectory PowerShell module + Invoke-Command).
+    All findings are exported to JSON, HTML, and (optionally) CSV.
+
+    Companion to the RC4 Hardening series, Article 2 §6 (https://github.com/...).
+
+.PARAMETER Hours
+    Lookback window for 4768/4769 and Kdcsvc 201-209 collection. Default 24.
+
+.PARAMETER DomainControllers
+    Optional list of DC FQDNs to query. Default: all DCs in the local domain.
+
+.PARAMETER MaxEventsPerDc
+    Cap on Get-WinEvent results per DC per log. Default 5000.
+
+.PARAMETER ExportCsv
+    Also export every dataset to CSV in the output directory.
+
+.PARAMETER OpenReport
+    Open the HTML report in the default browser at the end of the run.
+
+.PARAMETER IncludeTrusts
+    Inventory Trusted Domain Objects (Get-ADTrust) and classify each one. Optional;
+    skipped by default to keep small-scope runs fast.
+
+.PARAMETER OwnerMappingPath
+    CSV path with columns Pattern,Owner. Pattern supports wildcards (-like). Used to
+    populate the Owner column in the §0 backlog deliverable.
+
+.PARAMETER OutputDir
+    Where to write artifacts. Default: .\Outputs\KerberosEncryptionAudit_<timestamp>\
+    relative to the script.
+
+.EXAMPLE
+    .\Invoke-KerberosEncryptionAudit.ps1 -Hours 24 -IncludeTrusts -ExportCsv -OpenReport
+
+.EXAMPLE
+    .\Invoke-KerberosEncryptionAudit.ps1 -Hours 168 -DomainControllers dc1.contoso.com,dc2.contoso.com
+
+.NOTES
+    Requires PowerShell 7.2+ (uses ForEach-Object -Parallel) and the ActiveDirectory
+    module (RSAT-AD-PowerShell). Must be run from a host that can reach every target
+    DC over WinRM (PowerShell Remoting) for registry + event log queries.
+    Read-only by construction.
+#>
 [CmdletBinding()]
 param(
+    [ValidateRange(1, 8760)]
     [int]$Hours = 24,
     [string[]]$DomainControllers,
+    [ValidateRange(1, 1000000)]
     [int]$MaxEventsPerDc = 5000,
     [switch]$ExportCsv,
     [switch]$OpenReport,
@@ -84,7 +140,36 @@ function Write-TaskMessage {
     Write-Host ('    > {0}' -f $Message) -ForegroundColor $Color
 }
 
-function Get-ExecutionContext {
+function ConvertTo-LdapFilterSafe {
+    # Escape characters that would break a Get-ADUser/Computer/Object -Filter "attr -eq '<value>'" expression.
+    # PowerShell AD -Filter uses a quoted string syntax; the only character that closes the
+    # value is a single quote. We double single quotes (PowerShell-style) and strip control chars.
+    param([string]$Value)
+
+    if ([string]::IsNullOrEmpty($Value)) { return $Value }
+    # Remove non-printable ASCII to defang any injection from event log fields
+    $sanitized = ($Value -replace '[\x00-\x1F\x7F]', '')
+    # Double single quotes (PowerShell -Filter quoting)
+    return $sanitized.Replace("'", "''")
+}
+
+function ConvertTo-LdapRfc4515Safe {
+    # Escape characters that have special meaning in RFC 4515 LDAP filter syntax.
+    # Used when injecting a value into a -LDAPFilter expression like "(attr=<value>)".
+    # Order matters: backslash first, then the others, otherwise we double-escape.
+    param([string]$Value)
+
+    if ([string]::IsNullOrEmpty($Value)) { return $Value }
+    $escaped = $Value
+    $escaped = $escaped.Replace('\', '\5c')
+    $escaped = $escaped.Replace('*', '\2a')
+    $escaped = $escaped.Replace('(', '\28')
+    $escaped = $escaped.Replace(')', '\29')
+    $escaped = $escaped.Replace([char]0,  '\00')
+    return $escaped
+}
+
+function Get-AuditExecutionContext {
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $userName = $identity.Name
     $computerName = $env:COMPUTERNAME
@@ -131,16 +216,19 @@ function Get-DirectorySnapshot {
     try {
         $snapshot.Users = [string]((Get-ADUser -Filter * -SearchBase $DomainDn -ResultSetSize $null -ErrorAction Stop | Measure-Object).Count)
     } catch {
+        Write-Verbose ("Get-DirectorySnapshot: user count failed: {0}" -f $_.Exception.Message)
     }
 
     try {
         $snapshot.Computers = [string]((Get-ADComputer -Filter * -SearchBase $DomainDn -ResultSetSize $null -ErrorAction Stop | Measure-Object).Count)
     } catch {
+        Write-Verbose ("Get-DirectorySnapshot: computer count failed: {0}" -f $_.Exception.Message)
     }
 
     try {
         $snapshot.Groups = [string]((Get-ADGroup -Filter * -SearchBase $DomainDn -ResultSetSize $null -ErrorAction Stop | Measure-Object).Count)
     } catch {
+        Write-Verbose ("Get-DirectorySnapshot: group count failed: {0}" -f $_.Exception.Message)
     }
 
     return [PSCustomObject]$snapshot
@@ -250,6 +338,11 @@ function Convert-EncryptionFlagsToText {
     if (($Value -band 0x10) -ne 0) { $flags += 'AES256' }
     # 0x20 = AES256-CTS-HMAC-SHA1-96 session-key only (post-CVE-2022-37966 hardening bit)
     if (($Value -band 0x20) -ne 0) { $flags += 'AES256-SK' }
+    # High-order capability bits (no enc-type, advertise KDC features for the principal)
+    if (($Value -band 0x10000) -ne 0) { $flags += 'FAST-Supported' }
+    if (($Value -band 0x20000) -ne 0) { $flags += 'Compound-Identity-Supported' }
+    if (($Value -band 0x40000) -ne 0) { $flags += 'Claims-Supported' }
+    if (($Value -band 0x80000) -ne 0) { $flags += 'Resource-SID-Compression-Disabled' }
 
     if ($flags.Count -eq 0) {
         return ('0x{0:X}' -f $Value)
@@ -276,7 +369,13 @@ function Get-EncStatus {
     $hasRc4 = ($null -ne $Value) -and (($Value -band 0x04) -ne 0)
     $hasDes = ($null -ne $Value) -and ((($Value -band 0x01) -ne 0) -or (($Value -band 0x02) -ne 0))
 
-    if ($null -eq $Value -or $Value -eq 0) {
+    # Capability-only values (e.g. krbtgt = 0x50000 = FAST + Claims supported) carry
+    # no enc-type bit (mask 0x3F covers DES/RC4/AES128/AES256/AES256-SK). In that case
+    # the KDC falls back to DefaultDomainSupportedEncTypes — treat as effectively unset.
+    $encTypeMask = 0x3F
+    $hasAnyEncType = ($null -ne $Value) -and (($Value -band $encTypeMask) -ne 0)
+
+    if ($null -eq $Value -or $Value -eq 0 -or -not $hasAnyEncType) {
         $serviceLike = $HasSPN -or $Category -in @('gMSA', 'sMSA')
         if ($serviceLike) {
             if ($KdcDefaultsExplicitAesOnly) {
@@ -900,10 +999,14 @@ function Resolve-AdPrincipalSummary {
     $category = $null
     $normalizedIdentity = $Identity
     $localPart = if ($Identity -like '*@*') { ($Identity -split '@', 2)[0] } else { $Identity }
+    # Escape user-controlled identity (sourced from event log fields) before injection
+    # into Get-ADUser -Filter. Defends against accidental quote breakage / LDAP injection.
+    $safeIdentity = ConvertTo-LdapFilterSafe -Value $Identity
+    $safeLocalPart = ConvertTo-LdapFilterSafe -Value $localPart
 
     if ($Identity -like '*@*') {
         try {
-            $principal = Get-ADUser -Filter "userPrincipalName -eq '$Identity'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop
+            $principal = Get-ADUser -Filter "userPrincipalName -eq '$safeIdentity'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop
             $category = 'User/Service'
         } catch {
             $principal = $null
@@ -934,8 +1037,7 @@ function Resolve-AdPrincipalSummary {
             { Get-ADUser -Identity $localPart -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
             { Get-ADComputer -Identity $localPart -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
             { Get-ADServiceAccount -Identity $localPart -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop }
-        )) {
-            try {
+        )) {            try {
                 $principal = & $resolver
                 if ($principal) {
                     break
@@ -983,10 +1085,11 @@ function Resolve-AdServiceTargetSummary {
     $category = $null
 
     if (-not [string]::IsNullOrWhiteSpace($ServiceSid)) {
+        $safeSid = ConvertTo-LdapFilterSafe -Value $ServiceSid
         foreach ($resolver in @(
-            { Get-ADUser -Filter "objectSid -eq '$ServiceSid'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
-            { Get-ADComputer -Filter "objectSid -eq '$ServiceSid'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
-            { Get-ADServiceAccount -Filter "objectSid -eq '$ServiceSid'" -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop }
+            { Get-ADUser -Filter "objectSid -eq '$safeSid'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
+            { Get-ADComputer -Filter "objectSid -eq '$safeSid'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
+            { Get-ADServiceAccount -Filter "objectSid -eq '$safeSid'" -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop }
         )) {
             try {
                 $principal = & $resolver
@@ -997,18 +1100,20 @@ function Resolve-AdServiceTargetSummary {
     }
 
     if (-not $principal -and -not [string]::IsNullOrWhiteSpace($ServiceSpn)) {
+        $spnLdap = ConvertTo-LdapRfc4515Safe -Value $ServiceSpn
         try {
-            $principal = Get-ADObject -LDAPFilter ("(servicePrincipalName={0})" -f $ServiceSpn) -Properties 'objectClass', 'SamAccountName', 'DistinguishedName', 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop
+            $principal = Get-ADObject -LDAPFilter ("(servicePrincipalName={0})" -f $spnLdap) -Properties 'objectClass', 'SamAccountName', 'DistinguishedName', 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop
         } catch {
             $principal = $null
         }
     }
 
     if (-not $principal -and -not [string]::IsNullOrWhiteSpace($ServiceSpn)) {
+        $safeSpn = ConvertTo-LdapFilterSafe -Value $ServiceSpn
         foreach ($resolver in @(
-            { Get-ADUser -Filter "samAccountName -eq '$ServiceSpn'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
-            { Get-ADComputer -Filter "samAccountName -eq '$ServiceSpn'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
-            { Get-ADServiceAccount -Filter "samAccountName -eq '$ServiceSpn'" -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop }
+            { Get-ADUser -Filter "samAccountName -eq '$safeSpn'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
+            { Get-ADComputer -Filter "samAccountName -eq '$safeSpn'" -Properties 'pwdLastSet', 'msDS-SupportedEncryptionTypes', 'lastLogonDate', 'userAccountControl', 'servicePrincipalName' -ErrorAction Stop },
+            { Get-ADServiceAccount -Filter "samAccountName -eq '$safeSpn'" -Properties 'msDS-SupportedEncryptionTypes', 'servicePrincipalName', 'distinguishedName', 'SamAccountName', 'ObjectClass' -ErrorAction Stop }
         )) {
             try {
                 $principal = & $resolver
@@ -1121,7 +1226,15 @@ function Invoke-TrustEncryptionAudit {
 
     try {
         $trustProps = @('msDS-SupportedEncryptionTypes', 'trustAttributes', 'trustType', 'trustDirection', 'whenChanged', 'whenCreated', 'flatName', 'trustPartner')
-        $trusts = @(Get-ADTrust -Filter * -Properties $trustProps -ErrorAction Stop)
+        # Pin to PDC emulator for deterministic, authoritative output (TDOs replicate but
+        # querying the PDCe avoids reading from a lagging or read-only DC).
+        $trustServer = $null
+        try { $trustServer = (Get-ADDomain -ErrorAction Stop).PDCEmulator } catch { $trustServer = $null }
+        if ($trustServer) {
+            $trusts = @(Get-ADTrust -Filter * -Properties $trustProps -Server $trustServer -ErrorAction Stop)
+        } else {
+            $trusts = @(Get-ADTrust -Filter * -Properties $trustProps -ErrorAction Stop)
+        }
     } catch {
         $errors.Add("Get-ADTrust failed: $($_.Exception.Message)") | Out-Null
         return @{ Rows = $rows; Errors = $errors }
@@ -1430,7 +1543,7 @@ function Build-HtmlReport {
         $trustsRowsHtml += "<tr><td>$(HtmlEncode $trustName)</td><td><span class='badge $sevBadge'>$(HtmlEncode $cls)</span></td><td>$(HtmlEncode $encBits)</td><td>$(HtmlEncode $encFlags)</td><td>$(HtmlEncode $lastChg)</td></tr>`n"
     }
     if ([string]::IsNullOrWhiteSpace($trustsRowsHtml)) {
-        $trustsRowsHtml = "<tr><td colspan='5' class='empty'>No trust inventory data. Run with <span class='mono'>-IncludeTrusts</span> to invoke <span class='mono'>Get-TrustEncryptionAudit.ps1</span>.</td></tr>"
+        $trustsRowsHtml = "<tr><td colspan='5' class='empty'>No trust inventory data. Run with <span class='mono'>-IncludeTrusts</span> to enumerate Trusted Domain Objects via <span class='mono'>Get-ADTrust</span>.</td></tr>"
     }
 
     $backlogDisplayLimit = 200
@@ -1574,7 +1687,7 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:rgba(25
 
 <div id="accounts"><h2>Account Posture</h2><div class="card"><p class="note">This section is based primarily on <span class='mono'>msDS-SupportedEncryptionTypes</span>, <span class='mono'>servicePrincipalName</span>, and account category. The report does not assume every user account must be explicitly stamped. An <span class='mono'>(absent/0)</span> value is informational for non-service accounts, but it remains a review point for SPN-bearing or service identities because they directly influence TGS encryption.</p><p class="note">$priorityRowsNote</p><table><thead><tr><th>Name</th><th>Category</th><th>Enabled</th><th>Has SPN</th><th>Enc attr</th><th>Flags</th><th>Status</th></tr></thead><tbody>$priorityRows</tbody></table></div><div class="card"><table><thead><tr><th>Category</th><th>Status</th><th>Count</th></tr></thead><tbody>$accountStatusRows</tbody></table></div></div>
 
-<div id="trusts"><h2>Trust Posture (TDOs)</h2><div class="card"><p class="note">Output of the sister script <span class='mono'>Get-TrustEncryptionAudit.ps1</span>. Classification reflects the LOCAL side of each trust only — the remote side has its own <span class='mono'>msDS-SupportedEncryptionTypes</span> and must be audited separately. <strong>AES-only</strong> = <span class='mono'>0x18</span>. <strong>Mixed</strong> = AES + RC4. <strong>RC4-only</strong> / <strong>Legacy-DES</strong> = priority finding. <strong>Unset</strong> = absent or 0, behaves like RC4 for cross-realm referrals. <em>Caveat:</em> an AES-only attribute without a recent password rotation can still emit RC4 referrals because AES keys are not materialized until the trust password is rotated post-attribute change.</p><table><thead><tr><th>Trust</th><th>Classification</th><th>EncBits</th><th>EncFlags</th><th>Last change</th></tr></thead><tbody>$trustsRowsHtml</tbody></table></div></div>
+<div id="trusts"><h2>Trust Posture (TDOs)</h2><div class="card"><p class="note">Self-contained TDO inventory via <span class='mono'>Get-ADTrust</span> (read-only). Classification reflects the LOCAL side of each trust only — the remote side has its own <span class='mono'>msDS-SupportedEncryptionTypes</span> and must be audited separately. <strong>AES-only</strong> = <span class='mono'>0x18</span>. <strong>Mixed</strong> = AES + RC4. <strong>RC4-only</strong> / <strong>Legacy-DES</strong> = priority finding. <strong>Unset</strong> = absent or 0, behaves like RC4 for cross-realm referrals. <em>Caveat:</em> an AES-only attribute without a recent password rotation can still emit RC4 referrals because AES keys are not materialized until the trust password is rotated post-attribute change.</p><table><thead><tr><th>Trust</th><th>Classification</th><th>EncBits</th><th>EncFlags</th><th>Last change</th></tr></thead><tbody>$trustsRowsHtml</tbody></table></div></div>
 
 <div id="tickets"><h2>Ticket Encryption</h2><div class="card"><table><thead><tr><th>Ticket Type</th><th>Encryption</th><th>Events</th></tr></thead><tbody>$breakdownRows</tbody></table></div><div class="card"><table><thead><tr><th>Encryption</th><th>Events</th><th>Percent</th><th>Signal</th></tr></thead><tbody>$globalRows</tbody></table></div></div>
 
@@ -1619,7 +1732,7 @@ if (-not $DomainControllers -or $DomainControllers.Count -eq 0) {
     $DomainControllers = @(Get-ADDomainController -Filter * | Sort-Object HostName | Select-Object -ExpandProperty HostName)
 }
 
-$runtimeContext = Get-ExecutionContext
+$runtimeContext = Get-AuditExecutionContext
 $directorySnapshot = Get-DirectorySnapshot -DomainDn $domain.DistinguishedName
 
 $results = @{
@@ -1921,7 +2034,7 @@ if ($IncludeTrusts) {
         Name = 'Trusts at AES-only (TDO attribute)'
         Value = "$trustsAesOnly/$trustsTotal"
         Target = 'Every trust at msDS-SupportedEncryptionTypes = 0x18'
-        Description = 'TDO posture from sister script Get-TrustEncryptionAudit.ps1. Counts only the LOCAL side of each trust. Note: an AES-only attribute without a recent password rotation can still emit RC4 referrals because AES keys are not materialized until the trust password is rotated post-attribute change.'
+        Description = 'Self-contained TDO inventory via Get-ADTrust. Counts only the LOCAL side of each trust. Note: an AES-only attribute without a recent password rotation can still emit RC4 referrals because AES keys are not materialized until the trust password is rotated post-attribute change.'
         Status = if ($trustsTotal -eq 0) { 'Info' } elseif ($trustsAesOnly -eq $trustsTotal) { 'OK' } else { 'Warning' }
     }) | Out-Null
     $results.Kpis.Add([PSCustomObject]@{
