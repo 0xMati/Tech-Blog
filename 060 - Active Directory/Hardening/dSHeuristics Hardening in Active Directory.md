@@ -36,70 +36,92 @@ Some dSHeuristics positions directly affect **LDAP security**.
 
 The important ones for modern AD security baselines are:
 
-### Characters 28 and 29  
-(1‑based indexing as per Microsoft documentation)
+### Characters 28 and 29
 
-These control how AD handles **securityDescriptor modifications via LDAP** — an area affected by **CVE‑2021‑42291**.
+(1-based indexing as per Microsoft documentation — the **28th** and **29th** characters of the string)
 
-| Char28 | Char29 | Mode        | Behaviour |
-|--------|--------|-------------|-----------|
-| 0      | 0      | Default     | Legacy behaviour (no enforcement) |
-| 0      | 1      | AuditOnly   | Logs suspicious LDAP ACL changes but still allows them |
-| 1      | 1      | Enforce     | **Blocks** suspicious ACL changes via LDAP |
+These two positions control how AD handles **securityDescriptor modifications via LDAP** — the area covered by **CVE-2021-42291** (KB5008383, November 2021).
 
-Some Security Audit tools wants you to be in **Enforce** mode.  
-Microsoft also recommends it in post‑2021 hardened environments.
+The two characters are independent and each one accepts three values:
 
-### 2021.11B KB5008383
+| Position | Name | Value `0` | Value `1` | Value `2` |
+|---|---|---|---|---|
+| **char 28** (Y) | Per-attribute AuthZ verification on LDAP add | Audit only (default) | Enforce — block illegal additions | Disable (no audit, no enforcement) |
+| **char 29** (Z) | Temporary Implicit Ownership removal | Default — implicit ownership allowed | Enforce — implicit ownership removed | Disable |
 
-KB5008383 (CVE-2021-42291), known as Permissions Updates, addresses a security bypass vulnerability that allows users with sufficient permissions to set arbitrary values on security-sensitive attributes of computer objects stored in Active Directory, using a LDAP Add or Modify operation. 
-Event IDs from 3044 to 3056. Admins are exempted from these checks. The enforcement phase is now removed, but actions need to be taken. 
+The three operationally-meaningful combinations:
 
-CONFIGURATION 
-Audit mode is enabled by default since 11B.21, meaning that without any value set on the dSHeuristics attribute, audit is still enabled as defined in the internal code per default. 
+| Char 28 | Char 29 | State | Behaviour | Events |
+|---|---|---|---|---|
+| `0` | `0` (or attribute empty) | 🟠 **Audit enabled** (out-of-the-box default) | Warnings logged, no blocking | 3051 / 3054 |
+| `1` | `1` | 🟢 **Mitigations + audit enforced** | Illegal LDAP add/modify blocked | 3050 / 3053 |
+| `2` | `2` | 🔴 **Mitigations and audit disabled** | No audit, no enforcement (insecure) | 3052 / 3055 |
 
-dSHeuritics values : 
-00000000010000000002000000YZ 
+Other combinations (`01`, `12`, `02`…) are technically valid but not documented operating modes; security tooling such as PingCastle flags anything other than `11`.
 
-Y: Additional AuthZ verification > 0: Audit. 
-Z: Temporary Implicit Ownership removal > 1: Enable. 
-Character 28 for Y and 29 for Z > 2: Disable. 
+Microsoft and security baselines recommend the **`11` enforced** state in modern domains.
 
-PowerShell snippet for value checking: 
+### KB5008383 — what it does and how to read the timeline
 
-$Domain = (Get-ADDomain).DistinguishedName 
-$dSContainer = "CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration,$Domain" 
-(Get-ADObject $dSContainer -Properties dSHeuristics).dSHeuristics 
+KB5008383 (CVE-2021-42291), shipped November 2021 as *Permissions Updates*, addresses a privilege-escalation vulnerability allowing users with sufficient permissions to set arbitrary values on security-sensitive attributes of computer objects via LDAP Add or Modify. Built-in administrators are exempt from the new checks. Events 3044-3056 are the diagnostic feed.
 
-10th character must be set to 1 if value >= 10 characters. 
-20th character must be set to 2 if value >= 20 characters. 
+Timeline summary:
 
-# dSHeuristics – Event Mapping (Colored Version)
+| Date | Change |
+|---|---|
+| Nov 2021 (KB5008383) | Audit mode introduced; **enabled by default in code** even when the dSHeuristics attribute is unset. Enforcement available via registry override. |
+| Apr 2022 | Enforcement attempted to be enabled by default; rolled back after compatibility issues. |
+| Oct 2022 | Registry-based opt-out removed. From this point on, the **dSHeuristics 28/29 attribute is the only knob**: leave at default for audit, set `11` to enforce, set `22` to fully disable. |
+| Today | Microsoft and most baselines treat `11` as the target state. `00` (or empty) is acceptable as a transition state. `22` is a finding. |
 
-## `00000000010000000002000000022` · <span style="color:red;font-weight:bold">MITIGATIONS AND AUDIT DISABLED</span>
+### Reading the dSHeuristics string
+
+The recommended secure value is the 29-character string:
+
+```text
+00000000010000000002000000011
+```
+
+Two positional rules govern this length:
+
+- The **10th** character must be `1` if the string is at least 10 characters long.
+- The **20th** character must be `2` if the string is at least 20 characters long.
+
+So a value shorter than 29 characters would not even reach char 28/29 — extending the string up to position 29 forces you to fill positions 10 and 20 with `1` and `2` respectively, hence the leading `0000000001000000000200000…` prefix.
+
+Quick read with PowerShell:
+
+```powershell
+$ds = "CN=Directory Service,CN=Windows NT,CN=Services," + (Get-ADRootDSE).configurationNamingContext
+(Get-ADObject $ds -Properties dSHeuristics).dSHeuristics
+```
+
+## dSHeuristics — Event Mapping
+
+### 🔴 `00000000010000000002000000022` — MITIGATIONS AND AUDIT DISABLED
 
 | Category | Event ID | Type | Description | Mitigations / Technical Explanation |
-|---------|----------|------|-------------|-------------------------------------|
-| <span style="color:red;font-weight:bold">AuthZ Verification</span> | **3052** | <span style="color:red">Error</span> | The directory has been configured to not enforce per-attribute authorization during LDAP add operations. No events will be logged, and no requests will be blocked. | <span style="color:red">Most insecure configuration.</span><br>Only for temporary troubleshooting.<br>Events triggered on-the-fly and NTDS restart.<br>Investigate downgrade and move customer to audit mode ASAP. |
-| <span style="color:red;font-weight:bold">Implicit Ownership</span> | **3055** | <span style="color:red">Error</span> | The directory has been configured to allow implicit owner privileges when setting or modifying nTSecurityDescriptor. No events will be logged, and no requests will be blocked. | <span style="color:red">Not secure.</span> Only for temporary troubleshooting. |
+|---|---|---|---|---|
+| **AuthZ Verification** | **3052** | 🔴 Error | Per-attribute authorization is *not* enforced during LDAP add operations. No events logged, no requests blocked. | **Most insecure configuration.** Only for temporary troubleshooting. Events fire on-the-fly and at NTDS restart. Investigate the downgrade and move back to audit mode ASAP. |
+| **Implicit Ownership** | **3055** | 🔴 Error | The directory allows implicit owner privileges when setting or modifying `nTSecurityDescriptor`. No events logged, no requests blocked. | **Not secure.** Only for temporary troubleshooting. |
 
 ---
 
-## `00000000010000000002000000000` (OR NOT SET) · <span style="color:orange;font-weight:bold">AUDIT ENABLED</span>
+### 🟠 `00000000010000000002000000000` (OR NOT SET) — AUDIT ENABLED
 
 | Category | Event ID | Type | Description | Mitigations / Technical Explanation |
-|---------|----------|------|-------------|-------------------------------------|
-| <span style="color:orange;font-weight:bold">AuthZ Verification</span> | **3051** | <span style="color:orange">Warning</span> | Per-attribute authorization **not enforced**. Warning events logged; no requests blocked. | Environment still **vulnerable**.<br>Audit must be monitored.<br>Triggered on-the-fly and NTDS restart.<br>Treat all Event IDs related to AuthZ / Implicit Ownership then move customer to enforcement mode. |
-| <span style="color:orange;font-weight:bold">Implicit Ownership</span> | **3054** | <span style="color:orange">Warning</span> | Implicit owner privileges allowed during nTSecurityDescriptor modifications. Warning events logged; no requests blocked. | Not secure; temporary use only. |
+|---|---|---|---|---|
+| **AuthZ Verification** | **3051** | 🟠 Warning | Per-attribute authorization not enforced. Warning events logged; no requests blocked. | Environment still **vulnerable**. Audit must be monitored. Events fire on-the-fly and at NTDS restart. Triage all AuthZ / Implicit Ownership events then move to enforcement. |
+| **Implicit Ownership** | **3054** | 🟠 Warning | Implicit owner privileges allowed during `nTSecurityDescriptor` modifications. Warning events logged; no requests blocked. | Not secure; transitional state only. |
 
 ---
 
-## `00000000010000000002000000011` · <span style="color:green;font-weight:bold">MITIGATIONS AND AUDIT ENABLED</span> (Final Deployment)
+### 🟢 `00000000010000000002000000011` — MITIGATIONS AND AUDIT ENABLED (target state)
 
 | Category | Event ID | Type | Description | Mitigations / Technical Explanation |
-|---------|----------|------|-------------|-------------------------------------|
-| <span style="color:green;font-weight:bold">AuthZ Verification</span> | **3050** | <span style="color:green">Informational</span> | Enforcement of per-attribute authorization during LDAP add operations. | <span style="color:green">Most secure configuration.</span><br>No further action required.<br>Events triggered on-the-fly and NTDS restart.<br>Handle any blocked operations if needed. |
-| <span style="color:green;font-weight:bold">Implicit Ownership</span> | **3053** | <span style="color:green">Informational</span> | Implicit owner privileges are blocked during nTSecurityDescriptor operations. | <span style="color:green">Most secure configuration.</span> |
+|---|---|---|---|---|
+| **AuthZ Verification** | **3050** | 🟢 Informational | Per-attribute authorization is enforced during LDAP add operations. | **Most secure configuration.** No further action required. Events fire on-the-fly and at NTDS restart. Handle any blocked operations as they appear. |
+| **Implicit Ownership** | **3053** | 🟢 Informational | Implicit owner privileges are blocked during `nTSecurityDescriptor` operations. | **Most secure configuration.** |
 
 ---
 
@@ -222,6 +244,10 @@ if (-not $isEnterpriseAdmin) {
 } else {
     Write-Host "[INFO ] Current user ($($currentUser.Name)) is a member of Enterprise Admins - OK" -ForegroundColor Green
 }
+# NOTE: $currentUser.Groups is evaluated at logon time. If you were just added
+#       to Enterprise Admins, log off and back on for the membership to take effect.
+#       Domain Admins of the *root* domain are added to Enterprise Admins implicitly
+#       at logon and will pass this check naturally.
 
 function ts { (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') }
 function Info ($m){ Write-Host ("[{0}] [INFO ] {1}"  -f (ts), $m) -ForegroundColor Cyan }
@@ -250,38 +276,58 @@ function Get-DirectoryServiceObject {
     return $obj
 }
 
+function Resolve-DSHeuristicsMode {
+    <#
+        Parses a dSHeuristics value and returns the operational mode based on
+        characters 28 (Y, AuthZ verification) and 29 (Z, Implicit Ownership removal).
+        Each character can be:
+            '0' = audit / default
+            '1' = enforce
+            '2' = disable (no audit, no enforce)
+        Documented modes are 00 (audit), 11 (enforce), 22 (disabled).
+        Anything else is reported as 'UnknownCombination'.
+    #>
+    param([AllowNull()][string]$Value)
+
+    $result = [ordered]@{
+        Value  = $Value
+        Length = 0
+        Char28 = $null
+        Char29 = $null
+        Mode   = 'NotConfigured'
+    }
+
+    if ([string]::IsNullOrEmpty($Value)) { return $result }
+
+    $result.Length = $Value.Length
+    if ($Value.Length -lt 29) { return $result }
+
+    $c28 = $Value[27]
+    $c29 = $Value[28]
+    $result.Char28 = $c28
+    $result.Char29 = $c29
+
+    $result.Mode = switch ("$c28$c29") {
+        '00' { 'AuditEnabled' }       # default behaviour: audit logged, not blocked
+        '11' { 'Enforce' }             # mitigations + audit enforced (target)
+        '22' { 'MitigationsDisabled' } # no audit, no enforce (insecure)
+        default { 'UnknownCombination' }
+    }
+
+    return $result
+}
+
 function Get-DSHeuristicsStatus {
     $obj = Get-DirectoryServiceObject
-    $value = $obj.dSHeuristics
-
-    $char28 = $null
-    $char29 = $null
-    $mode = 'NotConfigured'
-
-    if ([string]::IsNullOrEmpty($value)) {
-        $length = 0
-    }
-    else {
-        $length = $value.Length
-
-        if ($length -ge 29) {
-            $char28 = $value[27]
-            $char29 = $value[28]
-
-            if ($char28 -eq '0' -and $char29 -eq '0') { $mode = 'DefaultMode' }
-            elseif ($char28 -eq '0' -and $char29 -eq '1') { $mode = 'AuditOnly' }
-            elseif ($char28 -eq '1' -and $char29 -eq '1') { $mode = 'Enforce' }
-            else { $mode = 'UnknownCombination' }
-        }
-    }
+    $parsed = Resolve-DSHeuristicsMode -Value $obj.dSHeuristics
 
     return @{
         ObjectDN = $obj.DistinguishedName
-        Value    = $value
-        Length   = $length
-        Char28   = $char28
-        Char29   = $char29
-        Mode     = $mode
+        Value    = $parsed.Value
+        Length   = $parsed.Length
+        Char28   = $parsed.Char28
+        Char29   = $parsed.Char29
+        Mode     = $parsed.Mode
     }
 }
 
@@ -348,7 +394,18 @@ function Show-AllDCsStatus {
     $dsDN     = "CN=Directory Service,CN=Windows NT,CN=Services,$configNC"
 
     try {
-        $allDCs = Get-ADForest -Server $script:TargetDC | Select-Object -ExpandProperty GlobalCatalogs | Sort-Object
+        # Enumerate every DC across every domain in the forest (not just GCs).
+        $forest = Get-ADForest -Server $script:TargetDC
+        $allDCs = foreach ($domain in $forest.Domains) {
+            try {
+                Get-ADDomainController -Filter * -Server $domain -ErrorAction Stop |
+                    Select-Object -ExpandProperty HostName
+            }
+            catch {
+                Warn "Could not enumerate DCs in domain '$domain': $($_.Exception.Message)"
+            }
+        }
+        $allDCs = $allDCs | Sort-Object -Unique
     }
     catch {
         Err "Could not enumerate DCs: $($_.Exception.Message)"
@@ -357,8 +414,8 @@ function Show-AllDCsStatus {
 
     Info "Found $($allDCs.Count) DC(s). Querying dSHeuristics on each..."
     Write-Host ""
-    Write-Host ("{0,-45} {1,-10} {2,-18} {3}" -f 'DC','Length','Mode','Value') -ForegroundColor White
-    Write-Host ("{0,-45} {1,-10} {2,-18} {3}" -f ('─'*44),('─'*9),('─'*17),('─'*30)) -ForegroundColor DarkGray
+    Write-Host ("{0,-45} {1,-10} {2,-20} {3}" -f 'DC','Length','Mode','Value') -ForegroundColor White
+    Write-Host ("{0,-45} {1,-10} {2,-20} {3}" -f ('-'*44),('-'*9),('-'*19),('-'*30)) -ForegroundColor DarkGray
 
     $inconsistent  = $false
     $unreachable   = @()
@@ -367,18 +424,11 @@ function Show-AllDCsStatus {
 
     foreach ($dc in $allDCs) {
         try {
-            $obj   = Get-ADObject -Identity $dsDN -Properties dSHeuristics -Server $dc -ErrorAction Stop
-            $val   = $obj.dSHeuristics
-            $len   = if ([string]::IsNullOrEmpty($val)) { 0 } else { $val.Length }
-            $mode  = 'NotConfigured'
-
-            if (-not [string]::IsNullOrEmpty($val) -and $len -ge 29) {
-                $c28 = $val[27]; $c29 = $val[28]
-                if     ($c28 -eq '0' -and $c29 -eq '0') { $mode = 'DefaultMode' }
-                elseif ($c28 -eq '0' -and $c29 -eq '1') { $mode = 'AuditOnly' }
-                elseif ($c28 -eq '1' -and $c29 -eq '1') { $mode = 'Enforce' }
-                else   { $mode = 'UnknownCombination' }
-            }
+            $obj    = Get-ADObject -Identity $dsDN -Properties dSHeuristics -Server $dc -ErrorAction Stop
+            $val    = $obj.dSHeuristics
+            $parsed = Resolve-DSHeuristicsMode -Value $val
+            $len    = $parsed.Length
+            $mode   = $parsed.Mode
 
             # Track consistency (only among reachable DCs)
             if (-not $firstSet) { $firstValue = $val; $firstSet = $true }
@@ -386,14 +436,16 @@ function Show-AllDCsStatus {
 
             # Color per mode
             $color = switch ($mode) {
-                'Enforce'       { 'Green' }
-                'AuditOnly'     { 'Yellow' }
-                'NotConfigured' { 'Red' }
-                default         { 'Yellow' }
+                'Enforce'             { 'Green' }
+                'AuditEnabled'        { 'Yellow' }
+                'MitigationsDisabled' { 'Red' }
+                'NotConfigured'       { 'Yellow' }
+                'UnknownCombination'  { 'Red' }
+                default               { 'Yellow' }
             }
 
             $displayVal = if ([string]::IsNullOrEmpty($val)) { '(not set)' } else { $val }
-            Write-Host ("{0,-45} {1,-10} {2,-18} {3}" -f $dc, $len, $mode, $displayVal) -ForegroundColor $color
+            Write-Host ("{0,-45} {1,-10} {2,-20} {3}" -f $dc, $len, $mode, $displayVal) -ForegroundColor $color
         }
         catch {
             Write-Host ("{0,-45} {1}" -f $dc, "UNREACHABLE: $($_.Exception.Message)") -ForegroundColor DarkGray
@@ -459,19 +511,41 @@ Stop-Transcript | Out-Null
 Write-Host "[INFO ] Log saved to: $logFile" -ForegroundColor Cyan
 ```
 
-*(GitHub version will contain full script — see below.)*
+---
+
+## 6.5 Other security-relevant dSHeuristics positions
+
+This article focuses on **chars 28-29** because they are the ones flagged by current security baselines (CVE-2021-42291). For completeness, here are other positions that audit tools or hardening guides occasionally call out. Verify against the official Microsoft `dSHeuristics` documentation before changing any of them — each position has its own compatibility caveats.
+
+| Char | Common name | Effect when set to `1` |
+|---|---|---|
+| **3** | `DoListObject` | Enforces *List Object* access mode. Hides objects in containers a user cannot list. Rarely enabled — has GUI / DSA performance impact. |
+| **7** | `fLDAPBlockAnonOps` | Blocks anonymous LDAP operations beyond rootDSE. Often a baseline recommendation but breaks anonymous LDAP queries. |
+| **9** | `fDontStandardizeSDFlagsControl` | Compatibility flag for non-standard `SD_FLAGS` LDAP control behaviour. |
+| **15** | `fAllowPasswordOperationsOverNonSecureConnection` | Inverted: setting `1` *blocks* password operations over non-secure (LDAP without sign/seal/TLS) channels. |
+| **28-29** | AuthZ verification + Implicit Ownership removal | **Covered above (CVE-2021-42291).** |
+
+When modifying any of these, remember the positional rules: extending the string forces character `10` to be `1` and character `20` to be `2`.
 
 ---
 
 ## 7. Is enforcement safe?
 
-In most modern AD deployments: **Yes.**  
-Still recommended:
+In most modern AD deployments: **yes.** That said, the change is forest-wide and replicated through the Configuration partition, so a small amount of pre-flight discipline pays off.
 
-- Test in pre‑prod  
-- Watch for legacy LDAP apps modifying ACLs (rare but possible)
+**Recommended rollout:**
 
-Most enterprises today run with this enforcement flag enabled.
+1. **Stay in audit mode (`00` / attribute unset) for at least one full operational cycle** — typically 7-14 days, long enough to cover monthly batch jobs, backup windows, schema changes by management tools, and any seasonal automation.
+2. **Triage events 3051 (AuthZ) and 3054 (Implicit Ownership) on every DC** during that window. Each event identifies the calling principal, the target object, and the attribute path that *would* be blocked under enforcement.
+3. **Common offenders to look for:**
+   - Older provisioning / IAM tooling (legacy MIM / FIM / custom scripts) writing ACEs via LDAP modify rather than via the standard SDDL APIs.
+   - In-house LDAP applications that set `nTSecurityDescriptor` directly when creating computer or service objects.
+   - Very old DFS-R or Exchange versions that touch `nTSecurityDescriptor` outside of the supported path.
+   - Backup / migration agents performing `Add` on computer objects with explicit owner SIDs.
+4. **Once 3051/3054 are silent for a sustained period, flip to `11`.** Watch for events 3050 / 3053 (informational — enforcement firing) and 3052 / 3055 (would only appear if anyone downgrades to `22`).
+5. **Keep the revert path ready.** The script's option **3** restores the original captured value and triggers replication of the Configuration NC.
+
+If any audit event remains and cannot be remediated quickly, leave the forest in audit mode rather than enforcing prematurely — audit mode is a meaningful security improvement on its own and is the documented Microsoft default since November 2021.
 
 ---
 
