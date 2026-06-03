@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Version 1.1.9
+#Version 1.2.0
 <#
 .SYNOPSIS
     Read-only Kerberos encryption audit for an Active Directory domain.
@@ -15,8 +15,9 @@
 
     Companion to the RC4 Hardening series, Article 2 §6 (https://github.com/...).
 
-.PARAMETER Hours
-    Lookback window for 4768/4769 and Kdcsvc 201-209 collection. Default 24.
+.PARAMETER Days
+    Lookback window in days for 4768/4769 and Kdcsvc 201-209 collection. Default 1 (last 24 hours).
+    Common values: 1 (smoke test), 7 (1 week), 14 (2 weeks - recommended baseline). Range 1-365.
 
 .PARAMETER DomainControllers
     Optional list of DC FQDNs to query. Default: all DCs in the local domain.
@@ -43,10 +44,10 @@
     relative to the script.
 
 .EXAMPLE
-    .\Invoke-KerberosEncryptionAudit.ps1 -Hours 24 -IncludeTrusts -ExportCsv -OpenReport
+    .\Invoke-KerberosEncryptionAudit.ps1 -Days 1 -IncludeTrusts -ExportCsv -OpenReport
 
 .EXAMPLE
-    .\Invoke-KerberosEncryptionAudit.ps1 -Hours 168 -DomainControllers dc1.contoso.com,dc2.contoso.com
+    .\Invoke-KerberosEncryptionAudit.ps1 -Days 7 -DomainControllers dc1.contoso.com,dc2.contoso.com
 
 .NOTES
     Requires PowerShell 7.2+ (uses ForEach-Object -Parallel) and the ActiveDirectory
@@ -56,8 +57,8 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateRange(1, 8760)]
-    [int]$Hours = 24,
+    [ValidateRange(1, 365)]
+    [int]$Days = 1,
     [string[]]$DomainControllers,
     [ValidateRange(1, 1000000)]
     [int]$MaxEventsPerDc = 5000,
@@ -739,7 +740,7 @@ function Get-AccountKerberosAudit {
 function Get-KerberosEventAudit {
     param(
         [string[]]$Dcs,
-        [int]$LookbackHours,
+        [int]$LookbackDays,
         [int]$MaxEvents
     )
 
@@ -747,9 +748,9 @@ function Get-KerberosEventAudit {
     $errors = @()
 
     $remoteScript = {
-        param([int]$HoursBack, [int]$MaxEventsPerDc)
+        param([int]$DaysBack, [int]$MaxEventsPerDc)
 
-        $since = (Get-Date).AddHours(-1 * $HoursBack)
+        $since = (Get-Date).AddDays(-1 * $DaysBack)
         $filter = @{
             LogName = 'Security'
             Id = 4768, 4769
@@ -822,11 +823,11 @@ function Get-KerberosEventAudit {
     $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc  = $_
         $rs  = [scriptblock]::Create($using:remoteScriptText)
-        $hrs = $using:LookbackHours
+        $days = $using:LookbackDays
         $max = $using:MaxEvents
         Write-Host ("    [..] Collecting 4768/4769 from {0}" -f $dc) -ForegroundColor DarkGray
         try {
-            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $rs -ArgumentList $hrs, $max -ErrorAction Stop)
+            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $rs -ArgumentList $days, $max -ErrorAction Stop)
             Write-Host ("    [OK] {0} -> {1} event(s) collected" -f $dc, $dcEvents.Count) -ForegroundColor Green
             [PSCustomObject]@{ Events = $dcEvents; Error = $null }
         } catch {
@@ -867,7 +868,7 @@ function Get-KerberosEventAudit {
 function Get-KdcsvcEventAudit {
     param(
         [string[]]$Dcs,
-        [int]$LookbackHours,
+        [int]$LookbackDays,
         [int]$MaxEvents
     )
 
@@ -875,9 +876,9 @@ function Get-KdcsvcEventAudit {
     $errors    = @()
 
     $remoteScript = {
-        param([int]$HoursBack, [int]$MaxEventsPerDc)
+        param([int]$DaysBack, [int]$MaxEventsPerDc)
 
-        $since  = (Get-Date).AddHours(-1 * $HoursBack)
+        $since  = (Get-Date).AddDays(-1 * $DaysBack)
         $filter = @{
             LogName      = 'System'
             Id           = 201, 202, 203, 204, 205, 206, 207, 208, 209
@@ -935,11 +936,11 @@ function Get-KdcsvcEventAudit {
     $parallelResults = $Dcs | ForEach-Object -ThrottleLimit $script:DcParallelThrottle -Parallel {
         $dc  = $_
         $rs  = [scriptblock]::Create($using:remoteScriptText)
-        $hrs = $using:LookbackHours
+        $days = $using:LookbackDays
         $max = $using:MaxEvents
         Write-Host ("    [..] Collecting Kdcsvc 201-209 from {0}" -f $dc) -ForegroundColor DarkGray
         try {
-            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $rs -ArgumentList $hrs, $max -ErrorAction Stop)
+            $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $rs -ArgumentList $days, $max -ErrorAction Stop)
             $color = if ($dcEvents.Count -eq 0) { 'Green' } else { 'Yellow' }
             Write-Host ("    [OK] {0} -> {1} Kdcsvc event(s) collected" -f $dc, $dcEvents.Count) -ForegroundColor $color
             [PSCustomObject]@{ Events = $dcEvents; Error = $null }
@@ -1353,7 +1354,7 @@ function Build-Rc4Backlog {
         $backlog.Add([PSCustomObject]@{
             Dependency   = $depKey
             Type         = $type
-            RC4Evidence  = "$events RC4 TGS over $($Results.Hours)h ($encHex declared)"
+            RC4Evidence  = "$events RC4 TGS over $($Results.Days)d ($encHex declared)"
             BlastRadius  = $blast
             Exposure     = $exposure
             FixCost      = $fixCost
@@ -1423,7 +1424,7 @@ function Build-Rc4Backlog {
         $backlog.Add([PSCustomObject]@{
             Dependency   = $depKey
             Type         = 'Client account (Pattern B)'
-            RC4Evidence  = "$events RC4 AS/TGS as requestor over $($Results.Hours)h"
+            RC4Evidence  = "$events RC4 AS/TGS as requestor over $($Results.Days)d"
             BlastRadius  = $blast
             Exposure     = $exposure
             FixCost      = $fixCost
@@ -1663,7 +1664,7 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:rgba(25
 .steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}.step-card{background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--border);border-radius:14px;padding:1.2rem;display:flex;gap:1rem;align-items:flex-start}.step-number{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#08101c;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;flex-shrink:0}.step-text{font-size:.85rem;line-height:1.5}.step-text strong{color:var(--accent)}
 .error-alert{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.28);border-radius:14px;padding:1rem 1.5rem;margin-bottom:1.5rem}.warning-alert{background:rgba(240,196,92,.08);border:1px solid rgba(240,196,92,.28);border-radius:14px;padding:1rem 1.5rem;margin-bottom:1.5rem}
 </style></head><body><div class="container">
-<div class="hero"><h1>Kerberos Encryption Audit Report</h1><p class="subtitle">Domain: $(HtmlEncode $Results.DomainName) | Generated: $timestamp | Window: last $($Results.Hours) hour(s)</p><p style="margin-top:.85rem;"><strong>Focus:</strong> correlate KDC defaults, directory encryption posture, and live Kerberos ticket behavior to spot RC4 that still matters.</p></div>
+<div class="hero"><h1>Kerberos Encryption Audit Report</h1><p class="subtitle">Domain: $(HtmlEncode $Results.DomainName) | Generated: $timestamp | Window: last $($Results.Days) day(s)</p><p style="margin-top:.85rem;"><strong>Focus:</strong> correlate KDC defaults, directory encryption posture, and live Kerberos ticket behavior to spot RC4 that still matters.</p></div>
 <nav class="section-nav"><a href="#summary">Summary</a><a href="#backlog">Backlog</a><a href="#kdc">KDC Default</a><a href="#phase">Phase</a><a href="#kdcsvc">Kdcsvc</a><a href="#accounts">Accounts</a><a href="#trusts">Trusts</a><a href="#tickets">Tickets</a><a href="#rc4">RC4 Hotspots</a><a href="#artifacts">Artifacts</a>$(if($warningCount -gt 0){'<a href="#warnings" style="color:var(--yellow);">Warnings</a>'})$(if($errorCount -gt 0){'<a href="#errors" style="color:var(--red);">Errors</a>'})<a href="#nextsteps">Next Steps</a></nav>
 
 <div id="summary"><h2>Summary</h2>
@@ -1740,7 +1741,7 @@ $results = @{
     DomainDistinguishedName = $domain.DistinguishedName
     ForestName = $forest.Name
     ConfigurationNamingContext = [string]$rootDse.configurationNamingContext
-    Hours = $Hours
+    Days = $Days
     DomainControllers = $DomainControllers
     KdcDefaults = [System.Collections.Generic.List[object]]::new()
     Rc4DisablementPhase = [System.Collections.Generic.List[object]]::new()
@@ -1784,7 +1785,7 @@ Write-ContextBlock -Title 'Launch snapshot' -Items ([ordered]@{
     'Users' = $directorySnapshot.Users
     'Computers' = $directorySnapshot.Computers
     'Groups' = $directorySnapshot.Groups
-    'Lookback window' = ("{0} hour(s)" -f $Hours)
+    'Lookback window' = ("{0} day(s)" -f $Days)
     'Output folder' = $OutputDir
     'CSV export' = $(if ($ExportCsv) { 'Enabled' } else { 'Disabled' })
     'Auto-open report' = $(if ($OpenReport) { 'Enabled' } else { 'Disabled' })
@@ -1848,7 +1849,7 @@ Write-StatusLine -Label 'Accounts analyzed' -Value ([string]$accountRows.Count) 
 Write-StatusLine -Label 'Priority accounts' -Value ([string]$results.PriorityAccounts.Count) -Color $(if ($results.PriorityAccounts.Count -gt 0) { 'Yellow' } else { 'Green' })
 
 Write-Step -Number 3 -Title 'Kerberos event log audit' -Hint 'Collecting 4768/4769 from Security log + Kdcsvc 201-209 from System log'
-$eventAudit = Get-KerberosEventAudit -Dcs $DomainControllers -LookbackHours $Hours -MaxEvents $MaxEventsPerDc
+$eventAudit = Get-KerberosEventAudit -Dcs $DomainControllers -LookbackDays $Days -MaxEvents $MaxEventsPerDc
 $eventAudit.Errors | ForEach-Object { $results.Errors.Add($_) | Out-Null }
 
 $events = if ($eventAudit -and $null -ne $eventAudit.RawEvents) { @($eventAudit.RawEvents) } else { @() }
@@ -1922,7 +1923,7 @@ Write-StatusLine -Label 'Total events parsed' -Value ([string]$events.Count) -Co
 Write-StatusLine -Label 'RC4 events' -Value ([string]$results.TotalRc4Events) -Color $(if ($results.TotalRc4Events -gt 0) { 'Yellow' } else { 'Green' })
 
 # Kdcsvc 201-209 collection (KB5073381 / Jan 2026)
-$kdcsvcAudit = Get-KdcsvcEventAudit -Dcs $DomainControllers -LookbackHours $Hours -MaxEvents $MaxEventsPerDc
+$kdcsvcAudit = Get-KdcsvcEventAudit -Dcs $DomainControllers -LookbackDays $Days -MaxEvents $MaxEventsPerDc
 $kdcsvcAudit.Errors | ForEach-Object { $results.Errors.Add($_) | Out-Null }
 $kdcsvcEventsRaw = if ($kdcsvcAudit -and $null -ne $kdcsvcAudit.RawEvents) { @($kdcsvcAudit.RawEvents) } else { @() }
 $kdcsvcEventsRaw = @($kdcsvcEventsRaw | Where-Object { $null -ne $_ })
