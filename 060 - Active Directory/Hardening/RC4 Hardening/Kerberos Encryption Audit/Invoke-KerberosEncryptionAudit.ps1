@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Version 1.1.6
+#Version 1.1.7
 [CmdletBinding()]
 param(
     [int]$Hours = 24,
@@ -248,6 +248,8 @@ function Convert-EncryptionFlagsToText {
     if (($Value -band 0x04) -ne 0) { $flags += 'RC4-HMAC' }
     if (($Value -band 0x08) -ne 0) { $flags += 'AES128' }
     if (($Value -band 0x10) -ne 0) { $flags += 'AES256' }
+    # 0x20 = AES256-CTS-HMAC-SHA1-96 session-key only (post-CVE-2022-37966 hardening bit)
+    if (($Value -band 0x20) -ne 0) { $flags += 'AES256-SK' }
 
     if ($flags.Count -eq 0) {
         return ('0x{0:X}' -f $Value)
@@ -264,9 +266,13 @@ function Get-EncStatus {
         [bool]$KdcDefaultsExplicitAesOnly = $false
     )
 
-    $hasAes128 = ($null -ne $Value) -and (($Value -band 0x08) -ne 0)
-    $hasAes256 = ($null -ne $Value) -and (($Value -band 0x10) -ne 0)
-    $hasAes = $hasAes128 -or $hasAes256
+    $hasAes128  = ($null -ne $Value) -and (($Value -band 0x08) -ne 0)
+    $hasAes256  = ($null -ne $Value) -and (($Value -band 0x10) -ne 0)
+    # 0x20 = AES256-CTS-HMAC-SHA1-96-SK (session-key only, added post-CVE-2022-37966
+    # mitigation guidance). It denotes AES capability for session keys and is the
+    # recommended hardening on krbtgt and similar privileged accounts. Treat it as AES.
+    $hasAes256Sk = ($null -ne $Value) -and (($Value -band 0x20) -ne 0)
+    $hasAes = $hasAes128 -or $hasAes256 -or $hasAes256Sk
     $hasRc4 = ($null -ne $Value) -and (($Value -band 0x04) -ne 0)
     $hasDes = ($null -ne $Value) -and ((($Value -band 0x01) -ne 0) -or (($Value -band 0x02) -ne 0))
 

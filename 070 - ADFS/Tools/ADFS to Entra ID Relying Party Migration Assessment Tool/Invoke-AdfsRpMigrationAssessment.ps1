@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Assesses AD FS Relying Party Trusts for migration readiness to Microsoft Entra ID.
@@ -718,6 +718,7 @@ footer { padding:24px; text-align:center; font-size:11px; color:var(--muted); }
 </footer>
 
 <script id="data" type="application/json">$json</script>
+"@ + @'
 <script>
 const DATA = JSON.parse(document.getElementById('data').textContent);
 let SORT_KEY = 'Verdict', SORT_ASC = true;
@@ -765,19 +766,19 @@ function render() {
     const verdictCls = VERDICT_CLASSES[r.Verdict]||'';
     const verdictLbl = VERDICT_LABELS[r.Verdict]||r.Verdict;
     const last = r.LastSeen ? new Date(r.LastSeen).toLocaleString() : '—';
-    return `<tr class="row \${r.Enabled===false?'disabled':''}" data-idx="\${r._idx}">
-      <td><strong>\${esc(r.Name||'')}</strong></td>
-      <td style="font-size:11px;color:#64748b">\${esc(r.Identifier||'')}</td>
-      <td><span class="badge \${verdictCls}">\${verdictLbl}</span></td>
-      <td>\${r.FailCount?'<span style=color:#dc2626;font-weight:600>'+r.FailCount+'</span>':'0'}</td>
-      <td>\${r.WarningCount?'<span style=color:#f59e0b;font-weight:600>'+r.WarningCount+'</span>':'0'}</td>
-      <td>\${r.SignInCount||'—'}</td>
-      <td style="font-size:11px">\${last}</td>
-      <td>\${r.Enabled===false?'No':'Yes'}</td>
+    return `<tr class="row ${r.Enabled===false?'disabled':''}" data-idx="${r._idx}">
+      <td><strong>${esc(r.Name||'')}</strong></td>
+      <td style="font-size:11px;color:#64748b">${esc(r.Identifier||'')}</td>
+      <td><span class="badge ${verdictCls}">${verdictLbl}</span></td>
+      <td>${r.FailCount?'<span style=color:#dc2626;font-weight:600>'+r.FailCount+'</span>':'0'}</td>
+      <td>${r.WarningCount?'<span style=color:#f59e0b;font-weight:600>'+r.WarningCount+'</span>':'0'}</td>
+      <td>${r.SignInCount||'—'}</td>
+      <td style="font-size:11px">${last}</td>
+      <td>${r.Enabled===false?'No':'Yes'}</td>
     </tr>`;
   }).join('');
 
-  document.getElementById('counter').textContent = `\${rows.length} of \${DATA.length} RPs`;
+  document.getElementById('counter').textContent = `${rows.length} of ${DATA.length} RPs`;
 
   document.querySelectorAll('#tbody .row').forEach(tr=>{
     tr.onclick = ()=>openModal(parseInt(tr.dataset.idx));
@@ -801,16 +802,16 @@ function openModal(idx) {
   let html = '';
   html += '<div class="section-title">Configuration</div>';
   html += '<dl class="config-grid">';
-  html += `<dt>Enabled</dt><dd>\${rp.Enabled===false?'No':'Yes'}</dd>`;
-  html += `<dt>Protocol</dt><dd>\${esc(rp.ProtocolProfile||'')}</dd>`;
-  html += `<dt>Token lifetime (min)</dt><dd>\${rp.TokenLifetime||'default'}</dd>`;
-  html += `<dt>WS-Fed endpoint</dt><dd>\${esc(rp.WSFedEndpoint||'—')}</dd>`;
-  html += `<dt>Encrypt claims</dt><dd>\${rp.EncryptClaims?'Yes':'No'}</dd>`;
-  html += `<dt>Signing algorithm</dt><dd>\${esc(rp.SignatureAlgorithm||'—')}</dd>`;
+  html += `<dt>Enabled</dt><dd>${rp.Enabled===false?'No':'Yes'}</dd>`;
+  html += `<dt>Protocol</dt><dd>${esc(rp.ProtocolProfile||'')}</dd>`;
+  html += `<dt>Token lifetime (min)</dt><dd>${rp.TokenLifetime||'default'}</dd>`;
+  html += `<dt>WS-Fed endpoint</dt><dd>${esc(rp.WSFedEndpoint||'—')}</dd>`;
+  html += `<dt>Encrypt claims</dt><dd>${rp.EncryptClaims?'Yes':'No'}</dd>`;
+  html += `<dt>Signing algorithm</dt><dd>${esc(rp.SignatureAlgorithm||'—')}</dd>`;
   if (rp.Usage) {
-    html += `<dt>Sign-ins (window)</dt><dd>\${rp.Usage.SignInCount}</dd>`;
-    html += `<dt>Unique users</dt><dd>\${rp.Usage.UniqueUserCount}</dd>`;
-    html += `<dt>Last seen</dt><dd>\${rp.Usage.LastSeen?new Date(rp.Usage.LastSeen).toLocaleString():'—'}</dd>`;
+    html += `<dt>Sign-ins (window)</dt><dd>${rp.Usage.SignInCount}</dd>`;
+    html += `<dt>Unique users</dt><dd>${rp.Usage.UniqueUserCount}</dd>`;
+    html += `<dt>Last seen</dt><dd>${rp.Usage.LastSeen?new Date(rp.Usage.LastSeen).toLocaleString():'—'}</dd>`;
   }
   html += '</dl>';
 
@@ -818,12 +819,12 @@ function openModal(idx) {
   html += '<div class="tests">';
   for (const t of tests) {
     const cls = (t.Status||'').toLowerCase();
-    html += `<div class="test \${cls}">
-      <div><span class="badge \${cls}">\${t.Status}</span></div>
+    html += `<div class="test ${cls}">
+      <div><span class="badge ${cls}">${t.Status}</span></div>
       <div>
-        <div class="name">\${esc(t.Name)}</div>
-        <div class="msg">\${esc(t.Message)}</div>
-        \${t.Detail ? `<details><summary>Show detail</summary><pre>\${esc(typeof t.Detail==='string'?t.Detail:JSON.stringify(t.Detail,null,2))}</pre></details>`:''}
+        <div class="name">${esc(t.Name)}</div>
+        <div class="msg">${esc(t.Message)}</div>
+        ${t.Detail ? `<details><summary>Show detail</summary><pre>${esc(typeof t.Detail==='string'?t.Detail:JSON.stringify(t.Detail,null,2))}</pre></details>`:''}
       </div>
     </div>`;
   }
@@ -833,16 +834,16 @@ function openModal(idx) {
     html += '<div class="section-title">Parsed claim rules ('+rules.length+')</div>';
     for (const r of rules) {
       const cls = r.IsMigratable?'good':'bad';
-      const issues = r.Issues && r.Issues.length ? r.Issues.map(i=>`<div class="issues">⚠ \${esc(i.Code)} — \${esc(i.Message)}</div>`).join(''):'';
-      html += `<div class="rule \${cls}">
+      const issues = r.Issues && r.Issues.length ? r.Issues.map(i=>`<div class="issues">⚠ ${esc(i.Code)} — ${esc(i.Message)}</div>`).join(''):'';
+      html += `<div class="rule ${cls}">
         <div class="header2">
-          <span class="name">\${esc(r.Name||'(unnamed)')}</span>
-          <span class="badge \${r.IsMigratable?'pass':'warning'}">\${r.IsMigratable?'Migratable ('+esc(r.KnownPattern||'')+')':'Needs review'}</span>
+          <span class="name">${esc(r.Name||'(unnamed)')}</span>
+          <span class="badge ${r.IsMigratable?'pass':'warning'}">${r.IsMigratable?'Migratable ('+esc(r.KnownPattern||'')+')':'Needs review'}</span>
         </div>
-        \${issues}
-        \${r.AdAttributes && r.AdAttributes.length ? '<div style="font-size:12px;margin-top:4px"><strong>AD attributes:</strong> '+r.AdAttributes.map(esc).join(', ')+'</div>' : ''}
-        \${r.AttributeStores && r.AttributeStores.length ? '<div style="font-size:12px"><strong>Stores:</strong> '+r.AttributeStores.map(esc).join(', ')+'</div>' : ''}
-        <details><summary>Show rule</summary><pre>\${esc(r.Text)}</pre></details>
+        ${issues}
+        ${r.AdAttributes && r.AdAttributes.length ? '<div style="font-size:12px;margin-top:4px"><strong>AD attributes:</strong> '+r.AdAttributes.map(esc).join(', ')+'</div>' : ''}
+        ${r.AttributeStores && r.AttributeStores.length ? '<div style="font-size:12px"><strong>Stores:</strong> '+r.AttributeStores.map(esc).join(', ')+'</div>' : ''}
+        <details><summary>Show rule</summary><pre>${esc(r.Text)}</pre></details>
       </div>`;
     }
   }
@@ -853,7 +854,7 @@ function openModal(idx) {
     html += '<div class="section-title">Migration checklist</div>';
     html += '<div class="checklist" id="checklist">';
     items.forEach((it,i)=>{
-      html += `<label data-i="\${i}"><input type="checkbox"><span class="text">\${esc(it)}</span></label>`;
+      html += `<label data-i="${i}"><input type="checkbox"><span class="text">${esc(it)}</span></label>`;
     });
     html += '</div>';
   }
@@ -924,6 +925,8 @@ document.querySelectorAll('th[data-sort]').forEach(th=>{
 });
 
 render();
+</script>
+'@ + @"
 </script>
 </body>
 </html>
