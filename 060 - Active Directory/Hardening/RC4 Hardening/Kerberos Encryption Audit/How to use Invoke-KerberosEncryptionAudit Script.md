@@ -145,7 +145,7 @@ The tool is read-only and domain-local by design (one run per domain — see `-D
 
 ## Validation test plan
 
-The scenarios below let you verify each detection path of the script against a live lab. They are organised by the layer they exercise (account inventory, KDC infrastructure, trusts, live events, Kdcsvc, backlog, robustness). Every test is reversible and ships with its own cleanup. **Use a non-production lab** — several scenarios touch DC registry values or Trusted Domain Objects and would impact real authentication if applied to production.
+The scenarios below let you verify each detection path of the script against a live lab. They are organised by the layer they exercise: account inventory, KDC infrastructure (Default + Phase), trusts, live 4768/4769 events, Kdcsvc 201-209, backlog scoring, robustness, concurrency and output format. Every test that mutates state ships with its own cleanup column (read-only tests show `—`). **Use a non-production lab** — several scenarios touch DC registry values, account `msDS-SupportedEncryptionTypes`, or Trusted Domain Objects, and would impact real authentication if applied to production.
 
 ### Common test session prelude
 
