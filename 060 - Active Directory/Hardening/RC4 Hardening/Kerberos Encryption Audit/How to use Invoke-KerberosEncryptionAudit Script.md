@@ -143,139 +143,87 @@ The tool is read-only and domain-local by design (one run per domain — see `-D
 
 ---
 
-## Validation test plan
+## Validation coverage matrix
 
-The scenarios below let you verify each detection path of the script against a live lab. They are organised by the layer they exercise: account inventory, KDC infrastructure (Default + Phase), trusts, live 4768/4769 events, Kdcsvc 201-209, backlog scoring, robustness, concurrency and output format. Every test that mutates state ships with its own cleanup column (read-only tests show `—`). **Use a non-production lab** — several scenarios touch DC registry values, account `msDS-SupportedEncryptionTypes`, or Trusted Domain Objects, and would impact real authentication if applied to production.
+This section is a **coverage matrix**, not a runnable test suite. Each row describes a real-world AD/DC condition the script must detect, and the signal it must surface (JSON field, HTML section, KPI). Use it as the acceptance criteria for the script: if a row's expected detection does not appear in the output when the condition is present in the audited domain, that is a script bug. *How* you reproduce each condition in a lab is left to the operator — see Article 2 §6 for setup patterns.
 
-### Common test session prelude
+Conditions are organised by layer: account inventory, KDC infrastructure (Default + Phase), trusts, live 4768/4769 events, Kdcsvc 201-209, backlog scoring, robustness, concurrency and output format. **Several conditions (DC registry values, account `msDS-SupportedEncryptionTypes`, Trusted Domain Objects) would impact real authentication if reproduced in production — only reproduce in an isolated lab.**
 
-On the host where you run the script (typically a member server or jump box with RSAT and PowerShell 7):
+### Coverage matrix
 
-```powershell
-$labPwd    = ConvertTo-SecureString 'Temp!Audit2026Long!' -AsPlainText -Force
-$dc        = (Get-ADDomain).PDCEmulator
-$lab       = (Get-ADDomain).DNSRoot
-$scriptDir = 'C:\Temp\KerberosAudit'   # adjust to your local copy
-$out       = Join-Path $scriptDir 'Outputs'
-function Run-Audit {
-    param([string]$Tag, [int]$Days = 1, [string[]]$Dcs)
-    $args = @{ Days = $Days; IncludeTrusts = $true; OutputDir = (Join-Path $out $Tag) }
-    if ($Dcs) { $args['DomainControllers'] = $Dcs }
-    & "$scriptDir\Invoke-KerberosEncryptionAudit.ps1" @args
-}
-function Show-Json { param($Tag) Get-Content (Join-Path $out "$Tag\KerberosEncryptionAudit.json") -Raw | ConvertFrom-Json }
-```
-
-> The password literal above is renamed to `$labPwd` (the built-in PowerShell variable `$pwd` holds your current location — do not shadow it). When the test rows below say `$pwd`, substitute `$labPwd`.
-
-On the **client of test** (any domain-joined workstation, distinct from a DC):
-
-```powershell
-Add-Type -AssemblyName System.IdentityModel
-function Trigger-Tgs { param($Spn) klist purge | Out-Null; [void](New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken -ArgumentList $Spn) }
-```
-
-> Several rows reference `klist purge` and `runas` on the test client. The client must be reachable from your session and joined to the same domain as the DC under test.
-
-### Test matrix
-
-| ID | Category | Scenario | Actions | Expected detection (JSON / HTML) | Cleanup |
-| --- | --- | --- | --- | --- | --- |
-| **T01** | Baseline | Nominal run, nothing changed | 1. `Run-Audit baseline-pre`<br>2. `(Show-Json baseline-pre).AccountStatusSummary` | `Errors=0`, `Warnings=0`. Capture baseline for diff. | — |
-| **T02** | Inventory | User unset (null) | 1. `New-ADUser usr.unset -SamAccountName usr.unset -AccountPassword $pwd -Enabled $true`<br>2. `Run-Audit T02` | `usr.unset` → `User/Service / Info (Unset/0, non-service inherits KDC default)` | `Remove-ADUser usr.unset -Confirm:$false` |
-| **T03** | Inventory | User RC4-only | 1. `New-ADUser usr.rc4 -SamAccountName usr.rc4 -AccountPassword $pwd -Enabled $true -KerberosEncryptionType RC4`<br>2. `Run-Audit T03` | `User/Service / Failed (RC4-only/No AES)` count +1 | `Remove-ADUser usr.rc4 -Confirm:$false` |
-| **T04** | Inventory | User DES-only | 1. `New-ADUser usr.des -SamAccountName usr.des -AccountPassword $pwd -Enabled $true`<br>2. `Set-ADUser usr.des -Replace @{'msDS-SupportedEncryptionTypes'=3}`<br>3. `Run-Audit T04` | `Failed (DES-only/No AES) = 1` | `Remove-ADUser usr.des -Confirm:$false` |
-| **T05** | Inventory | User AES-only (0x18) | 1. `New-ADUser usr.aes -SamAccountName usr.aes -AccountPassword $pwd -Enabled $true -KerberosEncryptionType AES128,AES256`<br>2. `Run-Audit T05` | `Compliant (AES present)` count +1 | `Remove-ADUser usr.aes -Confirm:$false` |
-| **T06** | Inventory | User AES+RC4 with SPN | 1. `New-ADUser usr.mix -SamAccountName usr.mix -AccountPassword $pwd -Enabled $true -KerberosEncryptionType RC4,AES128,AES256 -ServicePrincipalNames 'HTTP/usr.mix.test'`<br>2. `Run-Audit T06` | `Warning (AES present + RC4 allowed)`, present in `PriorityAccounts` | `Remove-ADUser usr.mix -Confirm:$false` |
-| **T07** | Inventory | Value with no AES/RC4/DES bit (0x40) | 1. `New-ADUser usr.bogus -SamAccountName usr.bogus -AccountPassword $pwd -Enabled $true`<br>2. `Set-ADUser usr.bogus -Replace @{'msDS-SupportedEncryptionTypes'=64}`<br>3. `Run-Audit T07` | `Failed (No AES) = 1` | `Remove-ADUser usr.bogus -Confirm:$false` |
-| **T08** | Inventory | AES256-SK only (0x20) | 1. `New-ADUser usr.sk -SamAccountName usr.sk -AccountPassword $pwd -Enabled $true`<br>2. `Set-ADUser usr.sk -Replace @{'msDS-SupportedEncryptionTypes'=32}`<br>3. `Run-Audit T08` | `Compliant (AES present)`, Flags = `0x20 [AES256-SK]` (post-CVE-2022-37966 hardening bit) | `Remove-ADUser usr.sk -Confirm:$false` |
-| **T09** | Inventory | Capability-only (0x50000, krbtgt-style) | 1. `New-ADUser usr.cap -SamAccountName usr.cap -AccountPassword $pwd -Enabled $true`<br>2. `Set-ADUser usr.cap -Replace @{'msDS-SupportedEncryptionTypes'=327680}`<br>3. `Run-Audit T09` | `Info (Unset/0...)` (script masks 0x3F to ignore non-enc-type capability bits), Flags = `0x50000 [FAST-Supported, Claims-Supported]` | `Remove-ADUser usr.cap -Confirm:$false` |
-| **T10** | Inventory | SPN account with no enc-type | 1. `New-ADUser usr.spn -SamAccountName usr.spn -AccountPassword $pwd -Enabled $true -ServicePrincipalNames 'HTTP/usr.spn.test'`<br>2. `Run-Audit T10` | `Warning (Unset/0, service relies on KDC default)`, present in `PriorityAccounts` | `Remove-ADUser usr.spn -Confirm:$false` |
-| **T11** | Inventory | krbtgt excluded from PriorityAccounts | 1. `Run-Audit T11`<br>2. `(Show-Json T11).PriorityAccounts.Name -contains 'krbtgt'` | Returns `False` (krbtgt explicitly filtered). | — |
-| **T12** | Inventory | Computer at 0x1C excluded from PriorityAccounts | 1. `Run-Audit T12`<br>2. `(Show-Json T12).PriorityAccounts \| ? Category -eq 'Computer' \| ? EncHex -eq '0x1C'` | Returns empty (status `Info*` is filtered to keep large fleets readable). | — |
-| **T13** | KDC default | Default registry absent | 1. (initial state on most labs)<br>2. `Run-Audit T13` | `Status = 'Warning (AES default, not enforced)'` on every DC. | — |
-| **T14** | KDC default | Default = 0x18 (AES-only) | **On one DC:**<br>1. `reg add HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v DefaultDomainSupportedEncTypes /t REG_DWORD /d 0x18 /f`<br>2. `Restart-Service kdc`<br>3. `Run-Audit T14` | `Compliant (AES-only default)` on that DC, KPI `DCs with AES-only KDC default = 1/N`. | `reg delete HKLM\SYSTEM\CurrentControlSet\Services\Kdc /v DefaultDomainSupportedEncTypes /f; Restart-Service kdc` |
-| **T15** | KDC default | Default = 0x1C (mixed) | Same as T14 with `/d 0x1C` | `Warning (Mixed or RC4 allowed)`. | Same as T14 |
-| **T16** | KDC default | KPI `Compliant` when 100% of DCs at 0x18 | T14 on **every** DC of the domain | KPI `DCs with AES-only KDC default` Status=`OK`. | Reset T14 on every DC. |
-| **T17** | Phase | Phase registry absent | (initial state, Phase 0 implicit) `Run-Audit T17` | `Rc4DisablementPhase[*].Status = 'Info (registry absent)'`. | — |
-| **T18** | Phase | Phase = 0 (silent) | **On one DC:**<br>1. `reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters /v RC4DefaultDisablementPhase /t REG_DWORD /d 0 /f`<br>2. `Restart-Service kdc`<br>3. `Run-Audit T18` | `Warning (silent)`. | `reg delete ... /v RC4DefaultDisablementPhase /f; Restart-Service kdc` |
-| **T19** | Phase | Phase = 1 (audit) | Same as T18 with `/d 1` | `Compliant (Phase 1 audit)`. | Same as T18 |
-| **T20** | Phase | Phase = 2 (enforce) | ⚠️ **Lab only.** Same as T18 with `/d 2` | `Compliant (Phase 2 enforce)` — RC4-only authentications now fail. | Same as T18 |
-| **T21** | Trust | TDO AES-only | (existing AES-only TDO) `Run-Audit T21` | `Trusts \| ? Classification -eq 'AES-only'` non-empty. | — |
-| **T22** | Trust | TDO Unset | (existing Unset TDO) | `Trusts \| ? Classification -eq 'Unset'` non-empty. | — |
-| **T23** | Trust | TDO RC4-only | ⚠️ Lab only.<br>1. `$tdo = Get-ADTrust -Filter * \| Select -First 1; Set-ADObject $tdo.DistinguishedName -Replace @{'msDS-SupportedEncryptionTypes'=4}`<br>2. `Run-Audit T23` | `Classification = 'RC4-only'`, Backlog row Type=TDO Score=8. | `Set-ADObject $tdo.DistinguishedName -Replace @{'msDS-SupportedEncryptionTypes'=0}` |
-| **T24** | Trust | TDO Mixed (0x1C) | Same as T23 with `=28` | `Classification = 'Mixed'`. | Same as T23 |
-| **T25** | Trust | TDO Legacy-DES (0x1) | Same as T23 with `=1` | `Classification = 'Legacy-DES'`, Backlog FixCost=High. | Same as T23 |
-| **T26** | 4768/4769 | RC4 TGS for RC4-only service | 1. T03 setup<br>2. `Set-ADUser usr.rc4 -ServicePrincipalNames @{Add='HTTP/usr.rc4.test'}`<br>3. `Set-ADAccountPassword usr.rc4 -Reset -NewPassword $pwd`<br>4. **On client:** `Trigger-Tgs 'HTTP/usr.rc4.test'`<br>5. wait 30s, `Run-Audit T26` | `TotalRc4Events ≥ 1`, `Rc4TargetServices` contains `HTTP/usr.rc4.test`, `AvoidableRc4Tgs = 0`. | T03 cleanup |
-| **T27** | 4768/4769 | RC4 AS-REQ from RC4-only client (Pattern B) | 1. T03 setup<br>2. **On client:** `runas /user:$lab\usr.rc4 cmd`<br>3. in the new shell: `klist purge`, `klist get krbtgt`, `net use \\$dc\sysvol`<br>4. `Run-Audit T27` | `Rc4RequestorAccounts` contains `usr.rc4`, ≥ 2 events (1 TGT + 1 TGS), Status=`Failed (RC4-only/No AES)`. | T03 cleanup |
-| **T28** | 4768/4769 | TGT 4768 RC4 visible in breakdown | T27 (the `klist get krbtgt` step) | `TicketBreakdownByType` line `TGT / RC4-HMAC` Events ≥ 1. | T27 cleanup |
-| **T29** | 4768/4769 | TGS 4769 RC4 visible in breakdown | T26 or T27 (`net use`) | `TicketBreakdownByType` line `TGS / RC4-HMAC` Events ≥ 1. | — |
-| **T30** | 4768/4769 | Avoidable RC4 (client AES, service AES, DC AES, RC4 forced client-side) | 1. T05 setup + `Set-ADUser usr.aes -ServicePrincipalNames @{Add='HTTP/usr.aes.test'}` + `Set-ADAccountPassword usr.aes -Reset -NewPassword $pwd`<br>2. **On client:** `reg add HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters /v SupportedEncryptionTypes /t REG_DWORD /d 0x4 /f; gpupdate /force; klist purge`<br>3. `Trigger-Tgs 'HTTP/usr.aes.test'`<br>4. `Run-Audit T30` | `AvoidableRc4Tgs ≥ 1` (service is AES-capable but RC4 was chosen). | Client: `reg delete HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters /v SupportedEncryptionTypes /f; gpupdate /force` + T05 cleanup |
-| **T31** | 4768/4769 | Stale-key trap (Pattern D) | 1. `New-ADUser svc.stale -SamAccountName svc.stale -AccountPassword $pwd -Enabled $true -KerberosEncryptionType RC4 -ServicePrincipalNames 'HTTP/svc.stale.test'`<br>2. `Set-ADAccountPassword svc.stale -Reset -NewPassword $pwd`<br>3. `Set-ADUser svc.stale -KerberosEncryptionType AES128,AES256` (no password reset)<br>4. **On client:** `Trigger-Tgs 'HTTP/svc.stale.test'`<br>5. `Run-Audit T31` | Inventory shows `Compliant (AES present)` but 4769 still RC4 → 1 RC4 TGS visible. Demonstrates the documented limitation of attribute-based classification. | `Remove-ADUser svc.stale -Confirm:$false` |
-| **T32** | 4768/4769 | Fix stale-key (rotate password) | After T31:<br>1. `Set-ADAccountPassword svc.stale -Reset -NewPassword $pwd`<br>2. **On client:** `Trigger-Tgs 'HTTP/svc.stale.test'`<br>3. `Run-Audit T32` | 4769 now AES256 (0x12), no new RC4 event. | T31 cleanup |
-| **T33** | 4768/4769 | MisconfiguredClientSignal | T31 reproduces it naturally (user pre-auth in AES, service ticket forced to RC4) | `RawEvents` (visible in `AllTicketEvents.csv`) shows `MisconfiguredClientSignal=True`. | — |
-| **T34** | Kdcsvc | Pattern B audit, no GPO | T19 + T27. `Run-Audit T34` | `KdcsvcEvents` contains EventId=201, Pattern=B, Severity=Audit. | Reset T19 + T27 cleanup |
-| **T35** | Kdcsvc | Pattern B audit with insecure default | T15 + T19 + T27 | EventId=206 (audit with explicit default). | Reset T15+T19 + T27 cleanup |
-| **T36** | Kdcsvc | Pattern D audit | T19 + T31 | EventId=202, Pattern=D. | Reset T19 + T31 cleanup |
-| **T37** | Kdcsvc | Hygiene 205 (DC default insecure) | T15 + `Restart-Service kdc` + `Run-Audit T37` | EventId=205 (1 per Kdcsvc start), KPI `Kdcsvc 205 hygiene findings ≥ 1`. | Reset T15 |
-| **T38** | Kdcsvc | Phase 2 Pattern B enforce (⚠️ destructive) | T20 + T27. `usr.rc4` authentication fails. | EventId=203, Pattern=B, Severity=Enforce. | Reset T20 + T27 cleanup |
-| **T39** | Backlog | Source 1 (RC4 service) | T26 repeated 5× (loop for >5 events) | `Backlog` contains `usr.rc4` Type=`Service account` Score ≥ 5. | T26 cleanup |
-| **T40** | Backlog | Source 2 (non-AES trust) | T23 or T24 or T25 | `Backlog` contains line `Trust: <name>` Type=TDO Score=8 (Critical+Frequent+Medium). | T23 cleanup |
-| **T41** | Backlog | Source 3 (RC4 client ≥ 50 events) | 1. T03 setup<br>2. **On client:** `runas /user:$lab\usr.rc4 cmd` then in the shell: `1..60 \| % { net use \\$dc\sysvol /persistent:no \| Out-Null; net use \\$dc\sysvol /delete \| Out-Null }`<br>3. `Run-Audit T41` | `Backlog` contains `usr.rc4` Type=`Client account (Pattern B)`. | T03 cleanup |
-| **T42** | Backlog | Dedup (account in source 1 AND 3) | T26 (≥1) + T41 (≥50) on the same account | One single backlog line (source 1 wins). | Cleanup |
-| **T43** | Backlog | Owner mapping CSV | 1. `"Pattern,Owner`n`usr.*,Team-A`n`*$,Team-Infra`n`*,TBD" \| Out-File owners.csv`<br>2. T39 setup<br>3. `& script.ps1 -Days 1 -IncludeTrusts -OwnerMappingPath owners.csv -OutputDir .\Outputs\T43` | `Backlog \| ? Dependency -eq 'usr.rc4' \| Select Owner` = `Team-A`. | `Remove-Item owners.csv` + T39 cleanup |
-| **T44** | Robustness | Unreachable DC | `& script.ps1 -Days 1 -DomainControllers $dc,'nope.invalid.local' -OutputDir .\Outputs\T44` | `KdcDefaults` contains line `Computer=nope.invalid.local` Status=`Failed`, `Errors` ≥ 1 entry. | — |
-| **T45** | Robustness | `-Days 0` rejection | `& script.ps1 -Days 0` | Parameter validation error (`[ValidateRange(1,365)]` since v1.2.0). | — |
-| **T46** | Robustness | `-MaxEventsPerDc -1` rejection | `& script.ps1 -MaxEventsPerDc -1` | Parameter validation error. | — |
-| **T47** | Robustness | Missing OwnerMappingPath | `& script.ps1 -OwnerMappingPath C:\nope.csv -OutputDir .\Outputs\T47` | `Warnings` contains `"Owner mapping file not found"`. | — |
-| **T48** | Robustness | No 4768/4769 events in window | Short window on idle lab | `Warnings` contains `"No 4768/4769 events were collected"`. | — |
-| **T49** | Robustness | RSAT-AD-PowerShell missing (lab) | `Remove-WindowsFeature RSAT-AD-PowerShell` then `Run-Audit T49` | Fatal error at startup: `Active Directory discovery failed`. | `Add-WindowsFeature RSAT-AD-PowerShell` |
-| **T50** | Robustness | LDAP injection (apostrophe in SamAccountName) | AD normally forbids apostrophes in `SamAccountName`. The case is covered by v1.1.9 helpers `ConvertTo-LdapFilterSafe` and `ConvertTo-LdapRfc4515Safe`. | No crash on resolve, value displayed verbatim. | — |
-| **T51** | Robustness | Trust audit with no trusts | Domain with 0 trusts: `& script.ps1 -IncludeTrusts -OutputDir .\Outputs\T51` | `Trusts.Count = 0`, no error, log line `Trusts inventoried = 0`. | — |
-| **T52** | Robustness | Run without `-IncludeTrusts` | `& script.ps1 -OutputDir .\Outputs\T52` | `Trusts.Count = 0`, log line `Skipped (use -IncludeTrusts...)`. | — |
-| **T53** | Robustness | CSV export | `& script.ps1 -ExportCsv -IncludeTrusts -OutputDir .\Outputs\T53` | 12 `*.csv` files created in OutputDir. | — |
-| **T54** | Robustness | Backlog CSV always exported | `& script.ps1 -OutputDir .\Outputs\T54` (without `-ExportCsv`) | `Backlog.csv` present when `Backlog.Count > 0`. | — |
-| **T55** | Robustness | OpenReport | `& script.ps1 -OpenReport -OutputDir .\Outputs\T55` | Browser opens on `KerberosEncryptionAudit.html`. | Close the browser tab. |
-| **T56** | Concurrency | Parallel limit at 4 DCs | Lab with ≥ 5 DCs | Throttle at 4 visible in logs (`-ThrottleLimit 4`). | — |
-| **T57** | Concurrency | Resilience if 1 DC parallel run fails | Cut network on 1 DC during the run | Isolated error in `Errors`, other DCs collect OK. | Restore network. |
-| **T58** | JSON format | Valid JSON | `Get-Content .\Outputs\T01\KerberosEncryptionAudit.json -Raw \| ConvertFrom-Json` | No exception. | — |
-| **T59** | HTML format | Valid HTML | `Test-Path .\Outputs\T01\KerberosEncryptionAudit.html` then open | Page renders, sections navigable. | — |
-| **T60** | Idempotence | Two consecutive runs identical | `Run-Audit idem1; Run-Audit idem2; Compare-Object (Show-Json idem1).AccountStatusSummary (Show-Json idem2).AccountStatusSummary` | No diff (except `StartedAt` and `Days`). | — |
+| ID  | Category | Condition in the audited domain | Expected detection in the script output |
+| --- | --- | --- | --- |
+| **T01** | Baseline | Healthy domain, nothing unusual | Run completes with `Errors.Count = 0` and `Warnings.Count = 0` (apart from collection warnings such as empty event window). |
+| **T02** | Inventory | User account with `msDS-SupportedEncryptionTypes` unset (null) and no SPN | Account classified `Info (Unset/0, non-service inherits KDC default)` in `AccountStatusSummary`. Not in `PriorityAccounts`. |
+| **T03** | Inventory | User account with RC4-only (`msDS-SET = 0x4`) | Account classified `Failed (RC4-only/No AES)`. Listed in `PriorityAccounts`. |
+| **T04** | Inventory | User account with DES-only (`msDS-SET = 0x3`) | Account classified `Failed (DES-only/No AES)`. Listed in `PriorityAccounts`. |
+| **T05** | Inventory | User account with AES-only (`msDS-SET = 0x18`) | Account classified `Compliant (AES present)`. |
+| **T06** | Inventory | Service account (SPN present) with AES + RC4 allowed (`msDS-SET = 0x1C`) | Account classified `Warning (AES present + RC4 allowed)`. Listed in `PriorityAccounts`. |
+| **T07** | Inventory | Account with a value containing no AES/RC4/DES enc-type bit (e.g. `0x40` only) | Account classified `Failed (No AES)`. Hex flags rendered with the unknown bit. |
+| **T08** | Inventory | Account with AES256-SK only (`msDS-SET = 0x20`, post-CVE-2022-37966 hardening bit) | Account classified `Compliant (AES present)`. Flags rendered as `0x20 [AES256-SK]`. |
+| **T09** | Inventory | Account with capability-only bits set (e.g. `0x50000` = FAST + Claims, krbtgt-style) | Account classified `Info (Unset/0, ...)` — script masks `0x3F` to ignore non-enc-type capability bits. Flags rendered as `0x50000 [FAST-Supported, Claims-Supported]`. |
+| **T10** | Inventory | Service account (SPN present) with `msDS-SET` unset | Account classified `Warning (Unset/0, service relies on KDC default)`. Listed in `PriorityAccounts`. |
+| **T11** | Inventory | `krbtgt` account is present (always true) | `PriorityAccounts` does NOT contain `krbtgt` (explicitly filtered — it is special-cased and audited by KB5021131 logic). |
+| **T12** | Inventory | Computer account at `msDS-SET = 0x1C` (very common after KB5021131 self-update) | NOT listed in `PriorityAccounts` when status is `Info*` — filter keeps large fleets readable. Still counted in `AccountStatusSummary`. |
+| **T13** | KDC default | `DefaultDomainSupportedEncTypes` registry absent on a DC | DC classified `Warning (AES default, not enforced)` in the *KDC Default* section. |
+| **T14** | KDC default | DC with `DefaultDomainSupportedEncTypes = 0x18` (AES-only) | DC classified `Compliant (AES-only default)`. KPI `DCs with AES-only KDC default` incremented. |
+| **T15** | KDC default | DC with `DefaultDomainSupportedEncTypes = 0x1C` (mixed AES+RC4) | DC classified `Warning (Mixed or RC4 allowed)`. |
+| **T16** | KDC default | 100% of DCs in the domain at `0x18` | KPI `DCs with AES-only KDC default` shows full coverage and Status = `OK`. |
+| **T17** | Phase | `RC4DefaultDisablementPhase` registry absent on every DC | Every DC line in *Rc4DisablementPhase* shows `Status = 'Info (registry absent)'`. KPI `DCs at Phase >= 1` = 0. |
+| **T18** | Phase | DC with `RC4DefaultDisablementPhase = 0` (silent) | DC classified `Warning (silent)` — the explicit 0 is reported separately from "registry absent". |
+| **T19** | Phase | DC with `RC4DefaultDisablementPhase = 1` (audit) | DC classified `Compliant (Phase 1 audit)`. Counted in KPI `DCs at Phase >= 1`. |
+| **T20** | Phase | DC with `RC4DefaultDisablementPhase = 2` (enforce) | DC classified `Compliant (Phase 2 enforce)`. Counted in KPI `DCs at Phase >= 1`. |
+| **T21** | Trust | TDO with AES-only encryption | Listed in `Trusts` with `Classification = 'AES-only'`. |
+| **T22** | Trust | TDO with `msDS-SupportedEncryptionTypes` unset | Listed in `Trusts` with `Classification = 'Unset'`. |
+| **T23** | Trust | TDO with RC4-only (`msDS-SET = 0x4`) | `Classification = 'RC4-only'`. Backlog row with `Source = TDO`, `Score = 8`. |
+| **T24** | Trust | TDO with mixed AES+RC4 (`msDS-SET = 0x1C`) | `Classification = 'Mixed'`. |
+| **T25** | Trust | TDO with DES (`msDS-SET = 0x1`) | `Classification = 'Legacy-DES'`. Backlog row with `FixCost = High`. |
+| **T26** | 4768/4769 | 4769 (TGS) issued for a RC4-only service in the lookback window | `TotalRc4Events >= 1`. Service listed in `Rc4TargetServices`. `AvoidableRc4Tgs = 0` (service is not AES-capable). |
+| **T27** | 4768/4769 | 4768 (AS-REQ) from a RC4-only requestor (Pattern B) | Requestor listed in `Rc4RequestorAccounts`. Account `Status = 'Failed (RC4-only/No AES)'`. |
+| **T28** | 4768/4769 | TGT (4768) encrypted with RC4 visible | `TicketBreakdownByType` contains line `TGT / RC4-HMAC` with `Events >= 1`. |
+| **T29** | 4768/4769 | TGS (4769) encrypted with RC4 visible | `TicketBreakdownByType` contains line `TGS / RC4-HMAC` with `Events >= 1`. |
+| **T30** | 4768/4769 | TGS issued in RC4 to an AES-capable service from an AES-capable client (RC4 forced client-side) | `AvoidableRc4Tgs >= 1` — script flags as avoidable because the service has AES bits. |
+| **T31** | 4768/4769 | Service has AES bits in `msDS-SET` but its key material is still RC4 (password not rotated after the AES bit was added — Pattern D / stale key) | Inventory shows `Compliant (AES present)` BUT a RC4 4769 for the same service is visible in the window. Demonstrates the documented limitation of attribute-based classification. |
+| **T32** | 4768/4769 | Same service as T31 after a password reset | Subsequent 4769 events for that service now in AES (e.g. `0x12` = AES256). No new RC4 event. |
+| **T33** | 4768/4769 | 4769 where client advertised AES but service ticket was returned in RC4 (T31 reproduces it naturally) | `MisconfiguredClientSignal = True` on the event (visible in `AllTicketEvents.csv` when `-ExportCsv`). |
+| **T34** | Kdcsvc | Kdcsvc 201 emitted by a DC at Phase 1 (Pattern B audit, no explicit GPO) | `KdcsvcEvents` contains entry with `EventId = 201`, `Pattern = B`, `Severity = Audit`. |
+| **T35** | Kdcsvc | Kdcsvc 206 emitted (Pattern B audit with explicit insecure default) | Entry with `EventId = 206`, `Pattern = B`, `Severity = Audit`. |
+| **T36** | Kdcsvc | Kdcsvc 202 emitted (Pattern D audit — stale RC4 key after AES bit set) | Entry with `EventId = 202`, `Pattern = D`. |
+| **T37** | Kdcsvc | Kdcsvc 205 emitted at service start because DC default is insecure | Entry with `EventId = 205` (1 per Kdcsvc start). KPI `Kdcsvc 205 hygiene findings >= 1`. |
+| **T38** | Kdcsvc | Kdcsvc 203 emitted by a DC at Phase 2 (Pattern B enforce — authentication actually rejected) | Entry with `EventId = 203`, `Pattern = B`, `Severity = Enforce`. |
+| **T39** | Backlog | RC4-using service with >5 events in the window | Backlog row with `Source = Account`, `Type = Service account`, `Score >= 5`. |
+| **T40** | Backlog | Non-AES trust (RC4-only, Mixed or DES) | Backlog row `Trust: <name>` with `Source = TDO`, `Score = 8` (Critical + Frequent + Medium). |
+| **T41** | Backlog | RC4-only client account with >= 50 events in the window (Pattern B at scale) | Backlog row with `Source = Account`, `Type = Client account (Pattern B)`. |
+| **T42** | Backlog | Same account triggers both source 1 (RC4 service) and source 3 (RC4 client) | Single backlog row (deduplicated — source 1 wins). |
+| **T43** | Backlog | `-OwnerMappingPath` provided with a CSV mapping `usr.*` to `Team-A` | Backlog rows whose `Dependency` matches `usr.*` have `Owner = Team-A`. |
+| **T44** | Robustness | DC list contains an unreachable host | DC line in *KDC Default* with `Status = 'Failed'`. `Errors.Count >= 1`. Other DCs still collected. |
+| **T45** | Robustness | Script invoked with `-Days 0` | Parameter validation error from `[ValidateRange(1, 365)]` (since v1.2.0). |
+| **T46** | Robustness | Script invoked with `-MaxEventsPerDc -1` | Parameter validation error. |
+| **T47** | Robustness | `-OwnerMappingPath` points to a non-existent file | `Warnings` contains `"Owner mapping file not found"`. Run continues without owner enrichment. |
+| **T48** | Robustness | Audited window contains zero 4768/4769 events | `Warnings` contains `"No 4768/4769 events were collected"`. Run completes; sections that depend on events are empty. |
+| **T49** | Robustness | RSAT-AD-PowerShell module not present on the host | Fatal error at startup: `Active Directory discovery failed`. |
+| **T50** | Robustness | Account name contains LDAP metacharacters | No crash; value is displayed verbatim (v1.1.9 helpers `ConvertTo-LdapFilterSafe` / `ConvertTo-LdapRfc4515Safe` escape correctly). |
+| **T51** | Robustness | Domain has zero trusts, run with `-IncludeTrusts` | `Trusts.Count = 0`. No error. Log line `Trusts inventoried = 0`. |
+| **T52** | Robustness | Run without `-IncludeTrusts` | `Trusts.Count = 0`. Log line `Skipped (use -IncludeTrusts...)`. *Trusts* HTML section absent. |
+| **T53** | Robustness | Run with `-ExportCsv -IncludeTrusts` | 10 `*.csv` files created in OutputDir (`KdcsvcEvents`, `KdcsvcSummary`, `PriorityAccounts`, `TicketBreakdownByType`, `TicketBreakdownGlobal`, `Rc4RequestorAccounts`, `Rc4TargetServices`, `Trusts`, `Backlog`, `AllTicketEvents`). |
+| **T54** | Robustness | Run without `-ExportCsv`, but `Backlog.Count > 0` | `Backlog.csv` still produced (always exported when non-empty). |
+| **T55** | Robustness | Run with `-OpenReport` | Default browser opens on `KerberosEncryptionAudit.html` at the end of the run. |
+| **T56** | Concurrency | Domain with >= 5 DCs | DC collection runs in parallel with throttle at 4 (`ForEach-Object -Parallel -ThrottleLimit 4`). |
+| **T57** | Concurrency | One DC becomes unreachable mid-run | Failure isolated to that DC's entry in `Errors`. Other DCs collected and reported normally. |
+| **T58** | JSON format | Run completed | `KerberosEncryptionAudit.json` parses successfully with `ConvertFrom-Json` — no exception. |
+| **T59** | HTML format | Run completed | `KerberosEncryptionAudit.html` renders in a browser. All navigation anchors (*Summary, Backlog, KDC Default, Phase, Kdcsvc, Accounts, Trusts, Tickets, RC4 Hotspots, Artifacts*) resolve. |
+| **T60** | Idempotence | Two consecutive runs against an unchanged domain | JSON outputs differ only on `StartedAt` (timestamp). `AccountStatusSummary`, `KdcDefaults`, `Trusts`, `Backlog` are identical between runs. |
 
 ### Recommended subset for client validation
 
-If time is short, here is the minimum surface to sign off production quality:
+If time is short, here is the minimum surface to sign off production quality. Pick the rows from the matrix above:
 
-| Priority | Tests |
+| Priority | IDs |
 | --- | --- |
-| **P0 — must run** | T01, T03, T05, T08, T09, T11, T12, T26, T58, T59, T60 |
+| **P0 — must verify** | T01, T03, T05, T08, T09, T11, T12, T26, T58, T59, T60 |
 | **P1 — strongly recommended** | T13, T14, T17, T19, T21, T27, T44, T47, T48, T52 |
 | **P2 — nice to have** | T15, T22, T23, T30, T31, T34, T36, T39, T40, T43, T53 |
 | **P3 — lab only / destructive** | T20, T24, T25, T35, T37, T38, T41, T49, T57 |
-
-### Global cleanup at the end of the campaign
-
-```powershell
-# Test accounts
-Get-ADUser -Filter "SamAccountName -like 'usr.*' -or SamAccountName -like 'svc.audittest' -or SamAccountName -like 'svc.stale*'" |
-  Remove-ADUser -Confirm:$false
-
-# DC registry rollbacks (run on every DC you modified)
-Invoke-Command -ComputerName (Get-ADDomainController -Filter *).HostName -ScriptBlock {
-    reg delete 'HKLM\SYSTEM\CurrentControlSet\Services\Kdc' /v DefaultDomainSupportedEncTypes /f 2>$null
-    reg delete 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters' /v RC4DefaultDisablementPhase /f 2>$null
-    Restart-Service kdc
-}
-
-# Test client rollback
-Invoke-Command -ComputerName <client1>,<client2> -ScriptBlock {
-    reg delete 'HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters' /v SupportedEncryptionTypes /f 2>$null
-    gpupdate /force
-    klist purge
-}
-
-# TDOs (T23-T25): roll back any modified msDS-SupportedEncryptionTypes manually.
-```
 
 ---
 
