@@ -170,9 +170,19 @@ There is no universal "right" value, and there is no official Microsoft baseline
 
 ## How to Verify the Effective Configuration
 
-Three layers to inspect, from highest priority to lowest:
+Four layers to inspect, from highest priority to lowest:
 
-### 1. The Policies branch (what GPO has applied)
+### 1. The User-side Policies branch (User Configuration GPO)
+
+```powershell
+$path = 'HKCU:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+Get-ItemProperty -Path $path -ErrorAction SilentlyContinue |
+    Select-Object MaxIdleTime, MaxConnectionTime, MaxDisconnectionTime, fResetBroken
+```
+
+If the User Configuration scope is set, **it wins over Computer Configuration**. Run this in the user's session.
+
+### 2. The Computer-side Policies branch (Computer Configuration GPO)
 
 ```powershell
 $path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
@@ -182,24 +192,24 @@ Get-ItemProperty -Path $path -ErrorAction SilentlyContinue |
 
 If `fResetBroken` is missing, the GPO **End session when time limits are reached** is *Not configured*.
 
-### 2. The local listener (what the OS would do without GPO)
+### 3. The local listener (what the OS would do without GPO)
 
 ```powershell
 $path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
-Get-ItemProperty -Path $path |
+Get-ItemProperty -Path $path -ErrorAction SilentlyContinue |
     Select-Object MaxIdleTime, MaxConnectionTime, MaxDisconnectionTime, fResetBroken
 ```
 
 This is what the RDP listener was configured with before any GPO override.
 
-### 3. Live sessions
+### 4. Live sessions
 
 ```powershell
 quser           # currently connected sessions, with IDLE column
 qwinsta         # session states (Active / Disc)
 ```
 
-For a per-DC inventory of the GPO-applied values:
+For a per-DC inventory of the GPO-applied (Computer Configuration) values:
 
 ```powershell
 $dcs = (Get-ADDomainController -Filter *).HostName
@@ -207,11 +217,11 @@ Invoke-Command -ComputerName $dcs -ScriptBlock {
     $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
     $v = Get-ItemProperty -Path $p -ErrorAction SilentlyContinue
     [pscustomobject]@{
-        Server               = $env:COMPUTERNAME
-        MaxIdleTime_min      = if ($v.MaxIdleTime)         { $v.MaxIdleTime         / 60000 } else { $null }
-        MaxConnectionTime_min= if ($v.MaxConnectionTime)   { $v.MaxConnectionTime   / 60000 } else { $null }
-        MaxDisconnectTime_min= if ($v.MaxDisconnectionTime){ $v.MaxDisconnectionTime/ 60000 } else { $null }
-        fResetBroken         = $v.fResetBroken
+        Server                = $env:COMPUTERNAME
+        MaxIdleTime_min       = if ($null -ne $v.MaxIdleTime)          { $v.MaxIdleTime          / 60000 } else { $null }
+        MaxConnectionTime_min = if ($null -ne $v.MaxConnectionTime)    { $v.MaxConnectionTime    / 60000 } else { $null }
+        MaxDisconnectTime_min = if ($null -ne $v.MaxDisconnectionTime) { $v.MaxDisconnectionTime / 60000 } else { $null }
+        fResetBroken          = $v.fResetBroken
     }
 } | Sort-Object Server | Format-Table -AutoSize
 ```
@@ -244,7 +254,7 @@ To trace **which GPO** is responsible, run `gpresult /h gpo-report.html` on the 
 - `MaxIdleTime`, `MaxConnectionTime`, `MaxDisconnectionTime` decide **when** a session expires.
 - `fResetBroken` decides **what happens** when an idle/active timeout fires: stay disconnected (`0`) or fully log off (`1`).
 - For DCs and privileged servers: set timeouts **and** enable `fResetBroken`. For productivity RDS hosts: set timeouts but leave `fResetBroken` disabled to preserve user work.
-- Verify with PowerShell against `HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services`. Trace the responsible GPO with `gpresult /h`.
+- Verify with PowerShell against `HKCU\SOFTWARE\Policies\…\Terminal Services` (User Configuration GPO) and `HKLM\SOFTWARE\Policies\…\Terminal Services` (Computer Configuration GPO). Trace the responsible GPO with `gpresult /h`.
 
 ---
 
@@ -252,8 +262,9 @@ To trace **which GPO** is responsible, run `gpresult /h gpo-report.html` on the 
 
 | Topic | Link |
 |-------|------|
-| Configure timeouts for Remote Desktop sessions | [learn.microsoft.com/en-us/windows-server/remote/remote-desktop-services/clients/remote-desktop-session-time-limits](https://learn.microsoft.com/en-us/windows-server/remote/remote-desktop-services/clients/remote-desktop-allow-log-on) |
-| Remote Desktop Services Session Time Limits ADMX policies | [learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/ee791906(v=ws.11)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/ee791906(v=ws.11)) |
-| `Win32_TSSessionSetting` (programmatic equivalent of these settings) | [learn.microsoft.com/en-us/windows/win32/termserv/win32-tssessionsetting](https://learn.microsoft.com/en-us/windows/win32/termserv/win32-tssessionsetting) |
-| Network security: Force logoff when logon hours expire (the SMB cousin, *not* RDS) | [learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-security-force-logoff-when-logon-hours-expire](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-security-force-logoff-when-logon-hours-expire) |
-| `quser` / `qwinsta` reference | [learn.microsoft.com/en-us/windows-server/administration/windows-commands/quser](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/quser) |
+| `Win32_TSSessionSetting` (WMI / programmatic equivalent of these settings, including `IdleSessionLimit`, `DisconnectedSessionLimit`, `BrokenConnectionAction`) | [learn.microsoft.com/en-us/windows/win32/termserv/win32-tssessionsetting](https://learn.microsoft.com/en-us/windows/win32/termserv/win32-tssessionsetting) |
+| `quser` command-line reference | [learn.microsoft.com/en-us/windows-server/administration/windows-commands/quser](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/quser) |
+| `qwinsta` command-line reference | [learn.microsoft.com/en-us/windows-server/administration/windows-commands/qwinsta](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/qwinsta) |
+| Network security: Force logoff when logon hours expire (the SMB cousin discussed in *Common Pitfalls* — *not* RDS) | [learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-security-force-logoff-when-logon-hours-expire](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-security-force-logoff-when-logon-hours-expire) |
+
+> The five Session Time Limits GPO settings themselves are defined in the `TerminalServer.admx` template shipped with Windows; their canonical descriptions live in the GPO editor itself (right-click → *Help*) rather than on a dedicated Microsoft Learn page.
