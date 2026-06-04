@@ -33,16 +33,23 @@ Before diving into the policies, you need a clear mental model of an RDS session
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Active : User connects (RDP)
-    Active --> Idle : No input for N min (MaxIdleTime)
-    Idle --> Active : User moves mouse / types
-    Active --> Disconnected : User closes window\nNetwork drop\nMaxConnectionTime reached
-    Idle --> Disconnected : MaxIdleTime reached
-    Disconnected --> Active : User reconnects
-    Disconnected --> [*] : MaxDisconnectionTime reached\n(behaviour ruled by fResetBroken)
-    Active --> [*] : User signs out\nor MaxConnectionTime + fResetBroken=1
-    Idle --> [*] : MaxIdleTime + fResetBroken=1
+    direction LR
+    [*] --> Active : RDP connect
+    Active --> Idle : no input<br/>(MaxIdleTime)
+    Idle --> Active : mouse / keyboard
+    Active --> Disconnected : window closed<br/>or network drop
+    Idle --> Disconnected : MaxIdleTime fires<br/>(fResetBroken = 0)
+    Disconnected --> Active : user reconnects
+    Disconnected --> [*] : MaxDisconnectionTime
+    Idle --> [*] : MaxIdleTime fires<br/>(fResetBroken = 1)
+    Active --> [*] : MaxConnectionTime fires<br/>(fResetBroken = 1)<br/>or explicit sign-out
 ```
+
+Reading the diagram:
+
+- The **soft path** (left side) is what happens by default: timeouts push the session into *Disconnected*, where it waits.
+- The **hard path** (right side) is the shortcut that `fResetBroken = 1` opens: idle/active timeouts go straight to logoff.
+- *Disconnected → logged off* is unconditional once `MaxDisconnectionTime` is reached, regardless of `fResetBroken`.
 
 > The key insight: **Disconnected is not the same as Logged off**. By default, when an idle/active timeout fires, Windows only moves the session into the *Disconnected* state. To actually destroy the session, you need to tell Windows to do so — that is exactly the job of `fResetBroken`.
 
