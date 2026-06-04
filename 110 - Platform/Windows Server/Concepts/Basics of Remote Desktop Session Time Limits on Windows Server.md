@@ -88,19 +88,29 @@ When both exist, the **Policies branch wins**.
 
 ---
 
-## Zoom on `fResetBroken`: the Setting You Were Asking About
+## Zoom on `fResetBroken`
 
-The name is historical: think of it as **"force a *reset* (logoff) of a *broken* (timed-out) session"**. It's a binary switch:
+The name is historical: think of it as **"force a *reset* (logoff) of a *broken* (timed-out) session"**.
+
+The most important thing to understand: **`fResetBroken` is not a timer. It's just a switch that changes the consequence of a `MaxIdleTime` / `MaxConnectionTime` expiration.**
 
 | GPO state | `fResetBroken` value | What happens when `MaxIdleTime` or `MaxConnectionTime` fires |
 |-----------|---------------------|--------------------------------------------------------------|
 | **Disabled** or **Not configured** | `0` (or absent) | The session goes from Active/Idle to **Disconnected**. The user can reconnect and find everything as they left it. |
 | **Enabled** | `1` | The session is **logged off** immediately when the limit is reached. Unsaved work is lost. |
 
-Two important subtleties:
+Two important subtleties follow directly from "it's just a switch":
 
-- **`fResetBroken` does nothing on its own.** If `MaxIdleTime` and `MaxConnectionTime` are both unset, no timeout ever fires, so there is nothing to react to. You must pair `fResetBroken` with at least one of the time-limit policies.
-- **`fResetBroken` does not control `MaxDisconnectionTime`.** When a *disconnected* session reaches its `MaxDisconnectionTime` limit, it is **always logged off** — that's the whole point of that timer. `fResetBroken` is only consulted at the *idle/active* expiration moment.
+- **It does nothing on its own.** If neither `MaxIdleTime` nor `MaxConnectionTime` is configured, no timeout ever fires, so there is nothing to arbitrate — `fResetBroken` is simply never consulted. It must always be paired with at least one of those two timers.
+- **It does not control `MaxDisconnectionTime`.** That timer has a single job: clean up disconnected sessions, and **it always ends in a logoff**, regardless of `fResetBroken`.
+
+Summary table — which timer triggers `fResetBroken`?
+
+| Timer | Is `fResetBroken` consulted on expiration? | Outcome |
+|-------|--------------------------------------------|---------|
+| `MaxIdleTime` | Yes | `0` → disconnect, `1` → logoff |
+| `MaxConnectionTime` | Yes | `0` → disconnect, `1` → logoff |
+| `MaxDisconnectionTime` | No | Always logoff |
 
 In short: `fResetBroken` decides whether **idle/active timeouts** translate into a soft *disconnect* or a hard *logoff*.
 
@@ -124,7 +134,9 @@ A user opens Excel on the server, edits a spreadsheet, then leaves for a meeting
 
 If the user never comes back:
 
-5. T+30 min + 2 h = T+2 h 30 min: `MaxDisconnectionTime` fires → session is logged off. Excel closes. Unsaved changes are lost (no one to click Save).
+5. T+2 h 30 min: `MaxDisconnectionTime` fires (it counts 2 h after the session entered *Disconnected* at T+30 min) → session is logged off. Excel closes. Unsaved changes are lost (no one to click Save).
+
+> Wait — wasn't `fResetBroken = 0` supposed to mean *"don't log off"*? Yes, but only for the *idle/active* timeouts (steps 3). Once the session sits in *Disconnected*, it's `MaxDisconnectionTime` that takes over — and **that timer always ends in a logoff**, regardless of `fResetBroken`. Two different timers, two different questions.
 
 ### Scenario B — `fResetBroken = 1` (Enabled)
 
