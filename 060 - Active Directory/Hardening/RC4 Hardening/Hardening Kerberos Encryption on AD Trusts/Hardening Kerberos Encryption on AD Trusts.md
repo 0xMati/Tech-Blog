@@ -415,15 +415,15 @@ The referral is encrypted by the KDC that **issues** it, using **that side's** c
 So hardening one TDO does not protect the reverse direction. **Both TDOs must be hardened**, on both sides of the trust.
 
 ```text
-                  Forest A                                Forest B
-  ┌─────────────────────────┐                  ┌─────────────────────────┐
-  │ TDO of B in A          │                  │ TDO of A in B          │
-  │ msDS-SET = ?  ────────┼── A → B referral ──→ │ (KDC of B decrypts)    │
-  │                       │                  │                       │
-  │ (KDC of A decrypts) ← ┼── B → A referral ────│ msDS-SET = ?  ────────│
-  └─────────────────────────┘                  └─────────────────────────┘
-         Issues A→B referrals,             Issues B→A referrals,
-         decrypts B→A referrals            decrypts A→B referrals
+                       Forest A                                                   Forest B
+  ┌─────────────────────────────────────────┐         ┌─────────────────────────────────────────┐
+  │ TDO of B in A                          │         │ TDO of A in B                          │
+  │ msDS-SupportedEncryptionTypes = ?  ────┼── A → B referral ──→│ (KDC of B decrypts)                    │
+  │                                        │         │                                        │
+  │ (KDC of A decrypts) ←──────────────┼── B → A referral ───│ msDS-SupportedEncryptionTypes = ?     │
+  └─────────────────────────────────────────┘         └─────────────────────────────────────────┘
+         Issues A→B referrals,                                Issues B→A referrals,
+         decrypts B→A referrals                               decrypts A→B referrals
 ```
 
 The **A-side TDO** governs the enctype of every `A → B` referral. The **B-side TDO** governs the enctype of every `B → A` referral. They are independent attributes on independent objects in independent directories, and they can drift out of sync — which is exactly the asymmetry observed between `mathiasmotron.com` and `red.local` in [Lab 2](#lab-2--a-hardened-tdo-is-still-not-enough-forest-trust-to-a-red-forest-).
@@ -1305,7 +1305,7 @@ Realm trusts to non-Windows KDCs are the odd one out: only **your side** is an A
 - **Confusing `/Reset` with `/ResetOneSide`.** `netdom trust ... /ResetOneSide` is a **disaster-recovery operation** used when the two sides have diverged. It is **not** the elegant variant of `/Reset` — using it on a healthy trust will desynchronize it. For normal hardening rotations, always use `/Reset`.
 - **Forgetting intra-forest trusts.** Parent ↔ child and shortcut trusts have TDOs too. A forest built on the Windows Server 2008 schema and never reset to AES still carries RC4 trust keys between every parent and every child. Auto-created does **not** mean auto-modernized.
 - **Trust password rotation that never happens.** The default cadence is 30 days, but Windows **never automatically rotates** forest or external trust passwords. Treat the rotation as a planned maintenance, not a background task.
-- **Tightening the KDC GPO before all TDOs are on AES.** If you enforce `Configure encryption types allowed for Kerberos = 0x80000018` before every TDO has `msDS-SET = 0x18` + a fresh password, every TDO still relying on RC4 material in `supplementalCredentials` will fail cross-realm authentication immediately. Always: **TDOs first → KDC GPO last.**
+- **Tightening the KDC GPO before all TDOs are on AES.** If you enforce `Configure encryption types allowed for Kerberos = 0x80000018` before every TDO has `msDS-SupportedEncryptionTypes = 0x18` + a fresh password, every TDO still relying on RC4 material in `supplementalCredentials` will fail cross-realm authentication immediately. Always: **TDOs first → KDC GPO last.**
 - **Auditing from a single DC.** Replication delays may make a freshly-modified TDO look stale from another DC. Pin the audit to the PDC emulator (or wait for convergence) and re-run on the other side of the trust to surface asymmetries.
 
 ---
