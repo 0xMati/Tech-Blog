@@ -40,16 +40,17 @@ stateDiagram-v2
     Active --> Disconnected : window closed<br/>or network drop
     Idle --> Disconnected : MaxIdleTime fires<br/>(fResetBroken = 0)
     Disconnected --> Active : user reconnects
-    Disconnected --> [*] : MaxDisconnectionTime
-    Idle --> [*] : MaxIdleTime fires<br/>(fResetBroken = 1)
-    Active --> [*] : MaxConnectionTime fires<br/>(fResetBroken = 1)<br/>or explicit sign-out
+    Disconnected --> LoggedOff : MaxDisconnectionTime
+    Idle --> LoggedOff : MaxIdleTime fires<br/>(fResetBroken = 1)
+    Active --> LoggedOff : MaxConnectionTime fires<br/>(fResetBroken = 1)<br/>or explicit sign-out
+    LoggedOff --> [*]
 ```
 
 Reading the diagram:
 
 - The **soft path** (left side) is what happens by default: timeouts push the session into *Disconnected*, where it waits.
-- The **hard path** (right side) is the shortcut that `fResetBroken = 1` opens: idle/active timeouts go straight to logoff.
-- *Disconnected → logged off* is unconditional once `MaxDisconnectionTime` is reached, regardless of `fResetBroken`.
+- The **hard path** (right side) is the shortcut that `fResetBroken = 1` opens: idle/active timeouts go straight to **LoggedOff** (session destroyed, profile unloaded, processes killed).
+- *Disconnected → LoggedOff* is unconditional once `MaxDisconnectionTime` is reached, regardless of `fResetBroken`.
 
 > The key insight: **Disconnected is not the same as Logged off**. By default, when an idle/active timeout fires, Windows only moves the session into the *Disconnected* state. To actually destroy the session, you need to tell Windows to do so — that is exactly the job of `fResetBroken`.
 
