@@ -13,7 +13,7 @@ Read-only PowerShell audit script that automates the inventory phase of the **RC
 | `Get-KdcDefaultAudit` | Reads `DefaultDomainSupportedEncTypes` on every DC in scope — DC-side KDC posture (Article 2 §2 Source 0a, required by §8 Definition of Done). |
 | `Get-Rc4DisablementPhaseAudit` | Reads `RC4DefaultDisablementPhase` (KB5073381 / Jan 2026) on every DC — the per-DC valve that controls whether Kdcsvc 201-209 are produced (Article 2 §2 Source 0b). |
 | `Get-AccountKerberosAudit` | LDAP inventory of `msDS-SupportedEncryptionTypes` on users, computers and managed service accounts (Article 2 §2 Source 2 + §5 Pattern D capability evidence). |
-| `Get-KerberosEventAudit` | Collects 4768 + 4769 over a configurable window, with the post-January-2025 fields `Available Keys`, `Advertised Etypes`, `Pre-Authentication EncryptionType`, and `Session Encryption Type` (Article 2 §2 Source 1 + §5 Patterns A, B, C). |
+| `Get-KerberosEventAudit` | Collects 4768 + 4769 over a configurable window, leveraging the post-KB5021131 (Nov 2022) enriched fields `Ticket Encryption Type`, `Available Keys`, `Advertised Etypes`, `Pre-Authentication EncryptionType` and `Session Encryption Type` (Article 2 §2 Source 1 + §5 Patterns A, B, C). |
 | `Get-KdcsvcEventAudit` | Collects Kdcsvc System-log events 201-209 from each DC at Phase ≥ 1, mapped to Patterns B / D / Hygiene per Article 1 §6 (Article 2 §2 Source 0c). |
 | `Invoke-TrustEncryptionAudit` | Self-contained TDO inventory via `Get-ADTrust` (no external script dependency since v1.1.6). Reads `msDS-SupportedEncryptionTypes` + `trustAttributes` on every Trusted Domain Object visible from the local domain, classifies each one (AES-only / Mixed / RC4-only / Legacy-DES / Unset) and folds the rows into the report when `-IncludeTrusts` is set (Article 2 §2 Source 3, §5 Pattern C). |
 | `Build-Rc4Backlog` | Produces the §0 deliverable: one row per dependency with deterministic Blast-radius / Exposure / Fix-cost scoring (1–9), owner from `-OwnerMappingPath`, and a recommended action. |
@@ -32,16 +32,16 @@ Read-only PowerShell audit script that automates the inventory phase of the **RC
 **Permissions:**
 
 - **Domain Users** is sufficient to read `msDS-SupportedEncryptionTypes` on accounts and `DefaultDomainSupportedEncTypes` on the domain object (default ACL).
-- **Event Log Readers** group membership (or equivalent) on every DC in scope — required to read Security log (4768/4769/4771) and System log (Kdcsvc 201-209) remotely.
+- **Event Log Readers** group membership (or equivalent) on every DC in scope — required to read Security log (4768/4769) and System log (Kdcsvc 201-209) remotely.
 - **Remote registry** read access on every DC — required for `RC4DefaultDisablementPhase`.
 - No write permissions are needed and none are requested. If the running account has Domain Admin rights the script does not exercise them.
 
 **On every DC in scope:**
 
-- **Audit policy `Account Logon → Kerberos Authentication Service`** = Success (4768/4771 generation). Verify with `auditpol /get /category:"Account Logon"`.
+- **Audit policy `Account Logon → Kerberos Authentication Service`** = Success (4768 generation). Verify with `auditpol /get /category:"Account Logon"`.
 - **Audit policy `Account Logon → Kerberos Service Ticket Operations`** = Success (4769 generation).
 - **Security log size ≥ 1 GB** so 4768/4769 events are not rotated out of the observation window.
-- For Kdcsvc 201-209 visibility: **`RC4DefaultDisablementPhase = 1` (or `2`)** in `HKLM\SYSTEM\CurrentControlSet\Services\Kdc\Parameters` (KB5073381, January 2026 cumulative or later). Phase 0 / absent registry → no Kdcsvc events; the audit will report this gap as a finding.
+- For Kdcsvc 201-209 visibility: **`RC4DefaultDisablementPhase = 1` (or `2`)** in `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters` (KB5073381, January 2026 cumulative or later). Phase 0 / absent registry → no Kdcsvc events; the audit will report this gap as a finding. *Note: do not confuse this hive with `HKLM\SYSTEM\CurrentControlSet\Services\Kdc`, which holds the unrelated `DefaultDomainSupportedEncTypes` value.*
 
 ---
 
@@ -50,7 +50,7 @@ Read-only PowerShell audit script that automates the inventory phase of the **RC
 | Parameter | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `-Days` | `int` | `1` | Observation window for 4768/4769/Kdcsvc collection, in days. Common values: 1 (smoke test), 7 (1 week), 14 (2 weeks — recommended baseline). Range 1-365. |
-| `-DomainControllers` | `string[]` | All DCs in current forest | Optional subset. Use FQDNs. Useful for piloting on one DC before forest-wide collection. |
+| `-DomainControllers` | `string[]` | All DCs in current domain | Optional subset. Use FQDNs. Useful for piloting on one DC before domain-wide collection. The default uses `Get-ADDomainController -Filter *` and therefore covers the **current domain only** — to audit other domains in the same forest, run the script once per domain. |
 | `-MaxEventsPerDc` | `int` | `5000` | Per-DC cap on collected Kerberos events to avoid runaway runs in large environments. Increase if the report shows a "truncated" warning on hot DCs. |
 | `-ExportCsv` | `switch` | off | Emit per-section CSVs alongside HTML/JSON (accounts, tickets, Kdcsvc, trusts, backlog). `Backlog.csv` is *always* written when the backlog has rows — independent of this switch. |
 | `-OpenReport` | `switch` | off | Open the generated HTML report in the default browser when the run finishes. |
@@ -63,7 +63,7 @@ Read-only PowerShell audit script that automates the inventory phase of the **RC
 ## Quick start
 
 ```powershell
-# Default: 1-day window, all DCs in current forest, HTML + JSON reports
+# Default: 1-day window, all DCs in current domain, HTML + JSON reports
 .\Invoke-KerberosEncryptionAudit.ps1
 
 # 7-day window, open the report when done
@@ -100,10 +100,10 @@ Each run creates `Outputs\KerberosEncryptionAudit_<yyyyMMdd_HHmmss>\` (or the di
 
 | File | When produced | Content |
 | --- | --- | --- |
-| `Report.html` | Always | Unified human-readable report (DC posture, accounts, tickets, Kdcsvc, trusts, backlog). |
-| `Report.json` | Always | Same data as HTML, machine-readable — feed into a SIEM or downstream automation. |
-| `Backlog.csv` | When ≥ 1 backlog row was scored | **The Article 2 §0 deliverable** — prioritized remediation backlog, one row per RC4 dependency, with deterministic scoring (BlastRadius / Exposure / FixCost / Score 1–9), Source (which detection produced the row: account capability, RC4 ticket, RC4 client ≥ 50 events, non-AES TDO, etc.), RecommendedAction, and Owner (from `-OwnerMappingPath`). Always written when the backlog has rows, **independent of `-ExportCsv`** — the HTML report only displays the first 50 rows, so the CSV is the canonical full-dataset artefact you hand to remediation owners. |
-| `Accounts.csv`, `Tickets.csv`, `Kdcsvc.csv`, `Trusts.csv` | `-ExportCsv` only | Per-section dumps for spreadsheet triage. |
+| `KerberosEncryptionAudit.html` | Always | Unified human-readable report (DC posture, accounts, tickets, Kdcsvc, trusts, backlog). |
+| `KerberosEncryptionAudit.json` | Always | Same data as HTML, machine-readable — feed into a SIEM or downstream automation. |
+| `Backlog.csv` | When ≥ 1 backlog row was scored | **The Article 2 §0 deliverable** — prioritized remediation backlog, one row per RC4 dependency, with deterministic scoring (BlastRadius / Exposure / FixCost / Score 1–9), Source (which detection produced the row: account capability, RC4 ticket, RC4 client ≥ 50 events, non-AES TDO, etc.), RecommendedAction, and Owner (from `-OwnerMappingPath`). Always written when the backlog has rows, **independent of `-ExportCsv`** — the HTML report only displays the first 200 rows, so the CSV is the canonical full-dataset artefact you hand to remediation owners. |
+| `KdcsvcEvents.csv`, `KdcsvcSummary.csv`, `PriorityAccounts.csv`, `TicketBreakdownByType.csv`, `TicketBreakdownGlobal.csv`, `Rc4RequestorAccounts.csv`, `Rc4TargetServices.csv`, `Trusts.csv`, `AllTicketEvents.csv` | `-ExportCsv` only | Per-section dumps for spreadsheet triage. `AllTicketEvents.csv` is the unfiltered 4768/4769 dataset; `PriorityAccounts.csv` is the curated short-list used by the HTML report; the two `TicketBreakdown*` CSVs are pivot-friendly aggregates by ticket type and globally. |
 
 ---
 
@@ -116,24 +116,13 @@ The HTML output is structured around four questions, in this order:
 3. **Is RC4 still present in live Kerberos traffic?** — *Kdcsvc* (KDC-side flagged events 201-209) + *Tickets* + *RC4 Hotspots* sections. The Kdcsvc table is usually the cheapest entry point because the KDC has already extracted the offending account name.
 4. **What is the prioritized remediation backlog?** — the *Backlog* section materializes the Article 2 §0 deliverable with deterministic scoring. Rows at score ≥ 8 are immediate-wave; 6-7 are next wave; below 6 are after quick wins or decommission candidates.
 
-Recommended triage order:
-
-```mermaid
-flowchart TD
-	A[DC posture: Default + Phase] --> B[Accounts + Trusts]
-	B --> C[Kdcsvc 201-209 events]
-	C --> D[Live tickets + RC4 hotspots]
-	D --> E[Backlog rows by score]
-	E --> F[Assign Article 2 §4 wave + owner]
-```
-
-Move from control plane (what is allowed) to KDC-flagged events (what the KDC actually rejects) to data plane (what the KDC actually issues), then read the backlog rows top-down by score.
+Move from control plane (what is allowed) to KDC-flagged events (what the KDC actually rejects) to data plane (what the KDC actually issues), then read the backlog rows top-down by score, and assign each row to an Article 2 §4 wave + owner.
 
 ---
 
 ## Known limitations
 
-The tool is read-only and forest-local by design. Its remaining honest limitations are:
+The tool is read-only and domain-local by design (one run per domain — see `-DomainControllers` note above). Its remaining honest limitations are:
 
 - **Single-side trust view.** `Invoke-TrustEncryptionAudit` inventories only the LOCAL side of each trust via `Get-ADTrust`. Each TDO has a twin on the remote side with its own `msDS-SupportedEncryptionTypes`. Run the same audit there to compare.
 - **Attribute-only trust classification.** AES-only at the attribute level does not guarantee AES referrals — the trust password must have been rotated *after* the attribute change for AES keys to be materialized in `supplementalCredentials`. The tool flags this caveat but cannot read `supplementalCredentials`.
@@ -163,14 +152,21 @@ The scenarios below let you verify each detection path of the script against a l
 On the host where you run the script (typically a member server or jump box with RSAT and PowerShell 7):
 
 ```powershell
-$pwd       = ConvertTo-SecureString 'Temp!Audit2026Long!' -AsPlainText -Force
+$labPwd    = ConvertTo-SecureString 'Temp!Audit2026Long!' -AsPlainText -Force
 $dc        = (Get-ADDomain).PDCEmulator
 $lab       = (Get-ADDomain).DNSRoot
 $scriptDir = 'C:\Temp\KerberosAudit'   # adjust to your local copy
 $out       = Join-Path $scriptDir 'Outputs'
-function Run-Audit { param($Tag) & "$scriptDir\Invoke-KerberosEncryptionAudit.ps1" -Days 1 -IncludeTrusts -OutputDir (Join-Path $out $Tag) }
+function Run-Audit {
+    param([string]$Tag, [int]$Days = 1, [string[]]$Dcs)
+    $args = @{ Days = $Days; IncludeTrusts = $true; OutputDir = (Join-Path $out $Tag) }
+    if ($Dcs) { $args['DomainControllers'] = $Dcs }
+    & "$scriptDir\Invoke-KerberosEncryptionAudit.ps1" @args
+}
 function Show-Json { param($Tag) Get-Content (Join-Path $out "$Tag\KerberosEncryptionAudit.json") -Raw | ConvertFrom-Json }
 ```
+
+> The password literal above is renamed to `$labPwd` (the built-in PowerShell variable `$pwd` holds your current location — do not shadow it). When the test rows below say `$pwd`, substitute `$labPwd`.
 
 On the **client of test** (any domain-joined workstation, distinct from a DC):
 
@@ -292,7 +288,7 @@ Invoke-Command -ComputerName <client1>,<client2> -ScriptBlock {
 | *Tickets* section shows "truncated" warning on a hot DC | `MaxEventsPerDc` cap reached | Increase `-MaxEventsPerDc`, or split the run by `-DomainControllers` per DC, or shorten `-Days`. |
 | Kdcsvc section completely empty on a recent OS | DC at Phase 0 or KB5073381 not yet deployed | Verify `RC4DefaultDisablementPhase` (the script reports this in *DC posture*). Set to `1` once you are ready to surface the events. |
 | Backlog rows all show `Owner = TBD` | No `-OwnerMappingPath` or no patterns matched | Provide an `owners.csv` with account/SPN wildcard patterns. |
-| `Report.html` looks broken / missing sections | Run interrupted mid-collection | Re-run with the same parameters; each run writes a new timestamped folder. |
+| `KerberosEncryptionAudit.html` looks broken / missing sections | Run interrupted mid-collection | Re-run with the same parameters; each run writes a new timestamped folder. |
 
 ---
 
