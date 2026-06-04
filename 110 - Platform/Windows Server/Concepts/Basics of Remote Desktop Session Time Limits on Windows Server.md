@@ -56,9 +56,9 @@ Reading the diagram:
 
 ---
 
-## The Four Policies That Govern Session Time Limits
+## The Five Policies That Govern Session Time Limits
 
-All four live in the same GPO node:
+All five live in the same GPO node:
 
 > **Computer Configuration → Policies → Administrative Templates → Windows Components → Remote Desktop Services → Remote Desktop Session Host → Session Time Limits**
 
@@ -70,8 +70,11 @@ All four live in the same GPO node:
 | Set time limit for **active** Remote Desktop Services sessions | `MaxConnectionTime` | What is the maximum total duration of an active session, regardless of activity? |
 | Set time limit for **disconnected** sessions | `MaxDisconnectionTime` | How long do we keep a disconnected session alive before logging it off automatically? |
 | **End session when time limits are reached** | **`fResetBroken`** | When `MaxIdleTime` or `MaxConnectionTime` expires, do we just disconnect (`0`) or fully log off (`1`)? |
+| Set time limit for logoff of **RemoteApp** sessions | `MaxDisconnectionTime` (RemoteApp scope, applied via the same key) | RemoteApp-specific: how long after the last RemoteApp window closes before the underlying session is logged off? |
 
-All four sit under the same registry key when applied by GPO:
+The first four apply to full RDP desktops *and* to RemoteApp sessions. The fifth narrows the **disconnect → logoff** behaviour for RemoteApp only: when a user closes the last published RemoteApp window, the session goes Disconnected, and this policy decides how long Windows waits before logging it off (default: 20 seconds in current Windows builds, but increased here lets users reopen a RemoteApp without re-authenticating). For full desktops, `MaxDisconnectionTime` from the third row is what matters.
+
+All five sit under the same registry key when applied by GPO:
 
 `HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services`
 
@@ -145,7 +148,7 @@ There is no universal "right" value — it depends on the workload and the popul
 | **VDI personal desktop** | 30 min – 1 h | Not set | 15 min | Disabled (0) | The desktop is dedicated; reconnecting fast is the priority. |
 | **Application server (rarely interactive)** | 30 min | Not set | 0 (immediate) | **Enabled (1)** | Operators should not leave RDP sessions parked on production app servers. |
 
-> Whichever values you choose, **document them** and surface them to users with a logoff warning. The companion policy *"Set time limit for logoff of RemoteApp sessions"* and Windows' built-in 2-minute warning dialog help make forced logoffs predictable.
+> Whichever values you choose, **document them** and surface them to users with a logoff warning. Windows' built-in 2-minute warning dialog helps make forced logoffs predictable. If you publish RemoteApps, also tune the *Set time limit for logoff of RemoteApp sessions* policy so that closing a RemoteApp window doesn't trigger a logoff faster than users expect.
 
 ---
 
