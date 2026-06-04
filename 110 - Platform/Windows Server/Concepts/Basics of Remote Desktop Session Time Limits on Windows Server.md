@@ -148,17 +148,21 @@ Same `MaxIdleTime`, very different user experience. That is the whole purpose of
 
 ---
 
-## Recommendations by Server Role
+## Common Starting Points by Server Role
 
-There is no universal "right" value — it depends on the workload and the population of users hitting the box.
+There is no universal "right" value, and there is no official Microsoft baseline that prescribes these timers per role — security baselines (DC, Member Server) leave them unconfigured. The values below are **operational starting points** based on common security and usability principles, not normative recommendations. Tune them to your context.
 
 | Server role | MaxIdleTime | MaxConnectionTime | MaxDisconnectionTime | fResetBroken | Rationale |
 |-------------|-------------|-------------------|----------------------|--------------|-----------|
-| **Domain Controller** | 15 min | Not set | 0 (immediate) | **Enabled (1)** | DCs should never carry interactive sessions. Admins must log off cleanly; no zombies allowed. |
-| **Jump server / PAW / Bastion** | 15 min | 8 h | 5 min | **Enabled (1)** | Privileged work should not linger. Forced logoff prevents ticket caches and credentials from sitting on disk indefinitely. |
-| **RDS Session Host (multi-user productivity)** | 2 h | Not set | 1 h | Disabled (0) on idle; Enabled (1) only on disconnect timeout (which is automatic) | Users expect to come back to their work. Forced idle logoff would generate help-desk tickets. |
-| **VDI personal desktop** | 30 min – 1 h | Not set | 15 min | Disabled (0) | The desktop is dedicated; reconnecting fast is the priority. |
-| **Application server (rarely interactive)** | 30 min | Not set | 0 (immediate) | **Enabled (1)** | Operators should not leave RDP sessions parked on production app servers. |
+| **Domain Controller** | 15 min | Not set | 1 min | **Enabled (1)** | No interactive session should linger on a DC. |
+| **Jump server / PAW / Bastion** | 15 min | 8 h | 5 min | **Enabled (1)** | Privileged work should not outlive the human doing it; forced logoff clears ticket caches and cached credentials. |
+| **RDS Session Host (multi-user productivity)** | 2 h | Not set | 1 h | Disabled (0) | Users expect to reconnect to their work; forced idle logoff would generate help-desk tickets. |
+| **VDI personal desktop** | 30 min – 1 h | Not set | 15 min | Disabled (0) | Dedicated desktop; fast reconnect is the priority. |
+| **Application server (rarely interactive)** | 30 min | Not set | 1 min | **Enabled (1)** | Operators should not park RDP sessions on production app servers. |
+
+> Notes on the table:
+> - `MaxDisconnectionTime` of `0` in the registry means **"Never"** (disconnected sessions never log off automatically), *not* "immediate". Use `1 min` if you want an effectively-immediate cleanup of disconnected sessions.
+> - `fResetBroken` is a single switch — it can't be enabled for one timer and disabled for another. Disconnected sessions reaching `MaxDisconnectionTime` are always logged off regardless.
 
 > Whichever values you choose, **document them** and surface them to users with a logoff warning. Windows' built-in 2-minute warning dialog helps make forced logoffs predictable. If you publish RemoteApps, also tune the *Set time limit for logoff of RemoteApp sessions* policy so that closing a RemoteApp window doesn't trigger a logoff faster than users expect.
 
