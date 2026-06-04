@@ -97,3 +97,12 @@ That tells you a legacy mechanism wrote `EnableFirewall=0` directly in the regis
 - The script is read-only. It does not change any setting on any DC.
 - Microsoft Security Baseline recommends **all three profiles enabled** on every server, including DCs. The script flags any disabled profile as a divergence accordingly.
 - On Server SKUs the WSC (Security Center) namespace is absent — that is normal and reported as `N/A`, not as a divergence.
+
+## References
+
+- [Windows Firewall — Best practices for configuring](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/best-practices) — official guidance: keep the firewall **enabled on all three profiles**, with **Inbound = Block** and **Outbound = Allow** as defaults.
+- [Securing domain controllers against attack](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/securing-domain-controllers-against-attack) — recommends the host-based firewall on every DC and lists the ports the DC role requires.
+- [Best practices for securing Active Directory — *Use host-based firewalls to control and secure communications*](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory#security-measure-summary-table) — listed as a tactical preventative measure in the official AD security summary table.
+- [Windows Security Baselines](https://learn.microsoft.com/en-us/windows/security/operating-system-security/device-management/windows-security-configuration-framework/windows-security-baselines) — canonical source for the per-profile settings (`Domain/Private/Public = Enabled`, `DefaultInboundAction = Block`, `DefaultOutboundAction = Allow`). Downloadable as GPO backups via the **Security Compliance Toolkit**.
+- [How to configure RPC dynamic port allocation to work with firewalls](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/configure-rpc-dynamic-port-allocation-with-firewalls) — useful when you also need to restrict the DC's RPC dynamic port range.
+- [Get-NetFirewallProfile](https://learn.microsoft.com/en-us/powershell/module/netsecurity/get-netfirewallprofile) — cmdlet reference used as the script's authoritative source.
