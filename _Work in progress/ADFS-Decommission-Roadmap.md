@@ -2,7 +2,7 @@
 
 Date : 2026-06-05
 
-## Contexte client
+## Contexte
 
 - Ferme **AD FS** existante, fédérée à **Entra ID**.
 - **~90 Relying Parties** (RP) à migrer.
@@ -34,18 +34,18 @@ gantt
     axisFormat %s
     section Identité
     Phase 1 - Cutover internes vers PHS managed     :a1, 0, 3
-    Phase 2 - Externes vers Entra B2B Guest         :a2, 1, 3
+    Phase 3 - Externes vers Entra B2B Guest         :a2, 3, 3
     section Self-Service
-    Phase 3a - Portail demande compte externe       :b1, 2, 3
-    Phase 3b - Portail demande d'accès RP           :b2, 2, 3
+    Phase 2a - Portail demande compte externe       :b1, 0, 3
+    Phase 2b - Portail demande d'accès RP           :b2, 0, 3
     section Apps
-    Phase 4 - Migration des 90 RP par vagues        :c1, 2, 6
+    Phase 4 - Migration des 90 RP par vagues        :c1, 3, 5
     section Décom
-    Phase 5 - Décommissionnement AD FS              :d1, 6, 2
-    Phase 6 - Run & optimisation                    :d2, 7, 2
+    Phase 5 - Décommissionnement AD FS              :d1, 8, 1
+    Phase 6 - Run & optimisation                    :d2, 9, 2
 ```
 
-> Les durées sont **relatives**, à caler avec le client en fonction des effectifs disponibles, des fenêtres de change et de la criticité métier.
+> Les durées sont **relatives** et à affiner en fonction des effectifs disponibles, des fenêtres de change et de la criticité métier.
 
 ---
 
@@ -65,26 +65,11 @@ gantt
 
 ---
 
-## Phase 2 — Migrer les externes vers Entra B2B Guest *(parallélisable avec Phase 1)*
+## Phase 2 — Construire les deux portails self-service Entra *(parallélisable avec Phase 1)*
 
-**Décision structurante** : les externes ne sont **plus dans un AD**, ils deviennent des **Guests Entra** (ou *External member* selon les cas). C'est un changement majeur sur le cycle de vie des comptes — à anticiper côté gouvernance.
+> Les portails doivent être opérationnels **avant** d'envoyer des externes vers Entra (Phase 3) ou de migrer les apps (Phase 4) — sinon il y a une rupture de service self-service pendant la transition.
 
-| Action | Détail |
-|--------|--------|
-| Inventaire | Export du 2e AD : externes actifs vs dormants vs comptes de service. Nettoyage avant migration |
-| Mapping | Pour chaque externe : email professionnel valide ? Si non → process à part (sponsor désigne email valide ou OTP) |
-| Stratégie d'invitation | B2B *Invitation Redemption* avec *Federation* vers leur tenant Entra si dispo, sinon Microsoft Account ou one-time passcode |
-| Cross-tenant access settings | À configurer si les externes viennent de tenants connus (partenaires) → améliore l'UX (*SSO transparent*) |
-| Cycle de vie | **Access Reviews** trimestrielles sur les Guests, sinon ça pourrit vite |
-| Conditional Access | Politique dédiée Guests (MFA obligatoire, *Compliant device* non requis, *Sign-in frequency* renforcée) |
-
-**Sortie de phase** : tous les externes ayant un usage actif sont invités comme Guests. L'AD externe peut entrer en *read-only* puis être planifié pour décommission.
-
----
-
-## Phase 3 — Reconstruire les deux portails self-service sur Entra
-
-### 3a. Demande de création de compte externe → Entitlement Management + External user lifecycle
+### 2a. Demande de création de compte externe → Entitlement Management + External user lifecycle
 
 L'équivalent Entra du portail actuel n'est **pas un seul produit**, c'est une combinaison :
 
@@ -98,7 +83,7 @@ L'équivalent Entra du portail actuel n'est **pas un seul produit**, c'est une c
 
 > Si le portail actuel a des **règles de validation très métier** (numéro de contrat, code projet, double approbation hiérarchique + sécurité), les **Custom Extensions** sont indispensables et c'est là que se cache la complexité.
 
-### 3b. Demande d'accès aux applications → Access Packages liés aux Enterprise Apps
+### 2b. Demande d'accès aux applications → Access Packages liés aux Enterprise Apps
 
 Bien plus simple à reproduire :
 
@@ -110,9 +95,29 @@ Bien plus simple à reproduire :
 
 **Avantage gros par rapport à AD FS** : auditabilité totale dans Entra, intégration native avec CA, et l'utilisateur voit toutes ses demandes / accès dans `myaccess.microsoft.com`.
 
+**Sortie de phase** : les deux portails sont en production sur Entra. Les portails AD FS legacy peuvent rester actifs en parallèle pendant la transition (lecture seule à terme).
+
 ---
 
-## Phase 4 — Migration des 90 RP par vagues *(commence dès Phase 1 stable)*
+## Phase 3 — Migrer les externes vers Entra B2B Guest *(prérequis : Phase 2 livrée)*
+
+**Décision structurante** : les externes ne sont **plus dans un AD**, ils deviennent des **Guests Entra** (ou *External member* selon les cas). C'est un changement majeur sur le cycle de vie des comptes — à anticiper côté gouvernance.
+
+| Action | Détail |
+|--------|--------|
+| Inventaire | Export du 2e AD : externes actifs vs dormants vs comptes de service. Nettoyage avant migration |
+| Mapping | Pour chaque externe : email professionnel valide ? Si non → process à part (sponsor désigne email valide ou OTP) |
+| Stratégie d'invitation | B2B *Invitation Redemption* avec *Federation* vers leur tenant Entra si dispo, sinon Microsoft Account ou one-time passcode |
+| Cross-tenant access settings | À configurer si les externes viennent de tenants connus (partenaires) → améliore l'UX (*SSO transparent*) |
+| Cycle de vie | **Access Reviews** trimestrielles sur les Guests, sinon ça pourrit vite |
+| Conditional Access | Politique dédiée Guests (MFA obligatoire, *Compliant device* non requis, *Sign-in frequency* renforcée) |
+| Nouvelles demandes en flux | Les nouvelles créations passent **immédiatement** par le portail Entra (Phase 2a), pas par l'ancien AD externe |
+
+**Sortie de phase** : tous les externes ayant un usage actif sont invités comme Guests. L'AD externe peut entrer en *read-only* puis être planifié pour décommission.
+
+---
+
+## Phase 4 — Migration des 90 RP par vagues *(commence dès Phases 1 et 2 stables)*
 
 ### Stratégie de découpage en vagues
 
@@ -163,7 +168,7 @@ Bien plus simple à reproduire :
 
 ## Phase 6 — Run & optimisation
 
-- Activer toutes les briques Entra que tu n'avais pas avant : **CA granulaire**, **Risk-based policies** (Identity Protection), **PIM**, **Token Protection**, **Continuous Access Evaluation**.
+- Activer les briques Entra non encore en place : **CA granulaire**, **Risk-based policies** (Identity Protection), **PIM**, **Token Protection**, **Continuous Access Evaluation**.
 - Bascule des **Authentication Methods** sur la nouvelle expérience (Authenticator-only à terme).
 - **Branded sign-in** pour cohérence visuelle après disparition de la page ADFS.
 - Surveillance : *Workbook Entra Sign-In Failures* + alertes Sentinel sur anomalies.
@@ -211,14 +216,14 @@ Bien plus simple à reproduire :
 | RP avec claim rules complexes non traduisibles | Bloquant pour le RP | Pré-analyse fine via assessment tool, fallback : conserver ADFS pour ce RP isolé jusqu'à refonte |
 | SAP : retards sur côté SAP IdP | Décale Phase 5 | Démarrer SAP en parallèle dès Phase 1, pas en dernier — kickoff dès le début |
 | Helpdesk débordé | Insatisfaction users, escalade DG | Vagues petites, scripts de support prêts, FAQ à jour, équipe N1 renforcée pendant cutover |
-| Comptes service / non-interactifs sur ADFS | Surprises post-décom | Inventaire dès Phase 0 : *Service Principal* à recréer côté Entra, *Workload Identity* |
+| Comptes service / non-interactifs sur ADFS | Surprises post-décom | Inventaire dès la phase de cadrage : *Service Principal* à recréer côté Entra, *Workload Identity* |
 | Réversibilité fédération "à 0%" mal testée | Catastrophique en cas de pépin | Procédure `Update-MgDomain -AuthenticationType Federated` validée à chaque vague d'internes, pas seulement au début |
 
 ---
 
-## Quick wins à proposer en parallèle
+## Quick wins en parallèle
 
-À pousser tôt pour montrer de la valeur visible et préparer le terrain :
+À déclencher tôt pour produire de la valeur visible et préparer le terrain :
 
 - **SSPR** activé → réduit charge helpdesk avant même la décom ADFS.
 - **MFA via Authenticator push** → meilleure UX que SMS, prépare aux Phishing-resistant methods.
@@ -234,4 +239,4 @@ Bien plus simple à reproduire :
 - Architecture cible des **2 portails self-service** (diagrammes des flux, intégrations Logic Apps).
 - Inventaire des **comptes de service / SPN** côté ADFS et leur stratégie de remplacement.
 - Stratégie **certificats** (signing / encryption) côté Entra (rotation, monitoring expiration).
-- Plan de **bascule réseau** (suppression entrée DNS `sts.client.com`, suppression WAP).
+- Plan de **bascule réseau** (suppression entrée DNS `sts.entreprise.com`, suppression WAP).
