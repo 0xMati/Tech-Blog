@@ -77,16 +77,16 @@ gantt
     dateFormat X
     axisFormat %s
     section Internes
-    Phase 1 - Bascule internes vers PHS       :a1, 0, 4
-    Phase 3 - Migration apps internes-only    :a3, 2, 5
+    Phase 1 - Bascule internes vers PHS       :a1, 0, 4s
+    Phase 3 - Migration apps internes-only    :a3, 2, 5s
     section Fondations
-    Phase 2 - Fondations Entra & Quick Wins   :a2, 0, 3
+    Phase 2 - Fondations Entra & Quick Wins   :a2, 0, 3s
     section Externes
-    Phase 4 - Provisioning Guest (Logic App)  :b1, 2, 3
-    Phase 5 - Migration apps avec externes    :b2, 5, 5
+    Phase 4 - Provisioning Guest (Logic App)  :b1, 2, 3s
+    Phase 5 - Migration apps avec externes    :b2, 5, 5s
     section Décom
-    Phase 6 - Extinction AD FS                :c1, 10, 1
-    Phase 7 - Run & perspectives              :c2, 11, 2
+    Phase 6 - Extinction AD FS                :c1, 10, 1s
+    Phase 7 - Run & perspectives              :c2, 11, 2s
 ```
 
 **Points clés du séquencement :**
@@ -198,13 +198,12 @@ gantt
 
 1. **Adapter le workflow du ticketing** : la validation finale du ticket déclenche un appel à une **Logic App**.
 2. **Logic App de création de Guest** : invitation B2B dans Entra avec paramètres (sponsor, durée, organisation, etc.).
-3. **Cycle de vie minimal des Guests** :
-   - Notification J-30 d'expiration au sponsor.
-   - Désactivation automatique des Guests inactifs ou expirés.
-4. **Identification et résolution des dérives « double compte »** :
+3. **Identification et résolution des dérives « double compte »** :
    - Lister les utilisateurs présents dans les deux AD.
    - Trancher au cas par cas : conserver l'identité interne, créer un Guest, ou supprimer l'un des deux.
-5. **Migration progressive de la population externe historique** vers les Guests, par vagues, **avant** le démarrage de la Phase 5.
+4. **Migration progressive de la population externe historique** vers les Guests, par vagues, **avant** le démarrage de la Phase 5.
+
+> Le **cycle de vie automatisé des Guests** (notification d'expiration au sponsor, désactivation des inactifs, revues d'accès périodiques) n'est pas couvert par la Logic App. Ce sujet est traité en **Phase 7** parmi les perspectives futures.
 
 ### Approche alternative (mentionnée pour le futur)
 
@@ -297,6 +296,7 @@ gantt
 | Sujet | Apport | Quand |
 |-------|--------|-------|
 | **Cross-Tenant Sync** | Synchronisation automatique de comptes entre tenants Entra partenaires. Élimine les invitations B2B manuelles pour les partenaires fréquents. | Lorsque des partenaires majeurs sont identifiés et alignés |
+| **Cycle de vie automatisé des Guests** | Notification d'expiration au sponsor (J-30), désactivation des Guests inactifs ou expirés, revues d'accès périodiques. Couvert par **Lifecycle Workflows** et **Access Reviews**. | Lorsque l'organisation veut industrialiser la gouvernance des externes |
 | **Migration vers App Governance / Access Packages** | Audit, revues d'accès périodiques, expiration automatique, expérience utilisateur unifiée sur `myaccess.microsoft.com`. À terme, supprime la dépendance au ticketing pour la création de Guest et la demande d'accès. | Lorsque l'organisation est prête à adopter le modèle |
 | **MFA renforcée pour les Guests (et tous)** | La cible Entra rend possible l'application cohérente du MFA sur la totalité de la population, internes comme Guests. Pas réalisable avec AD FS. | À planifier dès stabilisation post-décom |
 | **Scénarios Conditional Access étendus** | Politiques granulaires par contexte (appareil conforme, géolocalisation, niveau de risque, type d'application). La cible Entra ouvre tous ces scénarios — auparavant limités par AD FS. | À piloter par la sécurité, post-décom |
