@@ -2,7 +2,7 @@
 
 Date : 2026-06-05
 
-## En une page
+## Résumé exécutif
 
 Le projet vise à **supprimer la ferme AD FS** existante et à confier toute l'authentification directement à **Entra ID**.
 
