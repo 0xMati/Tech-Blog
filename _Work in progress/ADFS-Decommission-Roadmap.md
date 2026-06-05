@@ -8,15 +8,17 @@ Le projet vise à **supprimer la ferme AD FS** existante et à confier toute l'a
 
 L'approche retenue privilégie les **gains rapides et visibles dès le début** (réinitialisation de mot de passe, reporting, portails utilisateur unifiés), puis suit l'ordre logique suivant :
 
-1. **Phase 1** — Fondations Entra & Quick Wins *(en parallèle de tout)* ⚡
-2. **Phase 2** — Bascule des utilisateurs internes vers Entra (PHS) ⚡
+1. **Phase 1** — Bascule des utilisateurs internes vers Entra (PHS) ⚡
+2. **Phase 2** — Fondations Entra & Quick Wins *(en parallèle de Phase 1)* ⚡
 3. **Phase 3** — Migration des applications utilisées uniquement par les internes ⚡
 4. **Phase 4** — Mise en place du provisioning des comptes externes (Guest)
 5. **Phase 5** — Migration des applications utilisées par les externes *(dépend de Phase 4)*
 6. **Phase 6** — Extinction d'AD FS ⚡
 7. **Phase 7** — Run et perspectives futures *(Cross-Tenant Sync, App Governance, MFA renforcée, scénarios CA étendus)*
 
-Le symbole ⚡ identifie les phases ayant un **impact direction** rapide et mesurable.
+Le symbole ⚡ identifie les phases ayant un **effort minimal**, un **impact rapide et mesurable**.
+
+> Les **Phases 1 et 2 sont interchangeables** : elles se déroulent en parallèle et n'ont aucune dépendance entre elles. L'ordre proposé reflète la maturité actuelle du projet (pilote PHS déjà opérationnel — autant capitaliser dessus immédiatement).
 
 ---
 
@@ -74,11 +76,11 @@ gantt
     title Phases de décommissionnement AD FS
     dateFormat X
     axisFormat %s
-    section Fondations
-    Phase 1 - Fondations Entra & Quick Wins   :a1, 0, 3
     section Internes
-    Phase 2 - Bascule internes vers PHS       :a2, 0, 4
+    Phase 1 - Bascule internes vers PHS       :a1, 0, 4
     Phase 3 - Migration apps internes-only    :a3, 2, 5
+    section Fondations
+    Phase 2 - Fondations Entra & Quick Wins   :a2, 0, 3
     section Externes
     Phase 4 - Provisioning Guest (Logic App)  :b1, 2, 3
     Phase 5 - Migration apps avec externes    :b2, 5, 5
@@ -89,11 +91,11 @@ gantt
 
 **Points clés du séquencement :**
 
-- La **Phase 1** démarre dès J0 : ses livrables (SSPR, reporting, portails utilisateur) sont des **quick wins indépendants** du reste.
-- La **Phase 2** (bascule des internes en PHS) démarre également tôt, en vagues progressives.
+- La **Phase 1** (bascule des internes en PHS) démarre dès J0, en vagues progressives.
+- La **Phase 2** démarre également dès J0, en parallèle : ses livrables (SSPR, reporting, portails utilisateur) sont des **quick wins indépendants** du reste — les Phases 1 et 2 sont interchangeables.
 - La **Phase 3** (migration des apps internes-only) commence dès que les premières vagues PHS sont validées : **aucun prérequis sur les externes**, gains rapides.
 - La **Phase 4** (provisioning Guest via Logic App) doit être livrée **avant la Phase 5**.
-- La **Phase 5** ne démarre **qu'après** que les externes commencent à être créés en Guest.
+- La **Phase 5** ne démarre **qu'une fois la Phase 4 terminée** (tous les externes existent en Guest), pour garantir qu'aucun utilisateur ne perde l'accès à son application au moment de la bascule.
 - La **Phase 6** (extinction AD FS) intervient une fois toutes les applications migrées.
 - La **Phase 7** capitalise sur la cible et trace les évolutions futures.
 
@@ -101,37 +103,13 @@ gantt
 
 ---
 
-## Phase 1 — Fondations Entra & Quick Wins ⚡
-
-**Objectif** : poser les briques Entra qui apportent de la valeur visible avant même la décom.
-
-**Pourquoi en premier (en parallèle de tout)** : ces actions sont indépendantes du reste de la roadmap et **livrent un retour sur investissement immédiat** pour la direction et les utilisateurs.
-
-**Actions** :
-
-1. **SSPR** — réinitialisation de mot de passe en self-service via Entra (remplace la fonction aujourd'hui portée par AD FS).
-2. **Reporting Entra** — *Sign-in logs* et *Audit logs* : visibilité immédiate sur les connexions, les échecs, les appareils, les pays. Pas d'équivalent simple aujourd'hui côté AD FS.
-3. **MyApps & MyAccount** — portails utilisateur Entra : point d'entrée unifié pour les applications et la gestion du profil. Très visible côté communication.
-4. **Page de connexion personnalisée** (logo, charte) pour cohérence visuelle pendant et après la transition.
-5. **Règles de sécurité de base (Conditional Access)** : blocage des authentifications anciennes, MFA obligatoire pour les administrateurs.
-
-**Quick wins direction** : ⚡ SSPR, ⚡ Reporting, ⚡ MyApps/MyAccount.
-
-**Communication users** :
-
-- **SSPR** : oui, communication ciblée (email + tutoriel) annonçant que le mot de passe se change désormais via le portail Entra.
-- **MyApps** : oui, invitation à l'utiliser comme nouveau point d'entrée applicatif.
-- Reste : pas de comm directe (impact côté admins / direction).
-
-**Sortie de phase** : SSPR opérationnel, dashboards en place, MyApps/MyAccount adoptés, charte de connexion active.
-
----
-
-## Phase 2 — Bascule des utilisateurs internes en authentification directe (PHS) ⚡
+## Phase 1 — Bascule des utilisateurs internes en authentification directe (PHS) ⚡
 
 **Objectif** : tous les collaborateurs internes s'authentifient directement sur Entra, sans passer par AD FS.
 
-**Pourquoi à ce moment** : c'est la base du projet ; cela supprime la dépendance à AD FS pour la population la plus large. Le pilote PHS étant déjà fonctionnel, on est en mode **étendre par vagues** et **valider les cas particuliers**.
+**Pourquoi en premier** : c'est la base du projet ; cela supprime la dépendance à AD FS pour la population la plus large. Le pilote PHS étant déjà fonctionnel, on est en mode **étendre par vagues** et **valider les cas particuliers** — autant capitaliser sur cette avance.
+
+> **Note** : les Phases 1 et 2 sont **interchangeables**. Elles se déroulent en parallèle et n'ont pas de dépendance entre elles. L'ordre proposé reflète la maturité actuelle (pilote PHS déjà opérationnel).
 
 **Actions** :
 
@@ -141,7 +119,7 @@ gantt
 4. **Valider les usages mobiles à chaque vague** — vrai point de vigilance signalé sur le pilote actuel.
 5. **Tester la procédure de retour arrière** à chaque vague (en cas d'incident, possibilité de re-fédérer en quelques minutes).
 
-**Quick win direction** : ⚡ chaque vague est un palier visible côté tableaux de bord (% Managed vs Federated).
+**Quick win** : ⚡ chaque vague est un palier visible côté tableaux de bord (% Managed vs Federated).
 
 **Communication users** :
 
@@ -153,11 +131,37 @@ gantt
 
 ---
 
+## Phase 2 — Fondations Entra & Quick Wins ⚡ *(en parallèle de Phase 1)*
+
+**Objectif** : poser les briques Entra qui apportent de la valeur visible avant même la décom.
+
+**Pourquoi à ce moment** : ces actions sont indépendantes du reste de la roadmap et **livrent un retour sur investissement immédiat** pour les utilisateurs et l'organisation. Elles peuvent démarrer dès J0 (interchangeables avec la Phase 1).
+
+**Actions** :
+
+1. **SSPR** — réinitialisation de mot de passe en self-service via Entra (remplace la fonction aujourd'hui portée par AD FS).
+2. **Reporting Entra** — *Sign-in logs* et *Audit logs* : visibilité immédiate sur les connexions, les échecs, les appareils, les pays. Pas d'équivalent simple aujourd'hui côté AD FS.
+3. **MyApps & MyAccount** — portails utilisateur Entra : point d'entrée unifié pour les applications et la gestion du profil. Très visible côté communication.
+4. **Page de connexion personnalisée** (logo, charte) pour cohérence visuelle pendant et après la transition.
+5. **Règles de sécurité de base (Conditional Access)** : blocage des authentifications anciennes, MFA obligatoire pour les administrateurs.
+
+**Quick wins** : ⚡ SSPR, ⚡ Reporting, ⚡ MyApps/MyAccount.
+
+**Communication users** :
+
+- **SSPR** : oui, communication ciblée (email + tutoriel) annonçant que le mot de passe se change désormais via le portail Entra.
+- **MyApps** : oui, invitation à l'utiliser comme nouveau point d'entrée applicatif.
+- Reste : pas de comm directe (impact côté administrateurs et équipes projet).
+
+**Sortie de phase** : SSPR opérationnel, dashboards en place, MyApps/MyAccount adoptés, charte de connexion active.
+
+---
+
 ## Phase 3 — Migration des applications utilisées uniquement par les internes ⚡
 
 **Objectif** : repointer vers Entra toutes les applications dont la population d'utilisateurs est exclusivement interne.
 
-**Pourquoi à ce moment** : ces applications **n'ont aucun prérequis** lié aux externes. Les internes étant déjà synchronisés dans Entra (et ayant basculé en Phase 2), il suffit d'**assigner les groupes Entra** aux applications côté Entra. C'est la **vague de gains rapides**.
+**Pourquoi à ce moment** : ces applications **n'ont aucun prérequis** lié aux externes. Les internes étant déjà synchronisés dans Entra (et ayant basculé en Phase 1), il suffit d'**assigner les groupes Entra** aux applications côté Entra. C'est la **vague de gains rapides**.
 
 **Actions** :
 
@@ -171,7 +175,7 @@ gantt
    - Désactiver l'application côté AD FS (sans supprimer, pour rollback).
 4. **Communication ciblée** auprès du métier propriétaire de chaque application avant chaque bascule.
 
-**Quick win direction** : ⚡ chaque vague d'applications migrées est un jalon visible. Sur les 90 applications, une part significative sera traitée ici.
+**Quick win** : ⚡ chaque vague d'applications migrées est un jalon visible. Sur les 90 applications, une part significative sera traitée ici.
 
 **Communication users** :
 
@@ -186,7 +190,7 @@ gantt
 
 **Objectif** : remplacer le mécanisme actuel de création de comptes dans l'AD externe par un mécanisme de **création de Guest dans Entra**, **sans casser le ticketing existant**.
 
-**Pourquoi à ce moment** : ce chantier est un **prérequis à la Phase 5** (migration des apps utilisées par les externes). Il peut démarrer en parallèle de la Phase 3, une fois la Phase 1 stable.
+**Pourquoi à ce moment** : ce chantier est un **prérequis à la Phase 5** (migration des apps utilisées par les externes). Il peut démarrer en parallèle de la Phase 3, dès que les premières vagues PHS (Phase 1) sont validées.
 
 ### Approche retenue : conserver le ticketing + Logic App
 
@@ -200,7 +204,7 @@ gantt
 4. **Identification et résolution des dérives « double compte »** :
    - Lister les utilisateurs présents dans les deux AD.
    - Trancher au cas par cas : conserver l'identité interne, créer un Guest, ou supprimer l'un des deux.
-5. **Migration progressive de la population externe historique** vers les Guests (par vagues, en parallèle de la Phase 5).
+5. **Migration progressive de la population externe historique** vers les Guests, par vagues, **avant** le démarrage de la Phase 5.
 
 ### Approche alternative (mentionnée pour le futur)
 
@@ -270,9 +274,9 @@ gantt
 5. **Snapshot final** des serveurs AD FS, conservation 90 jours, puis arrêt et suppression des VM.
 6. **Mise à jour** de la documentation, CMDB, runbooks, schémas d'architecture.
 
-**Quick win direction** : ⚡ jalon majeur — la disparition d'AD FS est un livrable visible et mesurable (réduction de surface d'attaque, simplification du SI, fin de la dette legacy).
+**Quick win** : ⚡ jalon majeur — la disparition d'AD FS est un livrable visible et mesurable (réduction de surface d'attaque, simplification du SI, fin de la dette legacy).
 
-**Communication users** : pas spécifique (tout est déjà sur Entra). Communication interne IT et direction sur le jalon atteint.
+**Communication users** : pas spécifique (tout est déjà sur Entra). Communication interne IT sur le jalon atteint.
 
 **Sortie de phase** : plus de ferme AD FS dans le SI.
 
@@ -301,19 +305,19 @@ gantt
 
 ## Synthèse — toutes les actions dans l'ordre
 
-⚡ = Quick win direction.
+⚡ = Quick win.
 
 | # | Phase | Action | Comm users |
 |---|-------|--------|-----------|
-| 1 | 1 ⚡ | Activer SSPR | Oui — info utilisateurs |
-| 2 | 1 ⚡ | Activer dashboards Sign-in / Audit logs | Non |
-| 3 | 1 ⚡ | Déployer MyApps & MyAccount | Oui — invitation à utiliser |
-| 4 | 1 | Personnaliser la page de connexion | Non |
-| 5 | 1 | Activer les règles CA de base | Non |
-| 6 | 2 ⚡ | Découper la population interne en vagues | Non |
-| 7 | 2 ⚡ | Élargir le Staged Rollout PHS par vagues | Oui — par vague (J-15, J-7, J-1, J+1) |
-| 8 | 2 ⚡ | Valider les usages mobiles à chaque vague | Non |
-| 9 | 2 ⚡ | Tester le retour arrière à chaque vague | Non |
+| 1 | 1 ⚡ | Découper la population interne en vagues | Non |
+| 2 | 1 ⚡ | Élargir le Staged Rollout PHS par vagues | Oui — par vague (J-15, J-7, J-1, J+1) |
+| 3 | 1 ⚡ | Valider les usages mobiles à chaque vague | Non |
+| 4 | 1 ⚡ | Tester le retour arrière à chaque vague | Non |
+| 5 | 2 ⚡ | Activer SSPR | Oui — info utilisateurs |
+| 6 | 2 ⚡ | Activer dashboards Sign-in / Audit logs | Non |
+| 7 | 2 ⚡ | Déployer MyApps & MyAccount | Oui — invitation à utiliser |
+| 8 | 2 | Personnaliser la page de connexion | Non |
+| 9 | 2 | Activer les règles CA de base | Non |
 | 10 | 3 ⚡ | Inventorier les applications par typologie (interne / externe / mixte) | Non |
 | 11 | 3 ⚡ | Migrer les apps internes-only par vagues | Oui — par application |
 | 12 | 4 | Adapter le ticketing pour déclencher la Logic App | Non (technique) |
@@ -327,18 +331,18 @@ gantt
 | 20 | 6 ⚡ | Conversion définitive du domaine en Managed | Non |
 | 21 | 6 ⚡ | Snapshot et arrêt des VM AD FS | Non |
 | 22 | 7 | Mettre en place les routines de run | Non |
-| 23 | 7 | Présenter les perspectives futures à la direction | Non |
+| 23 | 7 | Présenter les perspectives futures | Non |
 
 ---
 
-## Quick wins direction (synthèse)
+## Quick wins (synthèse)
 
-| Phase | Quick win | Bénéfice direction |
+| Phase | Quick win | Bénéfice |
 |-------|-----------|--------------------|
-| Phase 1 | **SSPR** | Réduction des tickets helpdesk dès activation |
-| Phase 1 | **Reporting Entra** | Visibilité immédiate sur les connexions et incidents (zéro coût supplémentaire) |
-| Phase 1 | **MyApps & MyAccount** | Point d'entrée utilisateur unifié, message direction fort |
-| Phase 2 | **Bascule PHS** | Métriques visibles : % de la population sortie d'AD FS |
+| Phase 1 | **Bascule PHS** | Métriques visibles : % de la population sortie d'AD FS |
+| Phase 2 | **SSPR** | Réduction des tickets helpdesk dès activation |
+| Phase 2 | **Reporting Entra** | Visibilité immédiate sur les connexions et incidents (zéro coût supplémentaire) |
+| Phase 2 | **MyApps & MyAccount** | Point d'entrée utilisateur unifié, message visible fort |
 | Phase 3 | **Migration apps internes** | Chaque vague = palier visible vers la cible |
 | Phase 6 | **Extinction AD FS** | Jalon majeur : fin de la dette technique, surface d'attaque réduite |
 
@@ -350,7 +354,7 @@ gantt
 
 | Audience | Enjeu pour eux | Canal | Fréquence |
 |----------|---------------|-------|-----------|
-| **Comité de direction / DSI** | Risque, budget, conformité | Comité projet + jalons clés | Mensuel |
+| **Sponsors / DSI** | Risque, budget, conformité | Comité projet + jalons clés | Mensuel |
 | **Métiers / propriétaires d'applications** | Continuité de service, planning de bascule de leur app | Email + atelier dédié par vague | À chaque vague |
 | **Helpdesk / support N1-N2** | Ête prêts à traiter les tickets, FAQ à jour | Formation + canal Teams dédié | Avant chaque vague |
 | **Utilisateurs internes** | Changement de page de login, parfois MFA renforcée | Intranet + email + popup pré-bascule | J-15, J-7, J-1, J+1 |
