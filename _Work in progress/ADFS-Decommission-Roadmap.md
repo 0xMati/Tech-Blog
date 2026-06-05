@@ -4,51 +4,66 @@ Date : 2026-06-05
 
 ## En une page
 
-Le projet consiste à **supprimer la ferme AD FS** existante et à confier toute l'authentification directement à **Entra ID**. La cible : plus aucune dépendance à AD FS, des utilisateurs externes gérés en mode invité (B2B), et les ~90 applications repointées vers Entra.
+Le projet vise à **supprimer la ferme AD FS** existante et à confier toute l'authentification directement à **Entra ID**.
 
-Le projet est découpé en **6 phases**, dont certaines se déroulent en parallèle :
+L'approche retenue privilégie les **gains rapides et visibles dès le début** (réinitialisation de mot de passe, reporting, portails utilisateur unifiés), puis suit l'ordre logique suivant :
 
-1. **Phase 1** — Basculer les utilisateurs internes vers une authentification directe sur Entra.
-2. **Phase 2** — Reconstruire dans Entra les deux portails self-service existants. *(en parallèle de Phase 1)*
-3. **Phase 3** — Migrer les utilisateurs externes (partenaires, prestataires) vers Entra B2B. *(démarre quand Phase 2 est livrée)*
-4. **Phase 4** — Migrer les ~90 applications une par une vers Entra. *(démarre quand Phases 1 et 2 sont stables, en parallèle de Phase 3)*
-5. **Phase 5** — Éteindre définitivement AD FS.
-6. **Phase 6** — Activer les fonctionnalités modernes d'Entra et entrer en run.
+1. **Phase 1** — Fondations Entra & Quick Wins *(en parallèle de tout)* ⚡
+2. **Phase 2** — Bascule des utilisateurs internes vers Entra (PHS) ⚡
+3. **Phase 3** — Migration des applications utilisées uniquement par les internes ⚡
+4. **Phase 4** — Mise en place du provisioning des comptes externes (Guest)
+5. **Phase 5** — Migration des applications utilisées par les externes *(dépend de Phase 4)*
+6. **Phase 6** — Extinction d'AD FS ⚡
+7. **Phase 7** — Run et perspectives futures *(Cross-Tenant Sync, App Governance, MFA renforcée, scénarios CA étendus)*
+
+Le symbole ⚡ identifie les phases ayant un **impact direction** rapide et mesurable.
 
 ---
 
 ## Glossaire express
 
-| Terme | Signification simple |
-|-------|----------------------|
-| **AD FS** | Service Microsoft on-prem qui assure aujourd'hui l'authentification fédérée — c'est ce qu'on veut supprimer |
+| Terme | Signification |
+|-------|---------------|
+| **AD FS** | Service Microsoft on-prem qui assure aujourd'hui l'authentification fédérée — c'est ce qu'on supprime |
 | **Entra ID** | Service d'identité Microsoft dans le cloud (anciennement Azure AD) — la cible |
+| **PHS (Password Hash Sync)** | Mode où Entra valide directement les mots de passe sans passer par AD FS |
 | **Application fédérée / RP** | Application qui aujourd'hui délègue son authentification à AD FS — il y en a ~90 à migrer |
-| **Authentification managée (PHS)** | Mode où Entra valide directement les mots de passe, sans passer par AD FS |
 | **B2B Guest** | Compte invité dans Entra pour un utilisateur externe (partenaire, prestataire) |
-| **Enterprise App** | Représentation d'une application dans Entra (équivalent Entra du RP AD FS) |
-| **SAML / OIDC** | Protocoles standard d'authentification entre une app et son fournisseur d'identité |
+| **SSPR** | *Self-Service Password Reset* : permet à l'utilisateur de changer son mot de passe lui-même via un portail Entra |
+| **MyApps / MyAccount** | Portails Entra où l'utilisateur retrouve toutes ses applications et gère son profil |
+| **Logic App** | Service d'automatisation Azure permettant d'orchestrer des actions (ex : créer un Guest dans Entra suite à la validation d'un ticket) |
 | **MFA** | Authentification à deux facteurs |
 | **Conditional Access** | Règles de sécurité Entra (MFA obligatoire, blocage hors entreprise, etc.) |
+| **App Governance / Access Packages** | Fonctions natives de gouvernance d'accès aux applications dans Entra — mentionnées comme **évolution future** |
+| **Cross-Tenant Sync** | Synchronisation automatique d'utilisateurs entre tenants Entra partenaires — mentionnée comme **évolution future** |
 
 ---
 
 ## Contexte de départ
 
-- Ferme AD FS en production, fédérée à Entra ID.
-- ~90 applications à migrer.
-- 2 annuaires Active Directory : 1 interne (collaborateurs), 1 externe (partenaires, prestataires).
-- Bascule progressive des internes vers Entra déjà commencée et fonctionnelle (Staged Rollout PHS).
-- Deux portails self-service custom existants : création de compte externe + demande d'accès aux applications.
-- Une analyse des 90 applications a déjà été faite : pas de blocage majeur, **SAP** identifié comme l'élément le plus complexe.
+- Ferme **AD FS** en production, fédérée à Entra ID, portant **~90 applications**.
+- **Deux annuaires Active Directory** :
+  - **AD interne** (collaborateurs) — déjà synchronisé vers Entra via Entra Connect.
+  - **AD externe** (partenaires, prestataires) — non synchronisé vers Entra aujourd'hui.
+- **Staged Rollout PHS** mis en place pour un **lot d'utilisateurs pilotes** : il fonctionne, mais l'extension à toute la population reste à valider — notamment **sur mobile**.
+- **Outil de ticketing** existant pour deux usages aujourd'hui portés par AD FS :
+  - Demande de **création de compte externe** dans l'AD externe.
+  - Demande **d'accès aux applications**, pour internes et externes.
+- AD FS porte également la fonction de **changement de mot de passe** des utilisateurs.
+- **Dérives connues** : certains utilisateurs disposent d'un compte dans **les deux AD** (interne + externe). Ce n'est pas une situation normale, à traiter au cas par cas.
+- **Analyse des 90 applications** déjà effectuée : **aucun blocage insurmontable**. Certaines applications seront cependant **plus simples à migrer que d'autres** (SAP identifié comme l'élément le plus complexe).
 
 ## Cible
 
 - Plus aucune ferme AD FS.
-- Internes : restent dans l'AD interne mais s'authentifient directement sur Entra (sans AD FS).
-- Externes : sortent de l'AD externe et deviennent des invités (Guests) dans Entra.
-- Les deux portails self-service sont reconstruits avec les fonctionnalités natives d'Entra.
-- Les 90 applications pointent vers Entra (plus vers AD FS).
+- **Internes** : restent dans l'AD interne, mais s'authentifient directement sur Entra (mode managed via PHS).
+- **Externes** : sortent de l'AD externe et deviennent des **comptes invités (Guest)** dans Entra.
+- **Création de compte externe** : le **ticketing actuel est conservé** ; la validation du ticket déclenche la création du Guest dans Entra via une **Logic App** *(option privilégiée)*.
+- **Demande d'accès aux applications** : le **ticketing actuel est conservé** ; le workflow d'approbation est adapté pour ajouter l'utilisateur (interne ou Guest) au **groupe Entra ID** assigné à l'application.
+- Les ~90 applications pointent vers Entra ID au lieu d'AD FS.
+- **SSPR** activé dans Entra pour reprendre le rôle de changement de mot de passe.
+
+> Une **alternative full-Entra** existe pour les deux portails (Self-Service via *Entitlement Management / Access Packages*). Elle est **mentionnée pour le futur** (Phase 7) car elle nécessite une maturité organisationnelle qui n'est pas encore atteinte.
 
 ---
 
@@ -59,209 +74,273 @@ gantt
     title Phases de décommissionnement AD FS
     dateFormat X
     axisFormat %s
-    section Identité
-    Phase 1 - Bascule internes vers Entra            :a1, 0, 3
-    Phase 3 - Externes vers Entra B2B                :a2, 3, 3
-    section Self-Service
-    Phase 2a - Portail compte externe                :b1, 0, 3
-    Phase 2b - Portail demande d'accès               :b2, 0, 3
-    section Apps
-    Phase 4 - Migration des 90 applications          :c1, 3, 5
+    section Fondations
+    Phase 1 - Fondations Entra & Quick Wins   :a1, 0, 3
+    section Internes
+    Phase 2 - Bascule internes vers PHS       :a2, 0, 4
+    Phase 3 - Migration apps internes-only    :a3, 2, 5
+    section Externes
+    Phase 4 - Provisioning Guest (Logic App)  :b1, 2, 3
+    Phase 5 - Migration apps avec externes    :b2, 5, 5
     section Décom
-    Phase 5 - Extinction AD FS                       :d1, 8, 1
-    Phase 6 - Run & optimisation                     :d2, 9, 2
+    Phase 6 - Extinction AD FS                :c1, 10, 1
+    Phase 7 - Run & perspectives              :c2, 11, 2
 ```
 
-**Lecture du diagramme** :
+**Points clés du séquencement :**
 
-- Les **Phases 1 et 2** démarrent ensemble, dès le début du projet.
-- La **Phase 3** ne peut pas commencer tant que la Phase 2 (portails) n'est pas livrée — sinon les nouveaux externes ne pourraient plus être créés pendant la transition.
-- La **Phase 4** ne démarre qu'une fois les Phases 1 et 2 stables — elle se déroule en parallèle de la Phase 3.
-- Les **Phases 5 et 6** sont séquentielles, à la fin.
+- La **Phase 1** démarre dès J0 : ses livrables (SSPR, reporting, portails utilisateur) sont des **quick wins indépendants** du reste.
+- La **Phase 2** (bascule des internes en PHS) démarre également tôt, en vagues progressives.
+- La **Phase 3** (migration des apps internes-only) commence dès que les premières vagues PHS sont validées : **aucun prérequis sur les externes**, gains rapides.
+- La **Phase 4** (provisioning Guest via Logic App) doit être livrée **avant la Phase 5**.
+- La **Phase 5** ne démarre **qu'après** que les externes commencent à être créés en Guest.
+- La **Phase 6** (extinction AD FS) intervient une fois toutes les applications migrées.
+- La **Phase 7** capitalise sur la cible et trace les évolutions futures.
 
-> Les durées du diagramme sont **relatives** et à affiner selon les effectifs disponibles, les fenêtres de change et la criticité métier.
+> Les durées du diagramme sont **relatives** et à affiner selon les effectifs disponibles, fenêtres de change et criticité métier.
 
 ---
 
-## Phase 1 — Basculer les internes vers une authentification Entra directe
+## Phase 1 — Fondations Entra & Quick Wins ⚡
 
-**Objectif** : tous les collaborateurs s'authentifient directement sur Entra, sans passer par AD FS.
+**Objectif** : poser les briques Entra qui apportent de la valeur visible avant même la décom.
 
-**Pourquoi en premier** : c'est la base. On déconnecte progressivement la population la plus large d'AD FS, ce qui valide tout le mécanisme et réduit le risque sur la suite.
+**Pourquoi en premier (en parallèle de tout)** : ces actions sont indépendantes du reste de la roadmap et **livrent un retour sur investissement immédiat** pour la direction et les utilisateurs.
 
 **Actions** :
 
-1. Découper la population interne en vagues (par département, criticité métier, etc.).
-2. Définir les critères pour qu'un utilisateur soit éligible à la bascule (Authenticator installé, pas d'application bloquante, etc.).
-3. Lancer 3 pilotes : équipe IT, métier early adopter, dirigeants / VIP.
-4. Pour chaque vague : basculer, puis suivre les connexions sur le tableau de bord Entra (comparer les flux "Managed" vs "Federated").
-5. Documenter et **tester** à chaque vague la procédure de retour arrière (en cas de problème, on peut re-fédérer en quelques minutes).
+1. **SSPR** — réinitialisation de mot de passe en self-service via Entra (remplace la fonction aujourd'hui portée par AD FS).
+2. **Reporting Entra** — *Sign-in logs* et *Audit logs* : visibilité immédiate sur les connexions, les échecs, les appareils, les pays. Pas d'équivalent simple aujourd'hui côté AD FS.
+3. **MyApps & MyAccount** — portails utilisateur Entra : point d'entrée unifié pour les applications et la gestion du profil. Très visible côté communication.
+4. **Page de connexion personnalisée** (logo, charte) pour cohérence visuelle pendant et après la transition.
+5. **Règles de sécurité de base (Conditional Access)** : blocage des authentifications anciennes, MFA obligatoire pour les administrateurs.
 
-**Sortie de phase** : 100 % des internes en authentification managée. Plus aucun flux fédéré côté interne dans les logs. AD FS reste allumé uniquement pour les applications.
+**Quick wins direction** : ⚡ SSPR, ⚡ Reporting, ⚡ MyApps/MyAccount.
 
-**Déclenche** : prérequis stable pour démarrer la Phase 4.
+**Communication users** :
+
+- **SSPR** : oui, communication ciblée (email + tutoriel) annonçant que le mot de passe se change désormais via le portail Entra.
+- **MyApps** : oui, invitation à l'utiliser comme nouveau point d'entrée applicatif.
+- Reste : pas de comm directe (impact côté admins / direction).
+
+**Sortie de phase** : SSPR opérationnel, dashboards en place, MyApps/MyAccount adoptés, charte de connexion active.
 
 ---
 
-## Phase 2 — Reconstruire les deux portails self-service dans Entra *(en parallèle de Phase 1)*
+## Phase 2 — Bascule des utilisateurs internes en authentification directe (PHS) ⚡
 
-**Objectif** : avoir les portails Entra opérationnels avant de migrer les externes (Phase 3) et les applications (Phase 4).
+**Objectif** : tous les collaborateurs internes s'authentifient directement sur Entra, sans passer par AD FS.
 
-**Pourquoi en parallèle de Phase 1** : c'est un chantier indépendant des bascules d'utilisateurs, et il doit être prêt à temps. Si on attend, on bloque les Phases 3 et 4.
-
-### 2a — Portail "création de compte externe"
+**Pourquoi à ce moment** : c'est la base du projet ; cela supprime la dépendance à AD FS pour la population la plus large. Le pilote PHS étant déjà fonctionnel, on est en mode **étendre par vagues** et **valider les cas particuliers**.
 
 **Actions** :
 
-1. Modéliser dans Entra les règles de validation actuelles (workflow d'approbation, sponsors, durée de vie, etc.) sous forme d'**Access Packages**.
-2. Déclarer les organisations partenaires connues (*Connected Organizations*).
-3. Si des règles métier spécifiques existent (numéro de contrat, code projet, double approbation, sync vers l'ITSM) : développer les automatisations correspondantes via Logic Apps.
-4. Activer le cycle de vie automatique : notification J-30 d'expiration, désactivation auto, offboarding.
-5. URL d'accès unique pour les externes : `myaccess.microsoft.com`.
+1. **Découper la population interne en vagues** (par département, criticité, profils mobiles particuliers).
+2. **Définir les critères d'éligibilité** (Authenticator installé, pas d'application bloquante…).
+3. **Élargir progressivement le Staged Rollout PHS** vague par vague.
+4. **Valider les usages mobiles à chaque vague** — vrai point de vigilance signalé sur le pilote actuel.
+5. **Tester la procédure de retour arrière** à chaque vague (en cas d'incident, possibilité de re-fédérer en quelques minutes).
 
-> Si les règles de l'actuel portail sont très métier-spécifiques (ce qui est probable), c'est ici que se concentre la complexité du chantier.
+**Quick win direction** : ⚡ chaque vague est un palier visible côté tableaux de bord (% Managed vs Federated).
 
-### 2b — Portail "demande d'accès aux applications"
+**Communication users** :
+
+- Oui, par vague : J-15, J-7, J-1, J+1.
+- Tutoriel court « Comment me connecter après la bascule ».
+- FAQ helpdesk préparée avant chaque vague.
+
+**Sortie de phase** : 100 % des internes en authentification managée. AD FS reste allumé uniquement pour les applications.
+
+---
+
+## Phase 3 — Migration des applications utilisées uniquement par les internes ⚡
+
+**Objectif** : repointer vers Entra toutes les applications dont la population d'utilisateurs est exclusivement interne.
+
+**Pourquoi à ce moment** : ces applications **n'ont aucun prérequis** lié aux externes. Les internes étant déjà synchronisés dans Entra (et ayant basculé en Phase 2), il suffit d'**assigner les groupes Entra** aux applications côté Entra. C'est la **vague de gains rapides**.
 
 **Actions** :
 
-1. Pour chaque application (au fur et à mesure de la Phase 4) : créer un **Access Package** dédié.
-2. Définir l'approbateur principal (propriétaire métier de l'app) et un fallback (sécurité).
-3. Activer les **revues d'accès** annuelles (chaque accès doit être revu au moins une fois par an).
-4. Définir une politique d'expiration (pas d'accès "à vie").
+1. **Inventaire** des ~90 applications par typologie d'utilisateurs : internes only, externes only, mixtes.
+2. **Découpage en vagues** des applications internes-only (vague pilote 3-5 apps simples, puis vagues quick wins).
+3. **Pour chaque application** :
+   - Préparer la configuration Entra (sans bascule).
+   - Tester avec un utilisateur pilote.
+   - Basculer (idéalement en double-fournisseur quelques jours, sinon bascule courte avec rollback préparé).
+   - Surveiller à J+1, J+7, J+30.
+   - Désactiver l'application côté AD FS (sans supprimer, pour rollback).
+4. **Communication ciblée** auprès du métier propriétaire de chaque application avant chaque bascule.
 
-**Sortie de phase** : les deux portails Entra sont opérationnels. Les anciens portails restent en place le temps de la transition, puis sont supprimés.
+**Quick win direction** : ⚡ chaque vague d'applications migrées est un jalon visible. Sur les 90 applications, une part significative sera traitée ici.
 
-**Déclenche** : prérequis pour démarrer Phase 3 et Phase 4.
+**Communication users** :
+
+- Oui, par application : email « Votre application X bascule sur Entra le J/M/A » (avec capture d'écran de la nouvelle page de connexion).
+- Tutoriel court réutilisable.
+
+**Sortie de phase** : toutes les applications internes-only sont sur Entra. AD FS ne sert plus qu'aux applications utilisées par des externes.
 
 ---
 
-## Phase 3 — Migrer les externes vers Entra B2B *(démarre quand Phase 2 est livrée)*
+## Phase 4 — Mise en place du provisioning des comptes externes (Guest)
 
-**Objectif** : les externes ne sont plus des comptes AD, ils deviennent des invités (Guests) dans Entra.
+**Objectif** : remplacer le mécanisme actuel de création de comptes dans l'AD externe par un mécanisme de **création de Guest dans Entra**, **sans casser le ticketing existant**.
 
-**Pourquoi à ce moment** : il faut les portails Entra (Phase 2) prêts pour que les nouvelles demandes d'externes ne tombent pas dans le vide. La Phase 1 (internes) n'est pas un prérequis, mais on évite généralement de tout bouger en même temps.
+**Pourquoi à ce moment** : ce chantier est un **prérequis à la Phase 5** (migration des apps utilisées par les externes). Il peut démarrer en parallèle de la Phase 3, une fois la Phase 1 stable.
+
+### Approche retenue : conserver le ticketing + Logic App
 
 **Actions** :
 
-1. Inventaire complet de l'AD externe : actifs, dormants, comptes de service.
-2. Nettoyage : suppression des comptes inutilisés.
-3. Pour chaque externe : vérifier qu'il a un email professionnel valide. Sinon, prévoir un process alternatif (sponsor + code à usage unique).
-4. Stratégie d'invitation B2B : fédération avec le tenant Entra du partenaire si possible, sinon Microsoft Account ou code à usage unique.
-5. Configurer les politiques de confiance inter-tenants (*Cross-tenant access settings*) pour les partenaires connus — améliore l'expérience SSO.
-6. Mettre en place les **revues d'accès trimestrielles** sur les Guests.
-7. Politique de sécurité dédiée Guest (MFA obligatoire, durée de session courte, etc.).
-8. Toutes les nouvelles demandes d'externes passent dorénavant par le portail Entra (Phase 2a), plus par l'AD externe.
+1. **Adapter le workflow du ticketing** : la validation finale du ticket déclenche un appel à une **Logic App**.
+2. **Logic App de création de Guest** : invitation B2B dans Entra avec paramètres (sponsor, durée, organisation, etc.).
+3. **Cycle de vie minimal des Guests** :
+   - Notification J-30 d'expiration au sponsor.
+   - Désactivation automatique des Guests inactifs ou expirés.
+4. **Identification et résolution des dérives « double compte »** :
+   - Lister les utilisateurs présents dans les deux AD.
+   - Trancher au cas par cas : conserver l'identité interne, créer un Guest, ou supprimer l'un des deux.
+5. **Migration progressive de la population externe historique** vers les Guests (par vagues, en parallèle de la Phase 5).
 
-**Sortie de phase** : tous les externes actifs sont devenus des Guests Entra. L'AD externe est mis en lecture seule, puis planifié pour suppression.
+### Approche alternative (mentionnée pour le futur)
 
----
+> Entra propose nativement un portail self-service de demande de compte externe via **Entitlement Management** (Access Packages, Connected Organizations, workflow d'approbation, *My Access portal*). Cette approche permettrait à terme de supprimer le ticketing pour ce cas d'usage. **Non retenue à court terme** — à reconsidérer en Phase 7.
 
-## Phase 4 — Migrer les 90 applications par vagues *(démarre quand Phases 1 et 2 sont stables)*
+**Communication users** :
 
-**Objectif** : chaque application pointe vers Entra au lieu d'AD FS.
+- **Externes** : oui, communication individuelle au moment de leur migration en Guest (email d'invitation B2B à accepter).
+- **Sponsors internes** : oui, communication sur la nouvelle nature des comptes (Guest et non plus AD).
+- **Helpdesk** : formation aux nouveaux flux.
 
-**Pourquoi à ce moment** : on a besoin que les internes soient stables sur Entra (Phase 1) et que le portail de demande d'accès Entra soit prêt (Phase 2b) pour gérer les accès aux applications migrées.
-
-### Découpage en 4 vagues
-
-| Vague | Type d'applications | Volume |
-|-------|---------------------|--------|
-| **Vague 0 — Pilote** | 3 à 5 apps simples (SAML basique, internes uniquement) | Validation du process |
-| **Vague 1 — Quick wins** | Apps SAML standard, sans logique complexe | ~30 à 40 apps |
-| **Vague 2 — Moyenne complexité** | Apps avec règles de transformation, multi-domaines | ~30 à 40 apps |
-| **Vague 3 — Complexes** | SAP, apps à configuration spéciale, apps legacy | ~10 à 15 apps (dont SAP) |
-
-### Process pour chaque application (7 étapes)
-
-1. **Préparer** : créer la nouvelle configuration dans Entra, sans encore basculer.
-2. **Configurer** le protocole (SAML ou OIDC) avec les paramètres techniques équivalents à ceux d'AD FS.
-3. **Traduire** les règles d'authentification d'AD FS vers Entra (l'outil d'assessment aide, certains cas restent manuels).
-4. **Tester** avec un utilisateur pilote — vérifier que tous les attributs nécessaires à l'app sont bien transmis.
-5. **Basculer** : idéalement, l'application accepte les deux fournisseurs d'identité en parallèle quelques jours, sinon bascule courte avec rollback préparé.
-6. **Surveiller** à J+1, J+7, J+30 — logs Entra et retours utilisateurs.
-7. **Désactiver** (sans supprimer) l'application côté AD FS, pour pouvoir revenir en arrière si besoin.
-
-### Cas SAP — à traiter en dernière vague
-
-À gérer comme un mini-projet dédié :
-
-- Vérifier la compatibilité SAML 2.0 côté SAP (NetWeaver, BTP, S/4HANA selon le périmètre).
-- Option recommandée : passer par **SAP Identity Authentication Service** comme intermédiaire fédéré à Entra.
-- Tests UAT lourds (SAP touche souvent finance et RH — risque métier élevé).
-
-**Sortie de phase** : les 90 applications sont migrées. AD FS ne reçoit plus de trafic applicatif.
+**Sortie de phase** : tout nouveau compte externe est créé comme Guest Entra via le ticketing. La population externe historique a commencé sa migration.
 
 ---
 
-## Phase 5 — Éteindre AD FS
+## Phase 5 — Migration des applications utilisées par les externes (et adaptation du process d'accès)
+
+**Objectif** : repointer vers Entra les applications utilisées par des externes, et adapter le workflow de demande d'accès.
+
+**Pourquoi à ce moment** : ces applications nécessitent que les externes existent côté Entra comme Guests — c'est le livrable de la Phase 4.
+
+### Migration des applications
+
+**Actions** :
+
+1. **Découpage en vagues** des applications externes / mixtes (les plus simples d'abord, SAP en dernière vague).
+2. **Pour chaque application** : même process que Phase 3 (préparation, test, bascule, surveillance, désactivation côté AD FS).
+3. **Cas SAP** : à traiter comme un mini-projet dédié en dernière vague.
+   - Vérifier la compatibilité SAML 2.0 côté SAP (NetWeaver, BTP, S/4HANA selon périmètre).
+   - Option recommandée : passer par **SAP Identity Authentication Service** comme intermédiaire fédéré à Entra.
+   - UAT lourdes (SAP touche souvent finance et RH).
+
+### Adaptation du process « demande d'accès aux applications »
+
+#### Approche retenue : conserver le ticketing + ajout au groupe Entra
+
+**Actions** :
+
+1. Pour chaque application migrée, identifier (ou créer) un **groupe Entra** porteur de l'assignation.
+2. **Adapter le workflow du ticketing** : la validation finale ajoute l'utilisateur (interne ou Guest) au groupe Entra correspondant via une Logic App ou Microsoft Graph.
+3. Conserver le workflow d'approbation existant (propriétaire métier de l'application + sécurité).
+
+#### Approche alternative (mentionnée pour le futur)
+
+> Entra propose un mécanisme natif de gouvernance d'accès via **App Governance / Access Packages / Catalog** : portail unifié, revues d'accès périodiques, expiration automatique, audit complet, expérience utilisateur sur `myaccess.microsoft.com`. **Non retenu à court terme** ; à reconsidérer en Phase 7.
+
+**Communication users** :
+
+- **Externes** : oui, par application migrée.
+- **Internes** : oui également (page de login change pour les apps concernées).
+- **Métiers propriétaires** : workshop dédié par vague.
+
+**Sortie de phase** : toutes les applications sont sur Entra. AD FS ne reçoit plus de trafic applicatif.
+
+---
+
+## Phase 6 — Extinction d'AD FS ⚡
 
 **Objectif** : sortir AD FS du SI.
 
 **Actions** :
 
 1. **Période de gel** de 30 jours minimum après la dernière migration : AD FS reste allumé mais ne doit plus recevoir de trafic.
-2. **Surveillance du trafic résiduel** (logs serveur, IIS, alertes Sentinel) pour détecter toute connexion oubliée.
-3. **Conversion définitive** du domaine côté Entra : passage de "Federated" à "Managed".
+2. **Surveillance du trafic résiduel** pour détecter toute connexion oubliée.
+3. **Conversion définitive** du domaine côté Entra : passage de « Federated » à « Managed ».
 4. **Suppression** des configurations applicatives côté AD FS.
 5. **Snapshot final** des serveurs AD FS, conservation 90 jours, puis arrêt et suppression des VM.
-6. **Mise à jour** de la documentation, CMDB, runbooks, schémas d'architecture, procédures support.
+6. **Mise à jour** de la documentation, CMDB, runbooks, schémas d'architecture.
+
+**Quick win direction** : ⚡ jalon majeur — la disparition d'AD FS est un livrable visible et mesurable (réduction de surface d'attaque, simplification du SI, fin de la dette legacy).
+
+**Communication users** : pas spécifique (tout est déjà sur Entra). Communication interne IT et direction sur le jalon atteint.
 
 **Sortie de phase** : plus de ferme AD FS dans le SI.
 
 ---
 
-## Phase 6 — Run et optimisation
+## Phase 7 — Run et perspectives futures
 
-**Objectif** : tirer parti des fonctionnalités modernes d'Entra qui n'étaient pas accessibles avec AD FS.
+**Objectif** : tirer parti de la cible Entra et tracer les évolutions.
 
-**Actions** :
+### Run
 
-1. Activer le **Conditional Access** granulaire (politiques fines par app, par utilisateur, par contexte).
-2. Activer **Identity Protection** (détection des connexions à risque, comportements anormaux).
-3. Activer **PIM** (gestion des privilèges admin, élévation temporaire avec justification).
-4. Activer **Token Protection** et **Continuous Access Evaluation** (sécurité renforcée des sessions).
-5. Migrer les méthodes MFA vers Authenticator uniquement (à terme, suppression du SMS).
-6. Personnaliser la page de connexion Entra (charte graphique, logo).
-7. Mettre en place les tableaux de bord et alertes (échecs de connexion, anomalies).
+1. Surveillance Entra (dashboards, alertes Sentinel sur anomalies).
+2. Revues régulières des Guests (suppression des inactifs).
+3. Migration des méthodes MFA vers Authenticator uniquement (à terme, suppression du SMS).
+
+### Perspectives — à présenter pour le futur (organisation pas prête aujourd'hui)
+
+| Sujet | Apport | Quand |
+|-------|--------|-------|
+| **Cross-Tenant Sync** | Synchronisation automatique de comptes entre tenants Entra partenaires. Élimine les invitations B2B manuelles pour les partenaires fréquents. | Lorsque des partenaires majeurs sont identifiés et alignés |
+| **Migration vers App Governance / Access Packages** | Audit, revues d'accès périodiques, expiration automatique, expérience utilisateur unifiée sur `myaccess.microsoft.com`. À terme, supprime la dépendance au ticketing pour la création de Guest et la demande d'accès. | Lorsque l'organisation est prête à adopter le modèle |
+| **MFA renforcée pour les Guests (et tous)** | La cible Entra rend possible l'application cohérente du MFA sur la totalité de la population, internes comme Guests. Pas réalisable avec AD FS. | À planifier dès stabilisation post-décom |
+| **Scénarios Conditional Access étendus** | Politiques granulaires par contexte (appareil conforme, géolocalisation, niveau de risque, type d'application). La cible Entra ouvre tous ces scénarios — auparavant limités par AD FS. | À piloter par la sécurité, post-décom |
 
 ---
 
 ## Synthèse — toutes les actions dans l'ordre
 
-| # | Phase | Action |
-|---|-------|--------|
-| 1 | 1 | Découper la population interne en vagues |
-| 2 | 1 | Définir les critères d'éligibilité à la bascule |
-| 3 | 1 | Lancer 3 pilotes (IT, métier, VIP) |
-| 4 | 1 | Basculer les vagues une par une |
-| 5 | 1 | Tester la procédure de retour arrière à chaque vague |
-| 6 | 2a | Modéliser les règles du portail externe en Access Packages |
-| 7 | 2a | Déclarer les organisations partenaires (Connected Organizations) |
-| 8 | 2a | Développer les automatisations métier (Logic Apps) |
-| 9 | 2a | Activer le cycle de vie automatique (Lifecycle Workflows) |
-| 10 | 2b | Créer les Access Packages pour la demande d'accès aux apps |
-| 11 | 2b | Définir approbateurs et politiques d'expiration |
-| 12 | 3 | Inventorier l'AD externe |
-| 13 | 3 | Nettoyer les comptes inutiles |
-| 14 | 3 | Vérifier l'email pro de chaque externe |
-| 15 | 3 | Inviter les externes en B2B Guest |
-| 16 | 3 | Configurer les politiques inter-tenants |
-| 17 | 3 | Activer les revues d'accès trimestrielles |
-| 18 | 3 | Mettre l'AD externe en lecture seule |
-| 19 | 4 | Vague 0 — Pilote (3-5 apps simples) |
-| 20 | 4 | Vague 1 — Quick wins (~30-40 apps) |
-| 21 | 4 | Vague 2 — Moyenne complexité (~30-40 apps) |
-| 22 | 4 | Vague 3 — Complexes + SAP (~10-15 apps) |
-| 23 | 5 | Période de gel AD FS (30 jours) |
-| 24 | 5 | Surveiller le trafic résiduel |
-| 25 | 5 | Convertir le domaine en Managed |
-| 26 | 5 | Snapshot et arrêt des VM AD FS |
-| 27 | 5 | Mettre à jour documentation et CMDB |
-| 28 | 6 | Activer CA granulaire, Identity Protection, PIM |
-| 29 | 6 | Migrer les méthodes MFA vers Authenticator |
-| 30 | 6 | Personnaliser la page de connexion |
-| 31 | 6 | Mettre en place tableaux de bord et alertes |
+⚡ = Quick win direction.
+
+| # | Phase | Action | Comm users |
+|---|-------|--------|-----------|
+| 1 | 1 ⚡ | Activer SSPR | Oui — info utilisateurs |
+| 2 | 1 ⚡ | Activer dashboards Sign-in / Audit logs | Non |
+| 3 | 1 ⚡ | Déployer MyApps & MyAccount | Oui — invitation à utiliser |
+| 4 | 1 | Personnaliser la page de connexion | Non |
+| 5 | 1 | Activer les règles CA de base | Non |
+| 6 | 2 ⚡ | Découper la population interne en vagues | Non |
+| 7 | 2 ⚡ | Élargir le Staged Rollout PHS par vagues | Oui — par vague (J-15, J-7, J-1, J+1) |
+| 8 | 2 ⚡ | Valider les usages mobiles à chaque vague | Non |
+| 9 | 2 ⚡ | Tester le retour arrière à chaque vague | Non |
+| 10 | 3 ⚡ | Inventorier les applications par typologie (interne / externe / mixte) | Non |
+| 11 | 3 ⚡ | Migrer les apps internes-only par vagues | Oui — par application |
+| 12 | 4 | Adapter le ticketing pour déclencher la Logic App | Non (technique) |
+| 13 | 4 | Mettre en service la Logic App de création de Guest | Non |
+| 14 | 4 | Identifier et résoudre les dérives « double compte » | Spécifique aux cas concernés |
+| 15 | 4 | Migrer la population externe historique en Guest | Oui — externes par vague |
+| 16 | 5 | Migrer les apps utilisées par les externes (vagues) | Oui — par application |
+| 17 | 5 | Traiter le cas SAP en mini-projet dédié | Oui — population SAP |
+| 18 | 5 | Adapter le ticketing pour ajout au groupe Entra | Non |
+| 19 | 6 ⚡ | Période de gel et surveillance résiduelle AD FS | Non |
+| 20 | 6 ⚡ | Conversion définitive du domaine en Managed | Non |
+| 21 | 6 ⚡ | Snapshot et arrêt des VM AD FS | Non |
+| 22 | 7 | Mettre en place les routines de run | Non |
+| 23 | 7 | Présenter les perspectives futures à la direction | Non |
+
+---
+
+## Quick wins direction (synthèse)
+
+| Phase | Quick win | Bénéfice direction |
+|-------|-----------|--------------------|
+| Phase 1 | **SSPR** | Réduction des tickets helpdesk dès activation |
+| Phase 1 | **Reporting Entra** | Visibilité immédiate sur les connexions et incidents (zéro coût supplémentaire) |
+| Phase 1 | **MyApps & MyAccount** | Point d'entrée utilisateur unifié, message direction fort |
+| Phase 2 | **Bascule PHS** | Métriques visibles : % de la population sortie d'AD FS |
+| Phase 3 | **Migration apps internes** | Chaque vague = palier visible vers la cible |
+| Phase 6 | **Extinction AD FS** | Jalon majeur : fin de la dette technique, surface d'attaque réduite |
 
 ---
 
@@ -302,31 +381,22 @@ gantt
 
 | Risque | Impact | Mitigation |
 |--------|--------|-----------|
-| Externes non migrés à temps → perdent l'accès | Critique | Communication anticipée + période de double fonctionnement (B2B + ancien AD) pendant 60 à 90 jours |
-| Application avec règles d'authentification trop complexes pour être traduites automatiquement | Bloquant pour cette application | Analyse fine en amont avec l'outil d'assessment, plan B : conserver AD FS isolé pour cette app jusqu'à refonte |
-| SAP : retards côté équipe SAP | Décale la fin du projet | Lancer le sous-chantier SAP dès le début du projet, pas en fin de Phase 4 |
-| Helpdesk débordé | Insatisfaction utilisateurs, escalades | Vagues petites, FAQ prête, équipe N1 renforcée pendant les bascules |
+| Bascule PHS qui dégrade les connexions mobiles | Insatisfaction users, escalade rapide | Valider chaque vague sur des profils mobiles représentatifs avant d'étendre ; vague pilote dédiée mobile |
+| Dérives « double compte » (un même utilisateur dans les deux AD) | Confusion d'identité, droits dupliqués | Inventaire dédié dès la phase de cadrage, traitement au cas par cas, arbitrage avec le métier |
+| Application avec règles d'authentification trop complexes | Bloquant pour cette application | Analyse fine en amont avec l'outil d'assessment, plan B : conserver AD FS isolé pour cette app jusqu'à refonte |
+| SAP : retards côté équipe SAP | Décale la fin du projet | Lancer le sous-chantier SAP dès le début du projet, pas en fin de Phase 5 |
+| Helpdesk débordé sur les vagues massives | Insatisfaction utilisateurs, escalades | Vagues petites, FAQ prête, équipe N1 renforcée pendant les bascules |
 | Comptes de service / techniques sur AD FS oubliés | Surprises après extinction | Inventaire dès la phase de cadrage et plan de remplacement côté Entra |
 | Procédure de retour arrière mal testée | Catastrophique en cas de problème majeur | Tester le retour arrière à chaque vague d'internes, pas seulement au début |
-
----
-
-## Quick wins en parallèle
-
-À déclencher tôt pour produire de la valeur visible et préparer le terrain :
-
-- **Réinitialisation de mot de passe en self-service** → réduit la charge du helpdesk avant même la fin du projet.
-- **MFA via Authenticator** → meilleure expérience que le SMS, et prépare la suite (méthodes anti-phishing).
-- **Règles de sécurité de base** : blocage des authentifications anciennes, MFA obligatoire pour les administrateurs.
-- **Page de connexion personnalisée** activée tôt pour lisser visuellement la transition.
-- **Détection des connexions à risque** activée en mode surveillance (sans bloquer dans un premier temps).
+| Logic App de création de Guest indisponible | Blocage de l'onboarding externe | Surveillance applicative + procédure de création manuelle de secours |
 
 ---
 
 ## Annexes — à approfondir au démarrage
 
 - Détail du **process unitaire de migration d'une application** (checklist J-X / Jour J / J+X).
-- Architecture cible des **2 portails self-service** (diagrammes de flux, automatisations).
+- Architecture de la **Logic App de création de Guest** (paramètres, traitement d'erreurs, journalisation).
 - Inventaire des **comptes de service / techniques** côté AD FS et stratégie de remplacement.
+- Méthodologie de traitement des **dérives « double compte »** (critères d'arbitrage, processus décisionnel).
 - Stratégie de gestion des **certificats** côté Entra (rotation, surveillance des échéances).
 - Plan de **bascule réseau** (suppression de l'entrée DNS `sts.entreprise.com`, suppression du proxy WAP).
