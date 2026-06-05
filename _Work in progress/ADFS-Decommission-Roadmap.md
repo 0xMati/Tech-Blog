@@ -231,10 +231,7 @@ gantt
 
 1. **Découpage en vagues** des applications externes / mixtes (les plus simples d'abord, SAP en dernière vague).
 2. **Pour chaque application** : même process que Phase 3 (préparation, test, bascule, surveillance, désactivation côté AD FS).
-3. **Cas SAP** : à traiter comme un mini-projet dédié en dernière vague.
-   - Vérifier la compatibilité SAML 2.0 côté SAP (NetWeaver, BTP, S/4HANA selon périmètre).
-   - Option recommandée : passer par **SAP Identity Authentication Service** comme intermédiaire fédéré à Entra.
-   - UAT lourdes (SAP touche souvent finance et RH).
+3. **Cas SAP** : potentiellement plus complexe (compatibilité SAML, recours possible à **SAP Identity Authentication Service (IAS)** comme intermédiaire entre SAP et Entra). À traiter comme un mini-projet dédié, à cadrer en début de projet avec l'équipe SAP.
 
 ### Adaptation du process « demande d'accès aux applications »
 
@@ -364,20 +361,8 @@ gantt
 ### Communications à préparer
 
 - Email type « Votre application X bascule sur Entra ID le J/M/A » (par application).
-- Tutoriel vidéo 2 min « Comment me connecter après la bascule ».
 - FAQ « J'ai oublié mon mot de passe / mon Authenticator ne marche plus ».
 - Page de connexion personnalisée (charte graphique de l'entreprise).
-
----
-
-## Gouvernance projet
-
-| Comité | Composition | Cadence |
-|--------|-------------|---------|
-| **Comité de pilotage** | Sponsor IT, RSSI, lead projet, partenaire d'intégration | Mensuel |
-| **Comité technique** | Lead identité, lead réseau, lead applications, architecte | Hebdomadaire |
-| **Stand-up de vague** | Équipe migration + propriétaire métier de l'application en cours | Quotidien pendant la vague |
-| **War room de bascule** | Mêmes participants + helpdesk + astreinte | Lors des bascules majeures |
 
 ---
 
