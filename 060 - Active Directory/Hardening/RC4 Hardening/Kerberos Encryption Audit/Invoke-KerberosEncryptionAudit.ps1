@@ -879,11 +879,16 @@ function Get-KdcsvcEventAudit {
         param([int]$DaysBack, [int]$MaxEventsPerDc)
 
         $since  = (Get-Date).AddDays(-1 * $DaysBack)
+        # NOTE: Do NOT filter on ProviderName here. Get-WinEvent -FilterHashtable validates
+        # ProviderName up front and throws "There is not an event provider on the localhost
+        # computer that matches 'Kdcsvc'" when the provider has never emitted on that DC
+        # (Phase 0, or no RC4 traffic in the window) or when the canonical provider name
+        # differs across Windows builds (Kdcsvc vs Microsoft-Windows-Kerberos-Key-Distribution-Center).
+        # IDs 201-209 in the System log are KDC-specific; we post-filter on ProviderName for safety.
         $filter = @{
-            LogName      = 'System'
-            Id           = 201, 202, 203, 204, 205, 206, 207, 208, 209
-            StartTime    = $since
-            ProviderName = 'Kdcsvc'
+            LogName   = 'System'
+            Id        = 201, 202, 203, 204, 205, 206, 207, 208, 209
+            StartTime = $since
         }
 
         try {
@@ -894,6 +899,12 @@ function Get-KdcsvcEventAudit {
             }
             throw
         }
+
+        # Defensive post-filter: keep only KDC-emitted records. Matches both the legacy short
+        # provider name 'Kdcsvc' and the long form 'Microsoft-Windows-Kerberos-Key-Distribution-Center'.
+        $events = @($events | Where-Object {
+            $_.ProviderName -match '^(Kdcsvc|Microsoft-Windows-Kerberos-Key-Distribution-Center)$'
+        })
 
         $output = foreach ($eventRecord in $events) {
             $xml    = [xml]$eventRecord.ToXml()
@@ -941,11 +952,14 @@ function Get-KdcsvcEventAudit {
         Write-Host ("    [..] Collecting Kdcsvc 201-209 from {0}" -f $dc) -ForegroundColor DarkGray
         try {
             $dcEvents = @(Invoke-Command -ComputerName $dc -ScriptBlock $rs -ArgumentList $days, $max -ErrorAction Stop)
-            $color = if ($dcEvents.Count -eq 0) { 'Green' } else { 'Yellow' }
-            Write-Host ("    [OK] {0} -> {1} Kdcsvc event(s) collected" -f $dc, $dcEvents.Count) -ForegroundColor $color
+            if ($dcEvents.Count -eq 0) {
+                Write-Host ("    [OK] {0} -> 0 Kdcsvc events in window (silent — expected at Phase 0)" -f $dc) -ForegroundColor Green
+            } else {
+                Write-Host ("    [OK] {0} -> {1} Kdcsvc event(s) collected" -f $dc, $dcEvents.Count) -ForegroundColor Yellow
+            }
             [PSCustomObject]@{ Events = $dcEvents; Error = $null }
         } catch {
-            Write-Host ("    [!!] {0} -> Kdcsvc collection failed" -f $dc) -ForegroundColor Yellow
+            Write-Host ("    [!!] {0} -> Kdcsvc collection failed: {1}" -f $dc, $_.Exception.Message) -ForegroundColor Yellow
             [PSCustomObject]@{ Events = @(); Error = ("Failed to collect Kdcsvc 201-209 from {0}: {1}" -f $dc, $_.Exception.Message) }
         }
     }
