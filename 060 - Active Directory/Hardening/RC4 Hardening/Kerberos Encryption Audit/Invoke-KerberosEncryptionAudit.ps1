@@ -1764,6 +1764,7 @@ $results = @{
     Trusts = [System.Collections.Generic.List[object]]::new()
     Backlog = [System.Collections.Generic.List[object]]::new()
     AccountStatusSummary = [System.Collections.Generic.List[object]]::new()
+    AllAccounts = [System.Collections.Generic.List[object]]::new()
     PriorityAccounts = [System.Collections.Generic.List[object]]::new()
     TicketBreakdownByType = [System.Collections.Generic.List[object]]::new()
     TicketBreakdownGlobal = [System.Collections.Generic.List[object]]::new()
@@ -1838,6 +1839,11 @@ $statusSummary = $accountRows |
     } | Sort-Object Category, Status
 
 $statusSummary | ForEach-Object { $results.AccountStatusSummary.Add($_) | Out-Null }
+
+# Full per-account inventory: every user / computer / gMSA / sMSA enumerated, with their
+# msDS-SupportedEncryptionTypes posture. Exported to AllAccounts.csv when -ExportCsv is set.
+# Use this for ad-hoc filtering / pivoting (Excel, Power BI) or to feed remediation tooling.
+$accountRows | ForEach-Object { $results.AllAccounts.Add($_) | Out-Null }
 
 # PriorityAccounts surfaces only actionable rows. Failed* always wins. Otherwise we keep
 # accounts with SPN or gMSA/sMSA that are not Compliant, but exclude Info* statuses (by
@@ -2110,6 +2116,7 @@ if ($ExportCsv) {
         @{ Name = 'KdcsvcEvents.csv'; Data = $results.KdcsvcEvents },
         @{ Name = 'KdcsvcSummary.csv'; Data = $results.KdcsvcSummary },
         @{ Name = 'PriorityAccounts.csv'; Data = $results.PriorityAccounts },
+        @{ Name = 'AllAccounts.csv'; Data = $results.AllAccounts },
         @{ Name = 'TicketBreakdownByType.csv'; Data = $results.TicketBreakdownByType },
         @{ Name = 'TicketBreakdownGlobal.csv'; Data = $results.TicketBreakdownGlobal },
         @{ Name = 'Rc4RequestorAccounts.csv'; Data = $results.Rc4RequestorAccounts },
