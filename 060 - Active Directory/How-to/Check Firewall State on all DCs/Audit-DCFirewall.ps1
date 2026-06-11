@@ -57,8 +57,17 @@ ActiveProfile           Active network profile per NIC, as seen by
 WFAS_Domain             Enabled state of each WFAS profile (Domain / Private /
 WFAS_Private            Public) as reported by Get-NetFirewallProfile (same
 WFAS_Public             source as wf.msc). True = firewall enabled, False =
-                        firewall disabled. This is the AUTHORITATIVE state that
-                        actually drives traffic filtering.
+                        firewall disabled. This is the EFFECTIVE state
+                        (ActiveStore: local + GPO + MDM merged) - the value
+                        that actually drives traffic filtering.
+
+WFAS_Local_Domain       Enabled state of each WFAS profile from the
+WFAS_Local_Private      PersistentStore (the DC's LOCAL config only - what
+WFAS_Local_Public       wf.msc shows when not viewing GPO data). When this
+                        differs from WFAS_<Profile>, a GPO or MDM policy is
+                        overriding the local config. Classic source of
+                        confusion: admin sees Enabled in wf.msc while the
+                        firewall is actually OFF at runtime (or vice versa).
 
 InAction_Domain         DefaultInboundAction per profile (Block / Allow /
 InAction_Private        NotConfigured). 'Enabled=True' is meaningless if the
@@ -123,6 +132,8 @@ Status                  Overall verdict:
                           DIVERGENCE -> at least one issue (see Notes column):
                             * MpsSvc or BFE not running
                             * WFAS state != Registry state on a profile
+                            * WFAS Effective != WFAS Local on a profile
+                              (a GPO or MDM is overriding the local config)
                             * WFAS enabled but DefaultInboundAction = Allow
                               (firewall is on but does not filter inbound)
                             * Any profile disabled in WFAS
@@ -155,8 +166,14 @@ function Write-ColumnLegend {
             Title = 'WFAS - AUTHORITATIVE STATE (what wf.msc and Get-NetFirewallProfile show)'
             Items = @(
                 @{ Cols=@('WFAS_Domain','WFAS_Private','WFAS_Public'); Desc=@(
-                    "Enabled state per profile. True = firewall enabled, False = disabled.",
+                    "Enabled state per profile (EFFECTIVE = ActiveStore: local + GPO + MDM merged).",
+                    "True = firewall enabled, False = disabled.",
                     "This is the value that actually drives traffic filtering.") },
+                @{ Cols=@('WFAS_Local_Domain','WFAS_Local_Private','WFAS_Local_Public'); Desc=@(
+                    "Enabled state per profile from the LOCAL config only (PersistentStore).",
+                    "When this differs from WFAS_<Profile>, a GPO or MDM policy is overriding",
+                    "the local config -> classic source of confusion when wf.msc shows Enabled",
+                    "but the firewall is actually OFF at runtime (or vice versa).") },
                 @{ Cols=@('InAction_Domain','InAction_Private','InAction_Public'); Desc=@(
                     "DefaultInboundAction per profile (Block / Allow / NotConfigured).",
                     "'Enabled=True' is meaningless if the default is Allow: the firewall is on but",
@@ -222,6 +239,7 @@ function Write-ColumnLegend {
                     "DIVERGENCE -> at least one issue (see Notes column):",
                     "  * MpsSvc or BFE not running",
                     "  * WFAS state != Registry state on a profile",
+                    "  * WFAS Effective != WFAS Local on a profile (GPO/MDM override)",
                     "  * WFAS enabled but DefaultInboundAction = Allow (no filtering)",
                     "  * Any profile disabled in WFAS",
                     "  * WSC reports non-Defender or multiple FW products",
@@ -273,6 +291,9 @@ $scriptBlock = {
         WFAS_Domain          = $null
         WFAS_Private         = $null
         WFAS_Public          = $null
+        WFAS_Local_Domain    = $null
+        WFAS_Local_Private   = $null
+        WFAS_Local_Public    = $null
         InAction_Domain      = $null
         InAction_Private     = $null
         InAction_Public      = $null
@@ -308,19 +329,36 @@ $scriptBlock = {
         }
     } catch { $result.Notes.Add("ActiveProfile: $($_.Exception.Message)") }
 
-    # WFAS - all 3 profiles (Enabled + Default actions). Kept as native types
-    # ([bool] for Enabled, string for actions) instead of stringified booleans.
+    # WFAS - all 3 profiles (Enabled + Default actions). Read TWO stores:
+    #   ActiveStore     = effective state (local + GPO + MDM merged) -> what
+    #                     Get-NetFirewallProfile returns by default and what
+    #                     actually drives traffic filtering.
+    #   PersistentStore = local-only config -> what wf.msc shows in its tree
+    #                     when not viewing GPO data.
+    # If the two differ on a profile, a GPO (or MDM) is overriding the local
+    # config -> classic source of confusion when an admin sees 'Enabled' in
+    # wf.msc but the firewall is actually disabled at runtime.
     try {
-        $profiles = Get-NetFirewallProfile -ErrorAction Stop
+        $profilesActive = Get-NetFirewallProfile -PolicyStore ActiveStore -ErrorAction Stop
         foreach ($pName in 'Domain','Private','Public') {
-            $p = $profiles | Where-Object Name -eq $pName | Select-Object -First 1
+            $p = $profilesActive | Where-Object Name -eq $pName | Select-Object -First 1
             if ($p) {
                 $result."WFAS_$pName"      = [bool]$p.Enabled
                 $result."InAction_$pName"  = [string]$p.DefaultInboundAction
                 $result."OutAction_$pName" = [string]$p.DefaultOutboundAction
             }
         }
-    } catch { $result.Notes.Add("WFAS: $($_.Exception.Message)") }
+    } catch { $result.Notes.Add("WFAS (ActiveStore): $($_.Exception.Message)") }
+
+    try {
+        $profilesLocal = Get-NetFirewallProfile -PolicyStore PersistentStore -ErrorAction Stop
+        foreach ($pName in 'Domain','Private','Public') {
+            $p = $profilesLocal | Where-Object Name -eq $pName | Select-Object -First 1
+            if ($p) {
+                $result."WFAS_Local_$pName" = [bool]$p.Enabled
+            }
+        }
+    } catch { $result.Notes.Add("WFAS (PersistentStore): $($_.Exception.Message)") }
 
     # Legacy registry - all 3 profiles
     $regBase = 'HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy'
@@ -466,6 +504,21 @@ $scriptBlock = {
         }
     }
 
+    # Effective (ActiveStore) vs Local (PersistentStore) divergence -> a GPO
+    # or MDM policy is overriding the DC's local firewall config. This is the
+    # typical reason an admin sees 'Enabled' in wf.msc while the firewall is
+    # actually OFF at runtime (or vice versa).
+    $localChecks = @(
+        @{ N='Domain';  E=$result.WFAS_Domain;  L=$result.WFAS_Local_Domain  },
+        @{ N='Private'; E=$result.WFAS_Private; L=$result.WFAS_Local_Private },
+        @{ N='Public';  E=$result.WFAS_Public;  L=$result.WFAS_Local_Public  }
+    )
+    foreach ($c in $localChecks) {
+        if ($c.E -is [bool] -and $c.L -is [bool] -and $c.E -ne $c.L) {
+            $issues.Add("$($c.N): Effective=$($c.E) but Local=$($c.L) (overridden by GPO/MDM)")
+        }
+    }
+
     if ($result.WSC_Available -and $result.WSC_FirewallProducts) {
         if ($result.WSC_FirewallProducts -notmatch 'Windows Defender Firewall') {
             $issues.Add('WSC: no Windows Defender Firewall registered')
@@ -543,6 +596,13 @@ if ($ShowLegend) {
 }
 Write-Host ""
 
+# Use a wide rendering width so the summary table never wraps mid-column,
+# even when the host is narrow (the user can scroll right). Out-String's
+# default of ~80 chars produces hard line-breaks that hide entire columns.
+$tableWidth = try {
+    [Math]::Max([Console]::WindowWidth, 200)
+} catch { 500 }
+
 $summaryRows = $results | ForEach-Object {
     [pscustomobject]@{
         ComputerName        = $_.ComputerName
@@ -564,7 +624,7 @@ $summaryRows = $results | ForEach-Object {
         Status              = $_.Status
     }
 }
-$summaryRows | Format-Table -AutoSize | Out-String | Write-Host
+$summaryRows | Format-Table -AutoSize | Out-String -Width $tableWidth | Write-Host
 
 # ---------------------------------------------------------------------------
 # Console output - rule groups detail (per DC, per group)
@@ -605,11 +665,55 @@ if ($divergent) {
     foreach ($r in $divergent) {
         Write-Host ""
         Write-Host ("[{0}] -> {1}" -f $r.ComputerName, $r.Status) -ForegroundColor Red
+        Write-Host ("  ActiveProfile       : {0}" -f $r.ActiveProfile)
         Write-Host ("  Notes               : {0}" -f $r.Notes)
+
+        # Show Effective vs Local triplet only when they differ on at least
+        # one profile - signals a GPO/MDM override.
+        $effTriplet  = '{0} / {1} / {2}' -f (ConvertTo-BoolSymbol $r.WFAS_Domain).Text,
+                                              (ConvertTo-BoolSymbol $r.WFAS_Private).Text,
+                                              (ConvertTo-BoolSymbol $r.WFAS_Public).Text
+        $locTriplet  = '{0} / {1} / {2}' -f (ConvertTo-BoolSymbol $r.WFAS_Local_Domain).Text,
+                                              (ConvertTo-BoolSymbol $r.WFAS_Local_Private).Text,
+                                              (ConvertTo-BoolSymbol $r.WFAS_Local_Public).Text
+        $hasOverride = ($r.WFAS_Domain  -is [bool] -and $r.WFAS_Local_Domain  -is [bool] -and $r.WFAS_Domain  -ne $r.WFAS_Local_Domain) -or `
+                       ($r.WFAS_Private -is [bool] -and $r.WFAS_Local_Private -is [bool] -and $r.WFAS_Private -ne $r.WFAS_Local_Private) -or `
+                       ($r.WFAS_Public  -is [bool] -and $r.WFAS_Local_Public  -is [bool] -and $r.WFAS_Public  -ne $r.WFAS_Local_Public)
+        if ($hasOverride) {
+            Write-Host ("  Firewall Effective  : {0}  (ActiveStore - what actually applies)" -f $effTriplet) -ForegroundColor Yellow
+            Write-Host ("  Firewall Local      : {0}  (PersistentStore - what wf.msc shows)" -f $locTriplet) -ForegroundColor Yellow
+        }
         Write-Host ("  WSC_FirewallProducts: {0}" -f $r.WSC_FirewallProducts)
         Write-Host ("  Svc_BFE / Wscsvc    : {0} / {1}" -f $r.Svc_BFE, $r.Svc_Wscsvc)
         if ($r.Rules_Missing)  { Write-Host ("  Rules_Missing       : {0}" -f $r.Rules_Missing) }
         if ($r.Rules_Disabled) { Write-Host ("  Rules_Disabled      : {0}" -f $r.Rules_Disabled) }
+
+        # Contextual hint: if all NICs are DomainAuthenticated, only the Domain
+        # profile state matters at runtime - Private/Public being off is
+        # cosmetic (but still flagged because Microsoft Security Baseline
+        # recommends all three on).
+        $allDomainAuth = $true
+        if ($r.ActiveProfile) {
+            foreach ($entry in ($r.ActiveProfile -split ';\s*')) {
+                $cat = ($entry -split '=')[1]
+                if ($cat -and $cat -ne 'DomainAuthenticated') {
+                    $allDomainAuth = $false
+                    break
+                }
+            }
+        }
+        $domOn  = [bool]$r.WFAS_Domain
+        $privOn = [bool]$r.WFAS_Private
+        $pubOn  = [bool]$r.WFAS_Public
+        if ($domOn -and $allDomainAuth -and (-not $privOn -or -not $pubOn)) {
+            Write-Host "  Hint                : Domain profile is ON and all NICs are DomainAuthenticated -> runtime is fine. Private/Public being off is a baseline finding, not an outage." -ForegroundColor DarkGray
+        }
+        if (-not $domOn) {
+            Write-Host "  Hint                : Domain profile is OFF -> the firewall is NOT filtering traffic on this DC. Critical." -ForegroundColor DarkGray
+        }
+        if ($hasOverride) {
+            Write-Host "  Hint                : Local config differs from effective state -> a GPO or MDM policy is overriding this DC's firewall settings (run 'gpresult /h gpresult.html' to find which GPO)." -ForegroundColor DarkGray
+        }
     }
 } else {
     Write-Host "No divergence detected on any DC." -ForegroundColor Green
