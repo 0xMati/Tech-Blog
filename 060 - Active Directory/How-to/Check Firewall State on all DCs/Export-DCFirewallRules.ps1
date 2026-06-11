@@ -1,54 +1,111 @@
 <#
 .SYNOPSIS
     Exports the EFFECTIVE Windows Firewall rules and profile settings of every
-    DC of a domain, in CSV + JSON. Optionally compares with a previous export
-    to highlight what changed (typical use case: snapshot before / after a
-    GPO push).
+    DC of a domain (Snapshot mode), or compares two existing snapshots and
+    produces per-DC Markdown diff reports (Compare mode).
+
 .DESCRIPTION
-    For each Domain Controller, the script reads the ActiveStore (effective
-    state = local + GPO + MDM merged) via Get-NetFirewallRule and
-    Get-NetFirewallProfile, joins the associated PortFilter / AddressFilter /
-    ApplicationFilter / ServiceFilter values, and writes:
+    The script has TWO mutually-exclusive modes selected by parameter set:
 
-        <OutputFolder>\<Label>\<DC>_rules.csv
-        <OutputFolder>\<Label>\<DC>_rules.json
-        <OutputFolder>\<Label>\<DC>_profiles.csv
-        <OutputFolder>\<Label>\<DC>_profiles.json
+    Snapshot mode (default):
+        For each Domain Controller, reads the ActiveStore (effective state =
+        local + GPO + MDM merged) via Get-NetFirewallRule and
+        Get-NetFirewallProfile, joins the associated PortFilter /
+        AddressFilter / ApplicationFilter / ServiceFilter values, and writes
+        directly into <OutputFolder> (no sub-folder is created):
 
-    With -CompareWith <previousFolder>, the script also produces, per DC:
+            <OutputFolder>\<DC>_rules.csv
+            <OutputFolder>\<DC>_rules.json
+            <OutputFolder>\<DC>_profiles.csv
+            <OutputFolder>\<DC>_profiles.json
 
-        <OutputFolder>\<Label>\<DC>_diff.md
+        Files are sorted by rule Name so successive snapshots / git diffs
+        stay stable. The PolicyStoreSourceType field on each rule tells you
+        where the rule came from (Local vs GroupPolicy) - very useful right
+        after a GPO push.
 
-    listing rules added / removed / modified between the previous snapshot and
-    the current one, plus profile setting deltas.
+    Compare mode:
+        No DC is queried. The script reads the CSV exports of two existing
+        snapshot folders (typically a "before" and an "after") and writes,
+        per DC found in the second folder:
 
-    The PolicyStoreSourceType field on each rule tells you where the rule came
-    from (Local vs GroupPolicy) - very useful right after a GPO push.
+            <OutputCompareFolder>\<DC>_diff.csv
+
+        Each diff CSV has one row per change with columns:
+            ChangeType (Added / Removed / Modified / ProfileChanged)
+            Name, DisplayName
+            Direction, Action, Profile, Source   (filled for Added/Removed only)
+            Field, OldValue, NewValue            (filled for Modified/ProfileChanged only)
+
+        plus a console summary "+N added / ~N modified / -N removed /
+        !N profile changed" per DC.
+
+.PARAMETER OutputFolder
+    Snapshot mode only. Folder where the per-DC CSV/JSON snapshot files are
+    written. Created if it does not exist. Existing files for the same DC
+    are overwritten.
+
+.PARAMETER ComputerName
+    Snapshot mode only. List of DCs to query. If omitted, the script uses
+    Get-ADDomainController -Filter * to target every DC of the current
+    domain.
+
+.PARAMETER Credential
+    Snapshot mode only. Alternate credentials for the WinRM session.
+
+.PARAMETER Compare
+    Compare mode only. Exactly two folders: the "before" snapshot first,
+    the "after" snapshot second. Both folders must contain the
+    <DC>_rules.csv / <DC>_profiles.csv files produced by a previous
+    Snapshot run.
+
+.PARAMETER OutputCompareFolder
+    Compare mode only. Folder where the per-DC <DC>_diff.md files are
+    written. Created if it does not exist.
+
+.PARAMETER Transcript
+    Both modes. Starts Start-Transcript in the current working directory.
 
 .EXAMPLE
     # Snapshot before a GPO change
-    .\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW -Label 'before-gpo'
+    .\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW\before-gpo
 
     # ... push GPO + gpupdate /force on the DCs ...
 
-    # Snapshot after + immediate diff
-    .\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW -Label 'after-gpo' `
-        -CompareWith C:\Temp\FW\before-gpo
+    # Snapshot after the change
+    .\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW\after-gpo
+
+    # Compare the two snapshots
+    .\Export-DCFirewallRules.ps1 `
+        -Compare C:\Temp\FW\before-gpo, C:\Temp\FW\after-gpo `
+        -OutputCompareFolder C:\Temp\FW\diff-gpo
+
+.EXAMPLE
+    # Snapshot only one DC
+    .\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW\dc01-baseline -ComputerName DC01
 #>
 
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Snapshot')]
 param(
+    # --- Snapshot mode ----------------------------------------------------
+    [Parameter(ParameterSetName = 'Snapshot', Mandatory)]
+    [string]$OutputFolder,
+
+    [Parameter(ParameterSetName = 'Snapshot')]
     [string[]]$ComputerName,                       # If empty: all DCs of the current domain
+
+    [Parameter(ParameterSetName = 'Snapshot')]
     [PSCredential]$Credential,
 
-    [Parameter(Mandatory)]
-    [string]$OutputFolder,                         # Root folder for the snapshots
+    # --- Compare mode -----------------------------------------------------
+    [Parameter(ParameterSetName = 'Compare', Mandatory)]
+    [ValidateCount(2, 2)]
+    [string[]]$Compare,                            # 2 folders: before, after
 
-    [Parameter(Mandatory)]
-    [string]$Label,                                # Sub-folder name (e.g. 'before-gpo', '2026-06-11')
+    [Parameter(ParameterSetName = 'Compare', Mandatory)]
+    [string]$OutputCompareFolder,                  # Where the *_diff.md files go
 
-    [string]$CompareWith,                          # Path to a previous snapshot folder (the <OutputFolder>\<Label> of a previous run)
-
+    # --- Both modes -------------------------------------------------------
     [switch]$Transcript                            # Start-Transcript in the current directory
 )
 
@@ -73,27 +130,208 @@ if ($Transcript) {
 }
 
 # ---------------------------------------------------------------------------
-# Resolve DC list if none provided
+# COMPARE MODE - read 2 existing snapshots, write diffs, then exit.
+# ---------------------------------------------------------------------------
+if ($PSCmdlet.ParameterSetName -eq 'Compare') {
+    $beforeFolder = $Compare[0]
+    $afterFolder  = $Compare[1]
+
+    foreach ($folder in @($beforeFolder, $afterFolder)) {
+        if (-not (Test-Path -LiteralPath $folder)) {
+            throw "Compare folder not found: $folder"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $OutputCompareFolder)) {
+        New-Item -ItemType Directory -Path $OutputCompareFolder -Force | Out-Null
+    }
+
+    Write-Host ("Before snapshot   : {0}" -f $beforeFolder) -ForegroundColor Cyan
+    Write-Host ("After snapshot    : {0}" -f $afterFolder) -ForegroundColor Cyan
+    Write-Host ("Diff output folder: {0}" -f $OutputCompareFolder) -ForegroundColor Cyan
+
+    # DC list = every <DC>_rules.csv found in the "after" folder.
+    $afterRulesFiles = Get-ChildItem -LiteralPath $afterFolder -Filter '*_rules.csv' -File -ErrorAction Stop
+    if (-not $afterRulesFiles) {
+        throw "No *_rules.csv files found in $afterFolder. Did you run Snapshot mode against this folder first?"
+    }
+
+    # Fields used to detect a "modified" rule (Name is the key, excluded).
+    $compareFields = @(
+        'DisplayName','DisplayGroup','Group','Enabled','Direction','Action','Profile',
+        'EdgeTraversalPolicy','PolicyStoreSourceType','PolicyStoreSource',
+        'Protocol','LocalPort','RemotePort','IcmpType',
+        'LocalAddress','RemoteAddress',
+        'Program','Package','Service'
+    )
+
+    Write-Host ""
+    Write-Host "=== DIFF ===" -ForegroundColor Yellow
+
+    foreach ($currFile in $afterRulesFiles) {
+        $dc                = $currFile.BaseName -replace '_rules$', ''
+        $prevRulesPath     = Join-Path $beforeFolder ("{0}_rules.csv"    -f $dc)
+        $prevProfilesPath  = Join-Path $beforeFolder ("{0}_profiles.csv" -f $dc)
+        $currRulesPath     = $currFile.FullName
+        $currProfilesPath  = Join-Path $afterFolder  ("{0}_profiles.csv" -f $dc)
+        $diffPath          = Join-Path $OutputCompareFolder ("{0}_diff.csv" -f $dc)
+
+        if (-not (Test-Path -LiteralPath $prevRulesPath)) {
+            Write-Host ("[{0}] no matching snapshot in {1}, skipping" -f $dc, $beforeFolder) -ForegroundColor DarkGray
+            continue
+        }
+
+        $prevRules = Import-Csv -Path $prevRulesPath -Encoding UTF8
+        $currRules = Import-Csv -Path $currRulesPath -Encoding UTF8
+
+        $prevByName = @{}
+        foreach ($p in $prevRules) { $prevByName[$p.Name] = $p }
+        $currByName = @{}
+        foreach ($c in $currRules) { $currByName[$c.Name] = $c }
+
+        # One row per change goes into this list and is exported as CSV.
+        $diffRows = New-Object System.Collections.Generic.List[psobject]
+
+        $addedCount = 0
+        $removedCount = 0
+        $modifiedCount = 0
+        $profileChangedCount = 0
+
+        # ---- Rules added / modified ----------------------------------
+        foreach ($name in $currByName.Keys) {
+            $curr = $currByName[$name]
+            if (-not $prevByName.ContainsKey($name)) {
+                $addedCount++
+                $diffRows.Add([pscustomobject]@{
+                    ChangeType  = 'Added'
+                    Name        = $name
+                    DisplayName = $curr.DisplayName
+                    Direction   = $curr.Direction
+                    Action      = $curr.Action
+                    Profile     = $curr.Profile
+                    Source      = $curr.PolicyStoreSourceType
+                    Field       = ''
+                    OldValue    = ''
+                    NewValue    = ''
+                })
+                continue
+            }
+            $prev = $prevByName[$name]
+            $ruleChanged = $false
+            foreach ($f in $compareFields) {
+                $oldVal = [string]$prev.$f
+                $newVal = [string]$curr.$f
+                if ($oldVal -ne $newVal) {
+                    $diffRows.Add([pscustomobject]@{
+                        ChangeType  = 'Modified'
+                        Name        = $name
+                        DisplayName = $curr.DisplayName
+                        Direction   = ''
+                        Action      = ''
+                        Profile     = ''
+                        Source      = ''
+                        Field       = $f
+                        OldValue    = $oldVal
+                        NewValue    = $newVal
+                    })
+                    $ruleChanged = $true
+                }
+            }
+            if ($ruleChanged) { $modifiedCount++ }
+        }
+
+        # ---- Rules removed -------------------------------------------
+        foreach ($name in $prevByName.Keys) {
+            if (-not $currByName.ContainsKey($name)) {
+                $removedCount++
+                $prev = $prevByName[$name]
+                $diffRows.Add([pscustomobject]@{
+                    ChangeType  = 'Removed'
+                    Name        = $name
+                    DisplayName = $prev.DisplayName
+                    Direction   = $prev.Direction
+                    Action      = $prev.Action
+                    Profile     = $prev.Profile
+                    Source      = $prev.PolicyStoreSourceType
+                    Field       = ''
+                    OldValue    = ''
+                    NewValue    = ''
+                })
+            }
+        }
+
+        # ---- Profile setting changes ---------------------------------
+        if ((Test-Path -LiteralPath $prevProfilesPath) -and (Test-Path -LiteralPath $currProfilesPath)) {
+            $prevProfiles  = Import-Csv -Path $prevProfilesPath -Encoding UTF8
+            $currProfiles  = Import-Csv -Path $currProfilesPath -Encoding UTF8
+            $prevProfByName = @{}
+            foreach ($p in $prevProfiles) { $prevProfByName[$p.Name] = $p }
+            foreach ($curr in $currProfiles) {
+                if (-not $prevProfByName.ContainsKey($curr.Name)) { continue }
+                $prev = $prevProfByName[$curr.Name]
+                foreach ($f in 'Enabled','DefaultInboundAction','DefaultOutboundAction',
+                                'AllowInboundRules','AllowLocalFirewallRules','AllowLocalIPsecRules',
+                                'NotifyOnListen','LogAllowed','LogBlocked','LogFileName','LogMaxSizeKilobytes') {
+                    $oldVal = [string]$prev.$f
+                    $newVal = [string]$curr.$f
+                    if ($oldVal -ne $newVal) {
+                        $profileChangedCount++
+                        $diffRows.Add([pscustomobject]@{
+                            ChangeType  = 'ProfileChanged'
+                            Name        = ''
+                            DisplayName = $curr.Name           # profile name (Domain/Private/Public)
+                            Direction   = ''
+                            Action      = ''
+                            Profile     = ''
+                            Source      = ''
+                            Field       = $f
+                            OldValue    = $oldVal
+                            NewValue    = $newVal
+                        })
+                    }
+                }
+            }
+        }
+
+        # ---- Console summary -----------------------------------------
+        Write-Host ""
+        Write-Host ("[{0}] {1}  vs  {2}" -f $dc, $prevRulesPath, $currRulesPath) -ForegroundColor White
+        if ($addedCount          -gt 0) { Write-Host ("  + {0} rule(s) added"           -f $addedCount)          -ForegroundColor Green }
+        if ($removedCount        -gt 0) { Write-Host ("  - {0} rule(s) removed"         -f $removedCount)        -ForegroundColor Red }
+        if ($modifiedCount       -gt 0) { Write-Host ("  ~ {0} rule(s) modified"        -f $modifiedCount)       -ForegroundColor Yellow }
+        if ($profileChangedCount -gt 0) { Write-Host ("  ! {0} profile setting(s) changed" -f $profileChangedCount) -ForegroundColor Magenta }
+        if ($addedCount    -eq 0 -and
+            $removedCount  -eq 0 -and
+            $modifiedCount -eq 0 -and
+            $profileChangedCount -eq 0) {
+            Write-Host "  No changes detected." -ForegroundColor DarkGreen
+        }
+
+        # ---- CSV report ----------------------------------------------
+        # Always write the file so its absence means "the comparison was
+        # not run for that DC" and not "no changes". An empty diff has
+        # only the header row.
+        $diffRows |
+            Sort-Object ChangeType, Name, DisplayName, Field |
+            Export-Csv -Path $diffPath -NoTypeInformation -Encoding UTF8
+        Write-Host ("    diff report -> {0}" -f $diffPath) -ForegroundColor DarkGray
+    }
+
+    if ($transcriptStarted) { try { Stop-Transcript | Out-Null } catch { } }
+    return
+}
+
+# ---------------------------------------------------------------------------
+# SNAPSHOT MODE - resolve DC list and prepare the output folder.
 # ---------------------------------------------------------------------------
 if (-not $ComputerName) {
     Import-Module ActiveDirectory -ErrorAction Stop
     $ComputerName = (Get-ADDomainController -Filter *).HostName
 }
 
-# ---------------------------------------------------------------------------
-# Resolve output folder layout
-# ---------------------------------------------------------------------------
-$snapshotFolder = Join-Path -Path $OutputFolder -ChildPath $Label
-if (-not (Test-Path -LiteralPath $snapshotFolder)) {
-    New-Item -ItemType Directory -Path $snapshotFolder -Force | Out-Null
+if (-not (Test-Path -LiteralPath $OutputFolder)) {
+    New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null
 }
-Write-Host ("Snapshot folder    : {0}" -f $snapshotFolder) -ForegroundColor Cyan
-if ($CompareWith) {
-    if (-not (Test-Path -LiteralPath $CompareWith)) {
-        throw "CompareWith folder not found: $CompareWith"
-    }
-    Write-Host ("Compare against    : {0}" -f $CompareWith) -ForegroundColor Cyan
-}
+Write-Host ("Output folder : {0}" -f $OutputFolder) -ForegroundColor Cyan
 
 # ---------------------------------------------------------------------------
 # Remote payload
@@ -207,10 +445,10 @@ Write-Host ""
 Write-Host "=== EXPORT ===" -ForegroundColor Cyan
 foreach ($r in $results) {
     $dc = $r.ComputerName
-    $rulesCsv     = Join-Path $snapshotFolder ("{0}_rules.csv"     -f $dc)
-    $rulesJson    = Join-Path $snapshotFolder ("{0}_rules.json"    -f $dc)
-    $profilesCsv  = Join-Path $snapshotFolder ("{0}_profiles.csv"  -f $dc)
-    $profilesJson = Join-Path $snapshotFolder ("{0}_profiles.json" -f $dc)
+    $rulesCsv     = Join-Path $OutputFolder ("{0}_rules.csv"     -f $dc)
+    $rulesJson    = Join-Path $OutputFolder ("{0}_rules.json"    -f $dc)
+    $profilesCsv  = Join-Path $OutputFolder ("{0}_profiles.csv"  -f $dc)
+    $profilesJson = Join-Path $OutputFolder ("{0}_profiles.json" -f $dc)
 
     if ($r.Rules)    {
         # Sort by Name so subsequent diffs / git diffs stay stable.
@@ -223,171 +461,7 @@ foreach ($r in $results) {
     }
 
     Write-Host ("[{0}] {1} rules, {2} profiles -> {3}" -f $dc, ($r.Rules | Measure-Object).Count,
-        ($r.Profiles | Measure-Object).Count, $snapshotFolder) -ForegroundColor Green
-}
-
-# ---------------------------------------------------------------------------
-# Optional: diff against a previous snapshot
-# ---------------------------------------------------------------------------
-if ($CompareWith) {
-    Write-Host ""
-    Write-Host "=== DIFF vs $CompareWith ===" -ForegroundColor Yellow
-
-    # Fields used to detect a "modified" rule (Name is the key, excluded).
-    $compareFields = @(
-        'DisplayName','DisplayGroup','Group','Enabled','Direction','Action','Profile',
-        'EdgeTraversalPolicy','PolicyStoreSourceType','PolicyStoreSource',
-        'Protocol','LocalPort','RemotePort','IcmpType',
-        'LocalAddress','RemoteAddress',
-        'Program','Package','Service'
-    )
-
-    foreach ($r in $results) {
-        $dc = $r.ComputerName
-        $prevRulesPath    = Join-Path $CompareWith    ("{0}_rules.csv"    -f $dc)
-        $prevProfilesPath = Join-Path $CompareWith    ("{0}_profiles.csv" -f $dc)
-        $diffPath         = Join-Path $snapshotFolder ("{0}_diff.md"      -f $dc)
-
-        if (-not (Test-Path -LiteralPath $prevRulesPath)) {
-            Write-Host ("[{0}] no previous snapshot ({1}), skipping diff" -f $dc, $prevRulesPath) -ForegroundColor DarkGray
-            continue
-        }
-
-        $prevRules = Import-Csv -Path $prevRulesPath -Encoding UTF8
-        $currRules = $r.Rules
-
-        $prevByName = @{}
-        foreach ($p in $prevRules) { $prevByName[$p.Name] = $p }
-        $currByName = @{}
-        foreach ($c in $currRules) { $currByName[$c.Name] = $c }
-
-        $added    = New-Object System.Collections.Generic.List[psobject]
-        $removed  = New-Object System.Collections.Generic.List[psobject]
-        $modified = New-Object System.Collections.Generic.List[psobject]
-
-        foreach ($name in $currByName.Keys) {
-            if (-not $prevByName.ContainsKey($name)) {
-                $added.Add($currByName[$name])
-                continue
-            }
-            $changes = New-Object System.Collections.Generic.List[string]
-            foreach ($f in $compareFields) {
-                $oldVal = [string]$prevByName[$name].$f
-                $newVal = [string]$currByName[$name].$f
-                if ($oldVal -ne $newVal) {
-                    $changes.Add(("{0}: '{1}' -> '{2}'" -f $f, $oldVal, $newVal))
-                }
-            }
-            if ($changes.Count -gt 0) {
-                $modified.Add([pscustomobject]@{
-                    Name        = $name
-                    DisplayName = $currByName[$name].DisplayName
-                    Changes     = ($changes -join ' ; ')
-                })
-            }
-        }
-        foreach ($name in $prevByName.Keys) {
-            if (-not $currByName.ContainsKey($name)) {
-                $removed.Add($prevByName[$name])
-            }
-        }
-
-        # Profiles diff
-        $profileChanges = New-Object System.Collections.Generic.List[string]
-        if (Test-Path -LiteralPath $prevProfilesPath) {
-            $prevProfiles = Import-Csv -Path $prevProfilesPath -Encoding UTF8
-            $prevProfByName = @{}
-            foreach ($p in $prevProfiles) { $prevProfByName[$p.Name] = $p }
-            foreach ($curr in $r.Profiles) {
-                if (-not $prevProfByName.ContainsKey($curr.Name)) { continue }
-                $prev = $prevProfByName[$curr.Name]
-                foreach ($f in 'Enabled','DefaultInboundAction','DefaultOutboundAction',
-                                'AllowInboundRules','AllowLocalFirewallRules','AllowLocalIPsecRules',
-                                'NotifyOnListen','LogAllowed','LogBlocked','LogFileName','LogMaxSizeKilobytes') {
-                    $oldVal = [string]$prev.$f
-                    $newVal = [string]$curr.$f
-                    if ($oldVal -ne $newVal) {
-                        $profileChanges.Add(("{0}.{1}: '{2}' -> '{3}'" -f $curr.Name, $f, $oldVal, $newVal))
-                    }
-                }
-            }
-        }
-
-        # Console summary
-        Write-Host ""
-        Write-Host ("[{0}] Compared against {1}:" -f $dc, $CompareWith) -ForegroundColor White
-        if ($added.Count    -gt 0) { Write-Host ("  + {0} rule(s) added"    -f $added.Count)    -ForegroundColor Green }
-        if ($removed.Count  -gt 0) { Write-Host ("  - {0} rule(s) removed"  -f $removed.Count)  -ForegroundColor Red }
-        if ($modified.Count -gt 0) { Write-Host ("  ~ {0} rule(s) modified" -f $modified.Count) -ForegroundColor Yellow }
-        if ($profileChanges.Count -gt 0) {
-            Write-Host ("  ! {0} profile setting(s) changed" -f $profileChanges.Count) -ForegroundColor Magenta
-        }
-        if ($added.Count    -eq 0 -and
-            $removed.Count  -eq 0 -and
-            $modified.Count -eq 0 -and
-            $profileChanges.Count -eq 0) {
-            Write-Host "  No changes detected." -ForegroundColor DarkGreen
-        }
-
-        # Markdown report
-        $md = New-Object System.Collections.Generic.List[string]
-        $md.Add("# Firewall diff for $dc")
-        $md.Add("")
-        $md.Add(("- Previous snapshot: ``{0}``" -f $prevRulesPath))
-        $md.Add(("- Current snapshot : ``{0}``" -f $rulesCsv))
-        $md.Add(("- Generated        : {0}"   -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')))
-        $md.Add("")
-        $md.Add("## Profile setting changes")
-        $md.Add("")
-        if ($profileChanges.Count -eq 0) {
-            $md.Add("_No profile setting changed._")
-        } else {
-            foreach ($c in $profileChanges) { $md.Add("- $c") }
-        }
-        $md.Add("")
-        $md.Add(("## Rules added ({0})"    -f $added.Count))
-        $md.Add("")
-        if ($added.Count -eq 0) {
-            $md.Add("_None._")
-        } else {
-            $md.Add("| Name | DisplayName | DisplayGroup | Enabled | Direction | Action | Profile | Source |")
-            $md.Add("|---|---|---|---|---|---|---|---|")
-            foreach ($a in ($added | Sort-Object Name)) {
-                $md.Add(("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} |" -f `
-                    $a.Name, $a.DisplayName, $a.DisplayGroup, $a.Enabled, $a.Direction, $a.Action, $a.Profile, $a.PolicyStoreSourceType))
-            }
-        }
-        $md.Add("")
-        $md.Add(("## Rules removed ({0})"  -f $removed.Count))
-        $md.Add("")
-        if ($removed.Count -eq 0) {
-            $md.Add("_None._")
-        } else {
-            $md.Add("| Name | DisplayName | DisplayGroup | Enabled | Direction | Action | Profile | Source |")
-            $md.Add("|---|---|---|---|---|---|---|---|")
-            foreach ($a in ($removed | Sort-Object Name)) {
-                $md.Add(("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} |" -f `
-                    $a.Name, $a.DisplayName, $a.DisplayGroup, $a.Enabled, $a.Direction, $a.Action, $a.Profile, $a.PolicyStoreSourceType))
-            }
-        }
-        $md.Add("")
-        $md.Add(("## Rules modified ({0})" -f $modified.Count))
-        $md.Add("")
-        if ($modified.Count -eq 0) {
-            $md.Add("_None._")
-        } else {
-            foreach ($m in ($modified | Sort-Object Name)) {
-                $md.Add(("### {0} - {1}" -f $m.Name, $m.DisplayName))
-                foreach ($change in ($m.Changes -split ' ; ')) {
-                    $md.Add("- $change")
-                }
-                $md.Add("")
-            }
-        }
-
-        $md -join [Environment]::NewLine | Set-Content -Path $diffPath -Encoding UTF8
-        Write-Host ("    diff report -> {0}" -f $diffPath) -ForegroundColor DarkGray
-    }
+        ($r.Profiles | Measure-Object).Count, $OutputFolder) -ForegroundColor Green
 }
 
 # ---------------------------------------------------------------------------

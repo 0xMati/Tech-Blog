@@ -17,7 +17,7 @@ This page comes with two PowerShell companion scripts that target every DC of th
 | Question | Script |
 |---|---|
 | *"Is my DC firewall sane right now?"* | [Audit-DCFirewall.ps1](Audit-DCFirewall.ps1) — cross-checks WFAS Effective vs Local, the legacy registry, the WSC view, the firewall services, and the required rule groups. Verdict per DC: `OK` or `DIVERGENCE` with detailed notes. |
-| *"What changed after my last GPO push?"* | [Export-DCFirewallRules.ps1](Export-DCFirewallRules.ps1) — dumps the full effective rule set + profile settings of every DC to CSV/JSON, and produces a Markdown diff against a previous snapshot. |
+| *"What changed after my last GPO push?"* | [Export-DCFirewallRules.ps1](Export-DCFirewallRules.ps1) — dumps the full effective rule set + profile settings of every DC to CSV/JSON, and produces a per-DC CSV diff between two snapshot folders. |
 
 Both scripts are read-only.
 
@@ -369,18 +369,25 @@ The frequent confusions:
 
 `Audit-DCFirewall.ps1` answers *"is the firewall sane?"*. When you also need to answer *"what changed after my last GPO push?"*, use the companion script [Export-DCFirewallRules.ps1](Export-DCFirewallRules.ps1).
 
-It dumps, for every DC of the domain (or the list passed via `-ComputerName`), the **full effective rule set** (`ActiveStore` — local + GPO + MDM merged) and the **profile settings**, in two formats side by side:
+The script has **two mutually-exclusive modes** (PowerShell parameter sets — you cannot mix them):
+
+| Mode | Mandatory params | What it does |
+|---|---|---|
+| **Snapshot** (default) | `-OutputFolder` | Queries every DC in parallel via WinRM, dumps the **effective** rule set (`ActiveStore`) and profile settings as CSV + JSON. |
+| **Compare** | `-Compare <before>,<after>` and `-OutputCompareFolder` | No DC is queried. Reads the CSV exports of two existing snapshot folders and produces a per-DC diff CSV. |
+
+In Snapshot mode, files are written **directly** in `-OutputFolder` (no sub-folder is created — name the folder however you want, typically by date or change ID). They are sorted by rule `Name` so successive snapshots stay stable and `git diff`-friendly.
+
+For each DC, Snapshot mode produces:
 
 - `<DC>_rules.csv` and `<DC>_rules.json` — every rule with its key, display name, group, direction, action, profile, ports, addresses, program, service, and `PolicyStoreSourceType` (Local / GroupPolicy / …)
 - `<DC>_profiles.csv` and `<DC>_profiles.json` — `Enabled`, `DefaultInboundAction`, `DefaultOutboundAction`, logging settings per profile
 
-Files are sorted by rule `Name` so consecutive snapshots are stable and `git diff`-friendly.
-
 ### Take a snapshot
 
 ```powershell
-# Everything goes to <OutputFolder>\<Label>\
-.\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW -Label 'before-gpo'
+# Snapshot every DC of the current domain into the given folder
+.\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW\before-gpo
 ```
 
 Produces, for each DC:
@@ -392,35 +399,81 @@ C:\Temp\FW\before-gpo\DC01_profiles.csv
 C:\Temp\FW\before-gpo\DC01_profiles.json
 ```
 
-### Compare two snapshots
-
-After pushing a GPO and running `gpupdate /force` on the DCs:
+To target only specific DCs:
 
 ```powershell
-.\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW -Label 'after-gpo' `
-                              -CompareWith   C:\Temp\FW\before-gpo
+.\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW\dc01-baseline -ComputerName DC01
 ```
 
-The script:
+### Compare two snapshots
 
-1. Re-snapshots into `C:\Temp\FW\after-gpo\`.
-2. For each DC, diffs the new CSV against the previous one (keyed on rule `Name`).
+After pushing a GPO and running `gpupdate /force` on the DCs, take an "after" snapshot and run the script again in **Compare mode**:
+
+```powershell
+# 1) Snapshot after the GPO push
+.\Export-DCFirewallRules.ps1 -OutputFolder C:\Temp\FW\after-gpo
+
+# 2) Compare before vs after (no DC is queried — pure file-to-file diff)
+.\Export-DCFirewallRules.ps1 `
+    -Compare C:\Temp\FW\before-gpo, C:\Temp\FW\after-gpo `
+    -OutputCompareFolder C:\Temp\FW\diff-gpo
+```
+
+> The two folders passed to `-Compare` are PowerShell array values, separated by a **comma**: `-Compare A, B` (not `-Compare A B`).
+
+For each DC found in the "after" folder, Compare mode:
+
+1. Looks for the matching `<DC>_rules.csv` and `<DC>_profiles.csv` in the "before" folder. If absent, that DC is skipped with a `no matching snapshot` notice.
+2. Builds the field-level diff (added / removed / modified rules + profile setting changes).
 3. Prints a console summary:
 
    ```text
-   [DC01] Compared against C:\Temp\FW\before-gpo:
+   [DC01] C:\Temp\FW\before-gpo\DC01_rules.csv  vs  C:\Temp\FW\after-gpo\DC01_rules.csv
      + 3 rule(s) added
      ~ 5 rule(s) modified
      ! 1 profile setting(s) changed
-   [DC02] Compared against C:\Temp\FW\before-gpo:
+   [DC02] C:\Temp\FW\before-gpo\DC02_rules.csv  vs  C:\Temp\FW\after-gpo\DC02_rules.csv
      No changes detected.
    ```
 
-4. Writes a Markdown report `<DC>_diff.md` in the new snapshot folder, listing every added / removed / modified rule with the exact field-level changes (e.g. `Enabled: 'True' -> 'False'`, `RemoteAddress: 'Any' -> '10.0.0.0/8'`).
+4. Writes one CSV per DC in `-OutputCompareFolder`: `<DC>_diff.csv`. The file is **always written** (header alone if no change) so its absence really means "comparison not run for that DC", not "no change".
 
-### What's in the export — fields per rule
+### Diff CSV format
 
-The rule export keeps the fields most useful for diff and audit:
+Each row is one change. Columns:
+
+| Column | Filled for | Meaning |
+|---|---|---|
+| `ChangeType` | all | `Added`, `Removed`, `Modified`, `ProfileChanged` |
+| `Name` | rules | The stable rule key (`Get-NetFirewallRule -Name`); empty for `ProfileChanged` |
+| `DisplayName` | all | Human-readable rule name; for `ProfileChanged` it's the profile name (`Domain` / `Private` / `Public`) |
+| `Direction`, `Action`, `Profile`, `Source` | `Added` / `Removed` only | Inventory of the rule that appeared / disappeared |
+| `Field` | `Modified` / `ProfileChanged` only | Name of the changed field (e.g. `Action`, `Enabled`, `RemoteAddress`, `DefaultInboundAction`) |
+| `OldValue` / `NewValue` | `Modified` / `ProfileChanged` only | Before / after values |
+
+Examples:
+
+```csv
+ChangeType,Name,DisplayName,Direction,Action,Profile,Source,Field,OldValue,NewValue
+Added,{76648D33-...},# TEST,Inbound,Allow,Domain,Local,,,
+Modified,MyRule,My rule,,,,,Action,Allow,Block
+Modified,MyRule,My rule,,,,,Enabled,True,False
+ProfileChanged,,Domain,,,,,DefaultInboundAction,Allow,Block
+Removed,OldRule,Old rule,Inbound,Allow,Any,GroupPolicy,,,
+```
+
+Open the file in Excel and filter on `ChangeType` to get a clean view per category. A single rule with N modified fields produces N rows so you can pivot on `Field` (e.g. *"how many rules had their `Action` changed?"*).
+
+### Why two separate scripts
+
+`Audit-DCFirewall.ps1` and `Export-DCFirewallRules.ps1` are kept separate because they answer different questions and have different data shapes:
+
+- The audit gives you a one-line verdict per DC and is meant to be re-run frequently.
+- The export produces a full rule dump (~600 rows per DC) and is meant to be archived in git or compared point-to-point.
+
+Trying to merge them would either bloat the audit output or make the export too lossy to be diff-friendly.
+
+### Fields exported per rule
 
 | Field | Why |
 |---|---|
@@ -436,17 +489,18 @@ The rule export keeps the fields most useful for diff and audit:
 
 ### Typical workflow
 
-1. **Take a baseline** before changing anything: `-Label 'baseline'`.
-2. **Snapshot before each change** you make to the firewall GPO: `-Label 'before-fix-rdp'`.
-3. **Push the GPO**, run `gpupdate /force` on the DCs, then **snapshot again with `-CompareWith`**: `-Label 'after-fix-rdp' -CompareWith ..\before-fix-rdp`.
-4. **Commit the snapshot folder to Git** if you want a long-term audit trail (CSV+JSON are text and diff cleanly).
+1. **Take a baseline** before changing anything: `-OutputFolder C:\Temp\FW\baseline`.
+2. **Snapshot before each change** you make to the firewall GPO: `-OutputFolder C:\Temp\FW\before-fix-rdp`.
+3. **Push the GPO**, run `gpupdate /force` on the DCs, **snapshot again**: `-OutputFolder C:\Temp\FW\after-fix-rdp`.
+4. **Diff the two snapshots**: `-Compare C:\Temp\FW\before-fix-rdp, C:\Temp\FW\after-fix-rdp -OutputCompareFolder C:\Temp\FW\diff-fix-rdp`.
+5. **Commit the snapshot folders to Git** if you want a long-term audit trail (CSV+JSON are text and diff cleanly).
 
 ### Notes
 
 - The script reads the **`ActiveStore` only**. To compare local vs effective on the same DC, run `Audit-DCFirewall.ps1` (its `WFAS_Local_*` columns surface that delta).
 - On DCs with many rules (~600), the join with port/address/application/service filters can take 30–60 seconds per DC. They run **in parallel** across all DCs (one WinRM session each), so the wall-clock cost is roughly that of the slowest DC.
-- The diff is **field-level**, so reordering of multi-valued fields (e.g. address lists) shows up. If your GPO admin reorders `RemoteAddress` entries without functional change, expect spurious "modified" rows.
-- The `-Transcript` switch is also available on this script (`Audit-DCFirewall.ps1` has the same behaviour).
+- The diff is **field-level**, so reordering of multi-valued fields (e.g. address lists) shows up. If your GPO admin reorders `RemoteAddress` entries without functional change, expect spurious `Modified` rows.
+- The `-Transcript` switch is also available on this script (same behaviour as on `Audit-DCFirewall.ps1`).
 
 ---
 
