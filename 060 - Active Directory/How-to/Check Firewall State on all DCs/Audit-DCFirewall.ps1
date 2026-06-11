@@ -11,8 +11,31 @@
 param(
     [string[]]$ComputerName,                       # If empty: all DCs of the current domain
     [PSCredential]$Credential,
-    [string]$ExportCsv                             # Optional CSV export path
+    [string]$ExportCsv,                            # Optional CSV export path
+    [switch]$ShowRules,                            # Print individual rule names per group
+    [switch]$ShowLegend,                           # Print the symbol/column legends in the console
+
+    # Built-in firewall rule groups (DisplayGroup) that must have at least one
+    # enabled inbound rule on the Domain profile for a DC to function. Override
+    # to add/remove groups (e.g. add 'Remote Desktop' for Tier 0 RDP access,
+    # 'Netlogon Service' or 'Remote Event Log Management' if your baseline
+    # requires them - both are DISABLED by default on Windows Server and the
+    # Netlogon RPC traffic actually rides on the 'Active Directory Domain
+    # Services' group rules).
+    [string[]]$RequiredRuleGroups = @(
+        'Active Directory Domain Services',
+        'Kerberos Key Distribution Center',
+        'DNS Service',
+        'File and Printer Sharing',
+        'DFS Replication',
+        'Windows Management Instrumentation (WMI)',
+        'Core Networking'
+    )
 )
+
+# Force UTF-8 on the console so the symbols below render correctly even on
+# powershell.exe 5.1 with a legacy code page.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 # ---------------------------------------------------------------------------
 # Column legend (used both in console output and in the CSV companion file)
@@ -73,6 +96,28 @@ Svc_BFE                 State of the Base Filtering Engine service. Required
 Svc_Wscsvc              State of the Security Center service. Absent on Server
                         SKUs (NotInstalled is expected on DCs).
 
+Rules_Status            Verdict on the built-in firewall rule groups required
+                        for the DC role on the Domain profile:
+                          OK       -> every required group has at least one
+                                      enabled inbound rule on Domain profile
+                          MISSING  -> at least one required group has no rule
+                                      at all on the host
+                          DISABLED -> at least one required group exists but
+                                      has no enabled inbound rule on Domain
+                                      (its rules exist but are all disabled
+                                      or scoped to Private/Public only)
+
+Rules_Missing           Required groups for which Get-NetFirewallRule returns
+                        zero rules (the group is absent from the host).
+
+Rules_Disabled          Required groups present on the host but with no
+                        enabled inbound rule scoped to the Domain profile.
+
+RuleGroups_Detail       Compact per-group verdict, in the form
+                        '<group1>=<status1> | <group2>=<status2> | ...'.
+                        CSV-friendly mirror of the per-group breakdown
+                        printed in the 'RULE GROUPS DETAIL' console block.
+
 Status                  Overall verdict:
                           OK         -> no issue detected
                           DIVERGENCE -> at least one issue (see Notes column):
@@ -82,10 +127,130 @@ Status                  Overall verdict:
                               (firewall is on but does not filter inbound)
                             * Any profile disabled in WFAS
                             * WSC reports non-Defender or multiple FW products
+                            * A required rule group is missing or disabled
+                              on the Domain profile (Rules_Status != OK)
 
 Notes                   Free-text details of the issues that triggered
                         DIVERGENCE.
 "@
+
+# ---------------------------------------------------------------------------
+# Colored console legend (structured by section). The plain text version
+# above is kept for the CSV companion file.
+# ---------------------------------------------------------------------------
+function Write-ColumnLegend {
+    $sections = @(
+        @{
+            Title = 'IDENTITY'
+            Items = @(
+                @{ Cols=@('ComputerName');  Desc=@('DC hostname.') },
+                @{ Cols=@('OSCaption');     Desc=@('Operating system caption (Win Server version + edition).') },
+                @{ Cols=@('ActiveProfile'); Desc=@(
+                    "Active network profile per NIC (Get-NetConnectionProfile).",
+                    "On a DC, every NIC should be 'DomainAuthenticated'. Anything else means the NIC",
+                    "failed domain detection at boot and the WRONG profile's rules are being applied.") }
+            )
+        },
+        @{
+            Title = 'WFAS - AUTHORITATIVE STATE (what wf.msc and Get-NetFirewallProfile show)'
+            Items = @(
+                @{ Cols=@('WFAS_Domain','WFAS_Private','WFAS_Public'); Desc=@(
+                    "Enabled state per profile. True = firewall enabled, False = disabled.",
+                    "This is the value that actually drives traffic filtering.") },
+                @{ Cols=@('InAction_Domain','InAction_Private','InAction_Public'); Desc=@(
+                    "DefaultInboundAction per profile (Block / Allow / NotConfigured).",
+                    "'Enabled=True' is meaningless if the default is Allow: the firewall is on but",
+                    "does not filter inbound traffic. Block is the secure default.") },
+                @{ Cols=@('OutAction_Domain','OutAction_Private','OutAction_Public'); Desc=@(
+                    "DefaultOutboundAction per profile. Allow is the expected default on a DC",
+                    "(DCs need outbound connectivity). Block would break replication.") }
+            )
+        },
+        @{
+            Title = 'LEGACY REGISTRY (HKLM\...\SharedAccess\Parameters\FirewallPolicy)'
+            Items = @(
+                @{ Cols=@('Reg_Domain','Reg_Private','Reg_Public'); Desc=@(
+                    "Value of 'EnableFirewall' under DomainProfile / StandardProfile / PublicProfile.",
+                    "Values: 1 = enabled, 0 = disabled, NotSet = no value (normal).",
+                    "Note: in the registry, StandardProfile maps to the Private profile.",
+                    "Old GPOs / scripts sometimes write here directly, bypassing WFAS",
+                    "-> typical source of desync.") }
+            )
+        },
+        @{
+            Title = 'WINDOWS SECURITY CENTER (workstations only - absent on Server SKUs)'
+            Items = @(
+                @{ Cols=@('WSC_Available'); Desc=@(
+                    "True only on workstation SKUs. On DCs this is normally False.") },
+                @{ Cols=@('WSC_FirewallProducts'); Desc=@(
+                    "Firewall products registered with WSC (consumed by firewall.cpl).",
+                    "'N/A' on DCs is normal.") }
+            )
+        },
+        @{
+            Title = 'SERVICES'
+            Items = @(
+                @{ Cols=@('Svc_MpsSvc'); Desc=@(
+                    "Windows Defender Firewall service: <Status>/<StartType>.",
+                    "Must be 'Running/Automatic' for the firewall to actually filter traffic.") },
+                @{ Cols=@('Svc_BFE');    Desc=@('Base Filtering Engine. Required dependency of MpsSvc; must be running.') },
+                @{ Cols=@('Svc_Wscsvc'); Desc=@('Security Center service. Absent on Server SKUs (NotInstalled is expected on DCs).') }
+            )
+        },
+        @{
+            Title = 'REQUIRED RULE GROUPS (Domain profile, Inbound)'
+            Items = @(
+                @{ Cols=@('Rules_Status'); Desc=@(
+                    "Verdict on the built-in firewall rule groups required for the DC role:",
+                    "  OK       -> every required group has at least one enabled inbound rule",
+                    "  MISSING  -> at least one required group has no rule at all on the host",
+                    "  DISABLED -> at least one required group exists but has no enabled inbound",
+                    "              rule on Domain (rules disabled or scoped to Private/Public only)") },
+                @{ Cols=@('Rules_Missing');     Desc=@('Required groups for which Get-NetFirewallRule returns zero rules.') },
+                @{ Cols=@('Rules_Disabled');    Desc=@('Required groups present on the host but with no enabled inbound rule on Domain.') },
+                @{ Cols=@('RuleGroups_Detail'); Desc=@(
+                    "Compact per-group verdict: '<group1>=<status1> | <group2>=<status2> | ...'.",
+                    "CSV-friendly mirror of the per-group breakdown printed in the",
+                    "'RULE GROUPS DETAIL' console block.") }
+            )
+        },
+        @{
+            Title = 'OVERALL VERDICT'
+            Items = @(
+                @{ Cols=@('Status'); Desc=@(
+                    "OK         -> no issue detected",
+                    "DIVERGENCE -> at least one issue (see Notes column):",
+                    "  * MpsSvc or BFE not running",
+                    "  * WFAS state != Registry state on a profile",
+                    "  * WFAS enabled but DefaultInboundAction = Allow (no filtering)",
+                    "  * Any profile disabled in WFAS",
+                    "  * WSC reports non-Defender or multiple FW products",
+                    "  * A required rule group is missing or disabled on the Domain profile") },
+                @{ Cols=@('Notes'); Desc=@('Free-text details of the issues that triggered DIVERGENCE.') }
+            )
+        }
+    )
+
+    Write-Host ''
+    Write-Host '+-------------------------------------------------------------+' -ForegroundColor Cyan
+    Write-Host '|                       COLUMN LEGEND                         |' -ForegroundColor Cyan
+    Write-Host '+-------------------------------------------------------------+' -ForegroundColor Cyan
+
+    foreach ($section in $sections) {
+        Write-Host ''
+        Write-Host (' [' + $section.Title + ']') -ForegroundColor Yellow
+        Write-Host (' ' + ('-' * ($section.Title.Length + 2))) -ForegroundColor DarkYellow
+        foreach ($item in $section.Items) {
+            foreach ($col in $item.Cols) {
+                Write-Host ('   ' + $col) -ForegroundColor White
+            }
+            foreach ($line in $item.Desc) {
+                Write-Host ('       ' + $line) -ForegroundColor Gray
+            }
+            Write-Host ''
+        }
+    }
+}
 
 # ---------------------------------------------------------------------------
 # Resolve DC list if none provided
@@ -99,6 +264,8 @@ if (-not $ComputerName) {
 # Remote payload
 # ---------------------------------------------------------------------------
 $scriptBlock = {
+    param([string[]]$RequiredRuleGroups)
+
     $result = [ordered]@{
         ComputerName         = $env:COMPUTERNAME
         OSCaption            = (Get-CimInstance Win32_OperatingSystem).Caption
@@ -120,6 +287,11 @@ $scriptBlock = {
         Svc_MpsSvc           = $null
         Svc_BFE              = $null
         Svc_Wscsvc           = $null
+        Rules_Status         = $null
+        Rules_Missing        = $null
+        Rules_Disabled       = $null
+        RuleGroups           = $null
+        RuleGroups_Detail    = $null
         Status               = 'OK'
         Notes                = New-Object System.Collections.Generic.List[string]
     }
@@ -205,6 +377,63 @@ $scriptBlock = {
         }
     }
 
+    # Required firewall rule groups (Domain profile, Inbound) needed for the
+    # DC role. We classify per group as:
+    #   MISSING  -> Get-NetFirewallRule returns nothing for the DisplayGroup
+    #   DISABLED -> rules exist but none is Enabled+Inbound on Domain profile
+    #   OK       -> at least one matching rule exists
+    $missing      = New-Object System.Collections.Generic.List[string]
+    $disabled     = New-Object System.Collections.Generic.List[string]
+    $groupsDetail = New-Object System.Collections.Generic.List[psobject]
+    try {
+        foreach ($group in $RequiredRuleGroups) {
+            $rules = Get-NetFirewallRule -DisplayGroup $group `
+                        -ErrorAction SilentlyContinue
+            $detail = [pscustomobject]@{
+                Group       = $group
+                Status      = $null
+                ActiveRules = ''
+            }
+            if (-not $rules) {
+                $missing.Add($group)
+                $detail.Status = 'MISSING'
+                $groupsDetail.Add($detail)
+                continue
+            }
+
+            # Keep only Inbound + Enabled rules whose Profile includes Domain
+            # (or Any). Profile is a flag enum: Domain=1, Private=2, Public=4,
+            # Any=2147483647. We test by string for portability across SKUs.
+            $active = $rules | Where-Object {
+                $_.Direction -eq 'Inbound' -and
+                $_.Enabled   -eq 'True'    -and
+                ($_.Profile -match 'Domain' -or $_.Profile -match 'Any')
+            }
+            if (-not $active) {
+                $disabled.Add($group)
+                $detail.Status = 'DISABLED'
+            } else {
+                $detail.Status = 'OK'
+                $detail.ActiveRules = ($active | Select-Object -ExpandProperty DisplayName -Unique) -join ' | '
+            }
+            $groupsDetail.Add($detail)
+        }
+        if ($missing.Count -eq 0 -and $disabled.Count -eq 0) {
+            $result.Rules_Status = 'OK'
+        } elseif ($missing.Count -gt 0) {
+            $result.Rules_Status = 'MISSING'
+        } else {
+            $result.Rules_Status = 'DISABLED'
+        }
+        $result.Rules_Missing  = ($missing  -join ' | ')
+        $result.Rules_Disabled = ($disabled -join ' | ')
+        $result.RuleGroups     = $groupsDetail.ToArray()
+        $result.RuleGroups_Detail = ($groupsDetail | ForEach-Object { "$($_.Group)=$($_.Status)" }) -join ' | '
+    } catch {
+        $result.Rules_Status = 'ERROR'
+        $result.Notes.Add("Rules check failed: $($_.Exception.Message)")
+    }
+
     # Discrepancy analysis - covers all 3 profiles
     $issues = New-Object System.Collections.Generic.List[string]
 
@@ -246,6 +475,13 @@ $scriptBlock = {
         }
     }
 
+    if ($missing.Count -gt 0) {
+        $issues.Add("Required rule groups MISSING: $($missing -join ', ')")
+    }
+    if ($disabled.Count -gt 0) {
+        $issues.Add("Required rule groups DISABLED on Domain: $($disabled -join ', ')")
+    }
+
     if ($issues.Count -gt 0) {
         $result.Status = 'DIVERGENCE'
         foreach ($i in $issues) { $result.Notes.Add($i) }
@@ -261,6 +497,7 @@ $scriptBlock = {
 $invokeParams = @{
     ComputerName = $ComputerName
     ScriptBlock  = $scriptBlock
+    ArgumentList = (,$RequiredRuleGroups)
     ErrorAction  = 'Continue'
 }
 if ($Credential) { $invokeParams.Credential = $Credential }
@@ -269,15 +506,99 @@ $results = Invoke-Command @invokeParams |
            Select-Object * -ExcludeProperty PSComputerName, RunspaceId, PSShowComputerName
 
 # ---------------------------------------------------------------------------
-# Console output
+# Helpers for the compact symbolic table
+# ---------------------------------------------------------------------------
+function ConvertTo-BoolSymbol {
+    param($Value)
+    if ($Value -eq $true)  { return [pscustomobject]@{ Text='✓'; Color='Green' } }
+    if ($Value -eq $false) { return [pscustomobject]@{ Text='✗'; Color='Red'   } }
+    return [pscustomobject]@{ Text='?'; Color='DarkGray' }
+}
+function ConvertTo-ActionSymbol {
+    param([string]$Value)
+    switch ($Value) {
+        'Block'         { 'B'  }
+        'Allow'         { 'A'  }
+        'NotConfigured' { '―' }
+        default         { '?'  }
+    }
+}
+function ConvertTo-RegSymbol {
+    param($Value)
+    if ($Value -eq 1)        { '1' }
+    elseif ($Value -eq 0)    { '0' }
+    elseif ($Value -eq 'NotSet') { '―' }
+    else                     { '?' }
+}
+
+# ---------------------------------------------------------------------------
+# Console output - compact symbolic summary table
 # ---------------------------------------------------------------------------
 Write-Host "`n=== FIREWALL AUDIT - SUMMARY TABLE ===" -ForegroundColor Cyan
-$results | Format-Table ComputerName, ActiveProfile,
-    WFAS_Domain, WFAS_Private, WFAS_Public,
-    InAction_Domain, InAction_Private, InAction_Public,
-    Reg_Domain, Reg_Private, Reg_Public,
-    Svc_MpsSvc, Status -AutoSize
+if ($ShowLegend) {
+    Write-Host "  Each (D/P/Pu) triplet is the value for the Domain / Private / Public profile" -ForegroundColor DarkGray
+    Write-Host "  Firewall : ✓=enabled ✗=disabled                                              " -ForegroundColor DarkGray
+    Write-Host "  Inbound / Outbound default action : B=Block A=Allow ―=NotConfigured           " -ForegroundColor DarkGray
+    Write-Host "  Registry EnableFirewall : 1=enabled 0=disabled ―=NotSet                       " -ForegroundColor DarkGray
+}
+Write-Host ""
 
+$summaryRows = $results | ForEach-Object {
+    [pscustomobject]@{
+        ComputerName        = $_.ComputerName
+        ActiveProfile       = $_.ActiveProfile
+        'Firewall(D/P/Pu)'  = '{0} / {1} / {2}' -f (ConvertTo-BoolSymbol $_.WFAS_Domain).Text,
+                                                    (ConvertTo-BoolSymbol $_.WFAS_Private).Text,
+                                                    (ConvertTo-BoolSymbol $_.WFAS_Public).Text
+        'Inbound(D/P/Pu)'   = '{0} / {1} / {2}' -f (ConvertTo-ActionSymbol $_.InAction_Domain),
+                                                    (ConvertTo-ActionSymbol $_.InAction_Private),
+                                                    (ConvertTo-ActionSymbol $_.InAction_Public)
+        'Outbound(D/P/Pu)'  = '{0} / {1} / {2}' -f (ConvertTo-ActionSymbol $_.OutAction_Domain),
+                                                    (ConvertTo-ActionSymbol $_.OutAction_Private),
+                                                    (ConvertTo-ActionSymbol $_.OutAction_Public)
+        'Registry(D/P/Pu)'  = '{0} / {1} / {2}' -f (ConvertTo-RegSymbol $_.Reg_Domain),
+                                                    (ConvertTo-RegSymbol $_.Reg_Private),
+                                                    (ConvertTo-RegSymbol $_.Reg_Public)
+        MpsSvc              = if ($_.Svc_MpsSvc -match '^Running') { '✓' } else { '✗' }
+        Rules               = $_.Rules_Status
+        Status              = $_.Status
+    }
+}
+$summaryRows | Format-Table -AutoSize | Out-String | Write-Host
+
+# ---------------------------------------------------------------------------
+# Console output - rule groups detail (per DC, per group)
+# ---------------------------------------------------------------------------
+Write-Host "=== RULE GROUPS DETAIL ===" -ForegroundColor Cyan
+foreach ($r in $results) {
+    Write-Host ""
+    Write-Host ("[{0}]" -f $r.ComputerName) -ForegroundColor White
+    if (-not $r.RuleGroups) {
+        Write-Host "  (no rule group data - check Notes)" -ForegroundColor DarkGray
+        continue
+    }
+    $maxLen = ($r.RuleGroups | ForEach-Object { $_.Group.Length } | Measure-Object -Maximum).Maximum
+    foreach ($g in $r.RuleGroups) {
+        switch ($g.Status) {
+            'OK'       { $sym='✓'; $color='Green'  }
+            'DISABLED' { $sym='✗'; $color='Yellow' }
+            'MISSING'  { $sym='✗'; $color='Red'    }
+            default    { $sym='?'; $color='DarkGray' }
+        }
+        $line = '  {0} {1}  {2}' -f $sym, $g.Group.PadRight($maxLen), $g.Status
+        Write-Host $line -ForegroundColor $color
+        if ($ShowRules -and $g.ActiveRules) {
+            foreach ($ruleName in ($g.ActiveRules -split ' \| ')) {
+                Write-Host ("      → {0}" -f $ruleName) -ForegroundColor DarkGray
+            }
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Console output - divergence details (free text)
+# ---------------------------------------------------------------------------
+Write-Host ""
 Write-Host "=== DIVERGENCE DETAILS ===" -ForegroundColor Yellow
 $divergent = $results | Where-Object Status -ne 'OK'
 if ($divergent) {
@@ -287,6 +608,8 @@ if ($divergent) {
         Write-Host ("  Notes               : {0}" -f $r.Notes)
         Write-Host ("  WSC_FirewallProducts: {0}" -f $r.WSC_FirewallProducts)
         Write-Host ("  Svc_BFE / Wscsvc    : {0} / {1}" -f $r.Svc_BFE, $r.Svc_Wscsvc)
+        if ($r.Rules_Missing)  { Write-Host ("  Rules_Missing       : {0}" -f $r.Rules_Missing) }
+        if ($r.Rules_Disabled) { Write-Host ("  Rules_Disabled      : {0}" -f $r.Rules_Disabled) }
     }
 } else {
     Write-Host "No divergence detected on any DC." -ForegroundColor Green
@@ -297,14 +620,21 @@ $bad   = ($results | Where-Object Status -ne 'OK').Count
 Write-Host ""
 Write-Host ("=== TOTALS: {0} OK / {1} DIVERGENCE ===" -f $ok, $bad) -ForegroundColor Cyan
 
-Write-Host ""
-Write-Host $ColumnLegend -ForegroundColor DarkGray
+if ($ShowLegend) {
+    Write-ColumnLegend
+} else {
+    Write-Host ""
+    Write-Host "(Tip: re-run with -ShowLegend to print the symbol legend and the full column reference)" -ForegroundColor DarkGray
+}
 
 # ---------------------------------------------------------------------------
 # CSV export + companion legend file
 # ---------------------------------------------------------------------------
 if ($ExportCsv) {
-    $results | Export-Csv -Path $ExportCsv -NoTypeInformation -Encoding UTF8
+    # Drop the nested RuleGroups array (kept the flat RuleGroups_Detail string)
+    $results |
+        Select-Object * -ExcludeProperty RuleGroups |
+        Export-Csv -Path $ExportCsv -NoTypeInformation -Encoding UTF8
 
     $legendPath = [System.IO.Path]::ChangeExtension($ExportCsv, $null).TrimEnd('.') + '_legend.txt'
     $ColumnLegend | Out-File -FilePath $legendPath -Encoding UTF8
