@@ -14,6 +14,7 @@ param(
     [string]$ExportCsv,                            # Optional CSV export path
     [switch]$ShowRules,                            # Print individual rule names per group
     [switch]$ShowLegend,                           # Print the symbol/column legends in the console
+    [switch]$Transcript,                           # Start-Transcript in the current directory
 
     # Built-in firewall rule groups (DisplayGroup) that must have at least one
     # enabled inbound rule on the Domain profile for a DC to function. Override
@@ -36,6 +37,22 @@ param(
 # Force UTF-8 on the console so the symbols below render correctly even on
 # powershell.exe 5.1 with a legacy code page.
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+
+# ---------------------------------------------------------------------------
+# Optional transcript - written to the current working directory.
+# ---------------------------------------------------------------------------
+$transcriptStarted = $false
+if ($Transcript) {
+    $transcriptPath = Join-Path -Path (Get-Location).Path `
+        -ChildPath ('Audit-DCFirewall_{0}_{1}.log' -f $env:COMPUTERNAME, (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    try {
+        Start-Transcript -Path $transcriptPath -Force | Out-Null
+        $transcriptStarted = $true
+        Write-Host ("Transcript started: {0}" -f $transcriptPath) -ForegroundColor DarkGray
+    } catch {
+        Write-Warning ("Could not start transcript: {0}" -f $_.Exception.Message)
+    }
+}
 
 # ---------------------------------------------------------------------------
 # Column legend (used both in console output and in the CSV companion file)
@@ -746,4 +763,11 @@ if ($ExportCsv) {
     Write-Host ""
     Write-Host ("CSV exported to    : {0}" -f $ExportCsv)    -ForegroundColor Green
     Write-Host ("Legend exported to : {0}" -f $legendPath)   -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
+# Stop transcript (if it was started)
+# ---------------------------------------------------------------------------
+if ($transcriptStarted) {
+    try { Stop-Transcript | Out-Null } catch { }
 }
