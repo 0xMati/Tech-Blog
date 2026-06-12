@@ -180,8 +180,8 @@ if ($PSCmdlet.ParameterSetName -eq 'Compare') {
             continue
         }
 
-        $prevRules = Import-Csv -Path $prevRulesPath -Encoding UTF8
-        $currRules = Import-Csv -Path $currRulesPath -Encoding UTF8
+        $prevRules = Import-Csv -Path $prevRulesPath -Encoding UTF8 -Delimiter ';'
+        $currRules = Import-Csv -Path $currRulesPath -Encoding UTF8 -Delimiter ';'
 
         $prevByName = @{}
         foreach ($p in $prevRules) { $prevByName[$p.Name] = $p }
@@ -261,8 +261,8 @@ if ($PSCmdlet.ParameterSetName -eq 'Compare') {
 
         # ---- Profile setting changes ---------------------------------
         if ((Test-Path -LiteralPath $prevProfilesPath) -and (Test-Path -LiteralPath $currProfilesPath)) {
-            $prevProfiles  = Import-Csv -Path $prevProfilesPath -Encoding UTF8
-            $currProfiles  = Import-Csv -Path $currProfilesPath -Encoding UTF8
+            $prevProfiles  = Import-Csv -Path $prevProfilesPath -Encoding UTF8 -Delimiter ';'
+            $currProfiles  = Import-Csv -Path $currProfilesPath -Encoding UTF8 -Delimiter ';'
             $prevProfByName = @{}
             foreach ($p in $prevProfiles) { $prevProfByName[$p.Name] = $p }
             foreach ($curr in $currProfiles) {
@@ -312,7 +312,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Compare') {
         # only the header row.
         $diffRows |
             Sort-Object ChangeType, Name, DisplayName, Field |
-            Export-Csv -Path $diffPath -NoTypeInformation -Encoding UTF8
+            Export-Csv -Path $diffPath -NoTypeInformation -Encoding UTF8 -Delimiter ';'
         Write-Host ("    diff report -> {0}" -f $diffPath) -ForegroundColor DarkGray
     }
 
@@ -452,11 +452,11 @@ foreach ($r in $results) {
 
     if ($r.Rules)    {
         # Sort by Name so subsequent diffs / git diffs stay stable.
-        $r.Rules    | Sort-Object Name | Export-Csv -Path $rulesCsv  -NoTypeInformation -Encoding UTF8
+        $r.Rules    | Sort-Object Name | Export-Csv -Path $rulesCsv  -NoTypeInformation -Encoding UTF8 -Delimiter ';'
         $r.Rules    | Sort-Object Name | ConvertTo-Json -Depth 5 | Set-Content -Path $rulesJson -Encoding UTF8
     }
     if ($r.Profiles) {
-        $r.Profiles | Sort-Object Name | Export-Csv -Path $profilesCsv -NoTypeInformation -Encoding UTF8
+        $r.Profiles | Sort-Object Name | Export-Csv -Path $profilesCsv -NoTypeInformation -Encoding UTF8 -Delimiter ';'
         $r.Profiles | Sort-Object Name | ConvertTo-Json -Depth 5 | Set-Content -Path $profilesJson -Encoding UTF8
     }
 
