@@ -440,7 +440,9 @@ For each DC found in the "after" folder, Compare mode:
 
 ### Diff CSV format
 
-Each row is one change. Columns:
+Each row is one change. All CSV files produced by the script — both the snapshot `<DC>_rules.csv` / `<DC>_profiles.csv` and the diff `<DC>_diff.csv` — use **`;` as delimiter** so they open cleanly in Excel under a French / German / Spanish locale (where `;` is the OS list separator). The CSV is UTF-8 encoded.
+
+Columns of `<DC>_diff.csv`:
 
 | Column | Filled for | Meaning |
 |---|---|---|
@@ -454,15 +456,17 @@ Each row is one change. Columns:
 Examples:
 
 ```csv
-ChangeType,Name,DisplayName,Direction,Action,Profile,Source,Field,OldValue,NewValue
-Added,{76648D33-...},# TEST,Inbound,Allow,Domain,Local,,,
-Modified,MyRule,My rule,,,,,Action,Allow,Block
-Modified,MyRule,My rule,,,,,Enabled,True,False
-ProfileChanged,,Domain,,,,,DefaultInboundAction,Allow,Block
-Removed,OldRule,Old rule,Inbound,Allow,Any,GroupPolicy,,,
+ChangeType;Name;DisplayName;Direction;Action;Profile;Source;Field;OldValue;NewValue
+Added;{76648D33-...};# TEST;Inbound;Allow;Domain;Local;;;
+Modified;MyRule;My rule;;;;;Action;Allow;Block
+Modified;MyRule;My rule;;;;;Enabled;True;False
+ProfileChanged;;Domain;;;;;DefaultInboundAction;Allow;Block
+Removed;OldRule;Old rule;Inbound;Allow;Any;GroupPolicy;;;
 ```
 
 Open the file in Excel and filter on `ChangeType` to get a clean view per category. A single rule with N modified fields produces N rows so you can pivot on `Field` (e.g. *"how many rules had their `Action` changed?"*).
+
+> If you re-import a snapshot folder with another tool, remember to specify `;` as delimiter (e.g. `Import-Csv -Delimiter ';'`).
 
 ### Why two separate scripts
 
