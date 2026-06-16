@@ -46,6 +46,113 @@ Get-MgDomain -DomainId yourdomain.com | Select-Object Id, AuthenticationType
 
 You should see `Federated` as the authentication type.
 
+## Pre-flight – Verify residual ADFS usage
+
+Before flipping the domain to **Managed**, you want to know **who and what still authenticates through AD FS**. This is especially useful when you have been using **Staged Rollout** to progressively move users to cloud authentication: it lets you confirm that the remaining users / apps relying on AD FS is acceptably low (ideally zero) before the cut-over.
+
+Four complementary angles. Use whichever matches your tooling.
+
+### Option A — Entra admin center: AD FS application activity (no setup required)
+
+**Entra admin center → Monitoring & health → Usage & insights → AD FS application activity**.
+
+This built-in report lists every application that has emitted authentication requests against AD FS, with usage counts. It is the fastest way to get a complete picture, no KQL required, no Log Analytics workspace required.
+
+Reference: [What are Microsoft Entra sign-in logs? – AD FS application activity](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-sign-ins#microsoft-entra-usage-and-insights).
+
+### Option B — Entra admin center: Sign-in logs filter (no Log Analytics required)
+
+If you do not have a Log Analytics workspace, you can do the same triage directly from the Sign-in logs UI:
+
+**Entra admin center → Monitoring & health → Sign-in logs → Add filters → Incoming token type**, then tick **SAML 1.1** and **SAML 2.0**.
+
+This surfaces the exact same events as the KQL queries below (same underlying field, `IncomingTokenType`), filtered through the portal. Switch between the **User sign-ins (interactive)** and **User sign-ins (non-interactive)** tabs to cover both flows. You can then **Download** the filtered view as CSV / JSON for further analysis.
+
+### Option C — KQL on Log Analytics (if Sign-in logs are exported to a workspace)
+
+The field that reliably identifies a **fresh authentication that transited through AD FS** in the Entra sign-in logs is **`IncomingTokenType`**: a value of `saml11` or `saml20` means the user presented a SAML assertion issued by your federated IdP (AD FS) to Entra.
+
+> ⚠️ Pitfall to avoid: `TokenIssuerType` and `AuthenticationProtocol` look like the obvious fields to filter on (and the [Microsoft Graph signIn schema](https://learn.microsoft.com/en-us/graph/api/resources/signin?view=graph-rest-beta) lists `ADFederationServices` and `wsFederation` as possible values) but in practice on standard ADFS deployments these fields are populated as `AzureAD` / `none` even for AD FS-issued sign-ins. The reliable signal is `IncomingTokenType`.
+
+```kql
+// Interactive sign-ins that came through AD FS
+SigninLogs
+| where TimeGenerated > ago(7d)
+| where UserPrincipalName endswith "@yourdomain.com"
+| where IncomingTokenType has_any ("saml11", "saml20")
+| summarize Count = count(),
+            LastSeen = max(TimeGenerated),
+            Apps = make_set(AppDisplayName, 20)
+            by UserPrincipalName, ClientAppUsed
+| order by Count desc
+```
+
+```kql
+// Non-interactive sign-ins that came through AD FS
+// (this is where legacy clients hide: Exchange ActiveSync, EWS, ROPC, scripted service accounts)
+AADNonInteractiveUserSignInLogs
+| where TimeGenerated > ago(7d)
+| where UserPrincipalName endswith "@yourdomain.com"
+| where IncomingTokenType has_any ("saml11", "saml20")
+| summarize Count = count() by UserPrincipalName, AppDisplayName, ClientAppUsed
+| order by Count desc
+```
+
+> Note: the non-interactive query above has the same column semantics as the interactive one (per the Microsoft Graph signIn schema) but has not been validated against real federated non-interactive traffic in the author's lab. Sanity-check the output against your environment.
+
+```kql
+// Top apps that still depend on AD FS, both flows combined
+union SigninLogs, AADNonInteractiveUserSignInLogs
+| where TimeGenerated > ago(30d)
+| where UserPrincipalName endswith "@yourdomain.com"
+| where IncomingTokenType has_any ("saml11", "saml20")
+| summarize FreshAuthsViaADFS = count(),
+            UniqueUsers = dcount(UserPrincipalName)
+            by AppDisplayName
+| order by FreshAuthsViaADFS desc
+```
+
+### Option D — AD FS Security event log (server-side view)
+
+If you want to know what AD FS itself **received** (regardless of what Entra logged), parse the **Security** event log of every AD FS server:
+
+- **Event ID 1200** – "The Federation Service issued a valid token" (success)
+- **Event ID 1202** – "The Federation Service failed to issue a valid token" (failure)
+
+This requires AD FS auditing to be enabled:
+
+```powershell
+Set-AdfsProperties -AuditLevel Basic   # or Verbose for more detail
+auditpol /set /subcategory:"Application Generated" /success:enable /failure:enable
+```
+
+A ready-to-use script that aggregates these events (top users, top relying parties, protocol distribution, hourly distribution, success/failure ratios) is provided alongside this article:
+
+→ [Analyze-ADFSAuthentication.ps1](Analyze-ADFSAuthentication.ps1)
+
+It supports AD FS 2016 / 2019 / 2022, can target multiple servers via WinRM, and exports both the raw events and aggregated CSV reports.
+
+## Backup federation configuration (before the switch)
+
+When you flip the domain to **Managed**, the federation configuration object held by Entra ID is removed. Before doing this, export it to JSON so you can recreate it exactly if you need to roll back.
+
+```powershell
+$domain     = "yourdomain.com"
+$backupPath = "C:\temp\fed-backup-$domain-$(Get-Date -Format yyyyMMdd-HHmm).json"
+
+Get-MgDomainFederationConfiguration -DomainId $domain |
+    Select-Object IssuerUri, PassiveSignInUri, ActiveSignInUri, MetadataExchangeUri,
+                  SigningCertificate, NextSigningCertificate, SignOutUri,
+                  FederatedIdpMfaBehavior, PreferredAuthenticationProtocol,
+                  PromptLoginBehavior, IsSignedAuthenticationRequestRequired |
+    ConvertTo-Json -Depth 10 |
+    Out-File -FilePath $backupPath -Encoding utf8
+```
+
+The `SigningCertificate` property is already base64-encoded inside the object, no extra handling is needed.
+
+> ⚠️ This backup only covers the **Entra-side** federation configuration. It does **not** back up the AD FS farm itself (config DB, claim rules, signing cert private keys…). If you also need a farm-side backup, use the [AD FS Rapid Restore Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool) from the [microsoft/adfsToolbox](https://github.com/Microsoft/adfsToolbox) repository.
+
 ## Convert Domain to Managed
 
 ### ✅ Option 1: Use Microsoft Graph (preferred)
@@ -77,6 +184,39 @@ Get-MgDomain -DomainId yourdomain.com | Select-Object Id, AuthenticationType
 ```
 
 Or test login with a federated user at `https://myapps.microsoft.com`.
+
+## Rollback procedure (Managed → Federated using the JSON backup)
+
+If you need to revert the change, re-federate the domain using the JSON file produced earlier.
+
+```powershell
+$backupPath = "C:\temp\fed-backup-yourdomain.com-YYYYMMDD-HHmm.json"
+$fed        = Get-Content $backupPath | ConvertFrom-Json
+
+# 1. Switch the domain back to Federated
+Update-MgDomain -DomainId "yourdomain.com" -AuthenticationType Federated
+
+# 2. Recreate the federation configuration from the backup
+New-MgDomainFederationConfiguration `
+    -DomainId "yourdomain.com" `
+    -IssuerUri $fed.IssuerUri `
+    -PassiveSignInUri $fed.PassiveSignInUri `
+    -ActiveSignInUri $fed.ActiveSignInUri `
+    -MetadataExchangeUri $fed.MetadataExchangeUri `
+    -SigningCertificate $fed.SigningCertificate `
+    -SignOutUri $fed.SignOutUri `
+    -FederatedIdpMfaBehavior $fed.FederatedIdpMfaBehavior `
+    -PreferredAuthenticationProtocol $fed.PreferredAuthenticationProtocol
+```
+
+Then validate as in the Post-Switch Validation section above.
+
+> ⚠️ **Things to know before relying on this rollback:**
+>
+> - **AD FS must still be running and reachable.** The Entra-side rollback does nothing if the farm has been decommissioned in the meantime. Do not retire AD FS until you are confident the cut-over is final.
+> - **Already-issued cloud tokens stay valid until they expire.** Users who got an Entra-issued token during the managed window will keep using it until refresh. Do not expect an instantaneous "everyone is back on AD FS" behaviour.
+> - **MFA registrations performed during the managed window are kept.** Users do not lose anything they registered while on cloud auth.
+> - If the farm itself was modified or broken between the switch and the rollback, restoring the Entra-side config is not enough — restore the farm too (see [AD FS Rapid Restore Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool)).
 
 # Switching Entra ID Domain from Managed to Federated Authentication (with ADFS)
 
@@ -187,4 +327,9 @@ To establish trust on the AD FS side, configure a **Relying Party Trust** for yo
 
 - [Microsoft Docs – Convert Domain to Managed](https://learn.microsoft.com/en-us/azure/active-directory/hybrid/how-to-connect-fed-to-managed)
 - [Microsoft Graph PowerShell SDK](https://learn.microsoft.com/en-us/powershell/microsoftgraph/)
+- [Microsoft Graph signIn schema (beta) – `incomingTokenType`, `tokenIssuerType`, `authenticationProtocol`](https://learn.microsoft.com/en-us/graph/api/resources/signin?view=graph-rest-beta)
+- [What are Microsoft Entra sign-in logs? – AD FS application activity](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-sign-ins#microsoft-entra-usage-and-insights)
+- [microsoft/adfsToolbox (ADFSDiagnosticsModule, AD FS Rapid Restore Tool)](https://github.com/Microsoft/adfsToolbox)
+- [AD FS Rapid Restoration Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool)
+- [Staged Rollout for migrating from AD FS to PHS](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-staged-rollout)
 
