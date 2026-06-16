@@ -58,7 +58,8 @@ You have an AD FS farm fronting authentication for `yourdomain.com` and you want
 
 ### Prerequisites specific to this direction
 
-- User password hashes are **already synced to Entra ID** (Entra Connect / Cloud Sync, PHS enabled), or PTA agents are deployed and healthy.
+- User password hashes are **already synced to Entra ID** (Entra Connect / Cloud Sync, PHS enabled), **or** PTA agents are deployed and healthy.
+- If you use **PTA**: at least **2 PTA agents on different servers** for high availability, and Microsoft recommends enabling **PHS as a fallback** so sign-ins keep working if all agents lose connectivity to a domain controller.
 - You have validated cloud authentication on a representative subset of users via **Staged Rollout**.
 
 ## Pre-flight — Verify residual AD FS usage
@@ -169,6 +170,8 @@ The `SigningCertificate` property is already base64-encoded inside the object, n
 > ⚠️ This backup only covers the **Entra-side** federation configuration. It does **not** back up the AD FS farm itself (config DB, claim rules, signing cert private keys…). If you also need a farm-side backup, use the [AD FS Rapid Restore Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool) from the [microsoft/adfsToolbox](https://github.com/Microsoft/adfsToolbox) repository.
 
 ## Convert domain to Managed
+
+The flip command is the same whether the target sign-in method is **PHS** or **PTA** — only the prerequisites differ. With PTA, remember that cloud sign-ins will remain dependent on the on-prem AD and the PTA agents: if all agents lose connectivity to a DC, sign-ins fail. Microsoft recommends keeping PHS enabled as a fallback.
 
 ### ✅ Option 1: Microsoft Graph (preferred)
 
