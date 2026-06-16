@@ -3,50 +3,65 @@ title: "Switch between Federated and Managed Authentication in Entra ID with Pow
 date: 2025-05-21
 ---
 
-# 🔁 Switching Entra ID Domain from Federated to Managed (PHS)
+# 🔁 Switch between Federated and Managed Authentication in Entra ID with PowerShell
 
-## Objective
+This article covers the **two opposite migrations** of a verified domain in Microsoft Entra ID, end-to-end with the Microsoft Graph PowerShell SDK:
 
-This article describes how to switch a Tenant in Microsoft Entra ID from **Federated** to **Managed** authentication.
-This is typically required when deprecating an Active Directory Federation Services (AD FS) setup in favor of managed authentication (e.g. PHS/PTA).
+| Direction | Typical scenario | Where to look |
+|---|---|---|
+| **Federated → Managed** | Decommissioning AD FS in favor of PHS / PTA | [Part 1](#part-1--federated--managed-decommissioning-ad-fs) |
+| **Managed → Federated** | Onboarding (or re-onboarding) an AD FS farm | [Part 2](#part-2--managed--federated-onboarding-ad-fs) |
 
-## Prerequisites
+The common prerequisites and inventory commands below apply to both directions.
 
-- Entra ID Global Administrator privileges
-- Microsoft Graph PowerShell SDK installed (`Microsoft.Graph` module)
-- Ensure that Users Hashes are already synced to Entra ID (e.g., passwords are synced via Entra Connect)
-- Backup of current federation settings (optional but recommended)
+---
 
-## Install Microsoft Graph PowerShell (if not already done)
+## Common prerequisites
+
+- Entra ID **Global Administrator** privileges.
+- Microsoft Graph PowerShell SDK installed.
+- The target domain (e.g. `yourdomain.com`) must already be **verified** in Entra ID.
+
+### Install Microsoft Graph PowerShell
 
 ```powershell
 Install-Module Microsoft.Graph -Scope CurrentUser
-Install-Module -Name Microsoft.Graph.Identity.DirectoryManagement
+Install-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser -Force
+Import-Module Microsoft.Graph.Identity.DirectoryManagement
 ```
 
-Then connect:
+### Connect to Microsoft Graph
 
 ```powershell
-Connect-MgGraph -Scopes "User.ReadWrite.All", "Domain.ReadWrite.All", "Directory.Read.All"
+Connect-MgGraph -Scopes "Domain.ReadWrite.All", "Directory.Read.All"
 ```
 
-> ⚠️ You may need to consent to these permissions or have an admin do so.
+> ⚠️ You may need admin consent on these scopes.
 
-## Check Current Domain Authentication Settings
-
-```powershell
-Get-MgDomainFederationConfiguration -DomainId yourdomain.com
-```
-
-Or check directly:
+### Check current domain authentication settings
 
 ```powershell
+# Authentication type (Managed | Federated)
 Get-MgDomain -DomainId yourdomain.com | Select-Object Id, AuthenticationType
+
+# Full federation configuration (only relevant if already Federated)
+Get-MgDomainFederationConfiguration -DomainId yourdomain.com | Format-List
 ```
 
-You should see `Federated` as the authentication type.
+---
 
-## Pre-flight – Verify residual ADFS usage
+# Part 1 — Federated → Managed (decommissioning AD FS)
+
+## When to use this
+
+You have an AD FS farm fronting authentication for `yourdomain.com` and you want to switch the domain to **Managed** authentication (Password Hash Sync or Pass-through Authentication). Typically the final cut-over after a **Staged Rollout** campaign.
+
+### Prerequisites specific to this direction
+
+- User password hashes are **already synced to Entra ID** (Entra Connect / Cloud Sync, PHS enabled), or PTA agents are deployed and healthy.
+- You have validated cloud authentication on a representative subset of users via **Staged Rollout**.
+
+## Pre-flight — Verify residual AD FS usage
 
 Before flipping the domain to **Managed**, you want to know **who and what still authenticates through AD FS**. This is especially useful when you have been using **Staged Rollout** to progressively move users to cloud authentication: it lets you confirm that the remaining users / apps relying on AD FS is acceptably low (ideally zero) before the cut-over.
 
@@ -153,39 +168,37 @@ The `SigningCertificate` property is already base64-encoded inside the object, n
 
 > ⚠️ This backup only covers the **Entra-side** federation configuration. It does **not** back up the AD FS farm itself (config DB, claim rules, signing cert private keys…). If you also need a farm-side backup, use the [AD FS Rapid Restore Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool) from the [microsoft/adfsToolbox](https://github.com/Microsoft/adfsToolbox) repository.
 
-## Convert Domain to Managed
+## Convert domain to Managed
 
-### ✅ Option 1: Use Microsoft Graph (preferred)
+### ✅ Option 1: Microsoft Graph (preferred)
 
 ```powershell
-Update-MgDomain -DomainId 0x1mati.online -AuthenticationType Managed
-
+Update-MgDomain -DomainId yourdomain.com -AuthenticationType Managed
 ```
 
 ![](../../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-10-00-16.png)
 
-### ❌ Option 2: Use MSOnline module (**deprecated and no longer functional**)
+### ❌ Option 2: MSOnline module (deprecated and no longer functional)
 
 ```powershell
 Connect-MsolService
 Set-MsolDomainAuthentication -DomainName yourdomain.com -Authentication Managed
 ```
 
-> ⚠️ **Deprecated**: The MSOnline module has been officially deprecated by Microsoft and **no longer works** in most environments as of 2024.  
-> Attempts to use it will result in authentication or permission errors.  
-> Please use the Microsoft Graph PowerShell SDK instead (`Set-MgDomainFederationConfiguration`).
+> ⚠️ **Deprecated**: The MSOnline module has been officially deprecated by Microsoft and **no longer works** in most environments as of 2024.
+> Attempts to use it will result in authentication or permission errors.
+> Use the Microsoft Graph PowerShell SDK instead.
 
-## ✅ Post-Switch Validation
-
-You can re-check the auth type:
+## Post-switch validation
 
 ```powershell
 Get-MgDomain -DomainId yourdomain.com | Select-Object Id, AuthenticationType
+# => AuthenticationType: Managed
 ```
 
-Or test login with a federated user at `https://myapps.microsoft.com`.
+Then test login at [https://myapps.microsoft.com](https://myapps.microsoft.com) with a user from the domain.
 
-## Rollback procedure (Managed → Federated using the JSON backup)
+## Rollback (Managed → Federated) using the JSON backup
 
 If you need to revert the change, re-federate the domain using the JSON file produced earlier.
 
@@ -209,7 +222,7 @@ New-MgDomainFederationConfiguration `
     -PreferredAuthenticationProtocol $fed.PreferredAuthenticationProtocol
 ```
 
-Then validate as in the Post-Switch Validation section above.
+Then validate as in the **Post-switch validation** section above (the `AuthenticationType` should report `Federated` again). See also [Part 2](#part-2--managed--federated-onboarding-ad-fs) for the full Managed → Federated procedure and field semantics.
 
 > ⚠️ **Things to know before relying on this rollback:**
 >
@@ -218,73 +231,60 @@ Then validate as in the Post-Switch Validation section above.
 > - **MFA registrations performed during the managed window are kept.** Users do not lose anything they registered while on cloud auth.
 > - If the farm itself was modified or broken between the switch and the rollback, restoring the Entra-side config is not enough — restore the farm too (see [AD FS Rapid Restore Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool)).
 
-# Switching Entra ID Domain from Managed to Federated Authentication (with ADFS)
+---
 
-## Objective
+# Part 2 — Managed → Federated (onboarding AD FS)
 
-How to configure a Tenant in Microsoft Entra ID to use **Federated** authentication via AD FS instead of **Managed** authentication. This is typically required when onboarding an ADFS infrastructure (e.g., adfs.contoso.com) or re-enabling federation for an existing domain.
+## When to use this
 
-## ✅ Prerequisites
+You want a verified domain in Entra ID to delegate authentication to an existing **AD FS** farm (e.g. `adfs.contoso.com`). Typical scenarios: initial onboarding of an AD FS infrastructure, or re-enabling federation on a domain that was previously managed.
 
-- Entra ID **Global Administrator** privileges.  
-- The target domain (e.g., `yourdomain.com`) must already be **verified** in Azure AD.  
-- A running **AD FS** service (e.g., `adfs.contoso.com`) with a valid signing certificate exported in DER (`.cer`) format.  
-- Microsoft Graph PowerShell module **Microsoft.Graph.Identity.DirectoryManagement** installed.
+## Prerequisites specific to this direction
 
-## Install Microsoft Graph PowerShell Module
+- A running **AD FS** service (e.g. `adfs.contoso.com`) reachable from the internet on the passive/active endpoints.
+- The AD FS **token-signing certificate** exported in DER (`.cer`) format.
+- The federation **endpoints URLs** known (Passive sign-in, Active sign-in, Metadata exchange, Sign-out).
 
-```powershell
-# Install and import the Directory Management module
-Install-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser -Force
-Import-Module Microsoft.Graph.Identity.DirectoryManagement
-```
+## Enable federation for your domain
 
-## Enable Federation for Your Domain
+### 1. Prepare and encode the AD FS signing certificate
 
-1. **Connect to Microsoft Graph**
-
-    ```powershell
-    Connect-MgGraph -Scopes Domain.ReadWrite.All
-    ```
-
-2. **Prepare and encode your AD FS signing certificate**
-
-Export your current ADFS Signin Certificate:
+Export the current AD FS signing certificate:
 
 ![](../../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-09-51-08.png)
 
-Run powershell commands:
+Then base64-encode it:
 
-    ```powershell
-    $certPath    = "C:\temp\adfs-signing.cer"
-    $certContent = [Convert]::ToBase64String(
-                       (Get-Content -Path $certPath -Encoding Byte)
-                   )
-    ```
+```powershell
+$certPath    = "C:\temp\adfs-signing.cer"
+$certContent = [Convert]::ToBase64String(
+                    (Get-Content -Path $certPath -Encoding Byte)
+                )
+```
 
-3. **Create the federation configuration**
+### 2. Create the federation configuration
 
-    ```powershell
-    New-MgDomainFederationConfiguration `
-      -DomainId "yourdomain.com" `
-      -IssuerUri "urn:federation:yourdomain.com" `
-      -PassiveSignInUri "https://adfs.contoso.com/adfs/ls/" `
-      -ActiveSignInUri "https://adfs.contoso.com/adfs/services/trust/2005/usernamemixed" `
-      -MetadataExchangeUri "https://adfs.contoso.com/adfs/services/trust/mex" `
-      -SigningCertificate $certContent `
-      -SignOutUri "https://adfs.contoso.com/adfs/ls/?wa=wsignout1.0" `
-      -FederatedIdpMfaBehavior "enforceMfaByFederatedIdp" `
-      -PreferredAuthenticationProtocol "wsFed"
-    ```
+```powershell
+New-MgDomainFederationConfiguration `
+    -DomainId "yourdomain.com" `
+    -IssuerUri "urn:federation:yourdomain.com" `
+    -PassiveSignInUri "https://adfs.contoso.com/adfs/ls/" `
+    -ActiveSignInUri "https://adfs.contoso.com/adfs/services/trust/2005/usernamemixed" `
+    -MetadataExchangeUri "https://adfs.contoso.com/adfs/services/trust/mex" `
+    -SigningCertificate $certContent `
+    -SignOutUri "https://adfs.contoso.com/adfs/ls/?wa=wsignout1.0" `
+    -FederatedIdpMfaBehavior "enforceMfaByFederatedIdp" `
+    -PreferredAuthenticationProtocol "wsFed"
+```
 
 ![](../../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-09-54-10.png)
 
-> **Note:**  
-> - `-MetadataExchangeUri` lets Entra ID import your AD FS metadata for certificate auto-rollover.  
-> - `-FederatedIdpMfaBehavior` set to `enforceMfaByFederatedIdp` forces MFA at ADFS and avoids duplicate prompts.  
+> **Notes:**
+> - `-MetadataExchangeUri` lets Entra ID import your AD FS metadata for certificate auto-rollover.
+> - `-FederatedIdpMfaBehavior` set to `enforceMfaByFederatedIdp` forces MFA at AD FS and avoids duplicate prompts.
 > - `-PreferredAuthenticationProtocol` must be **lowercase** `wsFed`, `saml`, or `unknownFutureValue`.
 
-## Validate Your Federation Configuration
+## Validate the federation configuration
 
 ```powershell
 # Confirm the domain is now federated
@@ -295,7 +295,9 @@ Get-MgDomain -DomainId "yourdomain.com" | Select-Object Id, AuthenticationType
 Get-MgDomainFederationConfiguration -DomainId "yourdomain.com" | Format-List
 ```
 
-## Update or Rotate Your Federation Settings
+Then test login at [https://myapps.microsoft.com](https://myapps.microsoft.com) with a user from the domain — you should be redirected to your AD FS sign-in page.
+
+## Update or rotate the federation settings
 
 If you need to renew the certificate, change endpoints, or adjust MFA behavior:
 
@@ -305,23 +307,19 @@ $fed = Get-MgDomainFederationConfiguration -DomainId "yourdomain.com"
 
 # Update with a new certificate or modified parameters
 Update-MgDomainFederationConfiguration `
-  -DomainId "yourdomain.com" `
-  -InternalDomainFederationId $fed.Id `
-  -SigningCertificate "<NewBase64Cert>" `
-  -FederatedIdpMfaBehavior "enforceMfaByFederatedIdp"
+    -DomainId "yourdomain.com" `
+    -InternalDomainFederationId $fed.Id `
+    -SigningCertificate "<NewBase64Cert>" `
+    -FederatedIdpMfaBehavior "enforceMfaByFederatedIdp"
 ```
 
-## ADFS Configuration
+## AD FS-side configuration
 
-To establish trust on the AD FS side, configure a **Relying Party Trust** for your Azure AD domain and define the necessary claim rules:
+To establish trust on the AD FS side, configure a **Relying Party Trust** for your Entra ID domain and define the necessary claim rules.
 
 << Coming soon >>
 
-
-## Post-Federation Validation
-
-- Test login at [https://myapps.microsoft.com](https://myapps.microsoft.com) with a federated user (`@yourdomain.com`).  
-
+---
 
 ## 📚 References
 
@@ -332,4 +330,3 @@ To establish trust on the AD FS side, configure a **Relying Party Trust** for yo
 - [microsoft/adfsToolbox (ADFSDiagnosticsModule, AD FS Rapid Restore Tool)](https://github.com/Microsoft/adfsToolbox)
 - [AD FS Rapid Restoration Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool)
 - [Staged Rollout for migrating from AD FS to PHS](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-staged-rollout)
-
