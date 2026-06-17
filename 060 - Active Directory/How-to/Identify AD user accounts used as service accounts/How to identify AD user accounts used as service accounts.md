@@ -76,6 +76,19 @@ The report also provides a readable verdict:
 - Account with AD read permissions
 - For event evidence: Security log read access on target DCs (WinRM + permissions)
 
+## Domain controller scope
+
+By default the script queries **every domain controller** in the domain. It resolves the list with `Get-ADDomainController -Filter *`, then connects to each one over WinRM (`Invoke-Command`) to read the `4624` events from its Security log.
+
+Why all of them: a logon (type 5 / type 4) is only recorded on the DC that authenticated the request, so full coverage avoids missing evidence.
+
+Things to keep in mind:
+
+- On large domains this multiplies WinRM calls. Use `-MaxEventsPerDc` (default `20000`) to cap the volume read per DC.
+- Each DC needs WinRM enabled and the running account needs Security log read rights. A DC that cannot be reached is reported under Warnings/Errors and the script keeps going.
+- An unreachable DC fails fast thanks to a bounded WinRM connection timeout (`-DcTimeoutSeconds`, default `15`) instead of blocking the run. The script prints which DC it is querying so you can spot a slow target.
+- You can restrict the scope with `-DomainControllers` (one or several DCs) when you do not need full coverage.
+
 ## Usage
 
 ### Standard run (7 days)
@@ -96,6 +109,12 @@ The report also provides a readable verdict:
 .\Invoke-AdUserServiceAccountDiscovery.ps1 `
   -DomainControllers dc1.contoso.com,dc2.contoso.com `
   -MaxEventsPerDc 50000
+```
+
+### Shorter per-DC timeout (skip unreachable DCs faster)
+
+```powershell
+.\Invoke-AdUserServiceAccountDiscovery.ps1 -DcTimeoutSeconds 5
 ```
 
 ### Custom output folder

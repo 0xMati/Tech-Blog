@@ -25,6 +25,11 @@
 .PARAMETER MaxEventsPerDc
     Max 4624 events read per DC. Default is 20000.
 
+.PARAMETER DcTimeoutSeconds
+    Per-DC WinRM connection timeout in seconds. An unreachable DC fails fast
+    and is reported under Warnings/Errors instead of blocking the run.
+    Default is 15.
+
 .PARAMETER OutputDir
     Output folder path.
 
@@ -41,12 +46,20 @@ param(
     [ValidateRange(100, 500000)]
     [int]$MaxEventsPerDc = 20000,
 
-    [string]$OutputDir = $(Join-Path -Path $PSScriptRoot -ChildPath ("Outputs\AdUserServiceAccountDiscovery_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))),
+    [ValidateRange(1, 300)]
+    [int]$DcTimeoutSeconds = 15,
+
+    [string]$OutputDir,
 
     [switch]$OpenReport
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    $baseDir = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) { $PSScriptRoot } else { (Get-Location).Path }
+    $OutputDir = Join-Path -Path $baseDir -ChildPath ('Outputs\AdUserServiceAccountDiscovery_{0}' -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+}
 
 function HtmlEncode {
     param([string]$Text)
@@ -135,7 +148,8 @@ function Get-LogonEvidence {
     param(
         [string[]]$Dcs,
         [datetime]$Since,
-        [int]$MaxEvents
+        [int]$MaxEvents,
+        [int]$TimeoutSeconds = 15
     )
 
     $usage = @{}
@@ -151,9 +165,12 @@ function Get-LogonEvidence {
         }
     }
 
+    $sessionOption = New-PSSessionOption -OpenTimeout ($TimeoutSeconds * 1000) -CancelTimeout 5000
+
     foreach ($dc in $Dcs) {
         try {
-            $events = Invoke-Command -ComputerName $dc -ScriptBlock {
+            Write-Host ("      - querying {0} ..." -f $dc) -ForegroundColor DarkGray
+            $events = Invoke-Command -ComputerName $dc -SessionOption $sessionOption -ScriptBlock {
                 param($StartTime, $Limit)
 
                 $filter = @{
@@ -343,7 +360,7 @@ if (-not $DomainControllers -or $DomainControllers.Count -eq 0) {
 $since = (Get-Date).AddDays(-1 * $Days)
 
 Write-Host '[1/4] Collecting optional 4624 service or batch evidence...' -ForegroundColor Yellow
-$eventEvidence = Get-LogonEvidence -Dcs $DomainControllers -Since $since -MaxEvents $MaxEventsPerDc
+$eventEvidence = Get-LogonEvidence -Dcs $DomainControllers -Since $since -MaxEvents $MaxEventsPerDc -TimeoutSeconds $DcTimeoutSeconds
 
 Write-Host '[2/4] Enumerating AD user accounts...' -ForegroundColor Yellow
 $users = @(Get-ADUser -LDAPFilter '(&(objectCategory=person)(objectClass=user))' -Properties Enabled,DisplayName,Description,PasswordNeverExpires,CannotChangePassword,ServicePrincipalName,LastLogonDate,pwdLastSet,MemberOf,AdminCount,msDS-SupportedEncryptionTypes,UserPrincipalName)
