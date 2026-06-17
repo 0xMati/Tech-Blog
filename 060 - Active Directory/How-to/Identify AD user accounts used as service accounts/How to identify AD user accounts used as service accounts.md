@@ -38,7 +38,7 @@ Scoring combines AD heuristics and, when available, service/batch logon events (
 ### AD posture signals
 
 - `servicePrincipalName` not empty
-- `PasswordNeverExpires = True`
+- `PasswordNeverExpires = True` (can be skipped with `-IgnorePasswordNeverExpires` in environments where every user has it)
 - `CannotChangePassword = True`
 - Name/description keyword hits (`svc`, `service`, `sql`, `app`, `batch`, `job`, ...)
 - Old password age (`pwdLastSet`)
@@ -138,6 +138,12 @@ The HTML `Scored Accounts` table only lists accounts with at least one signal (s
 
 ```powershell
 .\Invoke-AdUserServiceAccountDiscovery.ps1 -OutputDir C:\Temp\SvcAccountAudit
+```
+
+### Ignore PasswordNeverExpires (when it is the org-wide default)
+
+```powershell
+.\Invoke-AdUserServiceAccountDiscovery.ps1 -IgnorePasswordNeverExpires
 ```
 
 ## Produced artifacts

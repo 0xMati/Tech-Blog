@@ -42,6 +42,10 @@
 .PARAMETER OutputDir
     Output folder path.
 
+.PARAMETER IgnorePasswordNeverExpires
+    Skip the PasswordNeverExpires signal. Useful in environments where every
+    user account has PasswordNeverExpires set, which would otherwise add noise.
+
 .PARAMETER OpenReport
     Open the generated HTML report when the run completes. Alias: OpenHTMLReport.
 #>
@@ -62,6 +66,8 @@ param(
     [int]$MaxReportRows = 1000,
 
     [string]$OutputDir,
+
+    [switch]$IgnorePasswordNeverExpires,
 
     [Alias('OpenHTMLReport')]
     [switch]$OpenReport
@@ -441,7 +447,7 @@ foreach ($u in $users) {
     $reasons = New-Object System.Collections.Generic.List[string]
 
     if ($hasSpn) { $score += 35; $reasons.Add("SPN present ($spnCount)") | Out-Null }
-    if ($u.PasswordNeverExpires) { $score += 15; $reasons.Add('PasswordNeverExpires') | Out-Null }
+    if ($u.PasswordNeverExpires -and -not $IgnorePasswordNeverExpires) { $score += 15; $reasons.Add('PasswordNeverExpires') | Out-Null }
     if ($u.CannotChangePassword) { $score += 8; $reasons.Add('CannotChangePassword') | Out-Null }
     if ($keywordHit) { $score += 12; $reasons.Add('Service-like naming or description') | Out-Null }
     if ($pwdAgeDays -ne $null -and $pwdAgeDays -ge 365) { $score += 8; $reasons.Add("Old password ($pwdAgeDays days)") | Out-Null }
