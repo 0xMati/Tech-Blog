@@ -359,9 +359,13 @@ $certContent = [Convert]::ToBase64String(
 ### 2. Create the federation configuration
 
 ```powershell
+# Connect first (skip if you already ran the connection from Common prerequisites).
+# Creating the federation configuration writes to the domain, so a write scope is required:
+Connect-MgGraph -Scopes "Domain.ReadWrite.All", "Directory.Read.All"
+
 New-MgDomainFederationConfiguration `
     -DomainId "yourdomain.com" `
-    -IssuerUri "urn:federation:yourdomain.com" `
+    -IssuerUri "http://yourdomain.com/adfs/services/trust/" `
     -PassiveSignInUri "https://adfs.contoso.com/adfs/ls/" `
     -ActiveSignInUri "https://adfs.contoso.com/adfs/services/trust/2005/usernamemixed" `
     -MetadataExchangeUri "https://adfs.contoso.com/adfs/services/trust/mex" `
@@ -377,6 +381,32 @@ New-MgDomainFederationConfiguration `
 > - `-MetadataExchangeUri` lets Entra ID import your AD FS metadata for certificate auto-rollover.
 > - `-FederatedIdpMfaBehavior` set to `enforceMfaByFederatedIdp` forces MFA at AD FS and avoids duplicate prompts.
 > - `-PreferredAuthenticationProtocol` must be **lowercase** `wsFed`, `saml`, or `unknownFutureValue`.
+
+### Parameter reference
+
+| Parameter | Purpose |
+|---|---|
+| `IssuerUri` | Unique identifier of the AD FS token issuer (e.g. `http://yourdomain.com/adfs/services/trust/`). Entra ID uses it to recognize tokens coming from your IdP. |
+| `PassiveSignInUri` | URL that **web** (browser) clients are redirected to for sign-in — the AD FS sign-in page (`/adfs/ls/`). |
+| `ActiveSignInUri` | URL used by **rich / legacy** clients (non-browser, WS-Trust, e.g. older Outlook) → `.../trust/2005/usernamemixed`. |
+| `MetadataExchangeUri` | Metadata endpoint (`/mex`). Used by Entra ID for **certificate auto-rollover**: 30 days before expiry it fetches the new signing certificate from here. |
+| `SigningCertificate` | The AD FS **token-signing certificate** (public key, base64). Lets Entra ID verify the signature of tokens issued by AD FS. |
+| `SignOutUri` | **Sign-out** URL: where the client is redirected when signing out of Entra services. |
+| `NextSigningCertificate` | **Fallback** signing certificate (the next one), used automatically when the primary expires — avoids an outage during rollover. |
+| `PreferredAuthenticationProtocol` | Preferred protocol: `wsFed` or `saml`. **Must be set explicitly** for the passive sign-in flow to work. |
+| `FederatedIdpMfaBehavior` | Controls how Entra ID treats MFA performed by AD FS (see table below). |
+| `PromptLoginBehavior` | Sign-in prompt behavior: `translateToFreshPasswordAuthentication`, `nativeSupport`, or `disabled`. Governs how `prompt=login` is passed to AD FS. |
+| `IsSignedAuthenticationRequestRequired` | If `true`, Entra ID **signs** the SAML authentication requests sent to the IdP (with the OrgID signing key). Default `false`. |
+
+**`FederatedIdpMfaBehavior` values** (the key security setting):
+
+| Value | Behavior |
+|---|---|
+| `acceptIfMfaDoneByFederatedIdp` | Entra ID **accepts** the MFA performed by AD FS. If AD FS didn't perform MFA, Entra ID performs it. *(default)* |
+| `enforceMfaByFederatedIdp` | Entra ID accepts MFA done by AD FS; otherwise it **redirects** the request back to AD FS to perform MFA. |
+| `rejectMfaByFederatedIdp` | Entra ID **always performs** its own MFA and **rejects** MFA claimed by AD FS. Most secure (prevents a compromised IdP from asserting MFA was done). |
+
+Reference: [internalDomainFederation resource type (Microsoft Graph)](https://learn.microsoft.com/en-us/graph/api/resources/internaldomainfederation?view=graph-rest-1.0).
 
 ## Validate the federation configuration
 
