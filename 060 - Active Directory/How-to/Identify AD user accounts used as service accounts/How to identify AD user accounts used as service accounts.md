@@ -44,6 +44,7 @@ Scoring combines AD heuristics and, when available, service/batch logon events (
 - Old password age (`pwdLastSet`)
 - Recent activity (`LastLogonDate`)
 - Privileged group membership (Domain Admins, Enterprise Admins, Administrators)
+- `msDS-SupportedEncryptionTypes` explicitly set (uncommon on regular user accounts, often a leftover from service hardening)
 - `msDS-SupportedEncryptionTypes` with RC4 but no AES (technical debt signal)
 
 ### Runtime evidence signals

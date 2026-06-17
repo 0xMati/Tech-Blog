@@ -109,6 +109,7 @@ function Get-EncTypeFlags {
             EncHex = '(absent/0)'
             Flags = 'Implicit default'
             Rc4WithoutAes = $false
+            IsExplicitlySet = $false
         }
     }
 
@@ -126,6 +127,7 @@ function Get-EncTypeFlags {
         EncHex = ('0x{0:X}' -f $Value)
         Flags = ($flags -join ', ')
         Rc4WithoutAes = ($hasRc4 -and -not $hasAes)
+        IsExplicitlySet = $true
     }
 }
 
@@ -408,6 +410,7 @@ foreach ($u in $users) {
     if ($serviceLogons -gt 0) { $score += 35; $reasons.Add("Observed service logons (type 5): $serviceLogons") | Out-Null }
     if ($batchLogons -gt 0) { $score += 12; $reasons.Add("Observed batch logons (type 4): $batchLogons") | Out-Null }
     if ($isPrivileged -or $u.AdminCount -eq 1) { $score += 10; $reasons.Add('Privileged/admin signal') | Out-Null }
+    if ($enc.IsExplicitlySet) { $score += 8; $reasons.Add("msDS-SupportedEncryptionTypes explicitly set ($($enc.EncHex))") | Out-Null }
     if ($enc.Rc4WithoutAes) { $score += 10; $reasons.Add('RC4 without AES in msDS-SupportedEncryptionTypes') | Out-Null }
     if ($u.LastLogonDate -and $u.LastLogonDate -ge $since) { $score += 5; $reasons.Add('Recent logon activity') | Out-Null }
 
