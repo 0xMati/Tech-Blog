@@ -40,7 +40,7 @@
     Output folder path.
 
 .PARAMETER OpenReport
-    Open the generated HTML report when the run completes.
+    Open the generated HTML report when the run completes. Alias: OpenHTMLReport.
 #>
 [CmdletBinding()]
 param(
@@ -60,6 +60,7 @@ param(
 
     [string]$OutputDir,
 
+    [Alias('OpenHTMLReport')]
     [switch]$OpenReport
 )
 
