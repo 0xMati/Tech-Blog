@@ -5,8 +5,11 @@
 
 .DESCRIPTION
     Correlates AD user signals (SPN, password settings, naming patterns,
-    encryption configuration, privileged membership) and optional Security
-    event evidence (4624 LogonType 4/5) to produce a confidence score.
+    encryption configuration, Kerberos delegation, OU placement, privileged
+    membership) and optional Security event evidence (4624 LogonType 4/5 as
+    positive signals, 2/10/11 interactive logons as a negative signal) to
+    produce a confidence score. Smart-card-required accounts are scored down
+    as likely humans.
 
     Output artifacts:
       - AdUserServiceAccountDiscovery.html
@@ -192,8 +195,11 @@ function Get-LogonEvidence {
                 Get-WinEvent -FilterHashtable $filter -MaxEvents $Limit -ErrorAction Stop |
                     Where-Object {
                         $_.Properties.Count -gt 8 -and (
+                            $_.Properties[8].Value -eq 2 -or
                             $_.Properties[8].Value -eq 4 -or
-                            $_.Properties[8].Value -eq 5
+                            $_.Properties[8].Value -eq 5 -or
+                            $_.Properties[8].Value -eq 10 -or
+                            $_.Properties[8].Value -eq 11
                         )
                     } |
                     ForEach-Object {
@@ -225,11 +231,13 @@ function Get-LogonEvidence {
                     $usage[$key] = [PSCustomObject]@{
                         ServiceLogons = 0
                         BatchLogons = 0
+                        InteractiveLogons = 0
                     }
                 }
 
                 if ($evt.LogonType -eq 5) { $usage[$key].ServiceLogons++ }
                 if ($evt.LogonType -eq 4) { $usage[$key].BatchLogons++ }
+                if ($evt.LogonType -in @(2, 10, 11)) { $usage[$key].InteractiveLogons++ }
             }
         } catch {
             $errors.Add("${dc}: $($_.Exception.Message)") | Out-Null
@@ -371,7 +379,7 @@ Write-Host '[1/4] Collecting optional 4624 service or batch evidence...' -Foregr
 $eventEvidence = Get-LogonEvidence -Dcs $DomainControllers -Since $since -MaxEvents $MaxEventsPerDc -TimeoutSeconds $DcTimeoutSeconds
 
 Write-Host '[2/4] Enumerating AD user accounts...' -ForegroundColor Yellow
-$users = @(Get-ADUser -LDAPFilter '(&(objectCategory=person)(objectClass=user))' -Properties Enabled,DisplayName,Description,PasswordNeverExpires,CannotChangePassword,ServicePrincipalName,LastLogonDate,pwdLastSet,MemberOf,AdminCount,msDS-SupportedEncryptionTypes,UserPrincipalName)
+$users = @(Get-ADUser -LDAPFilter '(&(objectCategory=person)(objectClass=user))' -Properties Enabled,DisplayName,Description,PasswordNeverExpires,CannotChangePassword,ServicePrincipalName,LastLogonDate,pwdLastSet,MemberOf,AdminCount,msDS-SupportedEncryptionTypes,UserPrincipalName,DistinguishedName,TrustedForDelegation,TrustedToAuthForDelegation,msDS-AllowedToDelegateTo,SmartcardLogonRequired,PasswordNotRequired)
 
 $privilegedGroupDns = @(
     ('CN=Domain Admins,CN=Users,{0}' -f $domain.DistinguishedName),
@@ -417,12 +425,17 @@ foreach ($u in $users) {
 
     $serviceLogons = 0
     $batchLogons = 0
+    $interactiveLogons = 0
     foreach ($k in $keys) {
         if ($eventEvidence.Usage.ContainsKey($k)) {
             $serviceLogons = [Math]::Max($serviceLogons, [int]$eventEvidence.Usage[$k].ServiceLogons)
             $batchLogons = [Math]::Max($batchLogons, [int]$eventEvidence.Usage[$k].BatchLogons)
+            $interactiveLogons = [Math]::Max($interactiveLogons, [int]$eventEvidence.Usage[$k].InteractiveLogons)
         }
     }
+
+    $hasDelegation = [bool]$u.TrustedForDelegation -or [bool]$u.TrustedToAuthForDelegation -or (@($u.'msDS-AllowedToDelegateTo').Count -gt 0)
+    $ouServiceHint = ([string]$u.DistinguishedName -match '(?i)OU=[^,]*(service|svc)')
 
     $score = 0
     $reasons = New-Object System.Collections.Generic.List[string]
@@ -434,11 +447,17 @@ foreach ($u in $users) {
     if ($pwdAgeDays -ne $null -and $pwdAgeDays -ge 365) { $score += 8; $reasons.Add("Old password ($pwdAgeDays days)") | Out-Null }
     if ($serviceLogons -gt 0) { $score += 35; $reasons.Add("Observed service logons (type 5): $serviceLogons") | Out-Null }
     if ($batchLogons -gt 0) { $score += 12; $reasons.Add("Observed batch logons (type 4): $batchLogons") | Out-Null }
+    if ($hasDelegation) { $score += 20; $reasons.Add('Kerberos delegation configured') | Out-Null }
     if ($isPrivileged -or $u.AdminCount -eq 1) { $score += 10; $reasons.Add('Privileged/admin signal') | Out-Null }
+    if ($ouServiceHint) { $score += 10; $reasons.Add('Located in a service-like OU') | Out-Null }
     if ($enc.IsExplicitlySet) { $score += 8; $reasons.Add("msDS-SupportedEncryptionTypes explicitly set ($($enc.EncHex))") | Out-Null }
     if ($enc.Rc4WithoutAes) { $score += 10; $reasons.Add('RC4 without AES in msDS-SupportedEncryptionTypes') | Out-Null }
+    if ($u.PasswordNotRequired) { $score += 5; $reasons.Add('PasswordNotRequired') | Out-Null }
     if ($u.LastLogonDate -and $u.LastLogonDate -ge $since) { $score += 5; $reasons.Add('Recent logon activity') | Out-Null }
+    if ($u.SmartcardLogonRequired) { $score -= 25; $reasons.Add('SmartcardLogonRequired (likely human)') | Out-Null }
+    if ($interactiveLogons -gt 0 -and $serviceLogons -eq 0 -and $batchLogons -eq 0) { $score -= 15; $reasons.Add("Observed interactive logons (type 2/10/11) without service/batch usage: $interactiveLogons (likely human)") | Out-Null }
 
+    if ($score -lt 0) { $score = 0 }
     if ($score -gt 100) { $score = 100 }
 
     $confidence = Get-ConfidenceLevel -Score $score
@@ -456,6 +475,10 @@ foreach ($u in $users) {
         PasswordAgeDays = $pwdAgeDays
         ServiceLogons = $serviceLogons
         BatchLogons = $batchLogons
+        InteractiveLogons = $interactiveLogons
+        HasDelegation = $hasDelegation
+        SmartcardRequired = [bool]$u.SmartcardLogonRequired
+        InServiceOu = $ouServiceHint
         EncHex = $enc.EncHex
         EncFlags = $enc.Flags
         ConfidenceScore = $score

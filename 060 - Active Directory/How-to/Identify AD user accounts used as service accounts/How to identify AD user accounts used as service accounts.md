@@ -44,13 +44,22 @@ Scoring combines AD heuristics and, when available, service/batch logon events (
 - Old password age (`pwdLastSet`)
 - Recent activity (`LastLogonDate`)
 - Privileged group membership (Domain Admins, Enterprise Admins, Administrators)
+- Kerberos delegation configured (`TrustedForDelegation`, `TrustedToAuthForDelegation`, `msDS-AllowedToDelegateTo`) &mdash; almost exclusively a service-account trait
+- Account located in a service-like OU (`OU=...service...` / `OU=...svc...`)
+- `PasswordNotRequired = True` (legacy service-account pattern)
 - `msDS-SupportedEncryptionTypes` explicitly set (uncommon on regular user accounts, often a leftover from service hardening)
 - `msDS-SupportedEncryptionTypes` with RC4 but no AES (technical debt signal)
+
+### Negative signals (reduce the score)
+
+- `SmartcardLogonRequired = True` &mdash; strong indicator of a human, not a service
+- Observed interactive logons (`LogonType` 2 / 10 / 11) **with no service/batch usage** &mdash; interactive sessions alone point to a human operator. If the account also shows service/batch logons, the runtime proof wins and this penalty is not applied (an admin occasionally RDP-ing into a service account should not hide it).
 
 ### Runtime evidence signals
 
 - Events 4624, `LogonType = 5` (service)
 - Events 4624, `LogonType = 4` (batch / scheduled task)
+- Events 4624, `LogonType = 2 / 10 / 11` (interactive / RDP / cached) &mdash; collected as a negative signal
 
 If event collection is not possible (permissions, retention, WinRM), the script still runs and reports that limitation.
 
@@ -154,6 +163,13 @@ The HTML `Scored Accounts` table only lists accounts with at least one signal (s
 - An SPN-bearing account is not always still in active use.
 - `LastLogonDate` is useful but not perfect, depending on topology and replication.
 - Confidence score is a **prioritization aid**, not absolute truth.
+
+## Going further (not implemented here)
+
+These would increase coverage but were left out to keep the tool light and read-only:
+
+- **Kerberos service-ticket events (4769)** on DCs: reveal which accounts are actually requested as services (and expose kerberoasting candidates when RC4 is used). High volume and noisier than 4624, so out of scope here.
+- **Windows services and scheduled tasks on member servers**: the ground truth of "what runs under this identity" lives on the servers themselves (`Win32_Service.StartName`, task principals). Collecting it means querying every server, which is a different, heavier project.
 
 ## Recommended remediation pattern
 
