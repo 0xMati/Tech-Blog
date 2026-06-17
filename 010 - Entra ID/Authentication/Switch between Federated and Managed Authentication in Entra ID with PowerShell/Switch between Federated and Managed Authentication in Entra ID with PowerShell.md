@@ -215,6 +215,10 @@ The flip command is the same whether the target sign-in method is **PHS** or **P
 ### ✅ Option 1: Microsoft Graph (preferred)
 
 ```powershell
+# Connect first (skip if you already ran the connection from Common prerequisites).
+# Flipping the domain writes to it, so a write scope is required:
+Connect-MgGraph -Scopes "Domain.ReadWrite.All", "Directory.Read.All"
+
 Update-MgDomain -DomainId yourdomain.com -AuthenticationType Managed
 ```
 
