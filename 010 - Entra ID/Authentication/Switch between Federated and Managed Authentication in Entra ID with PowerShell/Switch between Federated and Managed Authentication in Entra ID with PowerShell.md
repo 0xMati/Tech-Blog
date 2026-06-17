@@ -457,6 +457,102 @@ https://nexus.microsoftonline-p.com/federationmetadata/saml20/federationmetadata
 
 The relying party identifier (realm) for the Microsoft cloud is `urn:federation:MicrosoftOnline`.
 
+#### Create the relying party trust and claim rules with PowerShell
+
+Instead of the wizard, you can create the trust and apply all the claim rules in one go. The script below imports the Entra metadata, then sets the full set of issuance transform rules (the same ones AD FS uses for a standard Microsoft 365 trust).
+
+> ℹ️ Edit the `$federatedDomains` regex to list your own federated top-level domains, and adjust the `objectGUID` source to `ms-DS-ConsistencyGuid` in the **Issue Immutable ID** rule if that is your Entra ID source anchor. Run this on an AD FS server (elevated) with the `ADFS` module available.
+
+```powershell
+$metadataUrl      = "https://nexus.microsoftonline-p.com/federationmetadata/saml20/federationmetadata.xml"
+$rpName           = "Microsoft Office 365 Identity Platform"
+$primaryDomain    = "contoso.com"                       # primary federated domain
+$federatedDomains = "contoso\.com|fabrikam\.com"        # regex of all federated TLDs
+
+# Create the relying party trust from the Entra published metadata
+Add-AdfsRelyingPartyTrust `
+    -Name $rpName `
+    -MetadataUrl $metadataUrl `
+    -AutoUpdateEnabled $true `
+    -MonitoringEnabled $true `
+    -Enabled $true
+
+# Build the issuance transform rules (claim rule language)
+$issuanceRules = @"
+@RuleName = "Issue UPN"
+c:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/windowsaccountname"]
+ => issue(store = "Active Directory", types = ("http://schemas.xmlsoap.org/claims/UPN"), query = "samAccountName={0};userPrincipalName;{1}", param = regexreplace(c.Value, "(?<domain>[^\\]+)\\(?<user>.+)", "`${user}"), param = c.Value);
+
+@RuleName = "Issue Immutable ID"
+c:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/windowsaccountname"]
+ => issue(store = "Active Directory", types = ("http://schemas.microsoft.com/LiveID/Federation/2008/05/ImmutableID"), query = "samAccountName={0};objectGUID;{1}", param = regexreplace(c.Value, "(?<domain>[^\\]+)\\(?<user>.+)", "`${user}"), param = c.Value);
+
+@RuleName = "Issue nameidentifier"
+c:[Type == "http://schemas.microsoft.com/LiveID/Federation/2008/05/ImmutableID"]
+ => issue(Type = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier", Value = c.Value, Properties["http://schemas.xmlsoap.org/ws/2005/05/identity/claimproperties/format"] = "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified");
+
+@RuleName = "Issue accounttype for domain-joined computers"
+c:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/groupsid", Value =~ "-515`$", Issuer =~ "^(AD AUTHORITY|SELF AUTHORITY|LOCAL AUTHORITY)`$"]
+ => issue(Type = "http://schemas.microsoft.com/ws/2012/01/accounttype", Value = "DJ");
+
+@RuleName = "Issue AccountType with the value USER when it is not a computer account"
+NOT EXISTS([Type == "http://schemas.microsoft.com/ws/2012/01/accounttype", Value == "DJ"])
+ => add(Type = "http://schemas.microsoft.com/ws/2012/01/accounttype", Value = "User");
+
+@RuleName = "Issue issuerid when it is not a computer account"
+c1:[Type == "http://schemas.xmlsoap.org/claims/UPN"]
+ && c2:[Type == "http://schemas.microsoft.com/ws/2012/01/accounttype", Value == "User"]
+ => issue(Type = "http://schemas.microsoft.com/ws/2008/06/identity/claims/issuerid", Value = regexreplace(c1.Value, "(?i)(^([^@]+)@)(?<domain>($federatedDomains))`$", "http://`${domain}/adfs/services/trust/"));
+
+@RuleName = "Issue issuerid for DJ computer auth"
+c1:[Type == "http://schemas.microsoft.com/ws/2012/01/accounttype", Value == "DJ"]
+ => issue(Type = "http://schemas.microsoft.com/ws/2008/06/identity/claims/issuerid", Value = "http://$primaryDomain/adfs/services/trust/");
+
+@RuleName = "Issue onpremobjectguid for domain-joined computers"
+c1:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/groupsid", Value =~ "-515`$", Issuer =~ "^(AD AUTHORITY|SELF AUTHORITY|LOCAL AUTHORITY)`$"]
+ && c2:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/windowsaccountname", Issuer =~ "^(AD AUTHORITY|SELF AUTHORITY|LOCAL AUTHORITY)`$"]
+ => issue(store = "Active Directory", types = ("http://schemas.microsoft.com/identity/claims/onpremobjectguid"), query = ";objectguid;{0}", param = c2.Value);
+
+@RuleName = "Pass through primary SID"
+c1:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/groupsid", Value =~ "-515`$", Issuer =~ "^(AD AUTHORITY|SELF AUTHORITY|LOCAL AUTHORITY)`$"]
+ && c2:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/primarysid", Issuer =~ "^(AD AUTHORITY|SELF AUTHORITY|LOCAL AUTHORITY)`$"]
+ => issue(claim = c2);
+
+@RuleName = "Pass through claim - insideCorporateNetwork"
+c:[Type == "http://schemas.microsoft.com/ws/2012/01/insidecorporatenetwork"]
+ => issue(claim = c);
+
+@RuleName = "Pass Through Claim - Psso"
+c:[Type == "http://schemas.microsoft.com/2014/03/psso"]
+ => issue(claim = c);
+
+@RuleName = "Issue Password Expiry Claims"
+c1:[Type == "http://schemas.microsoft.com/ws/2012/01/passwordexpirationtime"]
+ => issue(store = "_PasswordExpiryStore", types = ("http://schemas.microsoft.com/ws/2012/01/passwordexpirationtime", "http://schemas.microsoft.com/ws/2012/01/passwordexpirationdays", "http://schemas.microsoft.com/ws/2012/01/passwordchangeurl"), query = "{0};", param = c1.Value);
+
+@RuleName = "Pass through claim - authnmethodsreferences"
+c:[Type == "http://schemas.microsoft.com/claims/authnmethodsreferences"]
+ => issue(claim = c);
+
+@RuleName = "Pass through claim - multifactorauthenticationinstant"
+c:[Type == "http://schemas.microsoft.com/ws/2017/04/identity/claims/multifactorauthenticationinstant"]
+ => issue(claim = c);
+
+@RuleName = "Pass through claim - certificate authentication - serial number"
+c:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/serialnumber"]
+ => issue(claim = c);
+
+@RuleName = "Pass through claim - certificate authentication - issuer"
+c:[Type == "http://schemas.microsoft.com/2012/12/certificatecontext/field/issuer"]
+ => issue(claim = c);
+"@
+
+# Apply the rules to the trust
+Set-AdfsRelyingPartyTrust -TargetName $rpName -IssuanceTransformRules $issuanceRules
+```
+
+> 💡 In a PowerShell here-string (`@"..."@`), the backtick before `$` (`` `$ ``) and before `${...}` (`` `${user} ``) keeps those literals from being interpreted as variables — they must reach AD FS verbatim. The `$federatedDomains` and `$primaryDomain` tokens (no backtick) **are** expanded so your domains are injected. Only `Add-AdfsRelyingPartyTrust` supports `-MetadataUrl`; the rules are applied separately with `Set-AdfsRelyingPartyTrust`.
+
 ### 2. Required issuance claims (WS-Fed)
 
 AD FS must issue, in the token sent to Entra ID:
