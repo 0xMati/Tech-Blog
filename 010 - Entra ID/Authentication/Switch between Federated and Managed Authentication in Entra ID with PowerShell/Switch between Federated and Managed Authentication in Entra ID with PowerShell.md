@@ -245,6 +245,10 @@ Then test login at [https://myapps.microsoft.com](https://myapps.microsoft.com) 
 If you need to revert the change, re-federate the domain using the JSON file produced earlier.
 
 ```powershell
+# Connect first (skip if you already ran the connection from Common prerequisites).
+# Re-federating writes to the domain, so a write scope is required:
+Connect-MgGraph -Scopes "Domain.ReadWrite.All", "Directory.Read.All"
+
 $backupPath = "C:\temp\fed-backup-yourdomain.com-YYYYMMDD-HHmm.json"
 $fed        = Get-Content $backupPath | ConvertFrom-Json
 
