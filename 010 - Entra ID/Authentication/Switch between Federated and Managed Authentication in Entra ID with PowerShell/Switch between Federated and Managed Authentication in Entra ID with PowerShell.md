@@ -253,7 +253,9 @@ If you need to revert the change, re-federate the domain using the JSON file pro
 # Re-federating writes to the domain, so a write scope is required:
 Connect-MgGraph -Scopes "Domain.ReadWrite.All", "Directory.Read.All"
 
-$backupPath = "C:\temp\fed-backup-yourdomain.com-YYYYMMDD-HHmm.json"
+# Set your domain once; it is reused everywhere below.
+$domain     = "yourdomain.com"
+$backupPath = "C:\temp\fed-backup-$domain-YYYYMMDD-HHmm.json"
 $fed        = Get-Content $backupPath | ConvertFrom-Json
 
 # Rebuild the federation parameters from the backup.
@@ -298,12 +300,12 @@ if (-not [string]::IsNullOrWhiteSpace($fed.NextSigningCertificate)) {
 # Apply the configuration. A domain can hold only ONE federation configuration, so
 # create it if none exists, otherwise update the existing one. Creating it is what
 # re-federates the domain.
-$existing = Get-MgDomainFederationConfiguration -DomainId "yourdomain.com" -ErrorAction SilentlyContinue
+$existing = Get-MgDomainFederationConfiguration -DomainId $domain -ErrorAction SilentlyContinue
 if ($existing) {
-    Update-MgDomainFederationConfiguration -DomainId "yourdomain.com" `
+    Update-MgDomainFederationConfiguration -DomainId $domain `
         -InternalDomainFederationId $existing.Id @params
 } else {
-    New-MgDomainFederationConfiguration -DomainId "yourdomain.com" @params
+    New-MgDomainFederationConfiguration -DomainId $domain @params
 }
 ```
 
