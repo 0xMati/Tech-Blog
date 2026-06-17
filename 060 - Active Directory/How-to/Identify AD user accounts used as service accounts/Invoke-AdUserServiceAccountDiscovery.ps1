@@ -30,6 +30,12 @@
     and is reported under Warnings/Errors instead of blocking the run.
     Default is 15.
 
+.PARAMETER MaxReportRows
+    Max rows rendered in the HTML "All Accounts" table. Only accounts with at
+    least one signal (score > 0) are listed, capped at this value to keep the
+    report light on large domains. The CSV and JSON exports always contain the
+    full dataset. Default is 1000.
+
 .PARAMETER OutputDir
     Output folder path.
 
@@ -48,6 +54,9 @@ param(
 
     [ValidateRange(1, 300)]
     [int]$DcTimeoutSeconds = 15,
+
+    [ValidateRange(50, 100000)]
+    [int]$MaxReportRows = 1000,
 
     [string]$OutputDir,
 
@@ -264,23 +273,23 @@ function Build-HtmlReport {
         $kpiRows += "<tr><td>$(HtmlEncode $k.Name)</td><td style='font-weight:700;'>$(HtmlEncode ([string]$k.Value))</td><td>$(HtmlEncode $k.Description)</td><td><span class='badge $badge'>$(HtmlEncode $k.Status)</span></td></tr>`n"
     }
 
-    $topRows = ''
-    foreach ($row in $Results.TopCandidates) {
+    $allRows = ''
+    $scoredRows = @($Results.AllRows | Where-Object { $_.ConfidenceScore -gt 0 })
+    $scoredTotal = $scoredRows.Count
+    $cap = [int]$Results.MaxReportRows
+    $allRowsShown = if ($cap -gt 0 -and $scoredTotal -gt $cap) { @($scoredRows | Select-Object -First $cap) } else { $scoredRows }
+    foreach ($row in $allRowsShown) {
         $confidenceBadge = Get-StatusBadgeClass -Status $row.ConfidenceLevel
         $verdictBadge = if ($row.Verdict -eq 'Observed Service Usage') { 'fail' } elseif ($row.ConfidenceLevel -eq 'High') { 'warn' } else { 'info' }
-        $topRows += "<tr><td>$(HtmlEncode $row.SamAccountName)</td><td>$(HtmlEncode $row.DisplayName)</td><td><span class='badge $confidenceBadge'>$(HtmlEncode $row.ConfidenceLevel)</span></td><td style='font-weight:700;'>$($row.ConfidenceScore)</td><td><span class='badge $verdictBadge'>$(HtmlEncode $row.Verdict)</span></td><td>$($row.HasSPN)</td><td>$($row.PasswordNeverExpires)</td><td style='font-weight:700;'>$($row.ServiceLogons)</td><td style='font-weight:700;'>$($row.BatchLogons)</td><td>$(HtmlEncode $row.EncFlags)</td><td>$(HtmlEncode $row.ReasonSummary)</td></tr>`n"
-    }
-    if ([string]::IsNullOrWhiteSpace($topRows)) {
-        $topRows = "<tr><td colspan='11' class='empty'>No candidate rows to display.</td></tr>"
-    }
-
-    $allRows = ''
-    foreach ($row in $Results.AllRows) {
-        $badge = Get-StatusBadgeClass -Status $row.ConfidenceLevel
-        $allRows += "<tr><td>$(HtmlEncode $row.SamAccountName)</td><td><span class='badge $badge'>$(HtmlEncode $row.ConfidenceLevel)</span></td><td>$($row.ConfidenceScore)</td><td>$(HtmlEncode $row.Verdict)</td><td>$($row.HasSPN)</td><td>$($row.PasswordNeverExpires)</td><td>$($row.CannotChangePassword)</td><td>$($row.ServiceLogons)</td><td>$($row.BatchLogons)</td></tr>`n"
+        $allRows += "<tr><td>$(HtmlEncode $row.SamAccountName)</td><td>$(HtmlEncode $row.DisplayName)</td><td><span class='badge $confidenceBadge'>$(HtmlEncode $row.ConfidenceLevel)</span></td><td style='font-weight:700;'>$($row.ConfidenceScore)</td><td><span class='badge $verdictBadge'>$(HtmlEncode $row.Verdict)</span></td><td>$($row.HasSPN)</td><td>$($row.PasswordNeverExpires)</td><td>$($row.CannotChangePassword)</td><td style='font-weight:700;'>$($row.ServiceLogons)</td><td style='font-weight:700;'>$($row.BatchLogons)</td><td>$(HtmlEncode $row.EncFlags)</td><td>$(HtmlEncode $row.ReasonSummary)</td></tr>`n"
     }
     if ([string]::IsNullOrWhiteSpace($allRows)) {
-        $allRows = "<tr><td colspan='9' class='empty'>No data collected.</td></tr>"
+        $allRows = "<tr><td colspan='12' class='empty'>No account scored any signal.</td></tr>"
+    }
+
+    $allNote = "Sorted by confidence score (descending) &mdash; this is your triage queue. Only accounts with at least one signal (score &gt; 0) are listed: $scoredTotal of $($Results.AllRows.Count) scanned. Accounts that scored zero are intentionally hidden here. The exported CSV (<code>AdUserServiceAccountDiscovery.csv</code>) and JSON contain <strong>every scanned account</strong>, including the zero-score ones, for offline filtering and audit trails."
+    if ($cap -gt 0 -and $scoredTotal -gt $cap) {
+        $allNote += " Display truncated to the top $cap rows by score &mdash; open the CSV for the complete list."
     }
 
     $warningRows = ''
@@ -312,7 +321,7 @@ table{width:100%;border-collapse:collapse;font-size:.84rem}th{background:rgba(25
 .warning-alert{background:rgba(240,196,92,.08);border:1px solid rgba(240,196,92,.28);border-radius:14px;padding:1rem 1.5rem;margin-bottom:1.5rem}.error-alert{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.28);border-radius:14px;padding:1rem 1.5rem;margin-bottom:1.5rem}
 </style></head><body><div class='container'>
 <div class='hero'><h1>AD User Service Account Discovery</h1><p class='subtitle'>Domain: $(HtmlEncode $Results.Domain) | Generated: $timestamp | Window: last $($Results.Days) day(s)</p><p style='margin-top:.85rem;'><strong>Focus:</strong> identify user-class AD accounts likely used as service identities with confidence scoring and optional 4624 service or batch evidence.</p></div>
-<nav class='section-nav'><a href='#summary'>Summary</a><a href='#kpis'>KPIs</a><a href='#top'>Top Candidates</a><a href='#all'>All Accounts</a>$(if($warningCount -gt 0){"<a href='#warnings' style='color:var(--yellow);'>Warnings</a>"})$(if($errorCount -gt 0){"<a href='#errors' style='color:var(--red);'>Errors</a>"})</nav>
+<nav class='section-nav'><a href='#summary'>Summary</a><a href='#kpis'>KPIs</a><a href='#all'>Scored Accounts</a>$(if($warningCount -gt 0){"<a href='#warnings' style='color:var(--yellow);'>Warnings</a>"})$(if($errorCount -gt 0){"<a href='#errors' style='color:var(--red);'>Errors</a>"})</nav>
 
 <div id='summary'><h2>Summary</h2>
 <div class='summary-grid'>
@@ -328,9 +337,7 @@ table{width:100%;border-collapse:collapse;font-size:.84rem}th{background:rgba(25
 
 <div id='kpis'><h2>KPIs</h2><div class='card'><table><thead><tr><th>KPI</th><th>Value</th><th>How to read it</th><th>Status</th></tr></thead><tbody>$kpiRows</tbody></table></div></div>
 
-<div id='top'><h2>Top Candidates</h2><div class='card'><p class='note'>Sorted by confidence score (descending). This is your triage queue.</p><table><thead><tr><th>SamAccountName</th><th>DisplayName</th><th>Confidence</th><th>Score</th><th>Verdict</th><th>HasSPN</th><th>PasswordNeverExpires</th><th>ServiceLogons</th><th>BatchLogons</th><th>EncFlags</th><th>Reason summary</th></tr></thead><tbody>$topRows</tbody></table></div></div>
-
-<div id='all'><h2>All Accounts (compact)</h2><div class='card'><table><thead><tr><th>SamAccountName</th><th>Confidence</th><th>Score</th><th>Verdict</th><th>HasSPN</th><th>PasswordNeverExpires</th><th>CannotChangePassword</th><th>ServiceLogons</th><th>BatchLogons</th></tr></thead><tbody>$allRows</tbody></table></div></div>
+<div id='all'><h2>Scored Accounts</h2><div class='card'><p class='note'>$allNote</p><table><thead><tr><th>SamAccountName</th><th>DisplayName</th><th>Confidence</th><th>Score</th><th>Verdict</th><th>HasSPN</th><th>PasswordNeverExpires</th><th>CannotChangePassword</th><th>ServiceLogons</th><th>BatchLogons</th><th>EncFlags</th><th>Reason summary</th></tr></thead><tbody>$allRows</tbody></table></div></div>
 
 $(if($warningCount -gt 0){"<div id='warnings'><h2>Warnings</h2><div class='warning-alert'><table><tbody>$warningRows</tbody></table></div></div>"})
 $(if($errorCount -gt 0){"<div id='errors'><h2>Errors</h2><div class='error-alert'><table><tbody>$errorRows</tbody></table></div></div>"})
@@ -519,6 +526,7 @@ $results = @{
     Days = $Days
     AllRows = $sorted
     TopCandidates = $topCandidates
+    MaxReportRows = $MaxReportRows
     HighConfidenceCount = (@($sorted | Where-Object { $_.ConfidenceLevel -eq 'High' }).Count)
     MediumConfidenceCount = (@($sorted | Where-Object { $_.ConfidenceLevel -eq 'Medium' }).Count)
     ObservedServiceUsageCount = (@($sorted | Where-Object { $_.Verdict -eq 'Observed Service Usage' }).Count)

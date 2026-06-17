@@ -117,6 +117,14 @@ Things to keep in mind:
 .\Invoke-AdUserServiceAccountDiscovery.ps1 -DcTimeoutSeconds 5
 ```
 
+### Large domains: keep the HTML light
+
+The HTML `Scored Accounts` table only lists accounts with at least one signal (score > 0), capped by `-MaxReportRows` (default `1000`). The CSV and JSON exports always keep the full dataset, so nothing is lost.
+
+```powershell
+.\Invoke-AdUserServiceAccountDiscovery.ps1 -MaxReportRows 500
+```
+
 ### Custom output folder
 
 ```powershell
@@ -130,11 +138,13 @@ Things to keep in mind:
 - `AdUserServiceAccountDiscovery.HighConfidence.csv`: actionable shortlist
 - `AdUserServiceAccountDiscovery.json`: raw export (debug/reuse)
 
+> The HTML is a triage dashboard, not the source of truth. On large domains the `Scored Accounts` table is filtered to scored accounts and capped (`-MaxReportRows`); the CSV/JSON always hold every scanned account.
+
 ## Quick way to read the report
 
 1. Start with **Findings** (immediate high-signal items).
 2. Review KPIs (coverage and collection quality).
-3. Work through **Top candidates** by descending score.
+3. Work through the **Scored Accounts** table by descending score.
 4. Validate `Observed Service Usage` accounts with application owners.
 5. Plan remediation waves (gMSA, logon rights, secret rotation, etc.).
 
