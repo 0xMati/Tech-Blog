@@ -463,13 +463,64 @@ AD FS must issue, in the token sent to Entra ID:
 
 | Claim | Meaning |
 |---|---|
-| **UPN** | The user's **UserPrincipalName**, which must match the `UserPrincipalName` of the synced user in Entra ID. Standard claim type: `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn`. |
+| **UPN** | The user's **UserPrincipalName**, which must match the `UserPrincipalName` of the synced user in Entra ID. Standard claim type: `http://schemas.xmlsoap.org/claims/UPN`. |
 | **ImmutableID** | The source anchor, which must match the user's `OnPremisesImmutableId` in Entra ID. AD FS claim type: `http://schemas.microsoft.com/LiveID/Federation/2008/05/ImmutableID` (typically sourced from `objectGUID` or `ms-DS-ConsistencyGuid`). |
-| **issuerID** *(multi-domain only)* | When several top-level domains are federated, AD FS must emit an `issuerID` that matches the per-domain `IssuerUri` so Entra can map the token to the right domain. |
+| **issuerID** *(multi-domain only)* | When several top-level domains are federated, AD FS must emit an `issuerID` that matches the per-domain `IssuerUri` so Entra can map the token to the right domain. Claim type: `http://schemas.microsoft.com/ws/2008/06/identity/claims/issuerid`. |
 
 > ⚠️ The **UPN** and **ImmutableID** values issued by AD FS must exactly match the `UserPrincipalName` and `OnPremisesImmutableId` of the synced user in Entra ID, otherwise federated sign-in fails. Users must be provisioned/synced in Entra ID **before** they can sign in.
 
-The official guidance shows worked claim-rule examples (the conditional ImmutableID from `ms-DS-ConsistencyGuid` vs `objectGUID`, and the `issuerID` rule for multi-domain). The claim-rule language is identical whether or not Entra Connect generated the rules.
+#### Inspect or export the existing claim rules
+
+If you already have a working relying party trust (for example, one previously created by Entra Connect), you can read its issuance transform rules directly on the AD FS server:
+
+```powershell
+# Locate the Microsoft 365 / Entra relying party trust
+Get-AdfsRelyingPartyTrust | Where-Object { $_.Identifier -contains "urn:federation:MicrosoftOnline" } |
+    Select-Object Name, Identifier
+
+# Dump the issuance transform rules (claim rule language)
+$rp = Get-AdfsRelyingPartyTrust | Where-Object { $_.Identifier -contains "urn:federation:MicrosoftOnline" }
+$rp.IssuanceTransformRules
+```
+
+#### Reference claim rules
+
+The following issuance transform rules are the ones generated for a standard AD FS ↔ Microsoft 365 relying party trust. The three rules below are the essential ones for federated sign-in (UPN, ImmutableID, and — for multiple federated domains — issuerID):
+
+```text
+@RuleName = "Issue UPN"
+c:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/windowsaccountname"]
+ => issue(store = "Active Directory", types = ("http://schemas.xmlsoap.org/claims/UPN"),
+    query = "samAccountName={0};userPrincipalName;{1}",
+    param = regexreplace(c.Value, "(?<domain>[^\\]+)\\(?<user>.+)", "${user}"), param = c.Value);
+
+@RuleName = "Issue Immutable ID"
+c:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/windowsaccountname"]
+ => issue(store = "Active Directory", types = ("http://schemas.microsoft.com/LiveID/Federation/2008/05/ImmutableID"),
+    query = "samAccountName={0};objectGUID;{1}",
+    param = regexreplace(c.Value, "(?<domain>[^\\]+)\\(?<user>.+)", "${user}"), param = c.Value);
+
+@RuleName = "Issue nameidentifier"
+c:[Type == "http://schemas.microsoft.com/LiveID/Federation/2008/05/ImmutableID"]
+ => issue(Type = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier", Value = c.Value,
+    Properties["http://schemas.xmlsoap.org/ws/2005/05/identity/claimproperties/format"] = "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified");
+```
+
+For a **multi-domain** federation, AD FS also emits an `issuerID` whose value is rewritten per UPN suffix so it matches the per-domain `IssuerUri` (`http://<domain>/adfs/services/trust/`). Replace the domain list in the regex with your own federated top-level domains:
+
+```text
+@RuleName = "Issue issuerid when it is not a computer account"
+c1:[Type == "http://schemas.xmlsoap.org/claims/UPN"]
+ && c2:[Type == "http://schemas.microsoft.com/ws/2012/01/accounttype", Value == "User"]
+ => issue(Type = "http://schemas.microsoft.com/ws/2008/06/identity/claims/issuerid",
+    Value = regexreplace(c1.Value,
+    "(?i)(^([^@]+)@)(?<domain>(contoso\.com|fabrikam\.com))$",
+    "http://${domain}/adfs/services/trust/"));
+```
+
+> 💡 The `objectGUID` source above is the default. If your Entra ID source anchor is `ms-DS-ConsistencyGuid`, point the **Issue Immutable ID** rule at `ms-DS-ConsistencyGuid` instead and keep it consistent with what your directory synchronization writes to `OnPremisesImmutableId`.
+
+> ℹ️ A real trust contains additional pass-through rules (primary SID, MFA instant, password expiry, `insideCorporateNetwork`, certificate context, etc.). Those support extra scenarios (device registration, password expiry notifications, conditional access) and are not strictly required for basic federated authentication.
 
 ### References for this section
 
