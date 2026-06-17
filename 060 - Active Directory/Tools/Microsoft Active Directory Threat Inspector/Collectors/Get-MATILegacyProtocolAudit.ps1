@@ -40,9 +40,13 @@ function Get-MATILegacyProtocolAudit {
     $rc4TGSAccounts  = @{}
     $rc4ClientIPs    = @{}
     $rc4DCs          = @{}
+    $rc4AvoidableServices = @{}
     $failedAccounts  = @{}
     $otherEncTypes   = @{}
     $kdcStrongKeyWarnings = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $kdcsvcByEvent   = @{}
+    $kdcsvcSamples   = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $logonTypeUsage  = @{}   # "DOMAIN|SAM" -> @{ Domain; Sam; Service; Batch; Interactive } (ADMIN-020)
 
     $ntlmV1Total = 0
     $ntlmV2Total = 0
@@ -74,9 +78,13 @@ function Get-MATILegacyProtocolAudit {
             RC4TGSServices = @{}
             RC4TGSAccounts = @{}
             RC4ClientIPs   = @{}
+            RC4AvoidableServices = @{}
             FailedAccounts = @{}
             OtherEncTypes  = @{}
             KdcStrongKeyWarnings = @()
+            KdcsvcByEvent  = @{}
+            KdcsvcSamples  = @()
+            LogonTypeUsage = @{}
             # NTLM
             NTLMv1 = 0; NTLMv2 = 0
             NTLMAccounts     = @{}
@@ -105,6 +113,10 @@ function Get-MATILegacyProtocolAudit {
                 $service = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'ServiceName' }).'#text'
                 $ip      = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'IpAddress' }).'#text'
                 $status  = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'Status' }).'#text'
+                # Capability fields (present on 4769 from patched DCs) — used to flag avoidable RC4 TGS.
+                $svcKeys = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'ServiceAvailableKeys' }).'#text'
+                $cliAdv  = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'ClientAdvertizedEncryptionTypes' }).'#text'
+                $dcEnc   = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'DCSupportedEncryptionTypes' }).'#text'
                 if ($ip) { $ip = $ip -replace '::ffff:', '' }
 
                 $prefix = if ($ev.Id -eq 4768) { 'TGT' } else { 'TGS' }
@@ -121,6 +133,12 @@ function Get-MATILegacyProtocolAudit {
                         if ($prefix -eq 'TGS' -and $service) {
                             if (-not $result.RC4TGSServices.ContainsKey($service)) { $result.RC4TGSServices[$service] = 0 }
                             $result.RC4TGSServices[$service]++
+                            # Avoidable RC4: client advertised AES, service has AES keys, DC supports AES,
+                            # yet RC4 was issued. Mirrors Get-TGS RC4ChosenWhileAESAvailable from the audit script.
+                            if (($cliAdv -match 'AES') -and ($svcKeys -match 'AES') -and ($dcEnc -match 'AES')) {
+                                if (-not $result.RC4AvoidableServices.ContainsKey($service)) { $result.RC4AvoidableServices[$service] = 0 }
+                                $result.RC4AvoidableServices[$service]++
+                            }
                         }
                         if ($prefix -eq 'TGS' -and $account) {
                             if (-not $result.RC4TGSAccounts.ContainsKey($account)) { $result.RC4TGSAccounts[$account] = 0 }
@@ -177,6 +195,39 @@ function Get-MATILegacyProtocolAudit {
             }
         } catch { }
 
+        # ---------- Kdcsvc RC4 disablement events (System 201-209, KB5073381) ----------
+        # Do NOT filter on ProviderName in the hashtable (Get-WinEvent throws if the provider
+        # never emitted on this DC). Post-filter on ProviderName instead.
+        try {
+            $kdcRc4Events = Get-WinEvent -FilterHashtable @{
+                LogName   = 'System'
+                Id        = 201, 202, 203, 204, 205, 206, 207, 208, 209
+                StartTime = $since
+            } -ErrorAction SilentlyContinue | Where-Object {
+                $_.ProviderName -match '^(Kdcsvc|Microsoft-Windows-Kerberos-Key-Distribution-Center)$'
+            }
+
+            foreach ($ev in $kdcRc4Events) {
+                $eid = [int]$ev.Id
+                if (-not $result.KdcsvcByEvent.ContainsKey($eid)) { $result.KdcsvcByEvent[$eid] = 0 }
+                $result.KdcsvcByEvent[$eid]++
+
+                if (@($result.KdcsvcSamples).Count -lt 200) {
+                    $kxml = [xml]$ev.ToXml()
+                    $kfields = @{}
+                    foreach ($d in $kxml.Event.EventData.Data) { if ($d.Name) { $kfields[$d.Name] = $d.'#text' } }
+                    $kacct = $kfields['AccountName']; if (-not $kacct) { $kacct = $kfields['UserName'] }; if (-not $kacct) { $kacct = $kfields['TargetAccount'] }
+                    $ksvc  = $kfields['ServiceName']; if (-not $ksvc) { $ksvc = $kfields['ServiceSid'] }
+                    $result.KdcsvcSamples += [PSCustomObject]@{
+                        EventId = $eid
+                        Account = if ($kacct) { $kacct } else { '(unparsed)' }
+                        Service = if ($ksvc) { $ksvc } else { '' }
+                        TimeCreated = $ev.TimeCreated
+                    }
+                }
+            }
+        } catch { }
+
         # ---------- NTLM 4624 (XPath filters for NtLmSsp at source → ~90% data reduction) ----------
         try {
             $msWindow = [long]($AuditHours * 3600 * 1000)
@@ -225,6 +276,42 @@ function Get-MATILegacyProtocolAudit {
             }
         } catch { }
 
+        # ---------- 4624 LogonType usage (service=5, batch=4, interactive=2/10/11) ----------
+        # Used by ADMIN-020 to confirm a user account is actually running as a service.
+        try {
+            $msWindow2 = [long]($AuditHours * 3600 * 1000)
+            $logonXml  = @"
+<QueryList><Query Id="0" Path="Security"><Select Path="Security">
+*[System[(EventID=4624) and TimeCreated[timediff(@SystemTime) &lt;= $msWindow2]]
+ and EventData[Data[@Name='LogonType']='5' or Data[@Name='LogonType']='4'
+ or Data[@Name='LogonType']='2' or Data[@Name='LogonType']='10' or Data[@Name='LogonType']='11']]
+</Select></Query></QueryList>
+"@
+            $logonEvents = Get-WinEvent -FilterXml $logonXml -ErrorAction SilentlyContinue
+
+            foreach ($ev in $logonEvents) {
+                $xml = [xml]$ev.ToXml()
+                $lt   = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'LogonType' }).'#text'
+                $tun  = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TargetUserName' }).'#text'
+                $tdn  = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TargetDomainName' }).'#text'
+
+                if (-not $tun) { continue }
+                # Skip machine accounts and well-known local identities
+                if ($tun -match '\$$') { continue }
+                if ($tun -in @('SYSTEM', 'LOCAL SERVICE', 'NETWORK SERVICE', 'ANONYMOUS LOGON', 'DWM-1', 'UMFD-0', 'UMFD-1')) { continue }
+
+                $key = ('{0}|{1}' -f ([string]$tdn).ToUpperInvariant(), ([string]$tun).ToUpperInvariant())
+                if (-not $result.LogonTypeUsage.ContainsKey($key)) {
+                    $result.LogonTypeUsage[$key] = @{ Domain = $tdn; Sam = $tun; Service = 0; Batch = 0; Interactive = 0 }
+                }
+                switch ($lt) {
+                    '5'  { $result.LogonTypeUsage[$key].Service++ }
+                    '4'  { $result.LogonTypeUsage[$key].Batch++ }
+                    default { $result.LogonTypeUsage[$key].Interactive++ }
+                }
+            }
+        } catch { }
+
         $result
     }
 
@@ -258,6 +345,7 @@ function Get-MATILegacyProtocolAudit {
                             TopV2Accounts = @(); TopV2Workstations = @(); TopV2IPs = @() }
             AuditHours = $hours
             Errors     = @($errors)
+            LogonTypeUsage = @()
         }
     }
 
@@ -339,6 +427,12 @@ function Get-MATILegacyProtocolAudit {
                 $rc4TGSServices[$entry.Key] += $entry.Value
             }
         }
+        if ($dcResult.RC4AvoidableServices) {
+            foreach ($entry in $dcResult.RC4AvoidableServices.GetEnumerator()) {
+                if (-not $rc4AvoidableServices.ContainsKey($entry.Key)) { $rc4AvoidableServices[$entry.Key] = 0 }
+                $rc4AvoidableServices[$entry.Key] += $entry.Value
+            }
+        }
         if ($dcResult.RC4TGSAccounts) {
             foreach ($entry in $dcResult.RC4TGSAccounts.GetEnumerator()) {
                 if (-not $rc4TGSAccounts.ContainsKey($entry.Key)) { $rc4TGSAccounts[$entry.Key] = 0 }
@@ -379,6 +473,41 @@ function Get-MATILegacyProtocolAudit {
 
                 $kdcStrongKeyWarnings.Add($warningObject)
                 if ($domainBucket) { $domainBucket.KdcStrongKeyWarnings.Add($warningObject) }
+            }
+        }
+
+        if ($dcResult.KdcsvcByEvent) {
+            foreach ($entry in $dcResult.KdcsvcByEvent.GetEnumerator()) {
+                $eid = [int]$entry.Key
+                if (-not $kdcsvcByEvent.ContainsKey($eid)) { $kdcsvcByEvent[$eid] = 0 }
+                $kdcsvcByEvent[$eid] += [int]$entry.Value
+            }
+        }
+        if ($dcResult.KdcsvcSamples) {
+            foreach ($sample in @($dcResult.KdcsvcSamples)) {
+                if ($kdcsvcSamples.Count -ge 200) { break }
+                $kdcsvcSamples.Add([PSCustomObject]@{
+                    Domain      = $dcDomain
+                    DC          = $dcHost
+                    EventId     = [int]$sample.EventId
+                    Account     = $sample.Account
+                    Service     = $sample.Service
+                    TimeCreated = $sample.TimeCreated
+                })
+            }
+        }
+
+        # --- 4624 LogonType usage aggregation (ADMIN-020) ---
+        if ($dcResult.LogonTypeUsage) {
+            foreach ($entry in $dcResult.LogonTypeUsage.GetEnumerator()) {
+                $key = $entry.Key
+                $val = $entry.Value
+                if (-not $logonTypeUsage.ContainsKey($key)) {
+                    $logonTypeUsage[$key] = @{ Domain = $val.Domain; Sam = $val.Sam; Service = 0; Batch = 0; Interactive = 0 }
+                }
+                $logonTypeUsage[$key].Service     += [int]$val.Service
+                $logonTypeUsage[$key].Batch       += [int]$val.Batch
+                $logonTypeUsage[$key].Interactive += [int]$val.Interactive
             }
         }
 
@@ -475,6 +604,50 @@ function Get-MATILegacyProtocolAudit {
     }
 
     # ---------------------------------------------------------------
+    # Build Kdcsvc 201-209 (KB5073381) summary — pattern mapping done here so
+    # the rule stays declarative. See RC4 Hardening Article 1 §6 grid.
+    # ---------------------------------------------------------------
+    $kdcsvcPatternMap = @{
+        201 = @{ Pattern = 'B';       Cause = 'client RC4-only';                                         Policy = 'implicit'; Phase = 'Audit'   }
+        202 = @{ Pattern = 'D';       Cause = 'service has no AES key (stale-key trap)';                  Policy = 'implicit'; Phase = 'Audit'   }
+        203 = @{ Pattern = 'B';       Cause = 'client RC4-only';                                         Policy = 'implicit'; Phase = 'Enforce' }
+        204 = @{ Pattern = 'D';       Cause = 'service has no AES key (stale-key trap)';                  Policy = 'implicit'; Phase = 'Enforce' }
+        205 = @{ Pattern = 'Hygiene'; Cause = 'DC has explicit insecure DefaultDomainSupportedEncTypes'; Policy = 'n/a';      Phase = 'Hygiene' }
+        206 = @{ Pattern = 'B';       Cause = 'client RC4-only';                                         Policy = 'explicit'; Phase = 'Audit'   }
+        207 = @{ Pattern = 'D';       Cause = 'service has no AES key (stale-key trap)';                  Policy = 'explicit'; Phase = 'Audit'   }
+        208 = @{ Pattern = 'B';       Cause = 'client RC4-only';                                         Policy = 'explicit'; Phase = 'Enforce' }
+        209 = @{ Pattern = 'D';       Cause = 'service has no AES key (stale-key trap)';                  Policy = 'explicit'; Phase = 'Enforce' }
+    }
+
+    $kdcsvcByEventList = foreach ($eid in ($kdcsvcByEvent.Keys | Sort-Object)) {
+        $info = $kdcsvcPatternMap[[int]$eid]
+        [PSCustomObject]@{
+            EventId = [int]$eid
+            Count   = [int]$kdcsvcByEvent[$eid]
+            Pattern = if ($info) { $info.Pattern } else { '(unknown)' }
+            Cause   = if ($info) { $info.Cause }   else { '(unknown)' }
+            Policy  = if ($info) { $info.Policy }  else { 'n/a' }
+            Phase   = if ($info) { $info.Phase }   else { 'Info' }
+        }
+    }
+    $kdcsvcByEventList = @($kdcsvcByEventList)
+
+    $kdcsvcTotal     = ($kdcsvcByEventList | Measure-Object -Property Count -Sum).Sum
+    $clientRc4Ids    = @(201, 203, 206, 208)   # Pattern B — client RC4-only
+    $serviceNoAesIds = @(202, 204, 207, 209)   # Pattern D — service has no AES key
+    $enforceIds      = @(203, 204, 208, 209)   # blocking errors (Phase 2)
+
+    $kdcsvc = @{
+        TotalEvents          = [int]($kdcsvcTotal ?? 0)
+        ByEventId            = $kdcsvcByEventList
+        HasClientRc4Only     = [bool]@($kdcsvcByEventList | Where-Object { $_.EventId -in $clientRc4Ids }).Count
+        HasServiceNoAesKey   = [bool]@($kdcsvcByEventList | Where-Object { $_.EventId -in $serviceNoAesIds }).Count
+        HasEnforceBlocking   = [bool]@($kdcsvcByEventList | Where-Object { $_.EventId -in $enforceIds }).Count
+        HasInsecureDcRegistry = [bool]@($kdcsvcByEventList | Where-Object { $_.EventId -eq 205 }).Count
+        Samples              = @($kdcsvcSamples)
+    }
+
+    # ---------------------------------------------------------------
     # Build Kerberos summary
     # ---------------------------------------------------------------
     $totalTGT = $krbTotals.TGT_AES256 + $krbTotals.TGT_AES128 + $krbTotals.TGT_RC4 + $krbTotals.TGT_Failed + $krbTotals.TGT_Other
@@ -511,8 +684,9 @@ function Get-MATILegacyProtocolAudit {
         TopFailedAccounts = @(ConvertTo-TopN $failedAccounts $topN)
         OtherEncTypes     = @(ConvertTo-TopN $otherEncTypes  $topN)
         RC4AccountDetails = @()
-        RC4ServiceDetails = @()
+        RC4ServiceDetails = @(ConvertTo-TopN $rc4AvoidableServices $topN)
         KdcStrongKeyWarnings = @($kdcStrongKeyWarnings)
+        KdcsvcRc4Disablement = $kdcsvc
         ByDomain = @()
     }
 
@@ -666,5 +840,16 @@ function Get-MATILegacyProtocolAudit {
         NTLM       = $ntlm
         AuditHours = $hours
         Errors     = @($errors)
+        LogonTypeUsage = @(
+            $logonTypeUsage.Values | Sort-Object -Property @{ Expression = { $_.Service }; Descending = $true }, @{ Expression = { $_.Batch }; Descending = $true } | ForEach-Object {
+                [PSCustomObject]@{
+                    Account          = $_.Sam
+                    Domain           = $_.Domain
+                    ServiceLogons    = [int]$_.Service
+                    BatchLogons      = [int]$_.Batch
+                    InteractiveLogons = [int]$_.Interactive
+                }
+            }
+        )
     }
 }

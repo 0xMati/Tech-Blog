@@ -111,11 +111,59 @@
         # Minimum password length for default domain policy (PWD-001)
         MinPasswordLength = 12
 
+        # Account lockout policy thresholds (PWD-004).
+        # LockoutThreshold = 0 means lockout disabled (online brute-force possible).
+        # A threshold above MaxLockoutThreshold is considered too lenient.
+        AccountLockout = @{
+            MaxLockoutThreshold       = 10   # attempts; above this = too lenient
+            MinLockoutDurationMinutes = 15   # below this (and not 0/manual) = too short
+            MinObservationMinutes     = 15   # reset-counter window minimum
+        }
+
         # Maximum MachineAccountQuota before flagged (HARD-003)
         MaxMachineAccountQuota = 0
 
         # Trust inactivity threshold in days (CONFIG-014)
         TrustInactiveDays = 365
+
+        # Dangerous user-rights assignments on DCs via GPO (GPO-016).
+        # Flags these privileges when granted to any principal whose SID is not in
+        # AllowedSIDs. These rights enable privilege escalation / Tier 0 compromise
+        # and should almost never be delegated to custom principals.
+        DangerousUserRights = @{
+            Privileges = @(
+                'SeEnableDelegationPrivilege'   # mark accounts trusted for delegation (ANSSI)
+                'SeTcbPrivilege'                # act as part of the operating system
+                'SeCreateTokenPrivilege'        # create a token object
+                'SeDebugPrivilege'              # debug programs (LSASS memory access)
+                'SeLoadDriverPrivilege'         # load and unload device drivers
+                'SeBackupPrivilege'             # back up files (read everything, bypass ACLs)
+                'SeRestorePrivilege'            # restore files (write everything, bypass ACLs)
+                'SeTakeOwnershipPrivilege'      # take ownership of objects
+                'SeRelabelPrivilege'            # modify an object label
+                'SeSyncAgentPrivilege'          # directory replication (DCSync-like)
+                'SeTrustedCredManAccessPrivilege' # access Credential Manager as trusted caller
+            )
+            # Well-known SIDs allowed to hold the above on Domain Controllers.
+            AllowedSIDs = @(
+                'S-1-5-18'        # Local System
+                'S-1-5-19'        # Local Service
+                'S-1-5-20'        # Network Service
+                'S-1-5-9'         # Enterprise Domain Controllers
+                'S-1-5-32-544'    # BUILTIN\Administrators
+                'S-1-5-32-549'    # BUILTIN\Server Operators
+                'S-1-5-32-551'    # BUILTIN\Backup Operators
+            )
+        }
+
+        # User-as-service-account discovery (ADMIN-020). Confidence score thresholds
+        # mirror Invoke-AdUserServiceAccountDiscovery.ps1 (High >= 70, Medium >= 45).
+        ServiceAccountDiscovery = @{
+            HighConfidence   = 70
+            MediumConfidence = 45
+            # Password age (days) that adds the "old password" signal
+            OldPasswordDays  = 365
+        }
 
         # Legacy OS patterns considered critical / high / medium
         LegacyOS = @{
@@ -195,6 +243,8 @@
             'TrustedForDelegation', 'TrustedToAuthForDelegation',
             'msDS-AllowedToDelegateTo',
             'msDS-KeyCredentialLink',
+            'CannotChangePassword', 'SmartcardLogonRequired', 'LastLogonDate',
+            'DisplayName', 'Name', 'UserPrincipalName',
             'mail', 'scriptPath', 'userPassword', 'unixUserPassword'
         )
 

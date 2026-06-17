@@ -5,7 +5,7 @@ date: 2026-05-26
 
 # MATI — Microsoft Active Directory Threat Inspector
 
-**MATI** is a PowerShell-based Active Directory security assessment tool. It collects configuration data from your forest, evaluates it against **93 detection rules** across 10 categories, and generates scored HTML / CSV / JSON reports — all from a single read-only scan.
+**MATI** is a PowerShell-based Active Directory security assessment tool. It collects configuration data from your forest, evaluates it against **157 detection rules** across 11 categories, and generates scored HTML / CSV / JSON reports — all from a single read-only scan.
 
 > An open, extensible PowerShell tool for Active Directory security assessment that you can customize to your environment.
 
@@ -15,16 +15,17 @@ date: 2026-05-26
 
 | Category | Rules | Examples |
 |---|:-:|---|
-| **Hardening** | 30 | LDAP signing, SMB signing, NTLMv1 usage, LAPS coverage, Print Spooler, TLS config, SCRIL rotation, anonymous bind … |
-| **Kerberos** | 7 | Kerberoasting, AS-REP Roasting, KRBTGT age/encryption, RC4 ticket usage, duplicate SPNs, unconstrained delegation … |
-| **ACL** | 7 | DCSync, AdminSDHolder, Schema/Config/Domain root ACLs, GPO permissions, critical object owners |
-| **ADCS** | 9 | ESC1–ESC8, weak CA certificate, CA cert expiry |
-| **Config** | 15 | Functional levels, Recycle Bin, tombstone, trust hardening (SID Filtering, AES, selective auth, TGT delegation), DNS aging … |
-| **Delegation** | 6 | Constrained/unconstrained/protocol-transition delegation targeting DCs, RBCD backdoor, Shadow Credentials |
-| **Password Policy** | 3 | Default policy strength, FGPP for privileged accounts, reversible encryption |
-| **Privileged Accounts** | 9 | Inactive/stale admins, non-expiring passwords, disabled accounts in groups, SIDHistory, service accounts in DA, gMSA permissions, RID-500 enabled … |
-| **Stale Objects** | 3 | Inactive users, inactive computers, legacy OS |
-| **RODC** | 4 | Cached passwords, allowed/denied replication groups, orphan krbtgt |
+| **Hardening** | 47 | LDAP signing, SMB signing, NTLMv1 usage, LAPS coverage, Print Spooler, TLS config, SCRIL rotation, anonymous bind, DSRM admin logon behavior … |
+| **Config** | 28 | Functional levels, Recycle Bin, tombstone, trust hardening (SID Filtering, AES, selective auth, TGT delegation), DNS aging … |
+| **Privileged Accounts** | 17 | Inactive/stale admins, non-expiring passwords, disabled accounts in groups, SIDHistory, service accounts in DA, gMSA permissions, RID-500 enabled … |
+| **ACL** | 16 | DCSync, AdminSDHolder, Schema/Config/Domain root ACLs, GPO permissions, critical object owners |
+| **ADCS** | 11 | ESC1–ESC11, weak CA certificate, CA cert expiry |
+| **Kerberos** | 9 | Kerberoasting, AS-REP Roasting, KRBTGT age/encryption, RC4 ticket usage, duplicate SPNs, unconstrained delegation … |
+| **Delegation** | 8 | Constrained/unconstrained/protocol-transition delegation targeting DCs, RBCD backdoor, Shadow Credentials |
+| **Stale Objects** | 8 | Inactive users, inactive computers, stale/cluster/MSA passwords, legacy OS, duplicate sAMAccountName |
+| **RODC** | 5 | Cached passwords, allowed/denied replication groups, orphan krbtgt, SYSVOL write |
+| **GPO** | 4 | WSUS over HTTP, AlwaysInstallElevated, GPP cpassword (MS14-025), dangerous user-rights assignment |
+| **Password Policy** | 4 | Default policy strength, FGPP for privileged accounts, reversible encryption, account lockout policy |
 
 Additionally, MATI performs **live event-log auditing** on all DCs (Kerberos RC4 vs AES breakdown, NTLMv1/v2 usage) with donut-chart visualisation in the HTML report.
 
@@ -109,12 +110,13 @@ Microsoft Active Directory Threat Inspector/
 ├── Invoke-MATI.ps1            # Entry point
 ├── Config/
 │   └── MATI.config.psd1       # All thresholds, weights, exclusions
-├── Collectors/                 # 16 data collectors (AD queries, event logs)
-├── Rules/                      # 93 detection rules across 10 categories
+├── Collectors/                 # 18 data collectors (AD queries, event logs)
+├── Rules/                      # 157 detection rules across 11 categories
 │   ├── ACL/
 │   ├── ADCS/
 │   ├── Config/
 │   ├── Delegation/
+│   ├── GPO/
 │   ├── Hardening/
 │   ├── Kerberos/
 │   ├── PasswordPolicy/

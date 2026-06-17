@@ -212,6 +212,7 @@ function Get-MATIGPOSettings {
             $mergedSysAccess = [ordered]@{}
             $mergedGroups    = [ordered]@{}
             $mergedServices  = [ordered]@{}
+            $mergedUserRights = [ordered]@{}
             $gpoNames        = [System.Collections.Generic.List[PSCustomObject]]::new()
 
             foreach ($gpo in $effectiveGPOs) {
@@ -246,6 +247,16 @@ function Get-MATIGPOSettings {
                     if ($inf.ContainsKey('Service General Setting')) {
                         foreach ($kv in $inf['Service General Setting'].GetEnumerator()) { $mergedServices[$kv.Key] = $kv.Value }
                     }
+                    if ($inf.ContainsKey('Privilege Rights')) {
+                        # Higher-precedence GPOs are processed last, so overwriting
+                        # mirrors effective policy. Track the GPO that set each right.
+                        foreach ($kv in $inf['Privilege Rights'].GetEnumerator()) {
+                            $mergedUserRights[$kv.Key] = [PSCustomObject]@{
+                                Value = $kv.Value
+                                GPO   = $gpoLabel
+                            }
+                        }
+                    }
                 }
 
                 # ---- Parse Machine Registry.pol ----
@@ -273,6 +284,7 @@ function Get-MATIGPOSettings {
                 SystemAccess     = $mergedSysAccess
                 RestrictedGroups = $mergedGroups
                 ServiceSettings  = $mergedServices
+                UserRights       = $mergedUserRights
             }
 
             Write-Host "    $domainDns : $($effectiveGPOs.Count) DC GPOs, $($allRegPolicies.Count) registry policies, $($mergedSecOpts.Count) security options" -ForegroundColor DarkGray
@@ -287,6 +299,7 @@ function Get-MATIGPOSettings {
                 SystemAccess     = @{}
                 RestrictedGroups = @{}
                 ServiceSettings  = @{}
+                UserRights       = @{}
             }
         }
     }

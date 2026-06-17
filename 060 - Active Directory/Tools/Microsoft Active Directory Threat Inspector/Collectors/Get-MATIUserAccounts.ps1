@@ -28,16 +28,28 @@ function Get-MATIUserAccounts {
                     LastLogonTimestamp     = if ($user.LastLogonTimestamp) {
                         [DateTime]::FromFileTime($user.LastLogonTimestamp)
                     } else { $null }
+                    LastLogonDate         = $user.LastLogonDate
                     PasswordLastSet       = $user.PasswordLastSet
                     PasswordNeverExpires  = $user.PasswordNeverExpires
                     PasswordNotRequired   = $user.PasswordNotRequired
+                    CannotChangePassword  = $user.CannotChangePassword
+                    SmartcardLogonRequired = $user.SmartcardLogonRequired
                     AdminCount            = $user.AdminCount
                     WhenCreated           = $user.WhenCreated
                     Description           = $user.Description
+                    DisplayName           = $user.DisplayName
+                    Name                  = $user.Name
+                    UserPrincipalName     = $user.UserPrincipalName
                     SID                   = $user.SID.Value
                     PrimaryGroupID        = $user.PrimaryGroupID
                     SIDHistory            = $user.SIDHistory
                     UserAccountControl    = $user.UserAccountControl
+                    # Service-account discovery signals (ADMIN-020)
+                    ServicePrincipalName       = @($user.ServicePrincipalName)
+                    SupportedEncryptionTypes   = $user.'msDS-SupportedEncryptionTypes'
+                    TrustedForDelegation       = $user.TrustedForDelegation
+                    TrustedToAuthForDelegation = $user.TrustedToAuthForDelegation
+                    AllowedToDelegateTo        = @($user.'msDS-AllowedToDelegateTo')
                     # Shadow Credentials
                     KeyCredentialLink     = $user.'msDS-KeyCredentialLink'
                 }

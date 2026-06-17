@@ -43,6 +43,9 @@ function Get-MATIProtocolConfig {
                     KdcArmoring            = $null   # EnableCbacAndArmor: 0=off, 1=supported, 2=always
                     StrongCertificateBindingEnforcement = $null   # KDC strong certificate binding: 0=disabled, 1=compatibility, 2=full
                     CertificateMappingMethods = $null   # Schannel certificate mapping methods bitmask
+                    KdcDefaultEncTypes     = $null   # DefaultDomainSupportedEncTypes (Services\Kdc): KDC fallback when account attr unset; null=absent
+                    Rc4DisablementPhase    = $null   # RC4DefaultDisablementPhase (KB5073381): 0=silent,1=audit,2=enforce; null=absent
+                    DsrmAdminLogonBehavior = $null   # DSRM admin network logon: null/0=console only, 1=when ADWS stopped, 2=always (persistence risk)
                     WinRMAccessible        = $false
                 }
 
@@ -217,6 +220,27 @@ function Get-MATIProtocolConfig {
                             $out['CertificateMappingMethods'] = $v.CertificateMappingMethods
                         } catch { $out['CertificateMappingMethods'] = $null }
 
+                        # ---- KDC default supported enc types (per-DC fallback when account attr unset) ----
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc' `
+                                -Name 'DefaultDomainSupportedEncTypes' -ErrorAction SilentlyContinue
+                            $out['KdcDefaultEncTypes'] = $v.DefaultDomainSupportedEncTypes
+                        } catch { $out['KdcDefaultEncTypes'] = $null }
+
+                        # ---- RC4 disablement phase (KB5073381, Jan-Jul 2026) ----
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters' `
+                                -Name 'RC4DefaultDisablementPhase' -ErrorAction SilentlyContinue
+                            $out['Rc4DisablementPhase'] = $v.RC4DefaultDisablementPhase
+                        } catch { $out['Rc4DisablementPhase'] = $null }
+
+                        # ---- DSRM admin logon behavior (persistence: DsrmAdminLogonBehavior=2) ----
+                        try {
+                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
+                                -Name 'DsrmAdminLogonBehavior' -ErrorAction SilentlyContinue
+                            $out['DsrmAdminLogonBehavior'] = $v.DsrmAdminLogonBehavior
+                        } catch { $out['DsrmAdminLogonBehavior'] = $null }
+
                         return $out
                     }
 
@@ -237,6 +261,9 @@ function Get-MATIProtocolConfig {
                     $result.KdcArmoring        = $regData['KdcArmoring']
                     $result.StrongCertificateBindingEnforcement = $regData['StrongCertificateBindingEnforcement']
                     $result.CertificateMappingMethods = $regData['CertificateMappingMethods']
+                    $result.KdcDefaultEncTypes  = $regData['KdcDefaultEncTypes']
+                    $result.Rc4DisablementPhase = $regData['Rc4DisablementPhase']
+                    $result.DsrmAdminLogonBehavior = $regData['DsrmAdminLogonBehavior']
                 }
                 catch {
                     $errors.Add([PSCustomObject]@{
