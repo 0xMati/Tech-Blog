@@ -255,18 +255,43 @@ $fed        = Get-Content $backupPath | ConvertFrom-Json
 # 1. Switch the domain back to Federated
 Update-MgDomain -DomainId "yourdomain.com" -AuthenticationType Federated
 
-# 2. Recreate the federation configuration from the backup
-New-MgDomainFederationConfiguration `
-    -DomainId "yourdomain.com" `
-    -IssuerUri $fed.IssuerUri `
-    -PassiveSignInUri $fed.PassiveSignInUri `
-    -ActiveSignInUri $fed.ActiveSignInUri `
-    -MetadataExchangeUri $fed.MetadataExchangeUri `
-    -SigningCertificate $fed.SigningCertificate `
-    -SignOutUri $fed.SignOutUri `
-    -FederatedIdpMfaBehavior $fed.FederatedIdpMfaBehavior `
-    -PreferredAuthenticationProtocol $fed.PreferredAuthenticationProtocol
+# 2. Recreate the federation configuration from the backup.
+#    Build the parameters dynamically: only pass properties that actually have a
+#    value. Properties that were never configured on the domain come back empty
+#    ("" or null) in the backup, and passing an empty value to an enum property
+#    (e.g. FederatedIdpMfaBehavior, PromptLoginBehavior) makes Graph reject the
+#    call with: 400 BadRequest - Invalid value specified for property '...'.
+$params = @{
+    DomainId            = "yourdomain.com"
+    IssuerUri           = $fed.IssuerUri
+    PassiveSignInUri    = $fed.PassiveSignInUri
+    ActiveSignInUri     = $fed.ActiveSignInUri
+    MetadataExchangeUri = $fed.MetadataExchangeUri
+    SigningCertificate  = $fed.SigningCertificate
+    SignOutUri          = $fed.SignOutUri
+}
+
+# Optional / enum properties: include them only when the backup has a real value.
+if (-not [string]::IsNullOrWhiteSpace($fed.PreferredAuthenticationProtocol)) {
+    $params.PreferredAuthenticationProtocol = $fed.PreferredAuthenticationProtocol
+}
+if (-not [string]::IsNullOrWhiteSpace($fed.FederatedIdpMfaBehavior)) {
+    $params.FederatedIdpMfaBehavior = $fed.FederatedIdpMfaBehavior
+}
+if (-not [string]::IsNullOrWhiteSpace($fed.PromptLoginBehavior)) {
+    $params.PromptLoginBehavior = $fed.PromptLoginBehavior
+}
+if ($null -ne $fed.IsSignedAuthenticationRequestRequired) {
+    $params.IsSignedAuthenticationRequestRequired = [bool]$fed.IsSignedAuthenticationRequestRequired
+}
+if (-not [string]::IsNullOrWhiteSpace($fed.NextSigningCertificate)) {
+    $params.NextSigningCertificate = $fed.NextSigningCertificate
+}
+
+New-MgDomainFederationConfiguration @params
 ```
+
+> 💡 **Why the splatting / conditional approach?** If a property such as `FederatedIdpMfaBehavior` or `PromptLoginBehavior` was never set on the domain, it is exported as an empty string and re-sending it fails with `400 BadRequest – Invalid value specified for property 'federatedIdpMfaBehavior'`. Per the [Microsoft Graph reference](https://learn.microsoft.com/en-us/graph/api/resources/internaldomainfederation?view=graph-rest-1.0), `federatedIdpMfaBehavior` only accepts `acceptIfMfaDoneByFederatedIdp`, `enforceMfaByFederatedIdp` or `rejectMfaByFederatedIdp`; when it was never set, Entra ID simply defaults to `acceptIfMfaDoneByFederatedIdp`, so omitting it restores the original behavior.
 
 Then validate as in the **Post-switch validation** section above (the `AuthenticationType` should report `Federated` again). See also [Part 2](#part-2--managed--federated-onboarding-ad-fs) for the full Managed → Federated procedure and field semantics.
 
