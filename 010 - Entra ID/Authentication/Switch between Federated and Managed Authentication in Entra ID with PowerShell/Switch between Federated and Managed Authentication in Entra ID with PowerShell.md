@@ -68,13 +68,13 @@ Before flipping the domain to **Managed**, you want to know **who and what still
 
 Four complementary angles. Use whichever matches your tooling.
 
-### Option A — Entra admin center: AD FS application activity (no setup required)
+### Option A — Entra admin center: AD FS application migration (no setup required)
 
-**Entra admin center → Monitoring & health → Usage & insights → AD FS application activity**.
+**Entra admin center → Monitoring & health → Usage & insights → AD FS application migration**.
 
 This built-in report lists every application that has emitted authentication requests against AD FS, with usage counts. It is the fastest way to get a complete picture, no KQL required, no Log Analytics workspace required.
 
-Reference: [What are Microsoft Entra sign-in logs? – AD FS application activity](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-sign-ins#microsoft-entra-usage-and-insights).
+Reference: [What are Microsoft Entra sign-in logs? – AD FS application migration](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-sign-ins#microsoft-entra-usage-and-insights).
 
 ### Option B — Entra admin center: Sign-in logs filter (no Log Analytics required)
 
@@ -135,12 +135,26 @@ If you want to know what AD FS itself **received** (regardless of what Entra log
 - **Event ID 1200** – "The Federation Service issued a valid token" (success)
 - **Event ID 1202** – "The Federation Service failed to issue a valid token" (failure)
 
-This requires AD FS auditing to be enabled:
+This requires AD FS security auditing to be enabled, which is **three distinct steps** (enabling only the audit level is not enough — events will not be written until all three are in place):
+
+**1. Authorize the AD FS service account to write to the Security log.** Add `NT SERVICE\adfssrv` (the AD FS service account) to the **Generate security audits** user right (`Local Security Policy → Security Settings → Local Policies → User Rights Assignment`). This lets the service write entries to the Security event channel.
+
+**2. Enable the "Application Generated" audit subcategory.** AD FS writes through the Windows Auditing API, which is gated by this subcategory:
+
+```powershell
+auditpol.exe /set /subcategory:"Application Generated" /success:enable /failure:enable
+```
+
+**3. Set the AD FS audit level and log types.** The audit level controls *how many* events are produced; the log types control *which* event types AD FS actually records:
 
 ```powershell
 Set-AdfsProperties -AuditLevel Basic   # or Verbose for more detail
-auditpol /set /subcategory:"Application Generated" /success:enable /failure:enable
+Set-AdfsProperties -LogLevel Errors,FailureAudits,Information,SuccessAudits,Warnings
 ```
+
+> On Windows Server 2016+, `AuditLevel` is already `Basic` by default — but steps 1 and 2 are still required for events to reach the Security log.
+
+Reference: [Enabling AD FS Security Auditing and shipping event logs to Microsoft Sentinel](https://techcommunity.microsoft.com/blog/microsoftsentinelblog/enabling-ad-fs-security-auditing-%F0%9F%93%A1-and-shipping-event-logs-to-microsoft-sentine/3610464).
 
 A ready-to-use script that aggregates these events (top users, top relying parties, protocol distribution, hourly distribution, success/failure ratios) is provided alongside this article:
 
@@ -329,7 +343,7 @@ To establish trust on the AD FS side, configure a **Relying Party Trust** for yo
 - [Microsoft Docs – Convert Domain to Managed](https://learn.microsoft.com/en-us/azure/active-directory/hybrid/how-to-connect-fed-to-managed)
 - [Microsoft Graph PowerShell SDK](https://learn.microsoft.com/en-us/powershell/microsoftgraph/)
 - [Microsoft Graph signIn schema (beta) – `incomingTokenType`, `tokenIssuerType`, `authenticationProtocol`](https://learn.microsoft.com/en-us/graph/api/resources/signin?view=graph-rest-beta)
-- [What are Microsoft Entra sign-in logs? – AD FS application activity](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-sign-ins#microsoft-entra-usage-and-insights)
+- [What are Microsoft Entra sign-in logs? – AD FS application migration](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-sign-ins#microsoft-entra-usage-and-insights)
 - [microsoft/adfsToolbox (ADFSDiagnosticsModule, AD FS Rapid Restore Tool)](https://github.com/Microsoft/adfsToolbox)
 - [AD FS Rapid Restoration Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool)
 - [Staged Rollout for migrating from AD FS to PHS](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-staged-rollout)
