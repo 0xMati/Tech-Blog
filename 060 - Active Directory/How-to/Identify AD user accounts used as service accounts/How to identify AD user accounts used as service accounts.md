@@ -18,14 +18,11 @@ This article ships with a companion script:
 
 The script is **read-only** (no AD write, no infrastructure changes), and generates:
 
-- un rapport HTML moderne et lisible
-- un export CSV complet
-- un top "high confidence" CSV pour prioriser
 - a modern, readable HTML report
 - a full CSV export
 - a high-confidence CSV shortlist for prioritization
 
-## Pourquoi c est utile
+## Why this matters
 
 Identifying user accounts used as service identities helps you:
 
@@ -34,20 +31,12 @@ Identifying user accounts used as service identities helps you:
 - reduce risk by removing "forever-password" patterns
 - make audits defensible with evidence, not assumptions
 
-## Ce que le script regarde
+## What the script evaluates
 
 Scoring combines AD heuristics and, when available, service/batch logon events (4624).
 
-### Signaux AD
+### AD posture signals
 
-- `servicePrincipalName` non vide
-- `PasswordNeverExpires = True`
-- `CannotChangePassword = True`
-- Nom / description avec mots clefs (`svc`, `service`, `sql`, `app`, `batch`, `job`, ...)
-- Mot de passe ancien (`pwdLastSet`)
-- Activite recente (`LastLogonDate`)
-- Groupes privilegies (Domain Admins, Enterprise Admins, Administrators)
-- `msDS-SupportedEncryptionTypes` avec RC4 sans AES (signal de dette technique)
 - `servicePrincipalName` not empty
 - `PasswordNeverExpires = True`
 - `CannotChangePassword = True`
@@ -57,16 +46,14 @@ Scoring combines AD heuristics and, when available, service/batch logon events (
 - Privileged group membership (Domain Admins, Enterprise Admins, Administrators)
 - `msDS-SupportedEncryptionTypes` with RC4 but no AES (technical debt signal)
 
-### Signaux d usage reel
+### Runtime evidence signals
 
-- Evenements 4624, `LogonType = 5` (service)
-- Evenements 4624, `LogonType = 4` (batch / tache planifiee)
 - Events 4624, `LogonType = 5` (service)
 - Events 4624, `LogonType = 4` (batch / scheduled task)
 
 If event collection is not possible (permissions, retention, WinRM), the script still runs and reports that limitation.
 
-## Score de confiance
+## Confidence score model
 
 Score is normalized to 100 and mapped to bands:
 
@@ -76,11 +63,6 @@ Score is normalized to 100 and mapped to bands:
 
 The report also provides a readable verdict:
 
-- `Observed Service Usage` (au moins un logon type 5 observe)
-- `Very Likely Service Account`
-- `Likely Service Account`
-- `Possible Service Account`
-- `Unlikely Service Account`
 - `Observed Service Usage` (at least one observed type-5 logon)
 - `Very Likely Service Account`
 - `Likely Service Account`
@@ -121,12 +103,8 @@ The report also provides a readable verdict:
 .\Invoke-AdUserServiceAccountDiscovery.ps1 -OutputDir C:\Temp\SvcAccountAudit
 ```
 
-## Artefacts produits
+## Produced artifacts
 
-- `AdUserServiceAccountDiscovery.html` : dashboard principal
-- `AdUserServiceAccountDiscovery.csv` : dataset complet
-- `AdUserServiceAccountDiscovery.HighConfidence.csv` : shortlist actionnable
-- `AdUserServiceAccountDiscovery.json` : dump brut (debug / re-use)
 - `AdUserServiceAccountDiscovery.html`: main dashboard
 - `AdUserServiceAccountDiscovery.csv`: full dataset
 - `AdUserServiceAccountDiscovery.HighConfidence.csv`: actionable shortlist
