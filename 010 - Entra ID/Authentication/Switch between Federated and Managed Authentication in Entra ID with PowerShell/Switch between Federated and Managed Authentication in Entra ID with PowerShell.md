@@ -439,9 +439,43 @@ Update-MgDomainFederationConfiguration `
 
 ## AD FS-side configuration
 
-To establish trust on the AD FS side, configure a **Relying Party Trust** for your Entra ID domain and define the necessary claim rules.
+The Graph commands above configure the **Entra-side** of the trust. For the federation to actually work, AD FS must also trust Entra ID as a **relying party** and emit the claims Entra expects. When AD FS is set up with Microsoft Entra Connect, this relying party trust and its claim rules are created automatically. Since we are **not** using Entra Connect here, you configure it manually.
 
-<< Coming soon >>
+> ℹ️ This section covers the **WS-Federation** scenario — the same one used throughout this article (`PreferredAuthenticationProtocol = wsFed`, AD FS issuing SAML 1.1 tokens over WS-Fed/WS-Trust). A third-party **SAML 2.0 SP-Lite** IdP is a *different* scenario (protocol `saml`, with `IDPEmail` + a persistent `NameID`); see [Use a SAML 2.0 IdP for SSO](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-fed-saml-idp) if that is your case.
+
+> Entra ID acts as the **relying party**; your AD FS farm is the **identity provider**. Entra ID does **not** read metadata from your IdP — AD FS must publish the correct claims.
+
+### 1. Add the relying party trust (import Entra metadata)
+
+In **AD FS Management → Relying Party Trusts → Add Relying Party Trust**, import the data from the Microsoft 365 / Entra ID published federation metadata:
+
+```
+https://nexus.microsoftonline-p.com/federationmetadata/saml20/federationmetadata.xml
+```
+
+(For the China-specific Microsoft 365 instance, use `https://nexus.partner.microsoftonline-p.cn/federationmetadata/saml20/federationmetadata.xml`.)
+
+The relying party identifier (realm) for the Microsoft cloud is `urn:federation:MicrosoftOnline`.
+
+### 2. Required issuance claims (WS-Fed)
+
+AD FS must issue, in the token sent to Entra ID:
+
+| Claim | Meaning |
+|---|---|
+| **UPN** | The user's **UserPrincipalName**, which must match the `UserPrincipalName` of the synced user in Entra ID. Standard claim type: `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn`. |
+| **ImmutableID** | The source anchor, which must match the user's `OnPremisesImmutableId` in Entra ID. AD FS claim type: `http://schemas.microsoft.com/LiveID/Federation/2008/05/ImmutableID` (typically sourced from `objectGUID` or `ms-DS-ConsistencyGuid`). |
+| **issuerID** *(multi-domain only)* | When several top-level domains are federated, AD FS must emit an `issuerID` that matches the per-domain `IssuerUri` so Entra can map the token to the right domain. |
+
+> ⚠️ The **UPN** and **ImmutableID** values issued by AD FS must exactly match the `UserPrincipalName` and `OnPremisesImmutableId` of the synced user in Entra ID, otherwise federated sign-in fails. Users must be provisioned/synced in Entra ID **before** they can sign in.
+
+The official guidance shows worked claim-rule examples (the conditional ImmutableID from `ms-DS-ConsistencyGuid` vs `objectGUID`, and the `issuerID` rule for multi-domain). The claim-rule language is identical whether or not Entra Connect generated the rules.
+
+### References for this section
+
+- [Manage and customize AD FS — Modify AD FS claim rules](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-fed-management#modify-ad-fs-claim-rules)
+- [The Role of the Claim Rule Language](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-R2-and-2012/dd807118(v=ws.11))
+- [Use a SAML 2.0 IdP for SSO](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-fed-saml-idp) *(the alternative, SAML 2.0 scenario)*
 
 ---
 
