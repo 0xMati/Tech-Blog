@@ -156,17 +156,40 @@ Set-AdfsProperties -LogLevel Errors,FailureAudits,Information,SuccessAudits,Warn
 
 Reference: [Enabling AD FS Security Auditing and shipping event logs to Microsoft Sentinel](https://techcommunity.microsoft.com/blog/microsoftsentinelblog/enabling-ad-fs-security-auditing-%F0%9F%93%A1-and-shipping-event-logs-to-microsoft-sentine/3610464).
 
+> ⚠️ **Size the Security log before you rely on it.** Once auditing is on, AD FS writes several events per authentication, so the **Security** log fills up fast. With the default size (often **128 MB**, sometimes as low as 20 MB) a busy farm can wrap in **hours**, silently overwriting the oldest events — and your lookback window quietly shrinks to almost nothing. Raise the maximum size to at least **1 GB**, and **4 GB or more** on high-volume farms or when you want a multi-week window. Do this on **every** AD FS server:
+>
+> ```powershell
+> # 1 GB (value is in bytes); bump to 4294967296 for 4 GB
+> wevtutil set-log Security /maxsize:1073741824
+> # Check current setting
+> wevtutil get-log Security
+> ```
+>
+> Sizing the log only buys you a longer local retention window. For real long-term retention, ship the events to a SIEM (Sentinel, etc.) as described in the reference above.
+
 A ready-to-use script that aggregates these events (top users, top relying parties, protocol distribution, hourly distribution, success/failure ratios) is provided alongside this article:
 
 → [Analyze-ADFSAuthentication.ps1](Analyze-ADFSAuthentication.ps1)
 
 It supports AD FS 2016 / 2019 / 2022, can target multiple servers via WinRM, and exports both the raw events and aggregated CSV reports.
 
+> ⚠️ **Query every node of the farm.** A token event (1200/1202) is only written on the AD FS node that actually processed the request. In a multi-node farm behind a load balancer, pointing the script at a single node gives only a **partial** view. List all nodes explicitly to get complete coverage:
+>
+> ```powershell
+> .\Analyze-ADFSAuthentication.ps1 -ComputerName adfs01,adfs02,adfs03 -Days 30 -IncludeFailures -OpenReport
+> ```
+>
+> Run from a host that can reach each node over WinRM, with rights to read their Security log. By default (no `-ComputerName`) the script only reads the **local** machine.
+
 ## Backup federation configuration (before the switch)
 
 When you flip the domain to **Managed**, the federation configuration object held by Entra ID is removed. Before doing this, export it to JSON so you can recreate it exactly if you need to roll back.
 
 ```powershell
+# Connect first (skip if you already ran the connection from Common prerequisites).
+# Reading the config only needs a read scope:
+Connect-MgGraph -Scopes "Domain.Read.All", "Directory.Read.All"
+
 $domain     = "yourdomain.com"
 $backupPath = "C:\temp\fed-backup-$domain-$(Get-Date -Format yyyyMMdd-HHmm).json"
 
@@ -180,6 +203,8 @@ Get-MgDomainFederationConfiguration -DomainId $domain |
 ```
 
 The `SigningCertificate` property is already base64-encoded inside the object, no extra handling is needed.
+
+> The `Authentication needed. Please call Connect-MgGraph` error simply means there is no active Graph session — run the `Connect-MgGraph` line above first. If you already connected in [Common prerequisites](#common-prerequisites) with `Domain.ReadWrite.All`, that session also works here (a write scope is a superset of the read scope) and you can skip the extra `Connect-MgGraph`.
 
 > ⚠️ This backup only covers the **Entra-side** federation configuration. It does **not** back up the AD FS farm itself (config DB, claim rules, signing cert private keys…). If you also need a farm-side backup, use the [AD FS Rapid Restore Tool](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-rapid-restoration-tool) from the [microsoft/adfsToolbox](https://github.com/Microsoft/adfsToolbox) repository.
 
