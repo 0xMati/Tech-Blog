@@ -62,10 +62,11 @@
       - 1200 : "The Federation Service issued a valid token"          (success)
       - 1202 : "The Federation Service failed to issue a valid token" (failure, optional)
 
-    Field extraction uses regex on the event message text. Format is stable across
-    AD FS 2016 / 2019 / 2022 (AD FS 2012 R2 is not supported). If a field comes back
-    consistently empty on your environment, tune the regex patterns in the
-    'Parse-AdfsEvent' helper.
+    Field extraction reads the embedded 'AuditBase' XML carried in the second
+    EventData property of each event (the plain-text Message only says "See XML
+    for details"). This XML schema is stable across AD FS 2016 / 2019 / 2022
+    (AD FS 2012 R2 is not supported). If a field comes back consistently empty on
+    your environment, adjust the node names in the 'Parse-AdfsEvent' helper.
 
     The raw events are always exported in full to ADFS-Events-Raw-<timestamp>.csv so
     you can re-parse offline if needed.

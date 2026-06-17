@@ -255,14 +255,13 @@ $fed        = Get-Content $backupPath | ConvertFrom-Json
 # 1. Switch the domain back to Federated
 Update-MgDomain -DomainId "yourdomain.com" -AuthenticationType Federated
 
-# 2. Recreate the federation configuration from the backup.
-#    Build the parameters dynamically: only pass properties that actually have a
-#    value. Properties that were never configured on the domain come back empty
+# 2. Rebuild the federation parameters from the backup.
+#    Build them dynamically: only pass properties that actually have a value.
+#    Properties that were never configured on the domain come back empty
 #    ("" or null) in the backup, and passing an empty value to an enum property
 #    (e.g. FederatedIdpMfaBehavior, PromptLoginBehavior) makes Graph reject the
 #    call with: 400 BadRequest - Invalid value specified for property '...'.
 $params = @{
-    DomainId            = "yourdomain.com"
     IssuerUri           = $fed.IssuerUri
     PassiveSignInUri    = $fed.PassiveSignInUri
     ActiveSignInUri     = $fed.ActiveSignInUri
@@ -288,10 +287,21 @@ if (-not [string]::IsNullOrWhiteSpace($fed.NextSigningCertificate)) {
     $params.NextSigningCertificate = $fed.NextSigningCertificate
 }
 
-New-MgDomainFederationConfiguration @params
+# 3. Apply the configuration. A domain can hold only ONE federation configuration,
+#    so create it if none exists, otherwise update the existing one. This makes the
+#    rollback safe to run whether the domain is still Managed or already Federated.
+$existing = Get-MgDomainFederationConfiguration -DomainId "yourdomain.com" -ErrorAction SilentlyContinue
+if ($existing) {
+    Update-MgDomainFederationConfiguration -DomainId "yourdomain.com" `
+        -InternalDomainFederationId $existing.Id @params
+} else {
+    New-MgDomainFederationConfiguration -DomainId "yourdomain.com" @params
+}
 ```
 
 > 💡 **Why the splatting / conditional approach?** If a property such as `FederatedIdpMfaBehavior` or `PromptLoginBehavior` was never set on the domain, it is exported as an empty string and re-sending it fails with `400 BadRequest – Invalid value specified for property 'federatedIdpMfaBehavior'`. Per the [Microsoft Graph reference](https://learn.microsoft.com/en-us/graph/api/resources/internaldomainfederation?view=graph-rest-1.0), `federatedIdpMfaBehavior` only accepts `acceptIfMfaDoneByFederatedIdp`, `enforceMfaByFederatedIdp` or `rejectMfaByFederatedIdp`; when it was never set, Entra ID simply defaults to `acceptIfMfaDoneByFederatedIdp`, so omitting it restores the original behavior.
+
+> ⚠️ **`Domain already has Federation Configuration set` (400)?** A domain can hold only one federation configuration. If the domain is already `Federated` (or a config lingered from a previous attempt), `New-MgDomainFederationConfiguration` fails with this error. The create-or-update logic above handles both cases; if you run the commands manually, use `Update-MgDomainFederationConfiguration` when a config already exists.
 
 Then validate as in the **Post-switch validation** section above (the `AuthenticationType` should report `Federated` again). See also [Part 2](#part-2--managed--federated-onboarding-ad-fs) for the full Managed → Federated procedure and field semantics.
 
