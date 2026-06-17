@@ -41,7 +41,7 @@ Scoring combines AD heuristics and, when available, service/batch logon events (
 - `PasswordNeverExpires = True` (can be skipped with `-IgnorePasswordNeverExpires` in environments where every user has it)
 - `CannotChangePassword = True`
 - Name/description keyword hits (`svc`, `service`, `sql`, `app`, `batch`, `job`, ...)
-- Old password age (`pwdLastSet`)
+- Old password age (`pwdLastSet`) (can be skipped with `-IgnoreOldPassword` in environments where many human accounts have long-lived passwords)
 - Recent activity (`LastLogonDate`)
 - Privileged group membership (Domain Admins, Enterprise Admins, Administrators)
 - Kerberos delegation configured (`TrustedForDelegation`, `TrustedToAuthForDelegation`, `msDS-AllowedToDelegateTo`) &mdash; almost exclusively a service-account trait
@@ -144,6 +144,12 @@ The HTML `Scored Accounts` table only lists accounts with at least one signal (s
 
 ```powershell
 .\Invoke-AdUserServiceAccountDiscovery.ps1 -IgnorePasswordNeverExpires
+```
+
+### Ignore old-password age (when long-lived passwords are common on human accounts)
+
+```powershell
+.\Invoke-AdUserServiceAccountDiscovery.ps1 -IgnoreOldPassword
 ```
 
 ## Produced artifacts
