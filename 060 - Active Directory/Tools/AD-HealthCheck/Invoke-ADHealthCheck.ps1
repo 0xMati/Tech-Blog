@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 #Requires -Modules ActiveDirectory
 <#
 .SYNOPSIS
@@ -491,9 +491,9 @@ foreach ($dc in $DomainControllers) {
 # ------------------------------------------------------------------------------------
 #  5. Synthèse
 # ------------------------------------------------------------------------------------
-$nOK   = ($script:Results | Where-Object Status -eq 'OK').Count
-$nWarn = ($script:Results | Where-Object Status -eq 'WARN').Count
-$nFail = ($script:Results | Where-Object Status -eq 'FAIL').Count
+$nOK   = @($script:Results | Where-Object { $_.Status -eq 'OK' }).Count
+$nWarn = @($script:Results | Where-Object { $_.Status -eq 'WARN' }).Count
+$nFail = @($script:Results | Where-Object { $_.Status -eq 'FAIL' }).Count
 $hasIssue = ($nWarn -gt 0 -or $nFail -gt 0)
 $globalStatus = if ($nFail -gt 0) { 'FAIL' } elseif ($nWarn -gt 0) { 'WARN' } else { 'OK' }
 
