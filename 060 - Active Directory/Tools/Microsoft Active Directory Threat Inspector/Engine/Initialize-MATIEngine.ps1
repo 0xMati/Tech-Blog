@@ -148,10 +148,11 @@ function Initialize-MATIEngine {
     $Config['_WinPSCompat'] = $winPSCompat
     if ($winPSCompat) {
         Write-Host "" 
-        Write-Host "  [!] WARNING: ActiveDirectory module loaded via Windows PowerShell compatibility (WinPSCompatSession)." -ForegroundColor Yellow
-        Write-Host "      AD objects are deserialized and some checks may be degraded." -ForegroundColor Yellow
-        Write-Host "      For a complete and accurate assessment, run MATI directly on a domain controller" -ForegroundColor Yellow
-        Write-Host "      (or on a host with native RSAT under Windows PowerShell 5.1)." -ForegroundColor Yellow
+        Write-Host "  [!] NOTE: ActiveDirectory module loaded via Windows PowerShell compatibility (WinPSCompatSession)." -ForegroundColor Yellow
+        Write-Host "      Under PowerShell 7 (required by MATI), the AD module always loads through this layer," -ForegroundColor Yellow
+        Write-Host "      so AD objects are deserialized. MATI hardens the critical paths for this mode, but a few" -ForegroundColor Yellow
+        Write-Host "      checks may be degraded or incomplete depending on the environment." -ForegroundColor Yellow
+        Write-Host "      Run MATI on a domain controller or domain-joined admin host with RSAT for the best results." -ForegroundColor Yellow
         Write-Host ""
     }
 
