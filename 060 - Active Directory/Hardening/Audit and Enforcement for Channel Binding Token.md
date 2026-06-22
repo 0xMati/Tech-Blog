@@ -59,6 +59,42 @@ sequenceDiagram
 
 Now the stolen authentication is **worthless on any other tunnel**: the CBT computed for tunnel #1 will never match tunnel #2, so the DC rejects the relayed bind.
 
+### But why can't the attacker just swap CBT(H1) for CBT(H2)?
+
+This is the subtle part. At first glance the attacker seems to have two options to defeat the check — both fail:
+
+| Attacker's move | What happens | Result |
+|---|---|---|
+| **Keep CBT(H1)** and relay it into tunnel #2 | The DC computes the *real* channel hash (H2) and compares: `H1 ≠ H2` | ❌ Rejected |
+| **Replace it with CBT(H2)** to match tunnel #2 | The CBT is **not** a clear-text field — it's folded into the authentication's integrity signature (**MIC**), which is keyed by the client's secret | ❌ Can't re-sign |
+
+The key insight: the CBT is **not sent as an editable plain value**. It is mixed into a cryptographic integrity check computed by the client:
+
+- **Kerberos / SPNEGO** → the **MIC** in the `AP-REQ` authenticator
+- **NTLM** → the `MIC` field + `MsvAvChannelBindings` AV_PAIR inside the NTLMv2 response
+
+That signature is produced with a **session key derived from the client's secret** (password/key) — something the attacker does **not** possess. So if the attacker edits the CBT, the signature no longer matches; and to recompute a valid signature over CBT(H2), they would need the victim's secret.
+
+```mermaid
+flowchart TD
+    A["Client authenticates"] --> B["Computes a MIC = signature over:<br/>• the auth messages<br/>• + the CBT (H1)"]
+    B --> C["Signed with the session key<br/>derived from the client's secret 🔒"]
+    C --> D["Sends: auth + CBT(H1) + MIC"]
+
+    D --> E{"Attacker intercepts<br/>and wants to put CBT(H2)"}
+    E -->|"Keep CBT(H1)"| J["DC sees H1 ≠ real channel H2"]
+    E -->|"Change CBT → H2"| F["MIC no longer matches<br/>(it covers H1)"]
+    F --> G["To re-sign the MIC over H2,<br/>the client's session key is required"]
+    G --> H["❌ Attacker has no secret<br/>→ cannot re-sign"]
+    J --> K["❌ Bind rejected"]
+
+    style H fill:#fdecea,stroke:#c0392b
+    style K fill:#fdecea,stroke:#c0392b
+    style C fill:#e8f6ee,stroke:#2e8b57
+```
+
+> 🔐 **In one sentence:** the **CBT** binds the authentication to the *channel*, and the **MIC** binds the CBT to the *identity*. The attacker can break neither without the victim's secret — which is exactly why NTLM/Kerberos relay to LDAPS (as used in **PetitPotam → AD CS / ESC8** attacks) is neutralized once `LdapEnforceChannelBinding = 2`.
+
 ### Where the setting fits
 
 `LdapEnforceChannelBinding` on the DC controls how strictly the DC checks the CBT:
