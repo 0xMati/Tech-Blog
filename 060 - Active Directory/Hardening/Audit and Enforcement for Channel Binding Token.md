@@ -7,6 +7,91 @@ This note documents a safe rollout to enforce **Channel Binding Tokens (CBT)** f
 
  **Prereqs:** valid DC LDAPS certificates, TLS 1.2 enabled on DCs, and basic LDAPS validation in your environment.
 
+## How Channel Binding Tokens work and what they protect against
+
+### The problem: TLS alone doesn't bind authentication to the channel
+
+When a client connects to a DC over LDAPS, two independent things happen:
+
+1. A **TLS tunnel** is established (certificate + session keys) — this encrypts the traffic.
+2. An **LDAP bind** authenticates the user (e.g. SASL/GSSAPI with Kerberos or NTLM).
+
+The catch: by default, the authentication step has **no idea which TLS tunnel it is running inside**. The cryptographic proof of identity is not tied to the specific encrypted channel. That gap is exactly what an attacker exploits in an **LDAPS relay / man-in-the-middle** attack.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client (victim)
+    participant A as Attacker (relay/MITM)
+    participant DC as Domain Controller (LDAPS)
+
+    Note over C,A: TLS tunnel #1 (Client ↔ Attacker)
+    Note over A,DC: TLS tunnel #2 (Attacker ↔ DC)
+
+    C->>A: LDAP bind + auth credentials (over TLS #1)
+    A->>DC: Replays the SAME auth into a DIFFERENT TLS tunnel (#2)
+    DC-->>A: Bind succeeds ❌ (auth not tied to a channel)
+    Note over A,DC: Attacker is now authenticated as the victim
+```
+
+Because the authentication material is valid on **any** channel, the attacker can terminate the victim's TLS session, open a brand-new one to the DC, and forward the credentials. The DC can't tell the two tunnels apart.
+
+### The fix: bind the authentication to the exact TLS channel
+
+A **Channel Binding Token (CBT)** is a fingerprint of the **server's TLS certificate/channel** (`tls-server-end-point`) that the client mixes into its authentication exchange. The DC then verifies that the CBT presented inside the bind matches the **actual TLS channel** the bind arrived on.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as Attacker (relay/MITM)
+    participant DC as Domain Controller (LDAPS)
+
+    Note over C,A: TLS tunnel #1 (cert hash = H1)
+    C->>C: Compute CBT from TLS channel #1 (= H1)
+    C->>A: LDAP bind + auth + CBT(H1) (over TLS #1)
+    Note over A,DC: TLS tunnel #2 (cert hash = H2)
+    A->>DC: Replays auth + CBT(H1) into TLS #2 (hash = H2)
+    DC->>DC: Compare CBT(H1) vs actual channel H2
+    DC-->>A: H1 ≠ H2 → bind REJECTED ✅
+    Note over A,DC: Relay broken — credentials are useless on another channel
+```
+
+Now the stolen authentication is **worthless on any other tunnel**: the CBT computed for tunnel #1 will never match tunnel #2, so the DC rejects the relayed bind.
+
+### Where the setting fits
+
+`LdapEnforceChannelBinding` on the DC controls how strictly the DC checks the CBT:
+
+```mermaid
+flowchart TD
+    A[LDAPS bind arrives at DC] --> B{LdapEnforceChannelBinding value?}
+    B -->|0 = Disabled| C[CBT ignored<br/>relay possible ❌]
+    B -->|1 = When supported| D{Client sent a CBT?}
+    B -->|2 = Required| E{Valid CBT matching<br/>this TLS channel?}
+
+    D -->|Yes| F{CBT matches channel?}
+    D -->|No legacy client| G[Bind allowed<br/>logged as missing CBT ⚠️]
+    F -->|Yes| H[Bind allowed ✅]
+    F -->|No| I[Bind rejected ✅]
+
+    E -->|Yes| H
+    E -->|No / missing| I
+
+    style C fill:#fdecea,stroke:#c0392b
+    style G fill:#fff7e0,stroke:#d9a300
+    style H fill:#e8f6ee,stroke:#2e8b57
+    style I fill:#e8f6ee,stroke:#2e8b57
+```
+
+| Value | Mode | Behavior | Posture |
+|---|---|---|---|
+| `0` | Disabled | CBT never checked | ❌ Vulnerable to LDAPS relay |
+| `1` | When supported | Checked **if** the client sends one; legacy clients still allowed | ⚠️ Transitional (audit) |
+| `2` | Required | Every LDAPS bind **must** present a valid CBT | ✅ Protected |
+
+> 🔑 **Key idea:** CBT closes the gap between the *encrypted channel* (TLS) and the *authenticated identity* (LDAP bind). Setting `2 = Required` is what actually stops the relay; `1 = When supported` only **logs** the gap so you can find legacy clients first (events **3074 / 3075**).
+
 ## Rollout strategy (two steps)
 
 1. **Phase 1 — When supported (`LdapEnforceChannelBinding = 1`)**
