@@ -1,4 +1,4 @@
-# Scoring\Get-MATIScore.ps1
+﻿# Scoring\Get-MATIScore.ps1
 # MATIv2 - Multiplicative-Decay scoring engine.
 #
 # Each category owns a budget (slice of 100 points).
@@ -140,6 +140,12 @@ function Get-MATIScore {
             Low           = @($findings | Where-Object Severity -eq 'Low').Count
             Informational = @($findings | Where-Object Severity -eq 'Informational').Count
         }
+        NotAssessedCount   = if ($EngineContext.ContainsKey('NotAssessedRules')) { $EngineContext.NotAssessedRules.Count } else { 0 }
+        FailedCollectors   = if ($EngineContext.ContainsKey('FailedCollectors')) { @($EngineContext.FailedCollectors) } else { @() }
+        PartialAssessment  = (
+            ($EngineContext.ContainsKey('NotAssessedRules') -and $EngineContext.NotAssessedRules.Count -gt 0) -or
+            ($EngineContext.ContainsKey('WinPSCompat') -and $EngineContext.WinPSCompat)
+        )
     }
 
     $EngineContext.Score = $scoreResult
@@ -163,6 +169,22 @@ function Get-MATIScore {
     Write-Host "  Total findings : $($findings.Count) (from $($ruleSummaries.Count) rules)" -ForegroundColor DarkGray
     Write-Host "  Critical: $($scoreResult.BySeverity.Critical) | High: $($scoreResult.BySeverity.High) | Medium: $($scoreResult.BySeverity.Medium) | Low: $($scoreResult.BySeverity.Low)" -ForegroundColor DarkGray
     Write-Host "  Total deduction: $totalDeduction points`n" -ForegroundColor DarkGray
+
+    # Partial-assessment warning: the score is only trustworthy when every rule
+    # was actually evaluated. Failed collectors / compat mode make it optimistic.
+    if ($scoreResult.PartialAssessment) {
+        Write-Host "  [!] PARTIAL ASSESSMENT - the score above is NOT fully reliable." -ForegroundColor Yellow
+        if ($scoreResult.NotAssessedCount -gt 0) {
+            Write-Host "      $($scoreResult.NotAssessedCount) rule(s) were NOT ASSESSED because their collector failed." -ForegroundColor Yellow
+        }
+        if ($scoreResult.FailedCollectors.Count -gt 0) {
+            Write-Host "      Failed collectors: $($scoreResult.FailedCollectors -join ', ')" -ForegroundColor Yellow
+        }
+        if ($EngineContext.ContainsKey('WinPSCompat') -and $EngineContext.WinPSCompat) {
+            Write-Host "      AD module ran in compatibility mode (deserialized objects) - run on a DC for full coverage." -ForegroundColor Yellow
+        }
+        Write-Host ""
+    }
 
     # Category breakdown
     foreach ($cat in @($categoryDeductions.GetEnumerator()) | Sort-Object Value -Descending) {

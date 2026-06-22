@@ -1,4 +1,4 @@
-# Collectors\Get-MATIComputerAccounts.ps1
+﻿# Collectors\Get-MATIComputerAccounts.ps1
 # MATIv2 - Collects all computer accounts.
 
 function Get-MATIComputerAccounts {
@@ -47,7 +47,7 @@ function Get-MATIComputerAccounts {
                     PasswordLastSet       = $comp.PasswordLastSet
                     WhenCreated           = $comp.WhenCreated
                     Description           = $comp.Description
-                    SID                   = $comp.SID.Value
+                    SID                   = [string]$comp.SID
                     PrimaryGroupID        = $comp.PrimaryGroupID
                     UserAccountControl    = $comp.UserAccountControl
                     IsDomainController    = $domainControllerDNs.Contains($comp.DistinguishedName)

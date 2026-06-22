@@ -1,4 +1,4 @@
-# Tiering\Invoke-MATITieringPhase8.ps1
+﻿# Tiering\Invoke-MATITieringPhase8.ps1
 # Phase 8 — Monitoring & Detection
 # Configures tiering violation detection, event forwarding, and generates monitoring KPIs.
 
@@ -236,10 +236,10 @@ function Invoke-MATITieringPhase8 {
     # T0 in Protected Users
     try {
         $pu = Get-ADGroupMember -Identity 'Protected Users' -Recursive -ErrorAction Stop
-        $puSIDs = $pu.SID.Value
+        $puSIDs = @($pu | ForEach-Object { [string]$_.SID })
         $t0NotProtected = $results.T0Accounts | Where-Object {
             $u = Get-ADUser $_.SamAccountName -Properties SID -ErrorAction SilentlyContinue
-            $u -and $u.SID.Value -notin $puSIDs
+            $u -and [string]$u.SID -notin $puSIDs
         }
         $notProtCount = ($t0NotProtected | Measure-Object).Count
         $results.KPIs.Add([PSCustomObject]@{ KPI = 'T0 accounts NOT in Protected Users'; Value = $notProtCount; Target = '0'; Status = if($notProtCount -eq 0){'OK'}else{'Critical'} })

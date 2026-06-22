@@ -1,4 +1,4 @@
-# Collectors\Get-MATIRODCInfo.ps1
+﻿# Collectors\Get-MATIRODCInfo.ps1
 # MATIv2 - Collects Read-Only Domain Controller configuration.
 
 function Get-MATIRODCInfo {
@@ -24,7 +24,8 @@ function Get-MATIRODCInfo {
     foreach ($domainDns in $forest.Domains) {
         try {
             $domObj = Get-ADDomain -Server $domainDns -ErrorAction Stop
-            $domSID = $domObj.DomainSID.Value
+            $domSID = Get-MATIDomainSidString $domObj.DomainSID
+            if (-not $domSID) { continue }
 
             # Get RODCs
             $rodcs = Get-ADDomainController -Filter { IsReadOnly -eq $true } -Server $domainDns -ErrorAction SilentlyContinue
@@ -101,7 +102,7 @@ function Get-MATIRODCInfo {
                     'S-1-5-32-551',  # Backup Operators
                     "$domSID-502"    # krbtgt
                 )
-                $memberSIDs = @($deniedMembers | ForEach-Object { $_.SID.Value })
+                $memberSIDs = @($deniedMembers | ForEach-Object { [string]$_.SID })
                 $missingSIDs = @($expectedSIDs | Where-Object { $_ -notin $memberSIDs })
                 if ($missingSIDs.Count -gt 0) {
                     $deniedGroupIssues.Add([PSCustomObject]@{

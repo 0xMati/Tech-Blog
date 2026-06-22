@@ -70,17 +70,41 @@
 .PARAMETER EventLookbackHours
     Fenêtre (heures) d'analyse du journal Directory Service. Défaut : 24.
 
+.PARAMETER MailMethod
+    Méthode d'envoi du rapport : 'Smtp' (Send-MailMessage, relais on-prem ou Direct Send EXO)
+    ou 'Graph' (Microsoft Graph sendMail, app + certificat, recommandé pour EXO). Défaut : Smtp.
+
+.PARAMETER TenantId
+    (MailMethod Graph) ID de tenant Entra ID.
+
+.PARAMETER ClientId
+    (MailMethod Graph) App (client) ID de l'app registration disposant de la permission Mail.Send.
+
+.PARAMETER CertThumbprint
+    (MailMethod Graph) Empreinte du certificat d'authentification de l'app (store CurrentUser/LocalMachine).
+    Méthode recommandée. Fournir CertThumbprint OU ClientSecret.
+
+.PARAMETER ClientSecret
+    (MailMethod Graph) Client secret de l'app, en SecureString. Alternative au certificat
+    (moins sûr : à stocker chiffré, ex. DPAPI / Credential Manager). Fournir CertThumbprint OU ClientSecret.
+
 .EXAMPLE
     .\Invoke-ADHealthCheck.ps1
     Exécution simple, sortie console + HTML + CSV dans .\Reports.
 
 .EXAMPLE
     .\Invoke-ADHealthCheck.ps1 -SendEmail -SmtpServer relay.contoso.com -From ad-monitor@contoso.com -To soc@contoso.com
-    Exécution avec alerte email en cas de problème détecté.
+    Exécution avec alerte email (SMTP) en cas de problème détecté.
+
+.EXAMPLE
+    .\Invoke-ADHealthCheck.ps1 -SendEmail -MailMethod Graph -TenantId <tid> -ClientId <appid> -CertThumbprint <tp> -From ad-monitor@contoso.com -To soc@contoso.com
+    Exécution avec envoi du rapport via Microsoft Graph (EXO, sans SMTP).
 
 .NOTES
     Pré-requis : RSAT AD DS Tools (module ActiveDirectory, repadmin, dcdiag, nltest),
     compte avec droits de lecture sur AD et accès réseau aux DC.
+    Pour MailMethod Graph : modules Microsoft.Graph.Authentication et Microsoft.Graph.Users.Actions,
+    app registration Entra ID avec permission applicative Mail.Send et un certificat.
 #>
 [CmdletBinding()]
 param(
@@ -94,6 +118,14 @@ param(
     [string]   $From,
     [string[]] $To,
     [switch]   $UseSsl,
+
+    # Méthode d'envoi du rapport
+    [ValidateSet('Smtp', 'Graph')]
+    [string]   $MailMethod = 'Smtp',
+    [string]   $TenantId,        # MailMethod Graph
+    [string]   $ClientId,        # MailMethod Graph
+    [string]   $CertThumbprint,  # MailMethod Graph (auth par certificat - recommandé)
+    [System.Security.SecureString] $ClientSecret,  # MailMethod Graph (auth par client secret)
 
     [string[]] $DcDiagTests = @(
         'Connectivity', 'Replications', 'Advertising', 'FsmoCheck',
@@ -193,14 +225,65 @@ function Invoke-External {
     }
 }
 
+function Send-GraphMailReport {
+    # Envoie le rapport via Microsoft Graph. Auth par certificat (recommandé) OU client secret.
+    param(
+        [Parameter(Mandatory)][string]   $TenantId,
+        [Parameter(Mandatory)][string]   $ClientId,
+        [string]                         $CertThumbprint,
+        [System.Security.SecureString]   $ClientSecret,
+        [Parameter(Mandatory)][string]   $From,
+        [Parameter(Mandatory)][string[]] $To,
+        [Parameter(Mandatory)][string]   $Subject,
+        [Parameter(Mandatory)][string]   $HtmlBody,
+        [string]                         $AttachmentPath
+    )
+    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+    Import-Module Microsoft.Graph.Users.Actions  -ErrorAction Stop
+
+    # Connexion : certificat prioritaire, sinon client secret.
+    if ($CertThumbprint) {
+        Connect-MgGraph -TenantId $TenantId -ClientId $ClientId `
+            -CertificateThumbprint $CertThumbprint -NoWelcome -ErrorAction Stop
+    }
+    elseif ($ClientSecret) {
+        $cred = New-Object System.Management.Automation.PSCredential($ClientId, $ClientSecret)
+        Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $cred -NoWelcome -ErrorAction Stop
+    }
+    else {
+        throw 'Send-GraphMailReport : fournir -CertThumbprint ou -ClientSecret.'
+    }
+
+    try {
+        $message = @{
+            subject      = $Subject
+            body         = @{ contentType = 'HTML'; content = $HtmlBody }
+            toRecipients = @($To | ForEach-Object { @{ emailAddress = @{ address = $_ } } })
+        }
+        if ($AttachmentPath -and (Test-Path -LiteralPath $AttachmentPath)) {
+            $bytes = [System.IO.File]::ReadAllBytes($AttachmentPath)
+            $message.attachments = @(@{
+                '@odata.type' = '#microsoft.graph.fileAttachment'
+                name          = (Split-Path -Path $AttachmentPath -Leaf)
+                contentType   = 'text/csv'
+                contentBytes  = [System.Convert]::ToBase64String($bytes)
+            })
+        }
+        Send-MgUserMail -UserId $From -Message $message -SaveToSentItems:$false -ErrorAction Stop
+    }
+    finally {
+        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+    }
+}
+
 # ------------------------------------------------------------------------------------
 #  En-tête console
 # ------------------------------------------------------------------------------------
 Write-Host ''
 Write-Host '===========================================================' -ForegroundColor Cyan
 Write-Host '  AD Health Check' -ForegroundColor Cyan
-Write-Host ('  Domaine : {0}' -f $DomainName) -ForegroundColor Cyan
-Write-Host ('  Début   : {0}' -f $script:StartTime) -ForegroundColor Cyan
+Write-Host ('  Domain : {0}' -f $DomainName) -ForegroundColor Cyan
+Write-Host ('  Start  : {0}' -f $script:StartTime) -ForegroundColor Cyan
 Write-Host '===========================================================' -ForegroundColor Cyan
 Write-Host ''
 
@@ -213,18 +296,18 @@ try {
         Sort-Object HostName
 }
 catch {
-    Write-Host "ERREUR: impossible d'interroger le domaine '$DomainName'. $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "ERROR: unable to query domain '$DomainName'. $($_.Exception.Message)" -ForegroundColor Red
     throw
 }
 
-Record -DC '(domaine)' -Category 'Discovery' -Check 'DC découverts' -Status 'INFO' `
-       -Detail ('{0} DC : {1}' -f $DomainControllers.Count, ($DomainControllers.HostName -join ', '))
+Record -DC '(domain)' -Category 'Discovery' -Check 'DCs discovered' -Status 'INFO' `
+       -Detail ('{0} DCs: {1}' -f $DomainControllers.Count, ($DomainControllers.HostName -join ', '))
 
 # ------------------------------------------------------------------------------------
 #  2. Rôles FSMO : localisation + accessibilité
 # ------------------------------------------------------------------------------------
 Write-Host ''
-Write-Host '--- Rôles FSMO ---' -ForegroundColor White
+Write-Host '--- FSMO Roles ---' -ForegroundColor White
 try {
     $forest = Get-ADForest -Server $DomainName
     $fsmo = [ordered]@{
@@ -237,32 +320,32 @@ try {
     foreach ($role in $fsmo.Keys) {
         $holder = $fsmo[$role]
         if ([string]::IsNullOrWhiteSpace($holder)) {
-            Record -DC '(forêt/domaine)' -Category 'FSMO' -Check $role -Status 'FAIL' -Detail 'Détenteur introuvable'
+            Record -DC '(forest/domain)' -Category 'FSMO' -Check $role -Status 'FAIL' -Detail 'Role holder not found'
             continue
         }
         # Test d'accessibilité du détenteur (LDAP).
         $reachable = $false
         try { $reachable = [bool](Get-ADDomainController -Identity $holder -Server $holder) } catch { $reachable = $false }
         if ($reachable) {
-            Record -DC $holder -Category 'FSMO' -Check $role -Status 'OK' -Detail "Détenteur : $holder"
+            Record -DC $holder -Category 'FSMO' -Check $role -Status 'OK' -Detail "Holder: $holder"
         }
         else {
-            Record -DC $holder -Category 'FSMO' -Check $role -Status 'FAIL' -Detail "Détenteur injoignable : $holder"
+            Record -DC $holder -Category 'FSMO' -Check $role -Status 'FAIL' -Detail "Holder unreachable: $holder"
         }
     }
 }
 catch {
-    Record -DC '(forêt)' -Category 'FSMO' -Check 'Lecture FSMO' -Status 'FAIL' -Detail $_.Exception.Message
+    Record -DC '(forest)' -Category 'FSMO' -Check 'FSMO read' -Status 'FAIL' -Detail $_.Exception.Message
 }
 
 # ------------------------------------------------------------------------------------
 #  3. Réplication globale : repadmin /replsummary
 # ------------------------------------------------------------------------------------
 Write-Host ''
-Write-Host '--- Réplication (replsummary) ---' -ForegroundColor White
+Write-Host '--- Replication (replsummary) ---' -ForegroundColor White
 $repSummary = Invoke-External -FilePath 'repadmin.exe' -Arguments @('/replsummary', $DomainName)
 if ($repSummary.ExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($repSummary.Output)) {
-    Record -DC '(domaine)' -Category 'Replication' -Check 'replsummary' -Status 'FAIL' -Detail 'repadmin a échoué (RSAT installé ?)'
+    Record -DC '(domain)' -Category 'Replication' -Check 'replsummary' -Status 'FAIL' -Detail 'repadmin failed (RSAT installed?)'
 }
 else {
     # Repère les lignes avec des échecs : colonnes "fails/total".
@@ -274,12 +357,12 @@ else {
             if ($fails -gt 0 -or $pct -gt 0) {
                 $hadFailure = $true
                 Record -DC ($l.Trim() -replace '\s{2,}', ' ') -Category 'Replication' -Check 'replsummary' `
-                       -Status 'FAIL' -Detail 'Échecs de réplication détectés'
+                       -Status 'FAIL' -Detail 'Replication failures detected'
             }
         }
     }
     if (-not $hadFailure) {
-        Record -DC '(domaine)' -Category 'Replication' -Check 'replsummary' -Status 'OK' -Detail 'Aucun échec de réplication'
+        Record -DC '(domain)' -Category 'Replication' -Check 'replsummary' -Status 'OK' -Detail 'No replication failures'
     }
 }
 
@@ -294,7 +377,7 @@ foreach ($dc in $DomainControllers) {
     # 4a. Joignabilité réseau de base
     $online = Test-Connection -ComputerName $dcName -Count 1 -Quiet -ErrorAction SilentlyContinue
     if (-not $online) {
-        Record -DC $dcName -Category 'Connectivity' -Check 'Ping' -Status 'FAIL' -Detail 'DC injoignable (ICMP) — contrôles suivants ignorés'
+        Record -DC $dcName -Category 'Connectivity' -Check 'Ping' -Status 'FAIL' -Detail 'DC unreachable (ICMP) — remaining checks skipped'
         continue
     }
     Record -DC $dcName -Category 'Connectivity' -Check 'Ping' -Status 'OK'
@@ -306,7 +389,7 @@ foreach ($dc in $DomainControllers) {
             Record -DC $dcName -Category 'Connectivity' -Check ("Port {0} ({1})" -f $p.Port, $p.Name) -Status 'OK'
         }
         else {
-            Record -DC $dcName -Category 'Connectivity' -Check ("Port {0} ({1})" -f $p.Port, $p.Name) -Status 'FAIL' -Detail 'Port fermé/filtré'
+            Record -DC $dcName -Category 'Connectivity' -Check ("Port {0} ({1})" -f $p.Port, $p.Name) -Status 'FAIL' -Detail 'Port closed/filtered'
         }
     }
 
@@ -316,7 +399,7 @@ foreach ($dc in $DomainControllers) {
     }
     catch {
         $svcList = $null
-        Record -DC $dcName -Category 'Services' -Check 'Interrogation services' -Status 'FAIL' -Detail $_.Exception.Message
+        Record -DC $dcName -Category 'Services' -Check 'Service query' -Status 'FAIL' -Detail $_.Exception.Message
     }
     if ($svcList) {
         foreach ($svc in $CriticalServices) {
@@ -325,14 +408,14 @@ foreach ($dc in $DomainControllers) {
                 # DFSR/ADWS absents = INFO (ancien env. ou rôle non installé) sauf cœur AD.
                 $isCore = $svc.Name -in @('NTDS', 'Netlogon', 'Kdc')
                 Record -DC $dcName -Category 'Services' -Check $svc.Display `
-                       -Status ($(if ($isCore) { 'FAIL' } else { 'INFO' })) -Detail 'Service non présent'
+                       -Status ($(if ($isCore) { 'FAIL' } else { 'INFO' })) -Detail 'Service not present'
                 continue
             }
             if ($found.Status -eq 'Running') {
                 Record -DC $dcName -Category 'Services' -Check $svc.Display -Status 'OK'
             }
             else {
-                Record -DC $dcName -Category 'Services' -Check $svc.Display -Status 'FAIL' -Detail ("État : {0}" -f $found.Status)
+                Record -DC $dcName -Category 'Services' -Check $svc.Display -Status 'FAIL' -Detail ("State: {0}" -f $found.Status)
             }
         }
     }
@@ -360,14 +443,14 @@ foreach ($dc in $DomainControllers) {
             }
         }
         if ($replFails -gt 0) {
-            Record -DC $dcName -Category 'Replication' -Check 'showrepl' -Status 'FAIL' -Detail ("$replFails échec(s) de réplication sortante")
+            Record -DC $dcName -Category 'Replication' -Check 'showrepl' -Status 'FAIL' -Detail ("$replFails outbound replication failure(s)")
         }
         else {
             Record -DC $dcName -Category 'Replication' -Check 'showrepl' -Status 'OK'
         }
     }
     else {
-        Record -DC $dcName -Category 'Replication' -Check 'showrepl' -Status 'WARN' -Detail 'Sortie repadmin non exploitable'
+        Record -DC $dcName -Category 'Replication' -Check 'showrepl' -Status 'WARN' -Detail 'repadmin output not parseable'
     }
 
     # 4f. dcdiag (tests ciblés)
@@ -380,10 +463,10 @@ foreach ($dc in $DomainControllers) {
             Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'OK'
         }
         elseif ($dcdiag.Output -match ("(?im)failed test\s+$([regex]::Escape($t))")) {
-            Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'FAIL' -Detail 'dcdiag : test échoué'
+            Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'FAIL' -Detail 'dcdiag: test failed'
         }
         else {
-            Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'WARN' -Detail 'Résultat dcdiag indéterminé'
+            Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'WARN' -Detail 'dcdiag result indeterminate'
         }
     }
 
@@ -398,16 +481,16 @@ foreach ($dc in $DomainControllers) {
         }
     }
     if ($null -eq $offsetSec) {
-        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'WARN' -Detail 'Décalage non mesurable (w32tm)'
+        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'WARN' -Detail 'Offset not measurable (w32tm)'
     }
     elseif ($offsetSec -ge $TimeOffsetFailSec) {
-        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'FAIL' -Detail ("Décalage {0:N3}s (>= {1}s)" -f $offsetSec, $TimeOffsetFailSec)
+        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'FAIL' -Detail ("Offset {0:N3}s (>= {1}s)" -f $offsetSec, $TimeOffsetFailSec)
     }
     elseif ($offsetSec -ge $TimeOffsetWarnSec) {
-        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'WARN' -Detail ("Décalage {0:N3}s (>= {1}s)" -f $offsetSec, $TimeOffsetWarnSec)
+        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'WARN' -Detail ("Offset {0:N3}s (>= {1}s)" -f $offsetSec, $TimeOffsetWarnSec)
     }
     else {
-        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'OK' -Detail ("Décalage {0:N3}s" -f $offsetSec)
+        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'OK' -Detail ("Offset {0:N3}s" -f $offsetSec)
     }
 
     # 4h. Espace disque + présence/volume NTDS.dit (via WMI/CIM distant)
@@ -429,15 +512,15 @@ foreach ($dc in $DomainControllers) {
         $sysAndDit = $disks | Where-Object { $_.DeviceID -in @('C:', "$($ditDrive):") } | Sort-Object DeviceID -Unique
         foreach ($d in $sysAndDit) {
             $freeGB = [math]::Round($d.FreeSpace / 1GB, 1)
-            $check  = "Espace libre $($d.DeviceID)"
+            $check  = "Free space $($d.DeviceID)"
             if ($freeGB -lt $DiskFreeFailGB) {
-                Record -DC $dcName -Category 'Storage' -Check $check -Status 'FAIL' -Detail ("{0} GB libres (< {1} GB)" -f $freeGB, $DiskFreeFailGB)
+                Record -DC $dcName -Category 'Storage' -Check $check -Status 'FAIL' -Detail ("{0} GB free (< {1} GB)" -f $freeGB, $DiskFreeFailGB)
             }
             elseif ($freeGB -lt $DiskFreeWarnGB) {
-                Record -DC $dcName -Category 'Storage' -Check $check -Status 'WARN' -Detail ("{0} GB libres (< {1} GB)" -f $freeGB, $DiskFreeWarnGB)
+                Record -DC $dcName -Category 'Storage' -Check $check -Status 'WARN' -Detail ("{0} GB free (< {1} GB)" -f $freeGB, $DiskFreeWarnGB)
             }
             else {
-                Record -DC $dcName -Category 'Storage' -Check $check -Status 'OK' -Detail ("{0} GB libres" -f $freeGB)
+                Record -DC $dcName -Category 'Storage' -Check $check -Status 'OK' -Detail ("{0} GB free" -f $freeGB)
             }
         }
 
@@ -449,12 +532,12 @@ foreach ($dc in $DomainControllers) {
                 Record -DC $dcName -Category 'Storage' -Check 'NTDS.dit' -Status 'INFO' -Detail ("{0} ({1} GB)" -f $ditPath, $ditSizeGB)
             }
             else {
-                Record -DC $dcName -Category 'Storage' -Check 'NTDS.dit' -Status 'INFO' -Detail ("Chemin : {0} (accès UNC indisponible)" -f $ditPath)
+                Record -DC $dcName -Category 'Storage' -Check 'NTDS.dit' -Status 'INFO' -Detail ("Path: {0} (UNC access unavailable)" -f $ditPath)
             }
         }
     }
     catch {
-        Record -DC $dcName -Category 'Storage' -Check 'Espace disque' -Status 'WARN' -Detail $_.Exception.Message
+        Record -DC $dcName -Category 'Storage' -Check 'Disk space' -Status 'WARN' -Detail $_.Exception.Message
     }
 
     # 4i. Journal Directory Service : erreurs récentes (réplication, USN rollback, etc.)
@@ -470,17 +553,17 @@ foreach ($dc in $DomainControllers) {
         }
         $relevant = $dsEvents | Where-Object { $_.Id -in $criticalDsIds }
         if (-not $relevant -or $relevant.Count -eq 0) {
-            Record -DC $dcName -Category 'EventLog' -Check 'Directory Service' -Status 'OK' -Detail ("Aucune erreur critique sur {0}h" -f $EventLookbackHours)
+            Record -DC $dcName -Category 'EventLog' -Check 'Directory Service' -Status 'OK' -Detail ("No critical errors in last {0}h" -f $EventLookbackHours)
         }
         else {
             $grouped = $relevant | Group-Object Id | Sort-Object Count -Descending
             $summary = ($grouped | ForEach-Object { "ID $($_.Name) x$($_.Count)" }) -join ', '
-            Record -DC $dcName -Category 'EventLog' -Check 'Directory Service' -Status 'FAIL' -Detail ("Erreurs : {0}" -f $summary)
+            Record -DC $dcName -Category 'EventLog' -Check 'Directory Service' -Status 'FAIL' -Detail ("Errors: {0}" -f $summary)
         }
     }
     catch {
         if ($_.Exception.Message -match 'No events were found') {
-            Record -DC $dcName -Category 'EventLog' -Check 'Directory Service' -Status 'OK' -Detail ("Aucune erreur critique sur {0}h" -f $EventLookbackHours)
+            Record -DC $dcName -Category 'EventLog' -Check 'Directory Service' -Status 'OK' -Detail ("No critical errors in last {0}h" -f $EventLookbackHours)
         }
         else {
             Record -DC $dcName -Category 'EventLog' -Check 'Directory Service' -Status 'WARN' -Detail $_.Exception.Message
@@ -499,7 +582,7 @@ $globalStatus = if ($nFail -gt 0) { 'FAIL' } elseif ($nWarn -gt 0) { 'WARN' } el
 
 Write-Host ''
 Write-Host '===========================================================' -ForegroundColor Cyan
-Write-Host ('  Synthèse : OK={0}  WARN={1}  FAIL={2}  -> {3}' -f $nOK, $nWarn, $nFail, $globalStatus) `
+Write-Host ('  Summary : OK={0}  WARN={1}  FAIL={2}  -> {3}' -f $nOK, $nWarn, $nFail, $globalStatus) `
     -ForegroundColor $(switch ($globalStatus) { 'OK' {'Green'} 'WARN' {'Yellow'} 'FAIL' {'Red'} })
 Write-Host '===========================================================' -ForegroundColor Cyan
 
@@ -511,7 +594,7 @@ $script:Results | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
 Write-Host ("CSV  : {0}" -f $csvPath) -ForegroundColor Gray
 
 # ------------------------------------------------------------------------------------
-#  7. Export HTML
+#  7. Export HTML (modern report)
 # ------------------------------------------------------------------------------------
 # HttpUtility peut ne pas être chargé en PS 5.1 par défaut : charger avant usage.
 try { Add-Type -AssemblyName System.Web -ErrorAction Stop } catch {}
@@ -522,48 +605,245 @@ function Encode-Html {
     catch { return ($Text -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;') }
 }
 
-$statusBadge = {
-    param($s)
-    $cls = switch ($s) { 'OK' {'ok'} 'WARN' {'warn'} 'FAIL' {'fail'} default {'info'} }
-    "<span class='badge $cls'>$s</span>"
+function Get-StatusMeta {
+    param([string] $Status)
+    switch ($Status) {
+        'OK'   { return @{ cls = 'ok';   icon = '&#10003;'; label = 'OK' } }
+        'WARN' { return @{ cls = 'warn'; icon = '&#9888;';  label = 'WARN' } }
+        'FAIL' { return @{ cls = 'fail'; icon = '&#10007;'; label = 'FAIL' } }
+        default { return @{ cls = 'info'; icon = '&#8505;';  label = 'INFO' } }
+    }
 }
 
-$rows = foreach ($r in $script:Results) {
-    "<tr class='{0}'><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td><td>{6}</td></tr>" -f `
-        $r.Status.ToLower(), $r.Time, (Encode-Html $r.DC),
-        $r.Category, (Encode-Html $r.Check),
-        (& $statusBadge $r.Status), (Encode-Html $r.Detail)
+$total       = $script:Results.Count
+$score       = if ($total -gt 0) { [math]::Round(($nOK / $total) * 100) } else { 100 }
+$durationSec = [int]((Get-Date) - $script:StartTime).TotalSeconds
+$dcCount     = @($script:Results | Where-Object { $_.Category -eq 'Discovery' }).Count
+$dcGroups    = $script:Results | Group-Object DC | Sort-Object Name
+$nDC         = @($dcGroups).Count
+$accent      = switch ($globalStatus) { 'OK' {'#22c55e'} 'WARN' {'#f59e0b'} 'FAIL' {'#ef4444'} }
+$accent2     = switch ($globalStatus) { 'OK' {'#16a34a'} 'WARN' {'#d97706'} 'FAIL' {'#dc2626'} }
+
+# Donut ring geometry (r=54 => circumference ~339.3)
+$circ = [math]::Round(2 * [math]::PI * 54, 1)
+$dash = [math]::Round($circ * (1 - ($score / 100)), 1)
+
+# --- Per-DC overview cards ---
+$dcCards = foreach ($g in $dcGroups) {
+    $dcName = $g.Name
+    $dOK = @($g.Group | Where-Object { $_.Status -eq 'OK' }).Count
+    $dW  = @($g.Group | Where-Object { $_.Status -eq 'WARN' }).Count
+    $dF  = @($g.Group | Where-Object { $_.Status -eq 'FAIL' }).Count
+    $dStatus = if ($dF -gt 0) { 'fail' } elseif ($dW -gt 0) { 'warn' } else { 'ok' }
+    @"
+<div class='dccard $dStatus'>
+  <div class='dccard-top'><span class='dot $dStatus'></span><span class='dcname'>$(Encode-Html $dcName)</span></div>
+  <div class='dccard-stats'>
+    <span class='pill ok'>&#10003; $dOK</span>
+    <span class='pill warn'>&#9888; $dW</span>
+    <span class='pill fail'>&#10007; $dF</span>
+  </div>
+</div>
+"@
 }
+
+# Build email-safe 2-column rows (tables render reliably in OWA/Outlook, grid/flex do not)
+$dcCards = @($dcCards)
+$dcRows  = ''
+for ($i = 0; $i -lt $dcCards.Count; $i += 2) {
+    $c1 = $dcCards[$i]
+    $c2 = if ($i + 1 -lt $dcCards.Count) { $dcCards[$i + 1] } else { '' }
+    $dcRows += "<tr><td width='50%' valign='top' style='padding:6px;'>$c1</td><td width='50%' valign='top' style='padding:6px;'>$c2</td></tr>`n"
+}
+
+# --- Detailed table grouped by DC ---
+$tableSections = foreach ($g in $dcGroups) {
+    $dcName = $g.Name
+    $dF = @($g.Group | Where-Object { $_.Status -eq 'FAIL' }).Count
+    $dW = @($g.Group | Where-Object { $_.Status -eq 'WARN' }).Count
+    $hdrStatus = if ($dF -gt 0) { 'fail' } elseif ($dW -gt 0) { 'warn' } else { 'ok' }
+    "<tr class='group-row $hdrStatus'><td colspan='5'><span class='dot $hdrStatus'></span>$(Encode-Html $dcName)</td></tr>"
+    foreach ($r in $g.Group) {
+        $m = Get-StatusMeta $r.Status
+        $tShort = if ($r.Time -match 'T(\d{2}:\d{2}:\d{2})') { $Matches[1] } else { $r.Time }
+        @"
+<tr class='$($m.cls)'>
+  <td class='c-time'>$tShort</td>
+  <td class='c-cat'><span class='cat'>$(Encode-Html $r.Category)</span></td>
+  <td class='c-check'>$(Encode-Html $r.Check)</td>
+  <td class='c-status'><span class='badge $($m.cls)'>$($m.icon) $($m.label)</span></td>
+  <td class='c-detail'>$(Encode-Html $r.Detail)</td>
+</tr>
+"@
+    }
+}
+
+$runDate = $script:StartTime.ToString('yyyy-MM-dd HH:mm:ss')
 
 $html = @"
 <!DOCTYPE html>
-<html lang='fr'><head><meta charset='utf-8'>
-<title>AD Health Check - $DomainName - $Timestamp</title>
+<html lang='en'><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>AD Health Check - $DomainName</title>
 <style>
- body{font-family:Segoe UI,Arial,sans-serif;margin:24px;background:#f7f7f9;color:#222}
- h1{font-size:20px;margin-bottom:4px}
- .meta{color:#666;font-size:13px;margin-bottom:16px}
- .summary{display:flex;gap:12px;margin:16px 0}
- .card{padding:10px 18px;border-radius:8px;font-weight:600;color:#fff}
- .card.ok{background:#2e8b57}.card.warn{background:#d9a300}.card.fail{background:#c0392b}
- table{border-collapse:collapse;width:100%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}
- th,td{padding:7px 10px;border-bottom:1px solid #eee;font-size:13px;text-align:left}
- th{background:#34495e;color:#fff;position:sticky;top:0}
- tr.fail{background:#fdecea}tr.warn{background:#fff7e0}
- .badge{padding:2px 8px;border-radius:10px;color:#fff;font-size:11px;font-weight:700}
- .badge.ok{background:#2e8b57}.badge.warn{background:#d9a300}.badge.fail{background:#c0392b}.badge.info{background:#7f8c8d}
+ :root { --accent: $accent; --accent2: $accent2; }
+ * { box-sizing: border-box; }
+ body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; margin: 0; padding: 0;
+        background: #0b1120; color: #e2e8f0; -webkit-font-smoothing: antialiased; }
+ .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+
+ /* Header */
+ .hero { position: relative; border-radius: 16px; padding: 18px 26px; overflow: hidden;
+         background: linear-gradient(135deg, #111827 0%, #1e293b 60%, #0f172a 100%);
+         border: 1px solid rgba(148,163,184,.15);
+         box-shadow: 0 14px 36px rgba(0,0,0,.4); }
+ .hero::before { content: ''; position: absolute; top: -60%; right: -10%; width: 360px; height: 360px;
+                 background: radial-gradient(circle, var(--accent) 0%, transparent 70%); opacity: .16; }
+ .hero-grid { position: relative; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+ .hero-text h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: .3px; }
+ .hero-text .domain { color: var(--accent); font-weight: 700; }
+ .hero-meta { color: #94a3b8; font-size: 12.5px; margin-top: 6px; line-height: 1.5; }
+ .hero-meta b { color: #cbd5e1; }
+ .gstatus { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px;
+            padding: 5px 14px; border-radius: 999px; font-weight: 800; font-size: 12.5px;
+            letter-spacing: .4px; text-transform: uppercase;
+            background: var(--accent); color: #07111f;
+            box-shadow: 0 6px 18px -6px var(--accent); }
+
+ /* Donut */
+ .ring-wrap { position: relative; width: 104px; height: 104px; flex-shrink: 0; }
+ .ring-wrap svg { transform: rotate(-90deg); }
+ .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; }
+ .ring-center .pct { font-size: 23px; font-weight: 800; color: #f1f5f9; }
+ .ring-center .lbl { font-size: 9px; letter-spacing: 1.5px; color: #94a3b8; text-transform: uppercase; }
+
+ /* KPI cards */
+ .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 22px 0 6px; }
+ .kpi { background: linear-gradient(160deg, #1e293b, #131c2e); border: 1px solid rgba(148,163,184,.12);
+        border-radius: 16px; padding: 18px 20px; position: relative; overflow: hidden; }
+ .kpi .num { font-size: 30px; font-weight: 800; line-height: 1; }
+ .kpi .cap { font-size: 12px; color: #94a3b8; margin-top: 8px; letter-spacing: .4px; text-transform: uppercase; }
+ .kpi .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; border-radius: 16px 0 0 16px; }
+ .kpi.ok .num { color: #4ade80; } .kpi.ok .bar { background: #22c55e; }
+ .kpi.warn .num { color: #fbbf24; } .kpi.warn .bar { background: #f59e0b; }
+ .kpi.fail .num { color: #f87171; } .kpi.fail .bar { background: #ef4444; }
+ .kpi.tot .num { color: #60a5fa; } .kpi.tot .bar { background: #3b82f6; }
+
+ /* Section titles */
+ .sec-title { font-size: 13px; letter-spacing: 1.4px; text-transform: uppercase;
+              color: #94a3b8; margin: 34px 4px 14px; font-weight: 700; }
+
+ /* DC overview */
+ .dcgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px,1fr)); gap: 12px; }
+ .dccard { background: linear-gradient(160deg, #1b2538, #131b2b); border: 1px solid rgba(148,163,184,.12);
+           border-radius: 14px; padding: 14px 16px; border-left: 4px solid #334155; }
+ .dccard.ok { border-left-color: #22c55e; } .dccard.warn { border-left-color: #f59e0b; }
+ .dccard.fail { border-left-color: #ef4444; }
+ .dccard-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+ .dcname { font-weight: 600; font-size: 13.5px; color: #e2e8f0; word-break: break-all; }
+ .dccard-stats { display: flex; gap: 6px; }
+ .pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 8px; }
+ .pill.ok { background: rgba(34,197,94,.15); color: #4ade80; }
+ .pill.warn { background: rgba(245,158,11,.15); color: #fbbf24; }
+ .pill.fail { background: rgba(239,68,68,.15); color: #f87171; }
+ .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+ .dot.ok { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+ .dot.warn { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+ .dot.fail { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+
+ /* Table */
+ .tablecard { background: #111a2b; border: 1px solid rgba(148,163,184,.12); border-radius: 16px;
+              overflow: hidden; box-shadow: 0 16px 40px rgba(0,0,0,.35); }
+ table { border-collapse: collapse; width: 100%; }
+ thead th { background: #0d1626; color: #94a3b8; text-align: left; font-size: 11px;
+            letter-spacing: 1px; text-transform: uppercase; padding: 13px 16px;
+            border-bottom: 1px solid rgba(148,163,184,.15); position: sticky; top: 0; }
+ tbody td { padding: 11px 16px; font-size: 13px; border-bottom: 1px solid rgba(148,163,184,.07); }
+ tbody tr.ok:hover td { background: rgba(148,163,184,.05); }
+ .group-row td { background: #0e1a2c !important; font-weight: 700; font-size: 13.5px; color: #e2e8f0;
+                 letter-spacing: .3px; padding: 12px 16px; }
+ .group-row td .dot { margin-right: 9px; vertical-align: middle; }
+ /* Row emphasis by status */
+ tr.fail td { background: rgba(239,68,68,.12); }
+ tr.fail td.c-time { box-shadow: inset 4px 0 0 #ef4444; }
+ tr.fail td.c-detail { color: #fecaca; font-weight: 600; }
+ tr.warn td { background: rgba(245,158,11,.10); }
+ tr.warn td.c-time { box-shadow: inset 4px 0 0 #f59e0b; }
+ tr.warn td.c-detail { color: #fde68a; font-weight: 600; }
+ .c-time { color: #64748b; font-variant-numeric: tabular-nums; white-space: nowrap; }
+ .cat { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: rgba(96,165,250,.12);
+        color: #93c5fd; font-weight: 600; }
+ .c-check { color: #cbd5e1; }
+ .c-detail { color: #94a3b8; }
+ .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 999px;
+          font-size: 11px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; }
+ .badge.ok { background: rgba(34,197,94,.14); color: #4ade80; box-shadow: inset 0 0 0 1px rgba(34,197,94,.35); }
+ .badge.warn { background: #f59e0b; color: #3a2606; box-shadow: 0 0 0 1px rgba(245,158,11,.5); }
+ .badge.fail { background: #ef4444; color: #fff; box-shadow: 0 2px 10px -2px #ef4444; }
+ .badge.info { background: #475569; color: #e2e8f0; }
+
+ .foot { text-align: center; color: #475569; font-size: 12px; margin-top: 30px; }
+ @media (max-width: 620px) { .kpis { grid-template-columns: repeat(2,1fr); } .hero-grid { gap: 20px; } }
 </style></head><body>
-<h1>AD Health Check &mdash; $DomainName</h1>
-<div class='meta'>Exécuté le $($script:StartTime) &bull; Durée : $([int]((Get-Date) - $script:StartTime).TotalSeconds)s &bull; Statut global : <b>$globalStatus</b></div>
-<div class='summary'>
- <div class='card ok'>OK : $nOK</div>
- <div class='card warn'>WARN : $nWarn</div>
- <div class='card fail'>FAIL : $nFail</div>
+<div class='wrap'>
+
+  <div class='hero'>
+    <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='border-collapse:collapse;'><tr>
+      <td width='124' valign='middle' style='padding-right:24px;'>
+        <div class='ring-wrap'>
+          <svg width='104' height='104' viewBox='0 0 130 130'>
+            <defs>
+              <linearGradient id='rg' x1='0%' y1='0%' x2='100%' y2='100%'>
+                <stop offset='0%' stop-color='$accent'/><stop offset='100%' stop-color='$accent2'/>
+              </linearGradient>
+            </defs>
+            <circle cx='65' cy='65' r='54' fill='none' stroke='rgba(148,163,184,.15)' stroke-width='11'/>
+            <circle cx='65' cy='65' r='54' fill='none' stroke='url(#rg)' stroke-width='11'
+                    stroke-linecap='round' stroke-dasharray='$circ' stroke-dashoffset='$dash'/>
+          </svg>
+          <div class='ring-center'><span class='pct'>$score%</span><span class='lbl'>Health</span></div>
+        </div>
+      </td>
+      <td valign='middle'>
+        <div class='hero-text'>
+          <h1>AD Health Check &mdash; <span class='domain'>$(Encode-Html $DomainName)</span></h1>
+          <div class='hero-meta'>
+            Run: <b>$runDate</b> &bull; Duration: <b>$durationSec s</b> &bull;
+            DCs: <b>$nDC</b> &bull; Checks: <b>$total</b>
+          </div>
+          <span class='gstatus'>&#9679; Global status: $globalStatus</span>
+        </div>
+      </td>
+    </tr></table>
+  </div>
+
+  <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='margin:22px 0 6px;border-collapse:collapse;'><tr>
+    <td width='25%' valign='top' style='padding:7px;'><div class='kpi ok'><div class='bar'></div><div class='num'>$nOK</div><div class='cap'>Passed</div></div></td>
+    <td width='25%' valign='top' style='padding:7px;'><div class='kpi warn'><div class='bar'></div><div class='num'>$nWarn</div><div class='cap'>Warnings</div></div></td>
+    <td width='25%' valign='top' style='padding:7px;'><div class='kpi fail'><div class='bar'></div><div class='num'>$nFail</div><div class='cap'>Failures</div></div></td>
+    <td width='25%' valign='top' style='padding:7px;'><div class='kpi tot'><div class='bar'></div><div class='num'>$total</div><div class='cap'>Total checks</div></div></td>
+  </tr></table>
+
+  <div class='sec-title'>Domain Controllers overview</div>
+  <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='border-collapse:collapse;'>
+$dcRows
+  </table>
+
+  <div class='sec-title'>Detailed results</div>
+  <div class='tablecard'>
+    <table>
+      <thead><tr>
+        <th>Time</th><th>Category</th><th>Check</th><th>Status</th><th>Detail</th>
+      </tr></thead>
+      <tbody>
+$($tableSections -join "`n")
+      </tbody>
+    </table>
+  </div>
+
+  <div class='foot'>Generated by Invoke-ADHealthCheck.ps1 &bull; $runDate</div>
 </div>
-<table><thead><tr><th>Heure</th><th>DC</th><th>Catégorie</th><th>Contrôle</th><th>Statut</th><th>Détail</th></tr></thead>
-<tbody>
-$($rows -join "`n")
-</tbody></table>
 </body></html>
 "@
 
@@ -575,14 +855,39 @@ Write-Host ("HTML : {0}" -f $htmlPath) -ForegroundColor Gray
 #  8. Alerte email
 # ------------------------------------------------------------------------------------
 if ($SendEmail) {
-    if (-not $SmtpServer -or -not $From -or -not $To) {
-        Write-Host 'Email non envoyé : SmtpServer / From / To requis avec -SendEmail.' -ForegroundColor Yellow
+    $subject = "[AD Health][$globalStatus] $DomainName - OK=$nOK WARN=$nWarn FAIL=$nFail"
+
+    # Validation des prérequis selon la méthode d'envoi.
+    $missing = @()
+    if (-not $From) { $missing += 'From' }
+    if (-not $To)   { $missing += 'To' }
+    if ($MailMethod -eq 'Smtp') {
+        if (-not $SmtpServer) { $missing += 'SmtpServer' }
+    }
+    else { # Graph
+        if (-not $TenantId) { $missing += 'TenantId' }
+        if (-not $ClientId) { $missing += 'ClientId' }
+        if (-not $CertThumbprint -and -not $ClientSecret) { $missing += 'CertThumbprint ou ClientSecret' }
+    }
+
+    if ($missing.Count -gt 0) {
+        Write-Host ("Email non envoyé : paramètre(s) requis manquant(s) pour MailMethod '{0}' : {1}." -f $MailMethod, ($missing -join ', ')) -ForegroundColor Yellow
     }
     elseif ($EmailOnlyOnIssue -and -not $hasIssue) {
         Write-Host 'Email non envoyé : aucun problème détecté (EmailOnlyOnIssue).' -ForegroundColor Gray
     }
-    else {
-        $subject = "[AD Health][$globalStatus] $DomainName - OK=$nOK WARN=$nWarn FAIL=$nFail"
+    elseif ($MailMethod -eq 'Graph') {
+        try {
+            Send-GraphMailReport -TenantId $TenantId -ClientId $ClientId `
+                -CertThumbprint $CertThumbprint -ClientSecret $ClientSecret `
+                -From $From -To $To -Subject $subject -HtmlBody $html
+            Write-Host ("Email (Graph) envoyé à : {0}" -f ($To -join ', ')) -ForegroundColor Gray
+        }
+        catch {
+            Write-Host ("Échec envoi email (Graph) : {0}" -f $_.Exception.Message) -ForegroundColor Red
+        }
+    }
+    else { # Smtp
         $mailParams = @{
             SmtpServer  = $SmtpServer
             Port        = $SmtpPort
@@ -591,16 +896,15 @@ if ($SendEmail) {
             Subject     = $subject
             Body        = $html
             BodyAsHtml  = $true
-            Attachments = $csvPath
             UseSsl      = [bool]$UseSsl
             ErrorAction = 'Stop'
         }
         try {
             Send-MailMessage @mailParams
-            Write-Host ("Email envoyé à : {0}" -f ($To -join ', ')) -ForegroundColor Gray
+            Write-Host ("Email (SMTP) envoyé à : {0}" -f ($To -join ', ')) -ForegroundColor Gray
         }
         catch {
-            Write-Host ("Échec envoi email : {0}" -f $_.Exception.Message) -ForegroundColor Red
+            Write-Host ("Échec envoi email (SMTP) : {0}" -f $_.Exception.Message) -ForegroundColor Red
         }
     }
 }

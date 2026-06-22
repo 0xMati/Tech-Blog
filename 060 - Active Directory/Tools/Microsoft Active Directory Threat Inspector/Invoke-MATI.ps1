@@ -1,4 +1,4 @@
-# Invoke-MATI.ps1
+﻿# Invoke-MATI.ps1
 # MATIv2 - Microsoft Active Directory Threat Inspector v2
 # Main entry point - orchestrates the full assessment pipeline.
 #
@@ -341,6 +341,7 @@ function Invoke-MATIThreatDetection {
     # Load engine components
     $engineFiles = @(
         'Models\Finding.ps1'
+        'Engine\MATI.Common.ps1'
         'Engine\Initialize-MATIEngine.ps1'
         'Engine\Get-MATISummarySnapshot.ps1'
         'Engine\Invoke-MATICollectors.ps1'

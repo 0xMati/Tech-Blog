@@ -1,4 +1,4 @@
-# Tiering\Invoke-MATITieringPhase3.ps1
+﻿# Tiering\Invoke-MATITieringPhase3.ps1
 # Phase 3 — Create Deny Logon GPOs for each Tiers
 # Creates the six cross-tier deny-logon GPOs, configures user-rights assignment,
 # and links them to the correct OUs.
@@ -392,7 +392,7 @@ function Invoke-MATITieringPhase3 {
             $existingGpo = Get-GPO -Name $gpoName -ErrorAction SilentlyContinue
 
             $groupObj = Get-ADGroup -Identity $groupName -ErrorAction Stop
-            $groupSID = $groupObj.SID.Value
+            $groupSID = [string]$groupObj.SID
 
             $importedGpo = Import-MATIUserRightsAssignmentGpo -Name $gpoName -Description $def.Description -Rights $denyRights -GroupSid $groupSID
 

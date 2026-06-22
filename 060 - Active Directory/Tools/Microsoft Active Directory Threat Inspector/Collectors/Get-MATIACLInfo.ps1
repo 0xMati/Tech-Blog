@@ -1,4 +1,4 @@
-# Collectors\Get-MATIACLInfo.ps1
+﻿# Collectors\Get-MATIACLInfo.ps1
 # MATIv2 - Collects ACLs on critical Active Directory objects.
 
 function Get-MATIACLInfo {
@@ -21,19 +21,44 @@ function Get-MATIACLInfo {
 
     # Helper: read ACL via a temporary AD PSDrive targeting the correct domain DC
     # This avoids LDAP referral errors when querying child domains.
+    # When the ActiveDirectory PSProvider is unavailable (e.g. the module is
+    # loaded through the Windows PowerShell compatibility layer from a
+    # workstation), it transparently falls back to System.DirectoryServices so
+    # ACL rules are not silently skipped.
     function Get-RemoteADACL {
         param([string]$DN, [string]$Server)
-        $driveName = "MATITemp_$([guid]::NewGuid().ToString('N').Substring(0,8))"
-        try {
-            New-PSDrive -Name $driveName -PSProvider ActiveDirectory -Root "" -Server $Server -ErrorAction Stop | Out-Null
-            if (-not (Test-Path -Path "${driveName}:\$DN")) {
-                throw "Active Directory path not found: $DN"
+
+        # Preferred path: native AD: PSProvider (DC / RSAT host loaded in-process).
+        if (Get-PSProvider -PSProvider ActiveDirectory -ErrorAction SilentlyContinue) {
+            $driveName = "MATITemp_$([guid]::NewGuid().ToString('N').Substring(0,8))"
+            try {
+                New-PSDrive -Name $driveName -PSProvider ActiveDirectory -Root "" -Server $Server -ErrorAction Stop | Out-Null
+                if (-not (Test-Path -Path "${driveName}:\$DN")) {
+                    throw "Active Directory path not found: $DN"
+                }
+                $acl = Get-ACL -Path "${driveName}:\$DN" -ErrorAction Stop
+                return $acl
             }
-            $acl = Get-ACL -Path "${driveName}:\$DN" -ErrorAction Stop
-            return $acl
+            finally {
+                Remove-PSDrive -Name $driveName -ErrorAction SilentlyContinue
+            }
+        }
+
+        # Fallback path: read the security descriptor directly via LDAP/ADSI.
+        # Returns a System.DirectoryServices.ActiveDirectorySecurity object,
+        # the same type Get-DangerousACEs expects.
+        $entry = $null
+        try {
+            $entry = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$Server/$DN")
+            $null = $entry.RefreshCache(@('nTSecurityDescriptor'))
+            $sd = $entry.ObjectSecurity
+            if ($null -eq $sd) {
+                throw "No security descriptor returned for $DN"
+            }
+            return $sd
         }
         finally {
-            Remove-PSDrive -Name $driveName -ErrorAction SilentlyContinue
+            if ($entry) { $entry.Dispose() }
         }
     }
 
@@ -149,7 +174,8 @@ function Get-MATIACLInfo {
     $privilegedSIDs = [System.Collections.Generic.List[string]]::new()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
+            if (-not $domSID) { continue }
             $privilegedSIDs.Add("$domSID-512")  # Domain Admins
             $privilegedSIDs.Add("$domSID-519")  # Enterprise Admins
             $privilegedSIDs.Add("$domSID-518")  # Schema Admins
@@ -248,7 +274,7 @@ function Get-MATIACLInfo {
     $ownerIssues = @()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
             $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
 
             # Check DC objects ownership
@@ -446,7 +472,7 @@ function Get-MATIACLInfo {
     $exchangeACEs = [System.Collections.Generic.List[PSCustomObject]]::new()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
             $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
             # Build a set of Exchange-related group names and SIDs
             $exchangeSIDs = @{}
@@ -457,7 +483,7 @@ function Get-MATIACLInfo {
             foreach ($gn in $exchangeGroupNames) {
                 try {
                     $g = Get-ADGroup -Filter "Name -eq '$gn'" -Server $domainDns -Properties objectSid -ErrorAction SilentlyContinue
-                    if ($g) { $exchangeSIDs[$g.SID.Value] = $gn }
+                    if ($g) { $exchangeSIDs[[string]$g.SID] = $gn }
                 } catch { }
             }
             if ($exchangeSIDs.Count -eq 0) { continue }
@@ -513,7 +539,8 @@ function Get-MATIACLInfo {
     $keyAdminACEs = [System.Collections.Generic.List[PSCustomObject]]::new()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
+            if (-not $domSID) { continue }
             $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
             # Key Admins = domSID-526, Enterprise Key Admins = rootDomSID-527
             $keyAdminSIDs = @{}

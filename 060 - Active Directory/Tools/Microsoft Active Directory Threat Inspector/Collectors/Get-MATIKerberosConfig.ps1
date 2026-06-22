@@ -1,4 +1,4 @@
-# Collectors\Get-MATIKerberosConfig.ps1
+﻿# Collectors\Get-MATIKerberosConfig.ps1
 # MATIv2 - Collects Kerberos configuration and SPN accounts.
 
 function Get-MATIKerberosConfig {
@@ -58,7 +58,7 @@ function Get-MATIKerberosConfig {
                     SupportedEncryptionTypes = $user.'msDS-SupportedEncryptionTypes'
                     DoesNotRequirePreAuth    = $user.DoesNotRequirePreAuth
                     Description              = $user.Description
-                    SID                      = $user.SID.Value
+                    SID                      = [string]$user.SID
                 })
             }
 
@@ -91,7 +91,7 @@ function Get-MATIKerberosConfig {
                     SupportedEncryptionTypes = $user.'msDS-SupportedEncryptionTypes'
                     DoesNotRequirePreAuth    = $user.DoesNotRequirePreAuth
                     Description              = $user.Description
-                    SID                      = $user.SID.Value
+                    SID                      = [string]$user.SID
                     _ASREPRoastable          = $true
                 })
             }
@@ -118,7 +118,7 @@ function Get-MATIKerberosConfig {
                     AllowedToDelegateTo      = @($obj.'msDS-AllowedToDelegateTo')
                     OperatingSystem          = $obj.OperatingSystem
                     Description              = $obj.Description
-                    SID                      = $obj.SID.Value
+                    SID                      = [string]$obj.SID
                 })
             }
 

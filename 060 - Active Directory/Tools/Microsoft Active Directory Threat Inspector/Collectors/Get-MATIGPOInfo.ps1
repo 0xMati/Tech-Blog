@@ -1,4 +1,4 @@
-# Collectors\Get-MATIGPOInfo.ps1
+﻿# Collectors\Get-MATIGPOInfo.ps1
 # MATIv2 - Collects GPO information and permissions.
 
 function Get-MATIGPOInfo {
@@ -19,7 +19,8 @@ function Get-MATIGPOInfo {
     $privilegedSIDs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($Config['_DomainCache'][$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($Config['_DomainCache'][$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
+            if (-not $domSID) { continue }
             $null = $privilegedSIDs.Add("$domSID-512")  # Domain Admins
             $null = $privilegedSIDs.Add("$domSID-519")  # Enterprise Admins
             $null = $privilegedSIDs.Add("$domSID-518")  # Schema Admins
@@ -74,7 +75,7 @@ function Get-MATIGPOInfo {
 
                     # Check GPO ACL for dangerous permissions by low-priv principals
                     try {
-                        $acl = Get-ACL -Path "AD:\$($gpo.DistinguishedName)" -ErrorAction Stop
+                        $acl = Get-MATIObjectAcl -DistinguishedName $gpo.DistinguishedName -Server $domainDns
                         foreach ($ace in $acl.Access) {
                             if ($ace.AccessControlType -ne 'Allow') { continue }
                             $sidStr = try {
@@ -155,7 +156,7 @@ function Get-MATIGPOInfo {
 
                     # Check GPO permissions
                     try {
-                        $acl = Get-ACL -Path "AD:\$gpoDN" -ErrorAction Stop
+                        $acl = Get-MATIObjectAcl -DistinguishedName $gpoDN -Server $domainDns
                         foreach ($ace in $acl.Access) {
                             if ($ace.AccessControlType -ne 'Allow') { continue }
                             $sidStr = try {

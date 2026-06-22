@@ -1,4 +1,4 @@
-# Reporters\Export-MATIHtml.ps1
+﻿# Reporters\Export-MATIHtml.ps1
 # MATIv2 - HTML reporter using template-based generation.
 
 function Export-MATIHtml {
@@ -167,12 +167,12 @@ function Export-MATIHtml {
     if ($domainInfo -and $domainInfo.Domains) {
         $policyByDomain = @{}
         foreach ($policy in @($passwordPolicy.DefaultPolicies)) {
-            $policyByDomain[$policy.Domain] = $policy
+            if ($policy -and $policy.Domain) { $policyByDomain[$policy.Domain] = $policy }
         }
 
         $maqByDomain = @{}
         foreach ($entry in @($securityConfig.MachineAccountQuotas)) {
-            $maqByDomain[$entry.Domain] = $entry.MachineAccountQuota
+            if ($entry -and $entry.Domain) { $maqByDomain[$entry.Domain] = $entry.MachineAccountQuota }
         }
 
         $domainConfigRows = ''

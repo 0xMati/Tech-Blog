@@ -1,4 +1,4 @@
-# Collectors\Get-MATIDomainInfo.ps1
+﻿# Collectors\Get-MATIDomainInfo.ps1
 # MATIv2 - Collects domain and forest information.
 
 function Get-MATIDomainInfo {
@@ -32,7 +32,7 @@ function Get-MATIDomainInfo {
                 DistinguishedName     = $dom.DistinguishedName
                 DomainMode            = $dom.DomainMode
                 OrganizationalUnitCount = $ouCount
-                DomainModeNumeric     = [int]$dom.DomainMode
+                DomainModeNumeric     = Get-MATIFunctionalLevelNumeric $dom.DomainMode
                 InfrastructureMaster  = $dom.InfrastructureMaster
                 PDCEmulator           = $dom.PDCEmulator
                 RIDMaster             = $dom.RIDMaster
@@ -50,7 +50,7 @@ function Get-MATIDomainInfo {
     $forestInfo = [PSCustomObject]@{
         Name                = $forest.Name
         ForestMode          = $forest.ForestMode
-        ForestModeNumeric   = [int]$forest.ForestMode
+        ForestModeNumeric   = Get-MATIFunctionalLevelNumeric $forest.ForestMode
         RootDomain          = $forest.RootDomain
         SchemaMaster        = $forest.SchemaMaster
         DomainNamingMaster  = $forest.DomainNamingMaster

@@ -1,4 +1,4 @@
-# Collectors\Get-MATIUserAccounts.ps1
+﻿# Collectors\Get-MATIUserAccounts.ps1
 # MATIv2 - Collects all user accounts (for stale object detection, etc.)
 
 function Get-MATIUserAccounts {
@@ -40,7 +40,7 @@ function Get-MATIUserAccounts {
                     DisplayName           = $user.DisplayName
                     Name                  = $user.Name
                     UserPrincipalName     = $user.UserPrincipalName
-                    SID                   = $user.SID.Value
+                    SID                   = [string]$user.SID
                     PrimaryGroupID        = $user.PrimaryGroupID
                     SIDHistory            = $user.SIDHistory
                     UserAccountControl    = $user.UserAccountControl

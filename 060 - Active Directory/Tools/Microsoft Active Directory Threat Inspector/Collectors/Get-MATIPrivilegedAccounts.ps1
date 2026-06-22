@@ -1,4 +1,4 @@
-# Collectors\Get-MATIPrivilegedAccounts.ps1
+﻿# Collectors\Get-MATIPrivilegedAccounts.ps1
 # MATIv2 - Collects privileged accounts and groups.
 
 function Get-MATIPrivilegedAccounts {
@@ -27,7 +27,7 @@ function Get-MATIPrivilegedAccounts {
 
         $memberSid = $null
         if ($Member.PSObject.Properties['SID'] -and $Member.SID) {
-            $memberSid = $Member.SID.Value
+            $memberSid = [string]$Member.SID
         }
 
         [PSCustomObject]@{
@@ -63,10 +63,14 @@ function Get-MATIPrivilegedAccounts {
     foreach ($domainDns in $forest.Domains) {
         $domainSID = $null
         try {
-            $domainSID = (Get-ADDomain -Server $domainDns -ErrorAction Stop).DomainSID.Value
+            $domainSID = Get-MATIDomainSidString (Get-ADDomain -Server $domainDns -ErrorAction Stop).DomainSID
         }
         catch {
             Write-Warning "    Cannot contact domain $domainDns : $($_.Exception.Message)"
+            continue
+        }
+        if (-not $domainSID) {
+            Write-Warning "    Could not resolve domain SID for $domainDns - skipping privileged group enumeration."
             continue
         }
 
@@ -123,7 +127,7 @@ function Get-MATIPrivilegedAccounts {
                 GroupName         = $group.Name
                 Domain            = $domainDns
                 DistinguishedName = $group.DistinguishedName
-                SID               = $group.SID.Value
+                SID               = [string]$group.SID
                 MemberCount       = $members.Count
                 Description       = $group.Description
                 DirectMembers     = $directMembers
@@ -167,7 +171,7 @@ function Get-MATIPrivilegedAccounts {
                             MemberOf              = @($user.MemberOf)
                             Description           = $user.Description
                             WhenCreated           = $user.WhenCreated
-                            SID                   = $user.SID.Value
+                            SID                   = [string]$user.SID
                             TrustedForDelegation  = $user.TrustedForDelegation
                             UserAccountControl    = $user.UserAccountControl
                             mail                  = $user.mail

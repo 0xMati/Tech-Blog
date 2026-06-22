@@ -1,4 +1,4 @@
-# Engine\Initialize-MATIEngine.ps1
+﻿# Engine\Initialize-MATIEngine.ps1
 # MATIv2 - Bootstrap engine
 # Loads configuration, discovers collectors and rules, validates prerequisites.
 
@@ -140,6 +140,21 @@ function Initialize-MATIEngine {
     }
     Write-Host "  [+] ActiveDirectory module loaded" -ForegroundColor Green
 
+    # Detect Windows PowerShell compatibility mode (module served via implicit
+    # remoting). In this mode AD objects are deserialized and the AD: PSProvider
+    # is unavailable locally, which degrades several collectors. Surface it loudly
+    # so the assessment is not silently run from a non-ideal host.
+    $winPSCompat = Test-MATIWinPSCompat
+    $Config['_WinPSCompat'] = $winPSCompat
+    if ($winPSCompat) {
+        Write-Host "" 
+        Write-Host "  [!] WARNING: ActiveDirectory module loaded via Windows PowerShell compatibility (WinPSCompatSession)." -ForegroundColor Yellow
+        Write-Host "      AD objects are deserialized and some checks may be degraded." -ForegroundColor Yellow
+        Write-Host "      For a complete and accurate assessment, run MATI directly on a domain controller" -ForegroundColor Yellow
+        Write-Host "      (or on a host with native RSAT under Windows PowerShell 5.1)." -ForegroundColor Yellow
+        Write-Host ""
+    }
+
     # Basic AD read access + build forest/domain cache
     try {
         $resolvedTargetForest = if ([string]::IsNullOrWhiteSpace($TargetForest)) {
@@ -219,6 +234,9 @@ function Initialize-MATIEngine {
         HtmlDir          = $htmlDir
         JsonDir          = $jsonDir
         DataCache        = @{}          # Populated by Invoke-MATICollectors
+        FailedCollectors = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)  # Collectors that threw
+        NotAssessedRules = [System.Collections.Generic.List[object]]::new()   # Rules skipped due to failed collectors
+        WinPSCompat      = $winPSCompat
         Findings         = [System.Collections.Generic.List[object]]::new()
         DCConnectivity   = [System.Collections.Generic.List[object]]::new()   # Populated by Invoke-MATICollectors
     }

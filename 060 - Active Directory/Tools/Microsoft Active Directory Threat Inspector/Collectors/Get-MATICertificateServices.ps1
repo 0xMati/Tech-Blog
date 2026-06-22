@@ -1,4 +1,4 @@
-# Collectors\Get-MATICertificateServices.ps1
+﻿# Collectors\Get-MATICertificateServices.ps1
 # MATIv2 - Collects AD Certificate Services (ADCS) configuration from AD.
 
 function Get-MATICertificateServices {
@@ -93,7 +93,8 @@ function Get-MATICertificateServices {
         $privilegedSIDs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         foreach ($domainDns in $forest.Domains) {
             try {
-                $domSID = ($Config['_DomainCache'][$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+                $domSID = Get-MATIDomainSidString (($Config['_DomainCache'][$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
+                if (-not $domSID) { continue }
                 $null = $privilegedSIDs.Add("$domSID-512")  # Domain Admins
                 $null = $privilegedSIDs.Add("$domSID-519")  # Enterprise Admins
             } catch { }
@@ -127,7 +128,7 @@ function Get-MATICertificateServices {
             $lowPrivEnrollment = $false
             $lowPrivFullControl = $false
             try {
-                $acl = Get-ACL -Path "AD:\$($tmpl.DistinguishedName)" -ErrorAction Stop
+                $acl = Get-MATIObjectAcl -DistinguishedName $tmpl.DistinguishedName -Server $directoryServer
                 foreach ($ace in $acl.Access) {
                     if ($ace.AccessControlType -ne 'Allow') { continue }
                     $sidStr = try {
@@ -221,7 +222,7 @@ function Get-MATICertificateServices {
             # ESC7: Check CA AD object ACL for ManageCA rights by low-priv principals
             $lowPrivManageCA = $false
             try {
-                $acl = Get-ACL -Path "AD:\$($ca.DistinguishedName)" -ErrorAction Stop
+                $acl = Get-MATIObjectAcl -DistinguishedName $ca.DistinguishedName -Server $directoryServer
                 foreach ($ace in $acl.Access) {
                     if ($ace.AccessControlType -ne 'Allow') { continue }
                     $sidStr = try {

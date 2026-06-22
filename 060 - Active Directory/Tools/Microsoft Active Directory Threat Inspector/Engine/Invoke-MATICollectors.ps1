@@ -1,4 +1,4 @@
-# Engine\Invoke-MATICollectors.ps1
+﻿# Engine\Invoke-MATICollectors.ps1
 # MATIv2 - Collector orchestrator
 # Determines which collectors are needed based on active rules,
 # executes them, and populates the DataCache.
@@ -67,6 +67,9 @@ function Invoke-MATICollectors {
             $sw.Stop()
             Write-Warning "  [!] Collector '$collectorName' failed: $($_.Exception.Message)"
             $EngineContext.DataCache[$collectorName] = @()
+            if ($EngineContext.ContainsKey('FailedCollectors')) {
+                $null = $EngineContext.FailedCollectors.Add($collectorName)
+            }
         }
     }
 

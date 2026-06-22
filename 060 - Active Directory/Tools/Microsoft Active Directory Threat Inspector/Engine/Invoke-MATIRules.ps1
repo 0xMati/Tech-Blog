@@ -1,4 +1,4 @@
-# Engine\Invoke-MATIRules.ps1
+﻿# Engine\Invoke-MATIRules.ps1
 # MATIv2 - Rule execution engine
 # Iterates over discovered rules, runs their Condition scriptblock
 # against the DataCache, and produces MATIFinding objects.
@@ -50,6 +50,26 @@ function Invoke-MATIRules {
             continue
         }
 
+        # If any required collector failed, the rule cannot be trusted (a missing
+        # data set would otherwise look like "no finding" and inflate the score).
+        # Mark it as NOT ASSESSED so the result stays honest.
+        $failedDeps = @()
+        if ($EngineContext.ContainsKey('FailedCollectors') -and $EngineContext.FailedCollectors.Count -gt 0) {
+            $failedDeps = @($rule.Collectors | Where-Object { $EngineContext.FailedCollectors.Contains($_) })
+        }
+        if ($failedDeps.Count -gt 0) {
+            Write-Host " NOT ASSESSED (collector failed: $($failedDeps -join ', '))" -ForegroundColor Yellow
+            if ($EngineContext.ContainsKey('NotAssessedRules')) {
+                $EngineContext.NotAssessedRules.Add([PSCustomObject]@{
+                    Id              = $ruleId
+                    Title           = $rule.Title
+                    Category        = $category
+                    FailedCollectors = ($failedDeps -join ', ')
+                })
+            }
+            continue
+        }
+
         try {
             # Invoke the rule's condition, passing DataCache and Config
             $results = & $rule.Condition $dataCache $config
@@ -72,7 +92,7 @@ function Invoke-MATIRules {
                 $severity = if ($result.Severity) { $result.Severity } else { $rule.Severity }
 
                 # Determine weight
-                $weight = if ($result.ContainsKey('Weight') -and $result.Weight -ge 0) {
+                $weight = if (($result -is [hashtable]) -and $result.ContainsKey('Weight') -and $result.Weight -ge 0) {
                     $result.Weight
                 } elseif ($rule.ContainsKey('Weight') -and $rule.Weight -ge 0) {
                     $rule.Weight

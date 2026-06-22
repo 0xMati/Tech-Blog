@@ -1,4 +1,4 @@
-# Collectors\Get-MATISecurityConfig.ps1
+﻿# Collectors\Get-MATISecurityConfig.ps1
 # MATIv2 - Collects AD security hardening configuration.
 
 function Get-MATISecurityConfig {
@@ -91,11 +91,11 @@ function Get-MATISecurityConfig {
                 $preWin2000Members += [PSCustomObject]@{
                     Domain          = $domainDns
                     MemberName      = $m.Name
-                    MemberSID       = $m.SID.Value
+                    MemberSID       = [string]$m.SID
                     ObjectClass     = $m.objectClass
                     DistinguishedName = $m.DistinguishedName
                     # S-1-1-0 = Everyone, S-1-5-7 = Anonymous Logon, S-1-5-11 = Authenticated Users
-                    IsDangerous     = ($m.SID.Value -in @('S-1-1-0', 'S-1-5-7', 'S-1-5-11'))
+                    IsDangerous     = ([string]$m.SID -in @('S-1-1-0', 'S-1-5-7', 'S-1-5-11'))
                 }
             }
         } catch {
@@ -108,14 +108,15 @@ function Get-MATISecurityConfig {
     $guestAccounts = @()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
+            if (-not $domSID) { continue }
             $guest = Get-ADUser -Identity "$domSID-501" -Server $domainDns -Properties Enabled, PasswordLastSet, LastLogonTimestamp -ErrorAction Stop
             $guestAccounts += [PSCustomObject]@{
                 Domain           = $domainDns
                 SamAccountName   = $guest.SamAccountName
                 Enabled          = $guest.Enabled
                 PasswordLastSet  = $guest.PasswordLastSet
-                SID              = $guest.SID.Value
+                SID              = [string]$guest.SID
             }
         } catch { }
     }
@@ -124,7 +125,8 @@ function Get-MATISecurityConfig {
     $protectedUsersInfo = @()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
+            if (-not $domSID) { continue }
             $members = @()
             try {
                 $members = @(Get-ADGroupMember -Identity "$domSID-525" -Server $domainDns -ErrorAction Stop)
@@ -298,7 +300,8 @@ function Get-MATISecurityConfig {
     $delegatableAdmins = @()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
+            if (-not $domSID) { continue }
             # Get Domain Admins + Enterprise Admins
             foreach ($groupSID in @("$domSID-512", "$domSID-519")) {
                 try {
@@ -402,7 +405,8 @@ function Get-MATISecurityConfig {
     $adminCountOrphans = @()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domSID = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID.Value
+            $domSID = Get-MATIDomainSidString (($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainSID)
+            if (-not $domSID) { continue }
             # Get actual privileged members (recursive)
             $actualPrivDNs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
             foreach ($rid in @('512', '519', '518', '544', '548', '549', '550', '551')) {
@@ -736,7 +740,7 @@ function Get-MATISecurityConfig {
         try {
             $domObj = $domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)
             $domainDN = $domObj.DistinguishedName
-            $domSID   = $domObj.DomainSID.Value
+            $domSID   = Get-MATIDomainSidString ($domObj.DomainSID)
 
             # List of critical well-known containers/objects that must exist
             $criticalObjDNs = @(
@@ -761,30 +765,32 @@ function Get-MATISecurityConfig {
                 }
             }
 
-            # Critical well-known groups (by RID)
-            $criticalGroups = @{
-                'Domain Admins'      = "$domSID-512"
-                'Domain Users'       = "$domSID-513"
-                'Domain Computers'   = "$domSID-515"
-                'Domain Controllers' = "$domSID-516"
-                'Cert Publishers'    = "$domSID-517"
-                'Group Policy CO'    = "$domSID-520"
-            }
+            # Critical well-known groups (by RID) - requires a valid domain SID
+            if ($domSID) {
+                $criticalGroups = @{
+                    'Domain Admins'      = "$domSID-512"
+                    'Domain Users'       = "$domSID-513"
+                    'Domain Computers'   = "$domSID-515"
+                    'Domain Controllers' = "$domSID-516"
+                    'Cert Publishers'    = "$domSID-517"
+                    'Group Policy CO'    = "$domSID-520"
+                }
 
-            # These forest-wide groups only exist in the forest root domain.
-            if ($domainDns -eq $forest.RootDomain) {
-                $criticalGroups['Schema Admins'] = "$domSID-518"
-                $criticalGroups['Enterprise Admins'] = "$domSID-519"
-            }
+                # These forest-wide groups only exist in the forest root domain.
+                if ($domainDns -eq $forest.RootDomain) {
+                    $criticalGroups['Schema Admins'] = "$domSID-518"
+                    $criticalGroups['Enterprise Admins'] = "$domSID-519"
+                }
 
-            foreach ($name in $criticalGroups.Keys) {
-                try {
-                    $null = Get-ADGroup -Identity $criticalGroups[$name] -Server $domainDns -ErrorAction Stop
-                } catch {
-                    $criticalObjectsStatus += [PSCustomObject]@{
-                        Domain            = $domainDns
-                        DistinguishedName = "$name ($($criticalGroups[$name]))"
-                        Status            = 'Missing'
+                foreach ($name in $criticalGroups.Keys) {
+                    try {
+                        $null = Get-ADGroup -Identity $criticalGroups[$name] -Server $domainDns -ErrorAction Stop
+                    } catch {
+                        $criticalObjectsStatus += [PSCustomObject]@{
+                            Domain            = $domainDns
+                            DistinguishedName = "$name ($($criticalGroups[$name]))"
+                            Status            = 'Missing'
+                        }
                     }
                 }
             }
