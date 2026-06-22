@@ -75,50 +75,11 @@ The key insight: the CBT is **not sent as an editable plain value**. It is mixed
 
 That signature is produced with a **session key derived from the client's secret** (password/key) — something the attacker does **not** possess. So if the attacker edits the CBT, the signature no longer matches; and to recompute a valid signature over CBT(H2), they would need the victim's secret.
 
-```mermaid
-flowchart TD
-    A["Client authenticates"] --> B["Computes a MIC = signature over:<br/>• the auth messages<br/>• + the CBT (H1)"]
-    B --> C["Signed with the session key<br/>derived from the client's secret 🔒"]
-    C --> D["Sends: auth + CBT(H1) + MIC"]
-
-    D --> E{"Attacker intercepts<br/>and wants to put CBT(H2)"}
-    E -->|"Keep CBT(H1)"| J["DC sees H1 ≠ real channel H2"]
-    E -->|"Change CBT → H2"| F["MIC no longer matches<br/>(it covers H1)"]
-    F --> G["To re-sign the MIC over H2,<br/>the client's session key is required"]
-    G --> H["❌ Attacker has no secret<br/>→ cannot re-sign"]
-    J --> K["❌ Bind rejected"]
-
-    style H fill:#fdecea,stroke:#c0392b
-    style K fill:#fdecea,stroke:#c0392b
-    style C fill:#e8f6ee,stroke:#2e8b57
-```
-
 > 🔐 **In one sentence:** the **CBT** binds the authentication to the *channel*, and the **MIC** binds the CBT to the *identity*. The attacker can break neither without the victim's secret — which is exactly why NTLM/Kerberos relay to LDAPS (as used in **PetitPotam → AD CS / ESC8** attacks) is neutralized once `LdapEnforceChannelBinding = 2`.
 
 ### Where the setting fits
 
 `LdapEnforceChannelBinding` on the DC controls how strictly the DC checks the CBT:
-
-```mermaid
-flowchart TD
-    A[LDAPS bind arrives at DC] --> B{LdapEnforceChannelBinding value?}
-    B -->|0 = Disabled| C[CBT ignored<br/>relay possible ❌]
-    B -->|1 = When supported| D{Client sent a CBT?}
-    B -->|2 = Required| E{Valid CBT matching<br/>this TLS channel?}
-
-    D -->|Yes| F{CBT matches channel?}
-    D -->|No legacy client| G[Bind allowed<br/>logged as missing CBT ⚠️]
-    F -->|Yes| H[Bind allowed ✅]
-    F -->|No| I[Bind rejected ✅]
-
-    E -->|Yes| H
-    E -->|No / missing| I
-
-    style C fill:#fdecea,stroke:#c0392b
-    style G fill:#fff7e0,stroke:#d9a300
-    style H fill:#e8f6ee,stroke:#2e8b57
-    style I fill:#e8f6ee,stroke:#2e8b57
-```
 
 | Value | Mode | Behavior | Posture |
 |---|---|---|---|
