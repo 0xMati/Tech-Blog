@@ -1,4 +1,4 @@
-# Rules\Hardening\SIDHistoryUnknownDomain.rule.ps1
+﻿# Rules\Hardening\SIDHistoryUnknownDomain.rule.ps1
 # Flags accounts with SIDHistory from unknown/non-existing domains. [PingCastle: T-SIDHistoryUnknownDomain]
 
 @{
@@ -17,7 +17,8 @@
         $knownDomainSIDs = @{}
         foreach ($dom in $Data.DomainInfo.Domains) {
             try {
-                $domSID = (Get-ADDomain -Server $dom.DNSRoot -ErrorAction SilentlyContinue).DomainSID.Value
+                $domObj = Get-ADDomain -Server $dom.DNSRoot -ErrorAction SilentlyContinue
+                $domSID = if ($domObj -and $domObj.DomainSID) { [string]$domObj.DomainSID } else { $null }
                 if ($domSID) { $knownDomainSIDs[$domSID] = $dom.DNSRoot }
             } catch { }
         }
@@ -26,8 +27,9 @@
             try {
                 $trustObj = Get-ADTrust -Identity $trust.DistinguishedName -Properties securityIdentifier `
                     -Server $trust.SourceDomain -ErrorAction SilentlyContinue
-                if ($trustObj.securityIdentifier) {
-                    $knownDomainSIDs[$trustObj.securityIdentifier.Value] = $trust.TargetDomain
+                $trustSID = if ($trustObj -and $trustObj.securityIdentifier) { [string]$trustObj.securityIdentifier } else { $null }
+                if ($trustSID) {
+                    $knownDomainSIDs[$trustSID] = $trust.TargetDomain
                 }
             } catch { }
         }

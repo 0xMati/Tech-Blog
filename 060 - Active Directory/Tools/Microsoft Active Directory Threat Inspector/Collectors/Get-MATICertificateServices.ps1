@@ -70,6 +70,7 @@ function Get-MATICertificateServices {
                 Name              = $ca.Name
                 DNSHostName       = $ca.dNSHostName
                 DistinguishedName = $ca.DistinguishedName
+                Domain            = 'Forest'
                 CertAlgorithm     = $certAlgo
                 CertKeyLength     = $certKeyLength
                 CertExpiry        = $certExpiry

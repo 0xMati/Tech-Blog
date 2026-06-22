@@ -48,7 +48,7 @@ function Export-MATIHtml {
     $domainInfo = $dataCache['DomainInfo']
     $passwordPolicy = $dataCache['PasswordPolicy']
     $securityConfig = $dataCache['SecurityConfig']
-    $dcData = @($dataCache['DCInfo'])
+    $dcData = @($dataCache['DCInfo'] | Where-Object { $_ })
     $summary = Get-MATISummarySnapshot -EngineContext $EngineContext
 
     $environmentSummary = @"
@@ -221,7 +221,7 @@ function Export-MATIHtml {
 "@
     }
 
-    $dcConnectivity = @($EngineContext.DCConnectivity)
+    $dcConnectivity = @($EngineContext.DCConnectivity | Where-Object { $_ })
     if ($dcData.Count -gt 0 -or $dcConnectivity.Count -gt 0) {
         $dcIndex = [ordered]@{}
 

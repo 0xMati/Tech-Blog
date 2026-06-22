@@ -1,4 +1,4 @@
-# Engine\Get-MATISummarySnapshot.ps1
+﻿# Engine\Get-MATISummarySnapshot.ps1
 # Shared summary snapshot builder for Threat Detection and Tiering reports.
 
 function Test-MATILikelyServiceAccount {
@@ -89,7 +89,7 @@ function Get-MATISummarySnapshot {
         }
 
         $domainCount = if ($Discovery.Forest -and $Discovery.Forest.DomainCount) { [int]$Discovery.Forest.DomainCount } else { @($Discovery.Domains).Count }
-        $computerCount = @($Discovery.ComputersByTier.Tier0).Count + @($Discovery.ComputersByTier.Tier1).Count + @($Discovery.ComputersByTier.Tier2).Count + @($Discovery.ComputersByTier.Unclassified).Count
+        $computerCount = @($Discovery.ComputersByTier.Tier0 | Where-Object { $_ }).Count + @($Discovery.ComputersByTier.Tier1 | Where-Object { $_ }).Count + @($Discovery.ComputersByTier.Tier2 | Where-Object { $_ }).Count + @($Discovery.ComputersByTier.Unclassified | Where-Object { $_ }).Count
         $daCount = Get-MATIUniqueSamCount -Entries @($daEntries)
         $eaCount = Get-MATIUniqueSamCount -Entries @($eaEntries)
         $svcInDaCount = @($Discovery.ServiceAccountsInDA).Count
@@ -106,11 +106,11 @@ function Get-MATISummarySnapshot {
     else {
         $dataCache = $EngineContext.DataCache
         $domainInfo = $dataCache['DomainInfo']
-        $computerAccounts = @($dataCache['ComputerAccounts'])
-        $userAccounts = @($dataCache['UserAccounts'])
-        $trustInfo = @($dataCache['TrustInfo'])
+        $computerAccounts = @($dataCache['ComputerAccounts'] | Where-Object { $_ })
+        $userAccounts = @($dataCache['UserAccounts'] | Where-Object { $_ })
+        $trustInfo = @($dataCache['TrustInfo'] | Where-Object { $_ })
         $privilegedData = $dataCache['PrivilegedAccounts']
-        $dcData = @($dataCache['DCInfo'])
+        $dcData = @($dataCache['DCInfo'] | Where-Object { $_ })
         $securityConfig = $dataCache['SecurityConfig']
         $gpoInfo = $dataCache['GPOInfo']
 

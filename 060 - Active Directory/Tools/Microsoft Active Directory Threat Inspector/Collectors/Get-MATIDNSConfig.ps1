@@ -1,4 +1,4 @@
-# Collectors\Get-MATIDNSConfig.ps1
+﻿# Collectors\Get-MATIDNSConfig.ps1
 # MATIv2 - Collects DNS zone configuration from Active Directory.
 
 function Get-MATIDNSConfig {
@@ -101,7 +101,7 @@ function Get-MATIDNSConfig {
                             IsADIntegrated  = $sz.IsAutoCreated -eq $false
                             SecondaryServers = @($sz.SecondaryServers)
                             ZoneTransferPolicy = if ($sz.SecondaryServers.Count -eq 0 -and
-                                $sz.ZoneName -ne '_msdcs*') { 'NoTransfer' }
+                                $sz.ZoneName -notlike '_msdcs*') { 'NoTransfer' }
                                 elseif ($sz.SecondaryServers.Count -gt 0) { 'SpecificServers' }
                                 else { 'Unknown' }
                             AgingEnabled       = $agingEnabled

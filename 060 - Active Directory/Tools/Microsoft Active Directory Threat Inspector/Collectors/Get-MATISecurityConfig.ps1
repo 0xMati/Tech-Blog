@@ -236,13 +236,14 @@ function Get-MATISecurityConfig {
     $kerberosArmoring = @()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $domainDN = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DistinguishedName
-            $domFuncLevel = ($domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)).DomainMode
+            $domObj = $domCache[$domainDns] ?? (Get-ADDomain -Server $domainDns -ErrorAction Stop)
+            $domainDN = $domObj.DistinguishedName
+            $domFuncLevel = Get-MATIFunctionalLevelNumeric $domObj.DomainMode
             $kerberosArmoring += [PSCustomObject]@{
                 Domain              = $domainDns
-                DomainFunctionalLevel = [int]$domFuncLevel
+                DomainFunctionalLevel = $domFuncLevel
                 # Kerberos Armoring requires functional level >= 2012 (6)
-                ArmoringPossible    = ([int]$domFuncLevel -ge 6)
+                ArmoringPossible    = ($domFuncLevel -ge 6)
             }
         } catch { }
     }
