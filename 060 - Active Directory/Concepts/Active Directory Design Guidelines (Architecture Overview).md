@@ -72,7 +72,7 @@ Before the first OU is drawn, four framing decisions determine *whether* and *ho
 
 🟢 **Decide where identities are born, changed and retired — before you decide where they live.** §11 says "provisioning handled elsewhere"; this is that decision made explicit, and it is a genuine design pillar because it determines the *flow* every object follows:
 
-- **Joiner / Mover / Leaver (JML).** An identity is typically *created* from an authoritative HR/IGA source, *moved* (department, role, attributes) as it changes, then *disabled and deleted* on departure. Decide the **chain** — HR system → IGA/provisioning → AD → Entra ID — and which system owns each step.
+- **Joiner / Mover / Leaver (JML).** An identity is typically *created* from an authoritative HR / **Identity Governance & Administration (IGA)** source, *moved* (department, role, attributes) as it changes, then *disabled and deleted* on departure. Decide the **chain** — HR system → IGA/provisioning → AD → Entra ID — and which system owns each step.
 - **It wires directly into the rest of the design.** A deterministic creation source is what makes the **naming convention** (§3.3) and **templated provisioning** (§10.4, §11) actually hold, and the **Leaver** half is what feeds the **stale-object lifecycle** (§10.2, keyed on `lastLogonTimestamp`).
 - **Governance tooling.** Where the lifecycle is rich (access reviews, entitlement management, joiner workflows), **Entra ID Governance** can drive it for hybrid identities — but the *decision* to own JML as a process is independent of any one tool.
 
@@ -84,7 +84,7 @@ Before the first OU is drawn, four framing decisions determine *whether* and *ho
 
 - **Single team vs. shared / mutualized.** One internal IT team owning everything is a very different model from the shared-forest case (§11), where Tier 0 is **deported to an administration forest** and no single entity owns it directly. Decide which you are *before* §2, because it determines whether you build **one forest or two** and where privileged identities live.
 - **Standing privilege is an organizational decision, not just a technical one.** The "**zero permanent Domain Admin**" principle (§5) only holds if an *operating model* — approvals, on-call, break-glass custody — backs it. Decide who approves elevation, who holds the break-glass credentials, and who is accountable for Tier 0 hygiene.
-- **Document it as a deliverable.** The FSMO placement (§6.4), the recovery custody (§6.7) and the delegation map (§4) are only real if a named owner maintains them.
+- **Document it as a deliverable.** The **FSMO** (Flexible Single Master Operations) placement (§6.4), the recovery custody (§6.7) and the delegation map (§4) are only real if a named owner maintains them.
 
 ➡️ **Design takeaway:** an AD forest is also an *operating commitment*. Decide the ownership model — single-team or admin-forest-backed — as the **first architectural fork**, because §2's "one forest or two" follows directly from it.
 
@@ -167,14 +167,14 @@ The table maps each level to the behaviors it unlocks and the DCs it allows:
 
 #### Don't confuse functional level with OS-level hardening
 
-🟢 Most of the **security value** of Windows Server 2025 comes from the **DC operating system**, *independently of the functional level*. Even at the 2016 FFL, WS2025 DCs give you:
+🟢 Most of the **security value** of Windows Server 2025 comes from the **DC operating system**, *independently of the functional level*. Even at the 2016 functional level, WS2025 DCs give you:
 
-- **Kerberos no longer issues RC4 TGTs**; PKINIT cryptographic agility.
+- **Kerberos no longer issues RC4 Ticket-Granting Tickets (TGTs)**; PKINIT cryptographic agility.
 - **LDAP sealing/signing required by default** and **LDAP over TLS 1.3**.
 - **SMB signing required by default**, SMB NTLM blocking, SMB rate limiter.
 - **Randomized default machine-account passwords**; confidential attributes require an encrypted connection.
 - **Delegated Managed Service Accounts (dMSA)** and the latest **Windows LAPS** improvements.
-- **Credential Guard on by default**, NUMA scalability (>64 cores).
+- **Credential Guard on by default**, NUMA (Non-Uniform Memory Access) scalability (>64 cores).
 
 ➡️ **Design takeaway:** choose the OS first (WS2025 everywhere), get most of the security benefit immediately, then set the functional level as high as your DC fleet allows — for a new all-2025 forest, that is the **2025 level**, ideally with the **32k page size** decision made up front.
 
@@ -383,15 +383,18 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 
 Security is **not optional plumbing** — it is a structural pillar. The depth of this topic is covered in its own document; this section is the checklist that every design must satisfy.
 
-> **🔵 See the dedicated article:** [Active Directory Tiering Model for On-Premises Environments](Active%20Directory%20Tiering%20Model%20for%20On-Prem%20Environment.md) for the full Tier 0 / Tier 1 / Tier 2 model, PAW, logon restrictions, and GPO hardening.
+> **🔵 See the dedicated article:** [Active Directory Tiering Model for On-Premises Environments](Active%20Directory%20Tiering%20Model%20for%20On-Prem%20Environment.md) for the full Tier 0 / Tier 1 / Tier 2 model, Privileged Access Workstations (PAW), logon restrictions, and GPO hardening.
 
 Baseline checklist:
 
 - 🔴 **Tier 0 isolation**: Domain Controllers, AD-integrated DNS, and anything that can control AD belong to Tier 0. Keep Tier 0 credentials off lower tiers.
 - 🔴 **Authentication Policies & Silos** to cage privileged accounts.
 - 🔴 **Protected Users** for sensitive admin accounts — ⚠️ but beware Kerberos delegation side effects (these accounts cannot be delegated, which breaks double-hop apps).
+- 🔴 **Treat Kerberos delegation as a design decision, not a default.** Unconstrained delegation is a credential-theft trap — a server granted it caches the TGT of every user who reaches it, so a single compromised host can impersonate a Domain Admin. **Ban unconstrained delegation by design**; where a service genuinely needs to act on a user's behalf, use **constrained delegation** or **Resource-Based Constrained Delegation (RBCD)** scoped to the exact target. Mark every Tier 0 / sensitive account **`Account is sensitive and cannot be delegated`** (or place it in **Protected Users**) so it can never be delegated at all. Audit `userAccountControl` for the `TRUSTED_FOR_DELEGATION` flag as part of hygiene.
 - 🟢 **gMSA / dMSA** for all service accounts instead of static passwords. On a WS2025 build, prefer the new **delegated MSA (dMSA)** where you can: its secret is **machine-bound** and never leaves the DC (so a stolen ticket can't be replayed and the account is **kerberoasting-resistant**), and an **existing standard service account can be superseded in place** — `Start-ADServiceAccountMigration` then `Complete-ADServiceAccountMigration` move the SPNs and delegation onto the dMSA and disable the old account, with **no reconfiguration on the servers that consume it**. *(Note: you can't migrate an existing gMSA or legacy MSA to a dMSA — only a standard account.)*
 - 🟢 Disable or tightly control the built-in **`Administrator`** account; prefer named admin accounts.
+- 🔴 **Design in break-glass (emergency access) accounts.** Standing privilege is removed by design (JIT below), so you need a deliberate way back in when the elevation path itself fails. Provision **at least two emergency Domain/Enterprise Admin accounts**, each with a long random password **split and sealed** (vault or physical safe, under named custody — tie this to the ownership decision in §1.4), **excluded from the JIT/approval workflow** so they always work, and **monitored**: any logon by one of these accounts should raise an immediate alert. They are the last resort, not a daily tool.
+- 🔵 **Make auditing and detection a design baseline, not an afterthought.** Decide up front *what* the directory must record and *where it goes*: enable the **Advanced Audit Policy** on DCs (account logon, directory-service changes, privilege use), place **SACLs** on the high-value objects (the `AdminSDHolder` object, Tier 0 OUs and groups, the domain root) so changes to them are logged, and **forward DC security logs off-box to a central collector / SIEM** so an attacker who clears a local log can't erase the trail. Plan **Microsoft Defender for Identity** sensor coverage (§10.2) on top. The exhaustive audit-subcategory list is hardening detail (deported to the references); the *decision to capture and centralize* is a design one.
 - 🔵 **Forest recoverability**: treat backups and a tested forest-recovery plan as a design pillar in their own right — see **§6.7**.
 
 > 🔵 **This is the *design-level* minimum, not the hardening catalogue.** The items above are the structural security decisions a forest design must bake in. The **exhaustive** hardening surface — protocol and crypto enforcement, OS-level controls, CVE-driven settings, per-tier GPO baselines — is a **separate discipline** that this design hub deliberately does **not** re-list. Apply it in full from the dedicated references: the per-tier GPO hardening in the [Tiering Model](Active%20Directory%20Tiering%20Model%20for%20On-Prem%20Environment.md), the [Microsoft Security Compliance Toolkit](https://www.microsoft.com/en-us/download/details.aspx?id=55319) baselines, and the host-side measures in [WDAC, HVCI, Credential Guard & LSA Protection](../../040%20-%20Endpoint%20Security/OS%20Hardening/WDAC,%20HVCI,%20Credential%20Guard%20&%20LSA%20Protection.md). The rule of thumb: **design decides the structure; the hardening baseline decides the settings — follow it, don't paraphrase it.**
@@ -477,9 +480,9 @@ A greenfield forest is the moment to confirm the replication-integrity options t
 Forest recovery is the plan for the worst case — the **entire forest** is logically destroyed or compromised (ransomware, a bad schema change, mass deletion, a Tier 0 breach) and must be rebuilt from backups. It is a **design pillar**, not a line item, because the decisions that make it possible have to be taken *before* the disaster, not during it.
 
 - 🔴 **A backup is only as good as its restore — and AD restore is not a file restore.** Microsoft publishes a dedicated **AD Forest Recovery Guide**, and the procedure is *not* "restore every DC." You **restore one DC per domain** from a trusted system-state backup, isolate it, clean up the metadata of every other DC, then **redeploy the remaining DCs** from that authoritative core. Treat the guide as a template and write a **custom plan** for your topology.
-- 🔵 **Keep backups offline and out of reach of the threat that would trigger the recovery.** Ransomware and a Tier 0 compromise are the realistic triggers, so an online backup the same attacker can reach is worthless. Keep **system-state backups of at least two DCs per domain**, offline / immutable, together with the **DSRM password** (rotated via Windows LAPS, §10.2) you must enter to perform the restore.
+- 🔵 **Keep backups offline and out of reach of the threat that would trigger the recovery.** Ransomware and a Tier 0 compromise are the realistic triggers, so an online backup the same attacker can reach is worthless. Keep **system-state backups of at least two DCs per domain**, offline / immutable, together with the **DSRM (Directory Services Restore Mode) password** (rotated via Windows LAPS, §10.2) you must enter to perform the restore.
 - 🔵 **Recovery hygiene is part of the plan.** A real forest recovery includes **resetting the `krbtgt` account (twice)** and the **trust passwords**, and invalidating cached credentials — the same steps that contain a compromise. Decide this belongs in the runbook up front.
-- 🟢 **An untested plan is not a plan — drill it.** Microsoft recommends **practicing the recovery at least once a year**, and after major changes to the Enterprise/Domain Admins membership. Define your **RTO / RPO** for the directory (how fast you must be back, how much change you can lose) and prove the plan meets them on real hardware/VMs, not on paper. Keep a **documented topology map** (DCs, FSMO roles, backup status, trusts) as part of the plan.
+- 🟢 **An untested plan is not a plan — drill it.** Microsoft recommends **practicing the recovery at least once a year**, and after major changes to the Enterprise/Domain Admins membership. Define your **RTO / RPO** (Recovery Time / Recovery Point Objective) for the directory — how fast you must be back, how much change you can lose — and prove the plan meets them on real hardware/VMs, not on paper. Keep a **documented topology map** (DCs, FSMO roles, backup status, trusts) as part of the plan.
 
 ➡️ **Design takeaway:** decide *who owns* the recovery (§1.4), *where the offline backups live*, and *how often you drill* — at build time. The §6.4 "a snapshot is not a backup" rule is the same principle; this section is the plan that turns it into a tested capability.
 
@@ -694,7 +697,9 @@ flowchart TD
 | **Naming** | **Registered, dedicated subdomain** prefix (`corp.example.com`); never single-label or `.local` |
 | **OU design** | Structured for **delegation + GPO**; identical template where repeated |
 | **Delegation** | **RBAC role groups** applied as inherited OU ACLs; never direct ACLs |
-| **Tier 0** | Isolated (or deported to an admin forest); no permanent human DA |
+| **Tier 0** | Isolated (or deported to an admin forest); no permanent human DA; **break-glass accounts** sealed and monitored |
+| **Kerberos delegation** | Ban **unconstrained**; use **constrained / RBCD** scoped; Tier 0 accounts marked *sensitive — cannot be delegated* |
+| **Audit / detection** | **Advanced Audit Policy** on DCs + **SACLs** on Tier 0 objects; **forward DC logs to a SIEM**; MDI sensors |
 | **Sites** | Follow **network topology**, not org structure; declare **every** subnet (VPN/Wi-Fi/cloud); enable **Try Next Closest Site** |
 | **DCs** | **2+ DCs**, all **GC + DNS** |
 | **Replication** | **Strict Replication Consistency** on; **SYSVOL on DFSR** (FRS is gone) |
