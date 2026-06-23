@@ -409,28 +409,17 @@ When the forest must interoperate with an administration forest and/or a resourc
 | **Admin forest → account forest** (administration) | **Forest trust**, often **one-way**, ideally paired with **PAM/Shadow Principals** and **Authentication Policies/Silos**. |
 | **Account forest ↔ resource forest** | **Forest trust**, transitive, one-way or two-way depending on access direction. |
 
+🔵 **Pick the right *type* of trust.** A **forest trust** is **transitive** and spans the whole forest (every domain on both sides), which is what you want for a clean inter-forest boundary. An **external trust** is **non-transitive** and links a single domain to a single domain — use it only for a narrow, legacy domain-to-domain need, not for forest-to-forest interoperability.
+
 Security settings:
 
 - 🔴 **Selective Authentication** on the trust: by default (`forest-wide`) every user can authenticate everywhere. Selective auth makes you grant `Allowed to Authenticate` explicitly — strongly recommended in shared scenarios.
-- 🔴 **Keep SID Filtering enabled** (default on forest trusts) — it blocks Tier 0 SID injection across the trust.
+- 🔴 **Keep SID Filtering enabled** (default on forest trusts) — it **discards SIDs from the trusted forest that don't belong to it** (notably an injected `SIDHistory`), which is precisely what blocks a Tier 0 SID-injection attack across the trust. The **only** legitimate reason to relax it is a **migration that relies on `SIDHistory`** — and even then, re-enable it the moment the migration is done.
+- 🟢 **Leave TGT delegation disabled across the forest trust** (the default on a new forest trust). It stops a server configured for **unconstrained delegation** in the trusting forest from capturing a TGT of a user coming from the trusted forest — a known cross-forest credential-theft vector.
 - 🟢 Force **Kerberos AES**, disable RC4 on trusts.
 - 🟢 Use the **minimum trust direction** that satisfies the requirement.
 
 For the SID-stub objects created by cross-forest group membership, see [What are FSPs — Audit and Manage them in AD](What%20are%20FSPs%20-%20Audit%20and%20Manage%20them%20in%20AD.md).
-
-```mermaid
-flowchart LR
-    ADMIN["Admin Forest\n(Tier 0)"]
-    NEW["Account Forest\n(this design)"]
-    RES["Resource Forest\n(apps, files)"]
-
-    ADMIN -->|Forest trust 1-way + PAM/Shadow Principals\nSelective Auth| NEW
-    NEW -->|Forest trust\nSelective Auth + SID Filtering| RES
-
-    style ADMIN fill:#1f2937,stroke:#f59e0b,stroke-width:2px,color:#f9fafb
-    style NEW fill:#1e3a8a,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
-    style RES fill:#14532d,stroke:#86efac,stroke-width:2px,color:#f9fafb
-```
 
 ---
 
