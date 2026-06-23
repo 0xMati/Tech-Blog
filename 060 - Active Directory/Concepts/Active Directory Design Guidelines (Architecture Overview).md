@@ -544,12 +544,16 @@ Everything above is **generic**. This section covers the one demanding applicati
 
 That is all. **The multi-entity factor is one of degree (repetition, watertightness, untrusted admins), not of nature.**
 
+> 🔴 **Assume the shared-forest security trade-off explicitly.** Because **the forest — not the OU — is the security boundary** (§1.1), per-OU delegation gives entities **administrative** isolation, **not** a security boundary between them. All 150 entities share one schema, one configuration partition and one Tier 0: a compromise of any entity that reaches Tier 0 brings down **every** entity at once. This is the deliberate price of mutualisation — you accept a shared blast radius in exchange for one infrastructure. It is precisely *why* the model **deports Tier 0 to the admin forest** and keeps **no permanent human Domain Admin** in the shared forest (§10.2). If any entity genuinely requires a hard security boundary from the others, it does **not** belong in the shared forest — it needs its own.
+
 ### 10.2 — Concrete adaptations
 
 - **OU root** `OU=Entities` with an **identical template** per entity (`Users / Groups / Computers / Admins`), keyed by stable entity code (`ENT001-Alpha`).
 - **Templated provisioning is the cornerstone**: onboarding a 151st entity should reproduce the exact same OU tree, role groups, delegation, GPO links and protection as every other entity — predictably and identically.
 - **Per-entity role groups** (`ROLE-ENT001-UserAdmin`, …) handed to that entity's local IT only — strict horizontal isolation.
 - **Tier 0 stays in the admin forest** via the trust (+ PAM/Shadow Principals); **no permanent human Domain Admin** in the shared forest.
+- **Give each entity its own login/mail identity without a new domain**: add a **UPN suffix per entity** (`user@entity-alpha.fr`) on the single shared domain (§1.1) — entities keep their own namespace while the directory stays one domain. Pair it with DNS zones as needed.
+- **Don't multiply GPOs per entity.** Reuse the GPO anti-proliferation principle (§8.5): a **shared GPO whose items are scoped per entity with Item-Level Targeting** (targeting `GRP-ENT001-*`) beats minting a fresh GPO set for every one of the 150 entities — which would be unmanageable.
 - **Consider List Object Mode** so entities cannot enumerate each other.
 - **Sites still follow network topology**, not entities — do not create 150 sites for 150 entities.
 
@@ -580,13 +584,15 @@ flowchart TD
 | Decision | Recommendation |
 |---|---|
 | **Forests / domains** | **1 forest, 1 domain** unless a hard constraint forces otherwise |
+| **Functional level** | **WS2025 FFL** on a greenfield all-2025 fleet; decide the **32k page size** at forest creation |
+| **Naming** | **Registered, dedicated subdomain** prefix (`corp.example.com`); never single-label or `.local` |
 | **OU design** | Structured for **delegation + GPO**; identical template where repeated |
 | **Delegation** | **RBAC role groups** applied as inherited OU ACLs; never direct ACLs |
 | **Tier 0** | Isolated (or deported to an admin forest); no permanent human DA |
 | **Sites** | Follow **network topology**, not org structure |
 | **DCs** | **2+ DCs**, all **GC + DNS** |
 | **DNS** | **AD-integrated + scavenging** from day one |
-| **Trusts** | **Forest trust + Selective Auth + SID Filtering** |
+| **Trusts** | **Forest trust + Selective Auth + SID Filtering + TGT delegation off** |
 | **GPO** | Domain baseline + per-tier; avoid GPO proliferation; ILT over per-scope GPOs |
 | **Industrialization** | **Templated, repeatable provisioning** of each scope is the cornerstone |
 | **Tooling** | LAPS, gMSA/dMSA, scheduled AD health checks, PingCastle/Purple Knight/BloodHound, MDI |
