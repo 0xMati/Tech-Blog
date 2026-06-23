@@ -177,16 +177,70 @@ Why this pattern, per Microsoft guidance:
 
 ## 🗂️ 2 — Organizational Unit (OU) Design
 
-The OU is the unit of **two things at once**: **delegation** and **GPO linking**. You therefore design the OU tree around those two needs — *not* around the HR org chart.
+The OU is the unit of **two things at once**: **delegation** and **GPO linking**. You therefore design the OU tree around those two needs — *not* around the HR org chart. The org chart changes every reorg; administration is far more stable, so the right design question is never *"how is the company organized?"* but:
 
-### 2.1 — Two competing logics
+> **"Who administers what, and which GPOs must apply to what?"**
+
+### 2.1 — The core decision: what goes at the top of the tree?
+
+This is the choice that shapes everything else, and it is usually framed wrongly as an either/or:
 
 | Logic | Strength | Weakness |
 |---|---|---|
-| **By object type first** (`Users` / `Groups` / `Computers` at the top) | Clean for **centralized, homogeneous** administration | Painful to delegate by scope |
-| **By scope/department first** (a self-contained subtree per perimeter) | Clean **delegation** — hand the whole branch to a local admin | Slightly more repetition |
+| **By object type first** (`Users` / `Groups` / `Computers` near the top) | Simple, few OUs, no repetition; centralized, homogeneous administration | You **cannot** cleanly hand "the Sales objects" to a Sales admin |
+| **By scope/department first** (a self-contained subtree per perimeter) | Clean **delegation** — hand a whole branch to a local admin, isolated by construction | Slightly more repetition |
 
-Whichever you choose, apply it **consistently**. A hybrid that changes logic at different depths becomes unmanageable.
+🟢 **In reality you almost always do both** — the real question is *which logic sits at the top* (the first sort key). And the answer is dictated by **one thing: delegation**, because **delegation is inherited down a subtree**. So whatever you need to delegate as a unit must be a subtree.
+
+#### What actually decides it
+
+| Decisive question | → Top-level structure |
+|---|---|
+| Is administration **delegated per perimeter** (local IT teams, separate entities, admins who don't trust each other)? | **Yes → scope/entity first** |
+| Is administration **centralized** — one IT team, isolation between populations is not a requirement? | **Yes → object type first** (simpler) |
+
+#### Case A — Centralized administration → object type first
+
+If a **single IT team** runs everything, splitting `Users` / `Computers` / `Groups` at the top is the simplest choice — fewer OUs, no repetition, and it maps naturally to GPO (user vs computer settings are separate anyway):
+
+```
+corp.contoso.com
+├── OU=Users         (whole company)
+├── OU=Computers
+└── OU=Groups
+```
+
+→ Fits a single-IT organization, or any perimeter where **nobody needs to be isolated from anybody**.
+
+#### Case B — Delegated administration → scope/entity first
+
+The moment you must hand **"all of Sales"** to the Sales IT team **without** letting them touch Finance, Sales has to be a **self-contained subtree** holding its own users, computers and groups:
+
+```
+corp.contoso.com
+└── OU=Departments
+    ├── OU=Sales
+    │   ├── OU=Users
+    │   ├── OU=Computers
+    │   ├── OU=Groups
+    │   └── OU=Admins
+    └── OU=Finance
+        └── (identical template)
+```
+
+→ You set **one delegation on `OU=Sales`**, inherited to the whole branch. Isolation by construction.
+
+🔴 **Why Case A breaks here:** if every user lives in one global `OU=Users`, you **cannot** cleanly delegate "the Sales users" to the Sales team — you'd be reduced to per-object ACLs, which is unmanageable and drifts immediately. **Delegation wants a subtree per perimeter.**
+
+#### The nuance: it's a spectrum, not a binary
+
+- 🟢 **Very small organization (single IT, a few dozen seats):** don't over-engineer. The flat object-type model (Case A) is perfectly fine — a per-department tree you never actually delegate is just empty ceremony.
+- 🔵 **Growing / multi-team / multi-entity:** the more administration fragments, the further **up** the tree the scope dimension must move. At the extreme (many mutually-untrusted entities), the per-scope subtree becomes mandatory — that's the applied scenario in §10.
+- ⚠️ **Whatever you pick, stay consistent.** The one genuinely unmanageable design is a **hybrid that switches logic by depth** (object-type here, scope there, at the same level). Pick the top-level key and apply it uniformly.
+
+> 🟢 **Rule of thumb:** put **scope at the top only to the extent you actually delegate by scope**. No delegation boundary → object type first (simpler). Delegation boundary → scope first (so the boundary is a subtree). Everything else follows from that.
+
+Note that admin/tiering OUs (`_Admin`, `_Infrastructure`, `_Staging` below) are a **separate, transverse axis**: they are organized by *function/tier*, independently of the production scopes — which is itself a deliberate, consistent split, not a contradiction.
 
 ### 2.2 — Generic baseline structure
 
