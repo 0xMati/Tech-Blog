@@ -268,6 +268,7 @@ example.com
 
 - 🔵 **Use an identical template** for repeated scopes — it is what makes deployment and delegation **scriptable**.
 - 🟡 **Use a stable code** (`SCOPE001`) rather than the commercial name (which changes on mergers/renames); put the friendly name as a suffix.
+- 🟢 **Fix object naming conventions on day one too** — not just OU names. Decide a deterministic, collision-resistant scheme for `samAccountName`/UPN (e.g. `firstname.lastname`, with a documented tie-break rule for duplicates) and for computer names (a short, stable prefix encoding role/site, within the **15-character NetBIOS** limit). A convention chosen up front is far cheaper than renaming thousands of objects later, and it keeps scripted provisioning (§9) predictable.
 - ⚠️ **Keep depth reasonable** (3–4 levels). Deep trees complicate GPO and delegation with no benefit.
 - 🟢 Avoid **Block Inheritance**; favor a clean GPO design instead (see §8).
 - 🔵 Protect OUs with **`ProtectedFromAccidentalDeletion`**.
@@ -297,6 +298,8 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 ➡️ A local admin placed in the scope-A role groups has **no rights** on scope B. **Isolation by construction.**
 
 🟢 **Group scope — follow the A-G-DL-P model.** In plain terms: you put the *people* in one kind of group and attach the *permission* to another, then nest the first into the second — so who-you-are and what-you-can-do stay cleanly separated. Concretely, the group that actually *holds the permission* on the OU should be a **Domain Local** group; the **accounts** go into a **Global** group, which is then nested into the Domain Local one (**A**ccounts → **G**lobal → **D**omain **L**ocal → **P**ermission). Domain Local is the scope designed to carry resource permissions, and it can contain Global groups from any domain in the forest — which keeps the model clean if the forest ever grows beyond one domain. In a single-domain forest you can get away with plain Global role groups, but A-G-DL-P costs nothing to adopt up front and ages better.
+
+🟢 **Prefer Global over Universal for role groups (single domain).** A **Universal** group has its full membership replicated to **every Global Catalog** in the forest; a **Global** (or Domain Local) group's membership is not. In a single-domain forest, Universal therefore buys you **nothing** that Global doesn't already give you, while adding needless GC replication — so reserve Universal for the genuine cross-domain cases (it only earns its keep when a forest actually spans multiple domains).
 
 ### 3.2 — How to apply delegation
 
@@ -338,7 +341,7 @@ Baseline checklist:
 - 🔴 **Protected Users** for sensitive admin accounts — ⚠️ but beware Kerberos delegation side effects (these accounts cannot be delegated, which breaks double-hop apps).
 - 🟢 **Force Kerberos AES, disable RC4**; require **LDAP signing + channel binding** and **SMB signing**.
 - 🟢 **`ms-DS-MachineAccountQuota = 0`** — stop users from joining arbitrary machines (a classic attack vector).
-- 🟢 **gMSA / dMSA** for all service accounts instead of static passwords.
+- 🟢 **gMSA / dMSA** for all service accounts instead of static passwords. On a WS2025 build, prefer the new **delegated MSA (dMSA)** where you can: its secret is **machine-bound** and never leaves the DC (so a stolen ticket can't be replayed and the account is **kerberoasting-resistant**), and an **existing standard service account can be superseded in place** — `Start-ADServiceAccountMigration` then `Complete-ADServiceAccountMigration` move the SPNs and delegation onto the dMSA and disable the old account, with **no reconfiguration on the servers that consume it**. *(Note: you can't migrate an existing gMSA or legacy MSA to a dMSA — only a standard account.)*
 - 🟢 Disable or tightly control the built-in **`Administrator`** account; prefer named admin accounts.
 - 🔵 **AD backup**: system state of at least 2 DCs, plus a **tested forest recovery** procedure kept offline.
 
@@ -396,6 +399,16 @@ A local DC/RODC is still the right call when one of these holds:
 - 🔴 For virtualized DCs, ensure **VM-GenerationID** support (modern Hyper-V/VMware) to prevent USN rollback. Hypervisor hosts running DCs are **Tier 0**.
 - 🔵 The USN-rollback safeguard **only works if the hypervisor exposes a VM-GenerationID**: when the ID changes (snapshot restore, copy), the DC resets its InvocationID and discards its RID pool, forcing safe re-convergence. On a hypervisor that doesn't expose it, you fall back to the old, weaker USN-rollback *quarantine* — another reason to require a modern hypervisor for DCs. In plain terms: if someone rolls a DC back to an old snapshot, this is the safety net that stops it from silently re-issuing identifiers it has already handed out and corrupting replication.
 - 🔴 **A snapshot is not a backup.** The VM-GenerationID safeguard prevents *corruption* on a snapshot revert, but it does **not** replace a real **system-state backup** and a **tested forest-recovery** procedure (per §4). Never treat "I can roll back the VM" as your AD recovery plan.
+
+### 5.5 — Time synchronization hierarchy
+
+Time is a structural dependency, not an afterthought: the **W32Time** service is essential to **Kerberos V5** — and therefore to AD DS authentication. Kerberos rejects a ticket whose clock skew exceeds the domain's tolerance (**5 minutes** by default), so a forest with drifting clocks silently breaks logon. A greenfield build should decide *where authoritative time lives* on day one.
+
+- 🟢 **The forest-root PDC Emulator is the authoritative time source.** It is the one DC you configure to synchronize with a **reliable external time source** — a trusted NTP server (or, in sensitive/air-gapped environments, a hardware **GPS/radio clock** appliance).
+- 🟢 **Everything else follows the domain hierarchy automatically.** Domain members and the other DCs run as time client type `NT5DS`: they sync up the AD hierarchy (members from their authenticating DC, DCs from the PDC Emulator) with **no per-host configuration**. Don't point individual members or DCs at external sources — it only creates competing time roots.
+- 🟢 **The PDC Emulator role can move**, so the external-source configuration is a property of *that role*, not of a fixed server. Document it as part of the FSMO placement (§5.4) so a role transfer doesn't orphan the time root.
+
+> 🟡 In a virtualized forest, make sure **host time integration does not fight W32Time** on a DC: a hypervisor that forces guest time sync can override the AD hierarchy and reintroduce skew. Let the AD hierarchy own time on DCs.
 
 ---
 
@@ -483,6 +496,7 @@ A consistent prefix makes precedence and ownership obvious at a glance and keeps
 
 - Link a **domain baseline** (common security) high, inherited everywhere — this is the one link worth marking **`Enforced`**.
 - Use **per-tier GPOs** (Tier 0 on DCs/infra, Tier 1 on servers), aligned with the tiering model.
+- 🟢 **Leave the two built-in GPOs to their reserved purpose.** Keep the **`Default Domain Policy`** for the **domain-wide account policies only** (password, account-lockout and Kerberos settings, which can only be set at the domain root) and the **`Default Domain Controllers Policy`** for the **DCs' user-rights and audit settings**. Everything else goes into **purpose-built GPOs** (per the naming scheme in §8.4) — never dumped into the two defaults. This keeps the foundational policies readable and makes them safe to restore to a known-good state.
 - 🟡 **Limit GPO proliferation.** Many scopes × several GPOs each becomes unmanageable. Instead of one GPO per population (`GPO-Sales-Drives`, `GPO-Finance-Drives`, … — all identical bar one value), prefer **a single shared GPO whose individual settings are conditioned per population with Item-Level Targeting** (§8.2): one `U-Drive-Mappings` GPO holding a *map S: → \\\\srv\\sales* item targeted at `GRP-Sales`, a *map S: → \\\\srv\\finance* item targeted at `GRP-Finance`, and so on.
 - 🟢 **Disable the unused half of a GPO.** If a GPO carries only computer settings (or only user settings), disable the other half in its details — it **skips that half at processing time** and speeds up logon/startup.
 - 🟢 Base the security baseline on the **Microsoft Security Compliance Toolkit** (WS2025 baselines), and keep GPOs under **version control** (backup/export) so configuration is reproducible and reviewable.
@@ -522,6 +536,8 @@ The single most valuable design principle in a well-templated forest is **consis
 | Security monitoring | **Microsoft Defender for Identity (MDI)** sensors on Tier 0 identity servers |
 
 🔵 **MDI is not just "on the DCs".** Its lightweight sensor runs on your **identity infrastructure** — domain controllers first, but also **AD CS, AD FS and Entra Connect servers** where they exist (all Tier 0). Deploy it everywhere that infrastructure lives, not only on the DCs. *(Microsoft fact: the MDI architecture page describes sensors running across the identity infrastructure; the per-role server list comes from the MDI deployment pages.)*
+
+🟢 **Use the in-box Windows LAPS to its full extent — three options that are off by default.** The native **Windows LAPS** (built into WS2025, *not* the deprecated legacy MSI) does more than rotate each machine's local administrator password. It can also **encrypt** the stored password inside AD (so a directory read alone doesn't reveal it), keep a **password history** (to recover an older value after a restore), and — uniquely — **manage the DSRM (Directory Services Restore Mode) account password on the domain controllers themselves**. That last one is the often-forgotten win: the break-glass DC-recovery credential becomes a rotated, retrievable secret instead of a static password set once at promotion and never touched again. Decide to turn the three on at build time. *(Microsoft fact: the Windows LAPS overview lists password encryption, password history, and DSRM-account backup for domain controllers as native scenarios.)*
 
 ### 9.3 — Health, diagnostics and security assessment
 
@@ -606,8 +622,9 @@ flowchart TD
 | **Sites** | Follow **network topology**, not org structure |
 | **DCs** | **2+ DCs**, all **GC + DNS** |
 | **DNS** | **AD-integrated + scavenging** from day one |
+| **Time** | Forest-root **PDC Emulator** syncs an external source; all else follows the hierarchy (`NT5DS`) |
 | **Trusts** | **Forest trust + Selective Auth + SID Filtering + TGT delegation off** |
-| **GPO** | Domain baseline + per-tier; avoid GPO proliferation; ILT over per-scope GPOs |
+| **GPO** | Domain baseline + per-tier; avoid GPO proliferation; ILT over per-scope GPOs; keep the two default GPOs reserved |
 | **Industrialization** | **Templated, repeatable provisioning** of each scope is the cornerstone |
 | **Tooling** | LAPS, gMSA/dMSA, scheduled AD health checks, PingCastle/Purple Knight/BloodHound, MDI |
 
