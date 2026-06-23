@@ -425,11 +425,53 @@ For the SID-stub objects created by cross-forest group membership, see [What are
 
 ## 📐 8 — Group Policy Strategy
 
-- Link a **domain baseline** (common security) high, inherited everywhere.
+GPO is where most of the day-to-day *configuration* lives, and a forest accumulates GPOs faster than any other object. A deliberate strategy — **processing order, filtering, loopback, naming** — is what keeps it auditable instead of becoming an unexplainable pile.
+
+### 8.1 — Processing order and precedence
+
+🔵 GPOs apply in a fixed order — **Local → Site → Domain → OU** (the classic **LSDOU**) — and, because each stage is applied *after* the previous one, **the last writer wins**: the GPO closest to the object (deepest OU) overrides settings higher up.
+
+- Within a single container, multiple linked GPOs are ordered by **link order** — **link order 1 has the highest precedence** (it is applied last).
+- 🟡 **`Enforced`** reverses the usual logic: an *Enforced* link **always wins** and **cannot be overridden by a lower OU**, and it also **punches through a Block Inheritance**.
+- 🟡 **`Block Inheritance`** stops parent GPOs from flowing into an OU — but it is a blunt instrument: it blocks *everything* from above (including the domain security baseline), and it is invisible unless you go looking. **Avoid both `Enforced` and `Block Inheritance`** where you can; they break the simple top-to-bottom readability of LSDOU. The one common, legitimate `Enforced` link is the **domain-wide security baseline** you never want a delegated OU admin to override.
+
+### 8.2 — Filtering: who a GPO actually applies to
+
+A GPO linked to an OU applies, by default, to **every** user/computer in that OU. Three mechanisms narrow that down — and one of them has a notorious trap.
+
+- 🔵 **Security filtering** — the normal way to target a subset. By default a new GPO grants **`Authenticated Users`** both **Read** and **Apply group policy**. To target a specific group, you swap the *Apply* right onto that group.
+- 🔴 **The `Authenticated Users` trap (post-MS16-072).** Since the June 2016 security update, a GPO is **downloaded in the security context of the *computer* account**, not the user. So if you remove `Authenticated Users` entirely to scope a GPO to, say, `GRP-Sales-Users`, the **computer can no longer read the GPO and it silently stops applying**. **Fix:** when you replace the *Apply* right, **leave a plain `Read` (no Apply) for `Authenticated Users` or `Domain Computers`** so the machine can still fetch the policy. *(Established behavior; Microsoft's MS16-072 KB is the reference — the page is intermittently unavailable today, but the requirement is unchanged.)*
+- 🟢 **WMI filtering** — applies a GPO only where a WMI query is true (e.g. only on a given OS build, or only laptops). Powerful, but it is **re-evaluated on every policy refresh**, so it carries a real logon/refresh cost — reserve it for cases a simple OU/security-group split can't express.
+- 🟢 **Item-Level Targeting (Group Policy Preferences)** — the preferred granular tool: it targets individual *preference items* by group, OU, site, IP range, OS, etc. **without multiplying GPOs** and is generally cheaper and more flexible than WMI filtering.
+
+### 8.3 — Loopback processing
+
+🔵 **Loopback** makes a machine apply **user-side settings based on the *computer's* location**, not the user's. It is the right tool for **shared / special-purpose machines** — kiosks, classrooms, RDS/VDI session hosts, and DCs — where the user experience must depend on *where they logged in*, not *who they are*.
+
+- **Replace mode** — ignore the user's own GPOs entirely; only the computer-location user settings apply (maximum lockdown, e.g. a kiosk).
+- **Merge mode** — apply the user's normal GPOs **then** add the computer-location user settings on top, the latter winning on conflict (e.g. an RDS host that layers extra restrictions over the user's baseline).
+
+### 8.4 — Naming convention
+
+🟢 A GPO's name is its only label in the console, so encode **scope + type + intent** in it. *(Design reasoning, not a Microsoft prescription.)* A workable scheme:
+
+```
+<scope/tier>-<config>-<purpose>
+   SEC-Baseline-Domain          ← domain-wide security baseline (Enforced)
+   T0-Computer-DC-Hardening     ← Tier 0, computer config, DC hardening
+   U-Sales-Mapped-Drives        ← user config, Sales drive mappings
+   C-Laptops-BitLocker          ← computer config, laptop encryption
+```
+
+A consistent prefix makes precedence and ownership obvious at a glance and keeps a 200-GPO forest navigable.
+
+### 8.5 — Design principles
+
+- Link a **domain baseline** (common security) high, inherited everywhere — this is the one link worth marking **`Enforced`**.
 - Use **per-tier GPOs** (Tier 0 on DCs/infra, Tier 1 on servers), aligned with the tiering model.
-- 🟡 **Limit GPO proliferation.** Many scopes × several GPOs each becomes unmanageable. Prefer **common, parameterized GPOs** over per-scope GPOs.
-- 🟢 Use **Item-Level Targeting (Group Policy Preferences)** to apply conditional settings by group/OU without multiplying GPOs.
-- 🟢 Base the security baseline on the **Microsoft Security Compliance Toolkit** (WS2025 baselines), and keep GPOs under **version control** so configuration is reproducible and reviewable.
+- 🟡 **Limit GPO proliferation.** Many scopes × several GPOs each becomes unmanageable. Prefer **common, parameterized GPOs** (with ILT) over per-scope GPOs.
+- 🟢 **Disable the unused half of a GPO.** If a GPO carries only computer settings (or only user settings), disable the other half in its details — it **skips that half at processing time** and speeds up logon/startup.
+- 🟢 Base the security baseline on the **Microsoft Security Compliance Toolkit** (WS2025 baselines), and keep GPOs under **version control** (backup/export) so configuration is reproducible and reviewable.
 
 ---
 
