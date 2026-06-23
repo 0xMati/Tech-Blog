@@ -366,14 +366,14 @@ example.com
 
 ### 3.6 — OU anti-patterns to avoid
 
-> ⚠️ **The most common OU-design mistakes — each one a delegation or GPO problem waiting to happen:**
+> ⚠️ **Quick review checklist — the recurring OU-design mistakes, each covered above:**
 >
-> - 🔴 **Modeling the OU tree on the HR org chart.** The org chart reorganizes constantly; administration does not. An OU tree that mirrors departments-as-they-are-named breaks on the first reorg. Design around *who administers what*, not *who reports to whom*.
-> - 🔴 **Switching logic by depth.** Object-type at one level, scope at another, tier somewhere else — a hybrid that changes its sort key as you descend is the one genuinely unmaintainable design. Pick the top-level key (§3.1) and hold it.
-> - 🟡 **Block Inheritance scattered across the tree.** Each one is an invisible exception that makes GPO results unpredictable; fix the GPO design instead (§9).
-> - 🟡 **A flat `Computers` OU holding servers and workstations together.** Forces WMI/security-group filtering for every baseline; split by role instead (§3.3).
-> - 🟡 **Over-deep trees "for tidiness."** Levels you never delegate or link a GPO to are pure overhead — every level is a place for inheritance and delegation to go wrong.
-> - ⚠️ **Privileged accounts left in production scope OUs.** They belong in the tier subtree (§3.4); anywhere else and the Authentication Silo can't cage them.
+> - **Modeling the tree on the HR org chart** instead of administration (§3 intro).
+> - **Switching the sort key by depth** — object-type here, scope there (§3.1).
+> - **Block Inheritance scattered** as invisible GPO exceptions (§3.3, §9).
+> - **A flat `Computers` OU** mixing servers and workstations (§3.3).
+> - **Over-deep trees** with levels you never delegate or link a GPO to (§3.3).
+> - **Privileged accounts left in production scope OUs** instead of the tier subtree (§3.4).
 
 ---
 
