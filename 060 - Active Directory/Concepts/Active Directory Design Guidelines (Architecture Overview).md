@@ -19,18 +19,18 @@ For that reason, this article presents the **generic model first**, then closes 
 
 ### 🗂️ Quick Navigation
 
-- [🧭 0 — Positioning and Scope](#-0--positioning-and-scope-before-you-design)
-- [🌲 1 — Forest and Domain Design](#-1--forest-and-domain-design)
-- [🗂️ 2 — Organizational Unit (OU) Design](#-2--organizational-unit-ou-design)
-- [🔐 3 — Delegation Model](#-3--delegation-model)
-- [🛡️ 4 — Security Baseline and Tier 0](#-4--security-baseline-and-tier-0)
-- [🌐 5 — Sites, Replication and Topology](#-5--sites-replication-and-topology)
-- [📡 6 — DNS Design](#-6--dns-design)
-- [🔗 7 — Trusts](#-7--trusts)
-- [📐 8 — Group Policy Strategy](#-8--group-policy-strategy)
-- [🛠️ 9 — Tooling and Industrialization](#-9--tooling-and-industrialization)
-- [🏢 10 — Applied Scenario: A Shared Forest for Multiple Entities](#-10--applied-scenario-a-shared-forest-for-multiple-entities)
-- [📌 11 — Summary of Key Decisions](#-11--summary-of-key-decisions)
+- [🧭 1 — Positioning and Scope](#-1--positioning-and-scope-before-you-design)
+- [🌲 2 — Forest and Domain Design](#-2--forest-and-domain-design)
+- [🗂️ 3 — Organizational Unit (OU) Design](#-3--organizational-unit-ou-design)
+- [🔐 4 — Delegation Model](#-4--delegation-model)
+- [🛡️ 5 — Security Baseline and Tier 0](#-5--security-baseline-and-tier-0)
+- [🌐 6 — Sites, Replication and Topology](#-6--sites-replication-and-topology)
+- [📡 7 — DNS Design](#-7--dns-design)
+- [🔗 8 — Trusts](#-8--trusts)
+- [📐 9 — Group Policy Strategy](#-9--group-policy-strategy)
+- [🛠️ 10 — Tooling and Industrialization](#-10--tooling-and-industrialization)
+- [🏢 11 — Applied Scenario: A Shared Forest for Multiple Entities](#-11--applied-scenario-a-shared-forest-for-multiple-entities)
+- [📌 12 — Summary of Key Decisions](#-12--summary-of-key-decisions)
 - [📚 References](#-references)
 
 ### 🎨 Reading Legend
@@ -43,11 +43,11 @@ For that reason, this article presents the **generic model first**, then closes 
 
 ---
 
-## 🧭 0 — Positioning and Scope (Before You Design)
+## 🧭 1 — Positioning and Scope (Before You Design)
 
-Before the first OU is drawn, four framing decisions determine *whether* and *how* an Active Directory forest should exist at all. They are the most upstream — and most often skipped — design choices, because they sit *above* the directory itself. Settle them first: everything in §1–§11 is the **implementation** of the answers you give here.
+Before the first OU is drawn, four framing decisions determine *whether* and *how* an Active Directory forest should exist at all. They are the most upstream — and most often skipped — design choices, because they sit *above* the directory itself. Settle them first: everything in §2–§12 is the **implementation** of the answers you give here.
 
-### 0.1 — Do you still need AD DS at all?
+### 1.1 — Do you still need AD DS at all?
 
 🔵 **Start by justifying the forest's existence.** A 2026 greenfield is no longer an automatic "of course we deploy AD." A brand-new organization can be **cloud-native (Entra ID-only)** — devices Entra-joined, apps integrated with Entra ID, no domain controller anywhere. AD DS earns its place only when something genuinely depends on it:
 
@@ -58,41 +58,41 @@ Before the first OU is drawn, four framing decisions determine *whether* and *ho
 
 ➡️ **Design takeaway:** list the *actual* dependencies that require a domain. If the list is empty, you may not need AD DS — and the cheapest forest is the one you never build. If it is not empty, the forest exists to serve *those* dependencies, and that scope should shape how small and contained it can be.
 
-### 0.2 — Hybrid by default: AD DS and Entra ID
+### 1.2 — Hybrid by default: AD DS and Entra ID
 
 🔵 **Almost no modern AD lives alone — design the Entra ID relationship up front.** In practice the forest is synchronized to **Entra ID**, and the *direction* and *tooling* of that sync are architecture decisions, not afterthoughts:
 
 - **Source of authority.** By default in a hybrid sync, **on-prem AD is authoritative** and objects flow **AD → Entra ID**; cloud edits don't write back unless you deliberately enable writeback. Decide, per object class, *who is master* — it dictates where you create and edit users, groups and devices. Microsoft is now also shipping **Source-of-Authority (SOA) management** to move authority to the cloud per object as part of a broader cloud-first direction, so treat "who is master" as an explicit, evolving choice rather than a given.
 - **Connect Sync vs Cloud Sync.** Two sync engines exist. **Microsoft Entra Connect Sync** is the full-featured on-prem sync server; **Microsoft Entra Cloud Sync** is the lightweight, cloud-managed model — multiple thin agents, configuration held in the cloud, native support for **disconnected / multi-forest** topologies, and **cloud-to-AD group provisioning**. Cloud Sync is Microsoft's stated strategic direction for hybrid identity; default to it unless a capability only Connect Sync offers forces your hand.
-- **Hybrid join and UPN alignment.** If devices must be both domain-joined and **Hybrid Entra-joined**, the on-prem UPN suffix has to be a **routable, verified domain** in the tenant — which ties straight back to the naming choice in §1.3 (a registered, dedicated subdomain, never `.local`). Getting the namespace right on day one is what makes hybrid identity painless later.
+- **Hybrid join and UPN alignment.** If devices must be both domain-joined and **Hybrid Entra-joined**, the on-prem UPN suffix has to be a **routable, verified domain** in the tenant — which ties straight back to the naming choice in §2.3 (a registered, dedicated subdomain, never `.local`). Getting the namespace right on day one is what makes hybrid identity painless later.
 
-➡️ **Design takeaway:** decide the **sync direction (source of authority)**, the **sync engine (Cloud Sync by default)**, and a **routable UPN** before building — they shape naming, the identity lifecycle (§0.3), and even whether some objects should exist on-prem at all.
+➡️ **Design takeaway:** decide the **sync direction (source of authority)**, the **sync engine (Cloud Sync by default)**, and a **routable UPN** before building — they shape naming, the identity lifecycle (§1.3), and even whether some objects should exist on-prem at all.
 
-### 0.3 — Source of authority and the identity lifecycle (Joiner–Mover–Leaver)
+### 1.3 — Source of authority and the identity lifecycle (Joiner–Mover–Leaver)
 
-🟢 **Decide where identities are born, changed and retired — before you decide where they live.** §10 says "provisioning handled elsewhere"; this is that decision made explicit, and it is a genuine design pillar because it determines the *flow* every object follows:
+🟢 **Decide where identities are born, changed and retired — before you decide where they live.** §11 says "provisioning handled elsewhere"; this is that decision made explicit, and it is a genuine design pillar because it determines the *flow* every object follows:
 
 - **Joiner / Mover / Leaver (JML).** An identity is typically *created* from an authoritative HR/IGA source, *moved* (department, role, attributes) as it changes, then *disabled and deleted* on departure. Decide the **chain** — HR system → IGA/provisioning → AD → Entra ID — and which system owns each step.
-- **It wires directly into the rest of the design.** A deterministic creation source is what makes the **naming convention** (§2.3) and **templated provisioning** (§9.4, §10) actually hold, and the **Leaver** half is what feeds the **stale-object lifecycle** (§9.2, keyed on `lastLogonTimestamp`). Without an owned lifecycle the directory accretes orphaned and stale accounts no cleanup script can safely resolve.
+- **It wires directly into the rest of the design.** A deterministic creation source is what makes the **naming convention** (§3.3) and **templated provisioning** (§10.4, §11) actually hold, and the **Leaver** half is what feeds the **stale-object lifecycle** (§10.2, keyed on `lastLogonTimestamp`). Without an owned lifecycle the directory accretes orphaned and stale accounts no cleanup script can safely resolve.
 - **Governance tooling.** Where the lifecycle is rich (access reviews, entitlement management, joiner workflows), **Entra ID Governance** can drive it for hybrid identities — but the *decision* to own JML as a process is independent of any one tool.
 
 ➡️ **Design takeaway:** name the **authoritative source** and the **JML owner** for each object class on day one. The directory is the *consumer* of that lifecycle, not its origin.
 
-### 0.4 — Operating model and ownership: who owns Tier 0
+### 1.4 — Operating model and ownership: who owns Tier 0
 
-🔵 **Name the owner of the forest's most privileged plane before you build it.** Tiering (§4) describes *what* Tier 0 is; this is the prior question of *who operates it* — a governance decision that shapes the whole build:
+🔵 **Name the owner of the forest's most privileged plane before you build it.** Tiering (§5) describes *what* Tier 0 is; this is the prior question of *who operates it* — a governance decision that shapes the whole build:
 
-- **Single team vs. shared / mutualized.** One internal IT team owning everything is a very different model from the shared-forest case (§10), where Tier 0 is **deported to an administration forest** and no single entity owns it directly. Decide which you are *before* §1, because it determines whether you build **one forest or two** and where privileged identities live.
-- **Standing privilege is an organizational decision, not just a technical one.** The "**zero permanent Domain Admin**" principle (§4) only holds if an *operating model* — approvals, on-call, break-glass custody — backs it. Decide who approves elevation, who holds the break-glass credentials, and who is accountable for Tier 0 hygiene.
-- **Document it as a deliverable.** The FSMO placement (§5.4), the recovery custody (§5.7) and the delegation map (§3) are only real if a named owner maintains them. An unowned Tier 0 is an ungoverned one.
+- **Single team vs. shared / mutualized.** One internal IT team owning everything is a very different model from the shared-forest case (§11), where Tier 0 is **deported to an administration forest** and no single entity owns it directly. Decide which you are *before* §2, because it determines whether you build **one forest or two** and where privileged identities live.
+- **Standing privilege is an organizational decision, not just a technical one.** The "**zero permanent Domain Admin**" principle (§5) only holds if an *operating model* — approvals, on-call, break-glass custody — backs it. Decide who approves elevation, who holds the break-glass credentials, and who is accountable for Tier 0 hygiene.
+- **Document it as a deliverable.** The FSMO placement (§6.4), the recovery custody (§6.7) and the delegation map (§4) are only real if a named owner maintains them. An unowned Tier 0 is an ungoverned one.
 
-➡️ **Design takeaway:** an AD forest is also an *operating commitment*. Decide the ownership model — single-team or admin-forest-backed — as the **first architectural fork**, because §1's "one forest or two" follows directly from it.
+➡️ **Design takeaway:** an AD forest is also an *operating commitment*. Decide the ownership model — single-team or admin-forest-backed — as the **first architectural fork**, because §2's "one forest or two" follows directly from it.
 
 ---
 
-## 🌲 1 — Forest and Domain Design
+## 🌲 2 — Forest and Domain Design
 
-### 1.1 — One forest, one domain (when you can)
+### 2.1 — One forest, one domain (when you can)
 
 🟢 **Default to a single-domain forest.** Modern AD comfortably handles millions of objects in one domain, so object count is almost never a reason to split.
 
@@ -124,8 +124,8 @@ A single domain is simpler on **every** axis that matters operationally:
 Most requests for a second domain are really requests for something a single domain already provides:
 
 - **"Different password policies per population."** → Solved by **PSOs (Fine-Grained Password Policies)** — multiple coexisting policies in one domain, targeted by group. *Example: a 25-character PSO applied to `Contoso-Tier0-Admins` while standard users keep the default 12-character policy — all inside `corp.contoso.com`.* *(When several PSOs resolve to one user, the **lowest `msDS-PasswordSettingsPrecedence`** wins — it is not a union of the policies, so design the precedence values deliberately.)*
-- **"Departments/entities must be administered separately."** → Solved by **OU delegation** (§3). Delegation is an *OU* concern, never a *domain* one. *Example: handing `OU=Sales` to the Sales IT team without giving them any rights over `OU=Finance`.*
-- **"Different GPOs per population."** → Solved by **OU structure + GPO linking** (§8). *Example: a stricter lockdown GPO linked only to `OU=Call-Center`, a looser one on `OU=Engineering`.*
+- **"Departments/entities must be administered separately."** → Solved by **OU delegation** (§4). Delegation is an *OU* concern, never a *domain* one. *Example: handing `OU=Sales` to the Sales IT team without giving them any rights over `OU=Finance`.*
+- **"Different GPOs per population."** → Solved by **OU structure + GPO linking** (§9). *Example: a stricter lockdown GPO linked only to `OU=Call-Center`, a looser one on `OU=Engineering`.*
 - **"We want a different DNS namespace per entity."** → Solved by **additional UPN suffixes** and DNS zones, without a new domain. *Example: users in `corp.contoso.com` can still sign in as `alice@fabrikam.com` by adding `fabrikam.com` as a UPN suffix.*
 - **"Isolation/security between business units."** → A domain does **not** provide this (see above). If you genuinely need it, the answer is a **separate forest**, and you should weigh that cost deliberately.
 
@@ -138,7 +138,7 @@ Most requests for a second domain are really requests for something a single dom
 
 > 🟢 **Rule of thumb:** start with **one forest, one domain**. Add a **domain** only when a domain-wide constraint forces it, and add a **forest** only when you need a real security boundary. Complexity in AD is a permanent tax — pay it only when you must.
 
-### 1.2 — Functional level
+### 2.2 — Functional level
 
 🟢 **Set the Forest and Domain Functional Level to the highest value your DC fleet can support.** On a greenfield forest built entirely on Windows Server 2025, that means going straight to the **Windows Server 2025 functional level** — there is no reason to deploy a new forest at an older level.
 
@@ -178,7 +178,7 @@ The table maps each level to the behaviors it unlocks and the DCs it allows:
 
 ➡️ **Design takeaway:** choose the OS first (WS2025 everywhere), get most of the security benefit immediately, then set the functional level as high as your DC fleet allows — for a new all-2025 forest, that is the **2025 level**, ideally with the **32k page size** decision made up front.
 
-### 1.3 — Naming
+### 2.3 — Naming
 
 The forest root domain name is chosen **once** and is effectively **permanent** — Microsoft is explicit that this domain "remains the forest root domain for the life cycle of the AD DS deployment." Renaming is, at best, a heavy and constrained operation. So this is a decision worth getting right on day one.
 
@@ -224,13 +224,13 @@ Why this pattern, per Microsoft guidance:
 
 ---
 
-## 🗂️ 2 — Organizational Unit (OU) Design
+## 🗂️ 3 — Organizational Unit (OU) Design
 
 The OU is the unit of **two things at once**: **delegation** and **GPO linking**. You therefore design the OU tree around those two needs — *not* around the HR org chart. The org chart changes every reorg; administration is far more stable, so the right design question is never *"how is the company organized?"* but:
 
 > **"Who administers what, and which GPOs must apply to what?"**
 
-### 2.1 — The core decision: what goes at the top of the tree?
+### 3.1 — The core decision: what goes at the top of the tree?
 
 This is the choice that shapes everything else, and it is usually framed wrongly as an either/or:
 
@@ -284,14 +284,14 @@ corp.contoso.com
 #### The nuance: it's a spectrum, not a binary
 
 - 🟢 **Very small organization (single IT, a few dozen seats):** don't over-engineer. The flat object-type model (Case A) is perfectly fine — a per-department tree you never actually delegate is just empty ceremony.
-- 🔵 **Growing / multi-team / multi-entity:** the more administration fragments, the further **up** the tree the scope dimension must move. At the extreme (many mutually-untrusted entities), the per-scope subtree becomes mandatory — that's the applied scenario in §10.
+- 🔵 **Growing / multi-team / multi-entity:** the more administration fragments, the further **up** the tree the scope dimension must move. At the extreme (many mutually-untrusted entities), the per-scope subtree becomes mandatory — that's the applied scenario in §11.
 - ⚠️ **Whatever you pick, stay consistent.** The one genuinely unmanageable design is a **hybrid that switches logic by depth** (object-type here, scope there, at the same level). Pick the top-level key and apply it uniformly.
 
 > 🟢 **Rule of thumb:** put **scope at the top only to the extent you actually delegate by scope**. No delegation boundary → object type first (simpler). Delegation boundary → scope first (so the boundary is a subtree). Everything else follows from that.
 
 Note that admin/tiering OUs (`_Admin`, `_Infrastructure`, `_Staging` below) are a **separate, transverse axis**: they are organized by *function/tier*, independently of the production scopes — which is itself a deliberate, consistent split, not a contradiction.
 
-### 2.2 — Generic baseline structure
+### 3.2 — Generic baseline structure
 
 ```
 example.com
@@ -312,22 +312,22 @@ example.com
 └── (Domain Controllers stay in the native container)
 ```
 
-### 2.3 — Rules of thumb
+### 3.3 — Rules of thumb
 
 - 🔵 **Use an identical template** for repeated scopes — it is what makes deployment and delegation **scriptable**.
 - 🟡 **Use a stable code** (`SCOPE001`) rather than the commercial name (which changes on mergers/renames); put the friendly name as a suffix.
-- 🟢 **Fix object naming conventions on day one too** — not just OU names. Decide a deterministic, collision-resistant scheme for `samAccountName`/UPN (e.g. `firstname.lastname`, with a documented tie-break rule for duplicates) and for computer names (a short, stable prefix encoding role/site, within the **15-character NetBIOS** limit). A convention chosen up front is far cheaper than renaming thousands of objects later, and it keeps scripted provisioning (§9) predictable.
+- 🟢 **Fix object naming conventions on day one too** — not just OU names. Decide a deterministic, collision-resistant scheme for `samAccountName`/UPN (e.g. `firstname.lastname`, with a documented tie-break rule for duplicates) and for computer names (a short, stable prefix encoding role/site, within the **15-character NetBIOS** limit). A convention chosen up front is far cheaper than renaming thousands of objects later, and it keeps scripted provisioning (§10) predictable.
 - ⚠️ **Keep depth reasonable** (3–4 levels). Deep trees complicate GPO and delegation with no benefit.
-- 🟢 Avoid **Block Inheritance**; favor a clean GPO design instead (see §8).
+- 🟢 Avoid **Block Inheritance**; favor a clean GPO design instead (see §9).
 - 🔵 Protect OUs with **`ProtectedFromAccidentalDeletion`**.
 - 🟢 **Redirect the two default object containers on day one (`redirusr` / `redircmp`).** A user or computer created without an explicit OU lands in the built-in **`CN=Users`** / **`CN=Computers`** containers — and those are **containers, not OUs**, so **no GPO can be linked to them** and you cannot delegate them cleanly. Point the defaults at real OUs once at build time (`redirusr "OU=_Staging,DC=corp,DC=example,DC=com"` and the equivalent `redircmp`) so that even an object created by a down-level tool or a forgotten `-Path` still receives your baseline GPOs and lands somewhere you administer. *(Requires the WS2003 domain functional level or higher — always met on a greenfield build.)*
 - Note: the native **`Domain Controllers`** container does not move — DCs stay there with the Default Domain Controllers Policy.
 
 ---
 
-## 🔐 3 — Delegation Model
+## 🔐 4 — Delegation Model
 
-### 3.1 — The golden rule: RBAC, never direct ACLs
+### 4.1 — The golden rule: RBAC, never direct ACLs
 
 🔴 **Never delegate rights to a user directly.** Always go through:
 
@@ -352,7 +352,7 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 
 🟡 **Keep group nesting flat to avoid Kerberos token bloat.** Every group a user belongs to (directly *and* through nesting, plus `SIDHistory`) adds a SID to their Kerberos ticket. Past a certain count the ticket exceeds the Kerberos **`MaxTokenSize`** and authentication **fails in confusing ways** — broken access to file shares, HTTP 400 "bad request / header too large" on web apps, logon oddities — rather than producing a clear "too many groups" error. So the A-G-DL-P layering above is right, but resist *deep* or redundant nesting: keep memberships purposeful, clean up `adminCount`/`SIDHistory` leftovers, and watch the per-account group count as a design metric on a large or long-lived forest.
 
-### 3.2 — How to apply delegation
+### 4.2 — How to apply delegation
 
 - 🔵 Apply delegation as **ACLs on the OU**, inherited to child objects. Define each role's permission set **once**, then apply it **identically** across every scope so the model stays consistent and auditable.
 - ⚠️ **Avoid one-off, click-by-click delegation.** N scopes × several roles = hundreds of permission entries — they must be applied **uniformly from a single template**, not hand-crafted per scope (which inevitably drifts).
@@ -360,13 +360,13 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 - 🔴 **Protect admin objects**: local `OU=Admins` and role groups must not be delegable to end users (strict owner + ACL + accidental-deletion protection).
 - 🟢 **Windows LAPS**: delegate *read* of the local admin password only on the computers in the scope's own OU.
 
-### 3.3 — Isolation guardrails
+### 4.3 — Isolation guardrails
 
 - 🔴 **List Object Mode** (`dsHeuristics`) if scopes must not even *enumerate* each other's objects (by default any authenticated user can browse the directory). It strengthens confidentiality but complicates troubleshooting — evaluate the trade-off.
 - 🟢 **Confidential attributes** for sensitive attributes when needed.
 - ⚠️ Watch **group delegation**: a local GroupAdmin must never be able to add itself to a privileged central group.
 
-### 3.4 — The AdminSDHolder / SDProp gotcha
+### 4.4 — The AdminSDHolder / SDProp gotcha
 
 🔵 There is one mechanism that **silently overrides OU delegation**, and every delegation design must account for it. In plain terms: AD keeps a master copy of the permissions for its most privileged accounts and, on a schedule, stamps that copy back over them — so any delegation you set on those particular accounts simply doesn't stick.
 
@@ -375,11 +375,11 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 - 🔴 **Consequence for delegation:** an ACL you set on an OU is **inherited** to its children — but a protected object placed in that OU **does not inherit it**. So delegation simply **does not apply** to protected accounts/groups. Worse, an account that *used* to be in a privileged group can be left **orphaned** with `adminCount = 1` and broken inheritance long after it was removed — a frequent source of "why doesn't my delegation work on this one user?".
 - The protected set includes **Administrator, Administrators, Domain Admins, Enterprise Admins, Schema Admins, Account/Server/Print/Backup Operators, Domain Controllers, RODC, Replicator, Key/Enterprise Key Admins, and krbtgt**.
 
-➡️ **Design takeaways:** keep **privileged accounts out of delegated production OUs** entirely (they belong in Tier 0 / admin OUs anyway, per §4); **audit for orphaned `adminCount = 1` objects** as part of routine hygiene; and never try to "fix" a protected object's ACL directly — SDProp will revert it within the hour. If you must change protected-object permissions, you edit the `AdminSDHolder` template (with great care).
+➡️ **Design takeaways:** keep **privileged accounts out of delegated production OUs** entirely (they belong in Tier 0 / admin OUs anyway, per §5); **audit for orphaned `adminCount = 1` objects** as part of routine hygiene; and never try to "fix" a protected object's ACL directly — SDProp will revert it within the hour. If you must change protected-object permissions, you edit the `AdminSDHolder` template (with great care).
 
 ---
 
-## 🛡️ 4 — Security Baseline and Tier 0
+## 🛡️ 5 — Security Baseline and Tier 0
 
 Security is **not optional plumbing** — it is a structural pillar. The depth of this topic is covered in its own document; this section is the checklist that every design must satisfy.
 
@@ -390,11 +390,9 @@ Baseline checklist:
 - 🔴 **Tier 0 isolation**: Domain Controllers, AD-integrated DNS, and anything that can control AD belong to Tier 0. Keep Tier 0 credentials off lower tiers.
 - 🔴 **Authentication Policies & Silos** to cage privileged accounts.
 - 🔴 **Protected Users** for sensitive admin accounts — ⚠️ but beware Kerberos delegation side effects (these accounts cannot be delegated, which breaks double-hop apps).
-- 🟢 **Force Kerberos AES, disable RC4**; require **LDAP signing + channel binding** and **SMB signing**.
-- 🟢 **`ms-DS-MachineAccountQuota = 0`** — stop users from joining arbitrary machines (a classic attack vector).
 - 🟢 **gMSA / dMSA** for all service accounts instead of static passwords. On a WS2025 build, prefer the new **delegated MSA (dMSA)** where you can: its secret is **machine-bound** and never leaves the DC (so a stolen ticket can't be replayed and the account is **kerberoasting-resistant**), and an **existing standard service account can be superseded in place** — `Start-ADServiceAccountMigration` then `Complete-ADServiceAccountMigration` move the SPNs and delegation onto the dMSA and disable the old account, with **no reconfiguration on the servers that consume it**. *(Note: you can't migrate an existing gMSA or legacy MSA to a dMSA — only a standard account.)*
 - 🟢 Disable or tightly control the built-in **`Administrator`** account; prefer named admin accounts.
-- 🔵 **AD backup**: system state of at least 2 DCs, plus a **tested forest recovery** procedure kept offline.
+- 🔵 **Forest recoverability**: treat backups and a tested forest-recovery plan as a design pillar in their own right — see **§6.7**.
 
 > 🔵 **This is the *design-level* minimum, not the hardening catalogue.** The items above are the structural security decisions a forest design must bake in. The **exhaustive** hardening surface — protocol and crypto enforcement, OS-level controls, CVE-driven settings, per-tier GPO baselines — is a **separate discipline** that this design hub deliberately does **not** re-list. Apply it in full from the dedicated references: the per-tier GPO hardening in the [Tiering Model](Active%20Directory%20Tiering%20Model%20for%20On-Prem%20Environment.md), the [Microsoft Security Compliance Toolkit](https://www.microsoft.com/en-us/download/details.aspx?id=55319) baselines, and the host-side measures in [WDAC, HVCI, Credential Guard & LSA Protection](../../040%20-%20Endpoint%20Security/OS%20Hardening/WDAC,%20HVCI,%20Credential%20Guard%20&%20LSA%20Protection.md). The rule of thumb: **design decides the structure; the hardening baseline decides the settings — follow it, don't paraphrase it.**
 
@@ -405,15 +403,15 @@ Baseline checklist:
 AD ships **two native JIT mechanisms**, and which one fits is a function of whether you run a separate administration forest — *this document does not prescribe one over the other*:
 
 - 🔵 **TTL group membership (single forest).** Since the 2016 functional level, AD supports **expiring links**: an admin account is added to a privileged group with a **time-to-live**, and the membership is removed automatically when it lapses. It is native, operationally simple, and easy to wrap with an approval or ticket reference — the natural starting point when there is **no admin/bastion forest**. It reduces standing privilege but does **not** create a new trust boundary (if Tier 0 is already compromised, it can be bypassed). See [Active Directory Just In Time Administration in a Single Forest](../How-to/Active%20Directory%20Just%20In%20Time%20Administration/Active%20Directory%20Just%20In%20Time%20Administration.md).
-- 🔵 **PAM trust + shadow principals (admin/bastion forest).** AD's **Privileged Access Management Optional Feature** combined with a **forest trust** and **shadow principals** delivers cross-forest JIT elevation, keeping Tier 0 identities entirely outside the production forest — the same model §10 leans on. It adds a real administrative boundary, at the cost of running a second forest (and the PAM feature is **irreversible** once enabled). See [Just-in-Time AD Admin Elevation with Shadow Principals (without MIM)](Just-in-Time%20AD%20Admin%20Elevation%20with%20Shadow%20Principals%20(without%20MIM).md).
+- 🔵 **PAM trust + shadow principals (admin/bastion forest).** AD's **Privileged Access Management Optional Feature** combined with a **forest trust** and **shadow principals** delivers cross-forest JIT elevation, keeping Tier 0 identities entirely outside the production forest — the same model §11 leans on. It adds a real administrative boundary, at the cost of running a second forest (and the PAM feature is **irreversible** once enabled). See [Just-in-Time AD Admin Elevation with Shadow Principals (without MIM)](Just-in-Time%20AD%20Admin%20Elevation%20with%20Shadow%20Principals%20(without%20MIM).md).
 
 ➡️ **Design takeaway:** commit to **JIT elevation with near-zero standing privilege** as a principle; pick the *mechanism* (in-forest TTL vs. bastion-forest shadow principals) to match whether an administration forest is part of your model — both are native, neither requires MIM or the cloud.
 
 ---
 
-## 🌐 5 — Sites, Replication and Topology
+## 🌐 6 — Sites, Replication and Topology
 
-### 5.1 — Domain controllers
+### 6.1 — Domain controllers
 
 - 🔴 **Minimum 2 DCs** for resilience — never run a single DC in production.
 - Object count rarely drives DC count; **fault tolerance and geography** do. A few-thousand-object directory is light.
@@ -421,13 +419,13 @@ AD ships **two native JIT mechanisms**, and which one fits is a function of whet
 - 🔵 For a **physically insecure location** (branch office, unstaffed closet), prefer a **Read-Only Domain Controller (RODC)**: it holds no writable copy of the directory and, by default, **caches no account secrets** — so a stolen RODC exposes far less than a full DC.
 - 🔵 **The RODC's real design lever is its Password Replication Policy (PRP).** "Caches no secrets" is only the *default*: the PRP — an **Allowed** list and a **Denied** list — is what decides *whose* credentials the RODC may cache locally. Deliberately allow only the accounts that genuinely sign in at that site (and never a Tier 0 / privileged account), so a stolen RODC can leak, at worst, that handful of site-local passwords and nothing else. Designing the PRP per site is the difference between an RODC that contains a breach and one that quietly hoards more than it should. *(Established RODC behavior.)*
 
-### 5.2 — Centralized or distributed DCs?
+### 6.2 — Centralized or distributed DCs?
 
 This is one of the design answers that has genuinely **changed over time**, and it deserves a deliberate decision rather than a reflex.
 
 Microsoft characterizes a branch/remote site as one with *"relatively few users, poor physical security, relatively poor network bandwidth to a hub site"* — and the **RODC was designed precisely for that case**. Historically, the deciding factor was that **last point**: WAN links were slow and unreliable, so you put a DC (or RODC) in every site so users could still authenticate and reach resources when the link was congested or down.
 
-> 🟢 **What changed (design reasoning, not a Microsoft citation):** the widespread availability of **fast, reliable, often redundant links** (fiber, SD-WAN, 4G/5G failover) has largely removed the *bandwidth* argument. The modern default for most organizations is therefore to **centralize DCs in two or more datacenters** and let remote sites authenticate over the WAN — which also **shrinks the Tier 0 footprint** (fewer physically-exposed DCs to protect, consistent with §1.1 and the RODC note above).
+> 🟢 **What changed (design reasoning, not a Microsoft citation):** the widespread availability of **fast, reliable, often redundant links** (fiber, SD-WAN, 4G/5G failover) has largely removed the *bandwidth* argument. The modern default for most organizations is therefore to **centralize DCs in two or more datacenters** and let remote sites authenticate over the WAN — which also **shrinks the Tier 0 footprint** (fewer physically-exposed DCs to protect, consistent with §2.1 and the RODC note above).
 
 A local DC/RODC is still the right call when one of these holds:
 
@@ -438,7 +436,7 @@ A local DC/RODC is still the right call when one of these holds:
 
 ➡️ **Rule of thumb:** default to **centralized DCs over reliable links**; deploy a **local RODC** only where a WAN outage would actually stop the business or the link can't be trusted. Don't put a writable DC in an unsecured remote closet out of habit.
 
-### 5.3 — Sites
+### 6.3 — Sites
 
 - ⚠️ **Sites model NETWORK topology, not organization.** Do not create a site per department/entity. Departments are **OUs**, not **sites**.
 - Use **one site** if everything is hosted in one datacenter/region; add sites only where there are distinct physical locations with local DCs.
@@ -449,24 +447,24 @@ A local DC/RODC is still the right call when one of these holds:
 - 🟢 **Enable "Try Next Closest Site."** This DC-Locator setting makes a client whose own site has no available DC fall back to the **next-closest site by cost** rather than a random DC anywhere in the domain — the right default for a hub-and-spoke topology. *(Established DC-Locator behavior.)*
 - Why it matters for replication: **within a site**, DCs replicate almost immediately (change notification, uncompressed) — keep DCs that share a fast LAN in the same site. **Between sites**, replication is **scheduled and compressed** along site links to spare the WAN. Getting subnet-to-site mapping wrong therefore degrades both logon steering *and* replication efficiency.
 
-### 5.4 — FSMO and virtualization
+### 6.4 — FSMO and virtualization
 
 - Place the **PDC Emulator** on a robust, central DC; document all 5 FSMO roles.
 - 🔴 For virtualized DCs, ensure **VM-GenerationID** support (modern Hyper-V/VMware) to prevent USN rollback. Hypervisor hosts running DCs are **Tier 0**.
 - 🔵 The USN-rollback safeguard **only works if the hypervisor exposes a VM-GenerationID**: when the ID changes (snapshot restore, copy), the DC resets its InvocationID and discards its RID pool, forcing safe re-convergence. On a hypervisor that doesn't expose it, you fall back to the old, weaker USN-rollback *quarantine* — another reason to require a modern hypervisor for DCs. In plain terms: if someone rolls a DC back to an old snapshot, this is the safety net that stops it from silently re-issuing identifiers it has already handed out and corrupting replication.
-- 🔴 **A snapshot is not a backup.** The VM-GenerationID safeguard prevents *corruption* on a snapshot revert, but it does **not** replace a real **system-state backup** and a **tested forest-recovery** procedure (per §4). Never treat "I can roll back the VM" as your AD recovery plan.
+- 🔴 **A snapshot is not a backup.** The VM-GenerationID safeguard prevents *corruption* on a snapshot revert, but it does **not** replace a real **system-state backup** and a **tested forest-recovery** procedure (per §5). Never treat "I can roll back the VM" as your AD recovery plan.
 
-### 5.5 — Time synchronization hierarchy
+### 6.5 — Time synchronization hierarchy
 
 Time is a structural dependency, not an afterthought: the **W32Time** service is essential to **Kerberos V5** — and therefore to AD DS authentication. Kerberos rejects a ticket whose clock skew exceeds the domain's tolerance (**5 minutes** by default), so a forest with drifting clocks silently breaks logon. A greenfield build should decide *where authoritative time lives* on day one.
 
 - 🟢 **The forest-root PDC Emulator is the authoritative time source.** It is the one DC you configure to synchronize with a **reliable external time source** — a trusted NTP server (or, in sensitive/air-gapped environments, a hardware **GPS/radio clock** appliance).
 - 🟢 **Everything else follows the domain hierarchy automatically.** Domain members and the other DCs run as time client type `NT5DS`: they sync up the AD hierarchy (members from their authenticating DC, DCs from the PDC Emulator) with **no per-host configuration**. Don't point individual members or DCs at external sources — it only creates competing time roots.
-- 🟢 **The PDC Emulator role can move**, so the external-source configuration is a property of *that role*, not of a fixed server. Document it as part of the FSMO placement (§5.4) so a role transfer doesn't orphan the time root.
+- 🟢 **The PDC Emulator role can move**, so the external-source configuration is a property of *that role*, not of a fixed server. Document it as part of the FSMO placement (§6.4) so a role transfer doesn't orphan the time root.
 
 > 🟡 In a virtualized forest, make sure **host time integration does not fight W32Time** on a DC: a hypervisor that forces guest time sync can override the AD hierarchy and reintroduce skew. Let the AD hierarchy own time on DCs.
 
-### 5.6 — Replication safeguards
+### 6.6 — Replication safeguards
 
 A greenfield forest is the moment to confirm the replication-integrity options that are painful to retrofit once data is flowing.
 
@@ -474,20 +472,20 @@ A greenfield forest is the moment to confirm the replication-integrity options t
 - 🟢 **Leave site links transitive unless the network isn't.** By default AD bridges all site links (**"Bridge all site links"** is on), so any site can replicate through any other — usually what you want. Turn it off only when your physical routing is genuinely **non-transitive** (tightly hub-controlled), and then build explicit **site-link bridges** that mirror the real paths.
 - 🔵 **SYSVOL replicates with DFSR, not FRS.** On a greenfield WS2025 build this is automatic — the legacy **FRS** engine is fully removed — so there is nothing to migrate; just confirm DFSR and never reintroduce anything that depends on FRS.
 
-### 5.7 — Forest recovery: a design pillar, not a backup job
+### 6.7 — Forest recovery: a design pillar, not a backup job
 
 Forest recovery is the plan for the worst case — the **entire forest** is logically destroyed or compromised (ransomware, a bad schema change, mass deletion, a Tier 0 breach) and must be rebuilt from backups. It is a **design pillar**, not a line item, because the decisions that make it possible have to be taken *before* the disaster, not during it.
 
 - 🔴 **A backup is only as good as its restore — and AD restore is not a file restore.** Microsoft publishes a dedicated **AD Forest Recovery Guide**, and the procedure is *not* "restore every DC." You **restore one DC per domain** from a trusted system-state backup, isolate it, clean up the metadata of every other DC, then **redeploy the remaining DCs** from that authoritative core. Treat the guide as a template and write a **custom plan** for your topology.
-- 🔵 **Keep backups offline and out of reach of the threat that would trigger the recovery.** Ransomware and a Tier 0 compromise are the realistic triggers, so an online backup the same attacker can reach is worthless. Keep **system-state backups of at least two DCs per domain**, offline / immutable, together with the **DSRM password** (rotated via Windows LAPS, §9.2) you must enter to perform the restore.
+- 🔵 **Keep backups offline and out of reach of the threat that would trigger the recovery.** Ransomware and a Tier 0 compromise are the realistic triggers, so an online backup the same attacker can reach is worthless. Keep **system-state backups of at least two DCs per domain**, offline / immutable, together with the **DSRM password** (rotated via Windows LAPS, §10.2) you must enter to perform the restore.
 - 🔵 **Recovery hygiene is part of the plan.** A real forest recovery includes **resetting the `krbtgt` account (twice)** and the **trust passwords**, and invalidating cached credentials — the same steps that contain a compromise. Decide this belongs in the runbook up front.
 - 🟢 **An untested plan is not a plan — drill it.** Microsoft recommends **practicing the recovery at least once a year**, and after major changes to the Enterprise/Domain Admins membership. Define your **RTO / RPO** for the directory (how fast you must be back, how much change you can lose) and prove the plan meets them on real hardware/VMs, not on paper. Keep a **documented topology map** (DCs, FSMO roles, backup status, trusts) as part of the plan.
 
-➡️ **Design takeaway:** decide *who owns* the recovery (§0.4), *where the offline backups live*, and *how often you drill* — at build time. The §4 backup bullet and the §5.4 "a snapshot is not a backup" rule are the same principle; this is the plan that turns them into a tested capability.
+➡️ **Design takeaway:** decide *who owns* the recovery (§1.4), *where the offline backups live*, and *how often you drill* — at build time. The §6.4 "a snapshot is not a backup" rule is the same principle; this section is the plan that turns it into a tested capability.
 
 ---
 
-## 📡 6 — DNS Design
+## 📡 7 — DNS Design
 
 DNS is the nervous system of an AD forest: domain controllers are found through it (via SRV records), so a handful of choices here quietly decide whether logon, replication and trust resolution stay healthy. The good news is that the defaults on modern Windows Server are sane — the job is mostly to *keep* the safe ones and avoid a couple of classic traps.
 
@@ -498,11 +496,11 @@ DNS is the nervous system of an AD forest: domain controllers are found through 
 - 🔵 **Point each DC's DNS client at *another* DC first**, then itself (loopback `127.0.0.1` last, never as the only entry). A DC that resolves only against itself can hit the **"DNS island" problem** at boot and fail to locate replication partners.
 - 🔴 **DNS is a Tier 0 role** (hosted on the DCs). Do not delegate DNS to local admins.
 - 🟢 **Keep the default protections on**: the **DNS socket pool** and **cache locking** are enabled by default on modern Windows Server — don't disable them. Consider **DNSSEC** on critical zones to defend against cache poisoning.
-- 🔵 Don't let the AD zone collide with your **public** namespace — base AD on a dedicated subdomain (see §1.3) to avoid a **split-brain** zone you'd have to maintain by hand.
+- 🔵 Don't let the AD zone collide with your **public** namespace — base AD on a dedicated subdomain (see §2.3) to avoid a **split-brain** zone you'd have to maintain by hand.
 
 ---
 
-## 🔗 7 — Trusts
+## 🔗 8 — Trusts
 
 Trusts come into play the moment your forest has to interoperate with another one — typically an administration forest, a resource forest, or both:
 
@@ -525,11 +523,11 @@ For the SID-stub objects created by cross-forest group membership, see [What are
 
 ---
 
-## 📐 8 — Group Policy Strategy
+## 📐 9 — Group Policy Strategy
 
 GPO is where most of the day-to-day *configuration* lives, and a forest accumulates GPOs faster than any other object. A deliberate strategy — **processing order, filtering, loopback, naming** — is what keeps it auditable instead of becoming an unexplainable pile.
 
-### 8.1 — Processing order and precedence
+### 9.1 — Processing order and precedence
 
 🔵 GPOs apply in a fixed order — **Local → Site → Domain → OU** (the classic **LSDOU**) — and, because each stage is applied *after* the previous one, **the last writer wins**: the GPO closest to the object (deepest OU) overrides settings higher up.
 
@@ -537,7 +535,7 @@ GPO is where most of the day-to-day *configuration* lives, and a forest accumula
 - 🟡 **`Enforced`** reverses the usual logic: an *Enforced* link **always wins** and **cannot be overridden by a lower OU**, and it also **punches through a Block Inheritance**.
 - 🟡 **`Block Inheritance`** stops parent GPOs from flowing into an OU — but it is a blunt instrument: it blocks *everything* from above (including the domain security baseline), and it is invisible unless you go looking. **Avoid both `Enforced` and `Block Inheritance`** where you can; they break the simple top-to-bottom readability of LSDOU. The one common, legitimate `Enforced` link is the **domain-wide security baseline** you never want a delegated OU admin to override.
 
-### 8.2 — Filtering: who a GPO actually applies to
+### 9.2 — Filtering: who a GPO actually applies to
 
 A GPO linked to an OU applies, by default, to **every** user/computer in that OU. Three mechanisms narrow that down — and one of them has a notorious trap.
 
@@ -546,14 +544,14 @@ A GPO linked to an OU applies, by default, to **every** user/computer in that OU
 - 🟢 **WMI filtering** — applies a GPO only where a WMI query is true (e.g. only on a given OS build, or only laptops). Powerful, but it is **re-evaluated on every policy refresh**, so it carries a real logon/refresh cost — reserve it for cases a simple OU/security-group split can't express.
 - 🟢 **Item-Level Targeting (Group Policy Preferences)** — the preferred granular tool: it targets individual *preference items* by group, OU, site, IP range, OS, etc. **without multiplying GPOs** and is generally cheaper and more flexible than WMI filtering.
 
-### 8.3 — Loopback processing
+### 9.3 — Loopback processing
 
 🔵 **Loopback** makes a machine apply **user-side settings based on the *computer's* location**, not the user's. In plain terms: normally a user carries their own settings wherever they sign in; loopback flips that so the *machine* gets the final say over the user experience. It is the right tool for **shared / special-purpose machines** — kiosks, classrooms, RDS/VDI session hosts, and DCs — where the user experience must depend on *where they logged in*, not *who they are*.
 
 - **Replace mode** — ignore the user's own GPOs entirely; only the computer-location user settings apply (maximum lockdown, e.g. a kiosk).
 - **Merge mode** — apply the user's normal GPOs **then** add the computer-location user settings on top, the latter winning on conflict (e.g. an RDS host that layers extra restrictions over the user's baseline).
 
-### 8.4 — Naming convention
+### 9.4 — Naming convention
 
 🟢 A GPO's name is its only label in the console, so encode **scope + type + intent** in it. *(Design reasoning, not a Microsoft prescription.)* A workable scheme:
 
@@ -567,22 +565,22 @@ A GPO linked to an OU applies, by default, to **every** user/computer in that OU
 
 A consistent prefix makes precedence and ownership obvious at a glance and keeps a 200-GPO forest navigable.
 
-### 8.5 — Design principles
+### 9.5 — Design principles
 
 - Link a **domain baseline** (common security) high, inherited everywhere — this is the one link worth marking **`Enforced`**.
 - Use **per-tier GPOs** (Tier 0 on DCs/infra, Tier 1 on servers), aligned with the tiering model.
-- 🟢 **Leave the two built-in GPOs to their reserved purpose.** Keep the **`Default Domain Policy`** for the **domain-wide account policies only** (password, account-lockout and Kerberos settings, which can only be set at the domain root) and the **`Default Domain Controllers Policy`** for the **DCs' user-rights and audit settings**. Everything else goes into **purpose-built GPOs** (per the naming scheme in §8.4) — never dumped into the two defaults. This keeps the foundational policies readable and makes them safe to restore to a known-good state.
-- 🟡 **Limit GPO proliferation.** Many scopes × several GPOs each becomes unmanageable. Instead of one GPO per population (`GPO-Sales-Drives`, `GPO-Finance-Drives`, … — all identical bar one value), prefer **a single shared GPO whose individual settings are conditioned per population with Item-Level Targeting** (§8.2): one `U-Drive-Mappings` GPO holding a *map S: → \\\\srv\\sales* item targeted at `GRP-Sales`, a *map S: → \\\\srv\\finance* item targeted at `GRP-Finance`, and so on.
+- 🟢 **Leave the two built-in GPOs to their reserved purpose.** Keep the **`Default Domain Policy`** for the **domain-wide account policies only** (password, account-lockout and Kerberos settings, which can only be set at the domain root) and the **`Default Domain Controllers Policy`** for the **DCs' user-rights and audit settings**. Everything else goes into **purpose-built GPOs** (per the naming scheme in §9.4) — never dumped into the two defaults. This keeps the foundational policies readable and makes them safe to restore to a known-good state.
+- 🟡 **Limit GPO proliferation.** Many scopes × several GPOs each becomes unmanageable. Instead of one GPO per population (`GPO-Sales-Drives`, `GPO-Finance-Drives`, … — all identical bar one value), prefer **a single shared GPO whose individual settings are conditioned per population with Item-Level Targeting** (§9.2): one `U-Drive-Mappings` GPO holding a *map S: → \\\\srv\\sales* item targeted at `GRP-Sales`, a *map S: → \\\\srv\\finance* item targeted at `GRP-Finance`, and so on.
 - 🟢 **Disable the unused half of a GPO.** If a GPO carries only computer settings (or only user settings), disable the other half in its details — it **skips that half at processing time** and speeds up logon/startup.
 - 🟢 Base the security baseline on the **Microsoft Security Compliance Toolkit** (WS2025 baselines), and keep GPOs under **version control** (backup/export) so configuration is reproducible and reviewable.
 
 ---
 
-## 🛠️ 9 — Tooling and Industrialization
+## 🛠️ 10 — Tooling and Industrialization
 
 The single most valuable design principle in a well-templated forest is **consistency through automation**: identical structures should be produced identically, not rebuilt by hand each time. This section is about *which capabilities to plan for*, not how to script them.
 
-### 9.1 — Capabilities to plan for
+### 10.1 — Capabilities to plan for
 
 | Need | Design choice |
 |---|---|
@@ -603,7 +601,7 @@ The single most valuable design principle in a well-templated forest is **consis
 
 🟢 **Plan attribute indexing for the attributes your apps actually query.** If a line-of-business application filters LDAP searches on a particular attribute (custom or built-in), adding it to the index (`searchFlags`) turns a directory-wide scan into a fast indexed lookup. It is a cheap, low-risk tuning decision that is best taken deliberately at design time rather than discovered under load.
 
-### 9.2 — Daily operations
+### 10.2 — Daily operations
 
 | Need | Design choice |
 |---|---|
@@ -613,38 +611,32 @@ The single most valuable design principle in a well-templated forest is **consis
 | Stale object cleanup | A defined **lifecycle** for inactive users/computers |
 | Security monitoring | **Microsoft Defender for Identity (MDI)** sensors on Tier 0 identity servers |
 
-🔵 **MDI is not just "on the DCs".** Its lightweight sensor runs on your **identity infrastructure** — domain controllers first, but also **AD CS, AD FS and Entra Connect servers** where they exist (all Tier 0). Deploy it everywhere that infrastructure lives, not only on the DCs. *(Microsoft fact: the MDI architecture page describes sensors running across the identity infrastructure; the per-role server list comes from the MDI deployment pages.)*
+🔵 **Plan MDI sensor placement across the whole identity infrastructure.** Microsoft Defender for Identity sensors belong not only on domain controllers but also on **AD CS, AD FS and Entra Connect** servers (all Tier 0) — decide at design time that monitoring follows the identity infrastructure, not just the DCs.
 
-🟢 **Use the in-box Windows LAPS to its full extent — three options that are off by default.** The native **Windows LAPS** (built into WS2025, *not* the deprecated legacy MSI) does more than rotate each machine's local administrator password. It can also **encrypt** the stored password inside AD (so a directory read alone doesn't reveal it), keep a **password history** (to recover an older value after a restore), and — uniquely — **manage the DSRM (Directory Services Restore Mode) account password on the domain controllers themselves**. That last one is the often-forgotten win: the break-glass DC-recovery credential becomes a rotated, retrievable secret instead of a static password set once at promotion and never touched again. Decide to turn the three on at build time. *(Microsoft fact: the Windows LAPS overview lists password encryption, password history, and DSRM-account backup for domain controllers as native scenarios.)*
+🟢 **Plan to use the in-box Windows LAPS to its full extent.** Beyond rotating each machine's local administrator password, native Windows LAPS can **encrypt** the stored password in AD, keep a **password history**, and **manage the DSRM account password on the DCs** — turning the break-glass DC-recovery credential into a rotated, retrievable secret. Decide to enable these at build time.
 
-🔵 **Drive the stale-object lifecycle from the *replicated* attribute.** For the "inactive users/computers" cleanup above, key your queries on **`lastLogonTimestamp`** — replicated to every DC, though deliberately coarse (it updates only roughly every **14 days**) — and **not** on `lastLogon`, which is accurate to the second but **non-replicated**, so it differs on every DC and is meaningless forest-wide. Reading the wrong one is the usual reason a "stale account" cleanup deletes accounts that are actually in use.
+🔵 **Key the stale-object lifecycle on the *replicated* attribute.** Query **`lastLogonTimestamp`** (replicated, coarse — updates roughly every 14 days), never `lastLogon` (accurate to the second but **non-replicated**, so meaningless forest-wide). Reading the wrong one is why a cleanup deletes accounts that are actually in use.
 
-### 9.3 — Health, diagnostics and security assessment
+### 10.3 — Health, diagnostics and security assessment
 
-**Operational health** relies on native diagnostics that ship with the DC role — but they are **scattered across commands and servers**: `repadmin` (replication), `dcdiag` (DC health), `dfsrdiag` (SYSVOL/DFSR), `nltest` (secure channel) and `w32tm` (time). Running each by hand, per DC, does not scale.
+🟢 **Plan two recurring, read-only feedback loops at design time.** Both run against a *live* forest, but deciding up front that they exist is an architecture choice:
 
-🟢 **Consolidate them into a single scheduled check.** The companion script [AD Health Check Script](../Tools/AD-HealthCheck/AD%20Health%20Check%20Script.md) does exactly that: it auto-discovers every DC and runs FSMO, replication, services, connectivity, secure-channel, `dcdiag`, time-sync, storage and event-log checks, then emits a console summary, an HTML report, a CSV log and an optional alert email. It is **read-only**, designed to run **unattended as a scheduled task**, and returns an exit code (`0` = OK, `1` = WARN, `2` = FAIL) a monitoring system can consume.
+- **Operational health.** The native diagnostics (`repadmin`, `dcdiag`, `dfsrdiag`, `nltest`, `w32tm`) are scattered per-command and per-DC, so consolidate them into a single scheduled check. The companion [AD Health Check Script](../Tools/AD-HealthCheck/AD%20Health%20Check%20Script.md) auto-discovers every DC, runs the full battery **read-only** as an unattended scheduled task, and returns an exit code a monitor can consume.
+- **Security assessment.** Periodically score the directory and map real attack paths with **PingCastle** (risk scoring), **Purple Knight** (indicators of exposure), **BloodHound / SharpHound** (attack-path graphing) and — only if you run AD CS — **Locksmith** (certificate-template `ESC*` paths).
 
-**Security assessment** is a separate, periodic exercise — score the directory and map what an attacker could actually reach:
-
-- 🟢 **PingCastle** *(third-party)* — fast risk **scoring** and reporting; the usual baseline for a recurring AD exposure review.
-- 🟢 **Purple Knight** *(third-party, Semperis)* — indicator-of-exposure scan across AD and Entra ID.
-- 🟢 **BloodHound / SharpHound** *(third-party, SpecterOps; community edition is free)* — graphs the **attack paths** to Tier 0, surfacing privilege-escalation chains that a flat permissions audit misses.
-- 🔵 **Locksmith** *(third-party)* — only relevant **once you run AD CS**: it finds the well-known certificate-template misconfigurations (the `ESC*` escalation paths). Skip it entirely if you have no PKI.
-
-### 9.4 — Templated provisioning
+### 10.4 — Templated provisioning
 
 🟢 Where a structure repeats, treat the **entity/scope as a template**: the OU subtree, the role groups, the delegation, the standard GPO links and the accidental-deletion protection should all be defined **once** and produced the **same way every time**. The design goal is that onboarding a new scope is a **single, predictable operation** — this is what keeps a large, delegated forest consistent and sustainable over time.
 
 ---
 
-## 🏢 10 — Applied Scenario: A Shared Forest for Multiple Entities
+## 🏢 11 — Applied Scenario: A Shared Forest for Multiple Entities
 
 Everything above is **generic**. This section covers the one demanding application that pushes the dials to maximum: **consolidating many independent entities into a single shared forest** (e.g. ~150 small entities of 5–150 people each), administered from an existing admin forest, with identity/provisioning handled elsewhere.
 
 > 🔵 **Key insight:** "multiple entities" is **not** a different *model*. It is the generic delegated-OU model with three dials turned up. The architecture is the same; only the *degree* changes.
 
-### 10.1 — What the multi-entity case actually changes
+### 11.1 — What the multi-entity case actually changes
 
 | Dimension | Impact of the multi-entity case |
 |---|---|
@@ -654,16 +646,16 @@ Everything above is **generic**. This section covers the one demanding applicati
 
 That is all. **The multi-entity factor is one of degree (repetition, watertightness, untrusted admins), not of nature.**
 
-> 🔴 **Assume the shared-forest security trade-off explicitly.** Because **the forest — not the OU — is the security boundary** (§1.1), per-OU delegation gives entities **administrative** isolation, **not** a security boundary between them. All 150 entities share one schema, one configuration partition and one Tier 0: a compromise of any entity that reaches Tier 0 brings down **every** entity at once. This is the deliberate price of mutualisation — you accept a shared blast radius in exchange for one infrastructure. It is precisely *why* the model **deports Tier 0 to the admin forest** and keeps **no permanent human Domain Admin** in the shared forest (§10.2). If any entity genuinely requires a hard security boundary from the others, it does **not** belong in the shared forest — it needs its own.
+> 🔴 **Assume the shared-forest security trade-off explicitly.** Because **the forest — not the OU — is the security boundary** (§2.1), per-OU delegation gives entities **administrative** isolation, **not** a security boundary between them. All 150 entities share one schema, one configuration partition and one Tier 0: a compromise of any entity that reaches Tier 0 brings down **every** entity at once. This is the deliberate price of mutualisation — you accept a shared blast radius in exchange for one infrastructure. It is precisely *why* the model **deports Tier 0 to the admin forest** and keeps **no permanent human Domain Admin** in the shared forest (§11.2). If any entity genuinely requires a hard security boundary from the others, it does **not** belong in the shared forest — it needs its own.
 
-### 10.2 — Concrete adaptations
+### 11.2 — Concrete adaptations
 
 - **OU root** `OU=Entities` with an **identical template** per entity (`Users / Groups / Computers / Admins`), keyed by stable entity code (`ENT001-Alpha`).
 - **Templated provisioning is the cornerstone**: onboarding a 151st entity should reproduce the exact same OU tree, role groups, delegation, GPO links and protection as every other entity — predictably and identically.
 - **Per-entity role groups** (`ROLE-ENT001-UserAdmin`, …) handed to that entity's local IT only — strict horizontal isolation.
 - **Tier 0 stays in the admin forest** via the trust (+ PAM/Shadow Principals); **no permanent human Domain Admin** in the shared forest.
-- **Give each entity its own login/mail identity without a new domain**: add a **UPN suffix per entity** (`user@entity-alpha.fr`) on the single shared domain (§1.1) — entities keep their own namespace while the directory stays one domain. Pair it with DNS zones as needed.
-- **Don't multiply GPOs per entity.** Reuse the GPO anti-proliferation principle (§8.5): a **shared GPO whose items are scoped per entity with Item-Level Targeting** (targeting `GRP-ENT001-*`) beats minting a fresh GPO set for every one of the 150 entities — which would be unmanageable.
+- **Give each entity its own login/mail identity without a new domain**: add a **UPN suffix per entity** (`user@entity-alpha.fr`) on the single shared domain (§2.1) — entities keep their own namespace while the directory stays one domain. Pair it with DNS zones as needed.
+- **Don't multiply GPOs per entity.** Reuse the GPO anti-proliferation principle (§9.5): a **shared GPO whose items are scoped per entity with Item-Level Targeting** (targeting `GRP-ENT001-*`) beats minting a fresh GPO set for every one of the 150 entities — which would be unmanageable.
 - **Consider List Object Mode** so entities cannot enumerate each other.
 - **Cap what a delegated entity can create with directory quotas.** A delegated admin who can create objects can, in principle, create *thousands* of them and bloat the database for everyone in the shared forest. **NTDS directory quotas** (set per security principal on a partition, via `ntdsutil`) put a ceiling on the **number of objects** a given principal may own — a rarely-used but perfect fit for a multi-tenant forest, where it stops one entity's runaway script or abuse from degrading the shared infrastructure.
 - **Sites still follow network topology**, not entities — do not create 150 sites for 150 entities.
@@ -690,7 +682,7 @@ flowchart TD
 
 ---
 
-## 📌 11 — Summary of Key Decisions
+## 📌 12 — Summary of Key Decisions
 
 | Decision | Recommendation |
 |---|---|
