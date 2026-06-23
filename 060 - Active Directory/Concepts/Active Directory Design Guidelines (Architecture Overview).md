@@ -95,7 +95,12 @@ Most requests for a second domain are really requests for something a single dom
 
 #### What the functional level actually controls
 
-A common misconception is that the FFL/DFL "turns on" most modern AD features. It does not. The functional level mainly gates a **small number of directory-wide behaviors** and, above all, **which OS versions are allowed to be domain controllers**:
+A common misconception is that raising the functional level "turns on" most modern AD features. It doesn't. The functional level really does only **two** things:
+
+1. **It sets a minimum OS version for domain controllers** — this is its main job. The level dictates **which Windows Server versions are allowed to be DCs**. *Example: at the 2025 level, every DC must be Windows Server 2025 (you can no longer add a WS2022 DC); at the 2016 level you can freely mix WS2016, 2019, 2022 and 2025 DCs.*
+2. **It enables a small number of directory-wide behaviors** — a *handful*, not a big catalog (see the table below).
+
+The table maps each level to the behaviors it unlocks and the DCs it allows:
 
 | Functional level | What it unlocks | DCs allowed |
 |---|---|---|
