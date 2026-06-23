@@ -505,7 +505,10 @@ A local DC/RODC is still the right call when one of these holds:
 
 ### 6.4 — FSMO and virtualization
 
-- Place the **PDC Emulator** on a robust, central DC; document all 5 FSMO roles.
+- 🟢 **Keep the five FSMO roles together by default.** On a single-domain forest, the recommended placement is **all five roles on one robust, central DC** — it is simpler, and losing that DC is not an emergency (the roles can be *seized* onto another DC). Only **large or multi-domain, high-load** forests have a reason to split them. The five are two **forest-wide** (Schema Master, Domain Naming Master) plus three **domain-wide** (PDC Emulator, RID Master, Infrastructure Master).
+- 🟢 **The PDC Emulator is the one to favor on your strongest DC.** It is by far the busiest role (time root, password changes, lockout processing, the default target of many tools), so if you ever separate a single role, separate that one. Keep the **forest-wide** roles on a forest-root DC.
+- ⚠️ **Infrastructure Master must not sit on a Global Catalog — *unless every DC is a GC*.** In a single-domain forest where all DCs are GC (the §6.1 recommendation), the role is inert and placement is irrelevant. The constraint only bites in a **multi-domain** forest with non-GC DCs, where the Infrastructure Master must be a non-GC DC.
+- 🔵 **Document who holds what.** The FSMO-holder DC is **Tier 0**; record the placement (and the seize procedure) as part of the operating model (§1.4) and the recovery plan (§6.7).
 - 🔴 For virtualized DCs, ensure **VM-GenerationID** support (modern Hyper-V/VMware) to prevent USN rollback. Hypervisor hosts running DCs are **Tier 0**.
 - 🔵 The USN-rollback safeguard **only works if the hypervisor exposes a VM-GenerationID**: when the ID changes (snapshot restore, copy), the DC resets its InvocationID and discards its RID pool, forcing safe re-convergence. On a hypervisor that doesn't expose it, you fall back to the old, weaker USN-rollback *quarantine* — another reason to require a modern hypervisor for DCs.
 - 🔴 **A snapshot is not a backup.** The VM-GenerationID safeguard prevents *corruption* on a snapshot revert, but it does **not** replace a real **system-state backup** and a **tested forest-recovery** procedure (per §5). Never treat "I can roll back the VM" as your AD recovery plan.
