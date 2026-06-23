@@ -295,10 +295,13 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 
 ➡️ A local admin placed in the scope-A role groups has **no rights** on scope B. **Isolation by construction.**
 
+🟢 **Group scope — follow the A-G-DL-P model.** The group that actually *holds the permission* on the OU should be a **Domain Local** group; the **accounts** go into a **Global** group, which is then nested into the Domain Local one (**A**ccounts → **G**lobal → **D**omain **L**ocal → **P**ermission). Domain Local is the scope designed to carry resource permissions, and it can contain Global groups from any domain in the forest — which keeps the model clean if the forest ever grows beyond one domain. In a single-domain forest you can get away with plain Global role groups, but A-G-DL-P costs nothing to adopt up front and ages better.
+
 ### 3.2 — How to apply delegation
 
 - 🔵 Apply delegation as **ACLs on the OU**, inherited to child objects. Define each role's permission set **once**, then apply it **identically** across every scope so the model stays consistent and auditable.
 - ⚠️ **Avoid one-off, click-by-click delegation.** N scopes × several roles = hundreds of permission entries — they must be applied **uniformly from a single template**, not hand-crafted per scope (which inevitably drifts).
+- 🔴 **Grant the narrowest right set — never `Full Control`.** Delegate only the specific permissions a role needs (e.g. *Reset Password* on user objects, *Create/Delete Computer objects*). `Full Control` — or any permission that includes **`WriteDACL`/`WriteOwner`** — lets the delegate **rewrite the OU's ACL or take ownership** and silently escalate their own rights. Least privilege here is a security boundary, not just tidiness.
 - 🔴 **Protect admin objects**: local `OU=Admins` and role groups must not be delegable to end users (strict owner + ACL + accidental-deletion protection).
 - 🟢 **Windows LAPS**: delegate *read* of the local admin password only on the computers in the scope's own OU.
 
@@ -307,6 +310,17 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 - 🔴 **List Object Mode** (`dsHeuristics`) if scopes must not even *enumerate* each other's objects (by default any authenticated user can browse the directory). It strengthens confidentiality but complicates troubleshooting — evaluate the trade-off.
 - 🟢 **Confidential attributes** for sensitive attributes when needed.
 - ⚠️ Watch **group delegation**: a local GroupAdmin must never be able to add itself to a privileged central group.
+
+### 3.4 — The AdminSDHolder / SDProp gotcha
+
+🔵 There is one mechanism that **silently overrides OU delegation**, and every delegation design must account for it.
+
+- A background process called **SDProp** runs **every 60 minutes on the PDC Emulator**. It compares the ACL of every **protected** account and group against the template ACL on the **`AdminSDHolder`** object (in `CN=System`), and **resets** any that differ.
+- Crucially, **inheritance is disabled** on these protected objects — and it **stays disabled even if you move the object into another OU**. They are flagged with **`adminCount = 1`**.
+- 🔴 **Consequence for delegation:** an ACL you set on an OU is **inherited** to its children — but a protected object placed in that OU **does not inherit it**. So delegation simply **does not apply** to protected accounts/groups. Worse, an account that *used* to be in a privileged group can be left **orphaned** with `adminCount = 1` and broken inheritance long after it was removed — a frequent source of "why doesn't my delegation work on this one user?".
+- The protected set includes **Administrator, Administrators, Domain Admins, Enterprise Admins, Schema Admins, Account/Server/Print/Backup Operators, Domain Controllers, RODC, Replicator, Key/Enterprise Key Admins, and krbtgt**.
+
+➡️ **Design takeaways:** keep **privileged accounts out of delegated production OUs** entirely (they belong in Tier 0 / admin OUs anyway, per §4); **audit for orphaned `adminCount = 1` objects** as part of routine hygiene; and never try to "fix" a protected object's ACL directly — SDProp will revert it within the hour. If you must change protected-object permissions, you edit the `AdminSDHolder` template (with great care).
 
 ---
 
