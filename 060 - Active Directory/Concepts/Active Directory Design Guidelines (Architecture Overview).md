@@ -70,7 +70,7 @@ Before the first OU is drawn, four framing decisions determine *whether* and *ho
 
 ### 1.3 — Source of authority and the identity lifecycle (Joiner–Mover–Leaver)
 
-🟢 **Decide where identities are born, changed and retired — before you decide where they live.** §11 says "provisioning handled elsewhere"; this is that decision made explicit. It determines the *flow* every object follows:
+� **Decide where identities are born, changed and retired — before you decide where they live.** §11 says "provisioning handled elsewhere"; this is that decision made explicit. It determines the *flow* every object follows:
 
 - **Joiner / Mover / Leaver (JML).** An identity is typically *created* from an authoritative HR / **Identity Governance & Administration (IGA)** source, *moved* (department, role, attributes) as it changes, then *disabled and deleted* on departure. Decide the **chain** — HR system → IGA/provisioning → AD → Entra ID — and which system owns each step.
 - **It wires directly into the rest of the design.** A deterministic creation source is what makes the **naming convention** (§3.3) and **templated provisioning** (§10.4, §11) actually hold, and the **Leaver** half is what feeds the **stale-object lifecycle** (§10.2, keyed on `lastLogonTimestamp`).
@@ -279,7 +279,7 @@ corp.contoso.com
 
 → You set **one delegation on `OU=Sales`**, inherited to the whole branch. Isolation by construction.
 
-🔴 **Why Case A breaks here:** if every user lives in one global `OU=Users`, you **cannot** cleanly delegate "the Sales users" to the Sales team — you'd be reduced to per-object ACLs, which is unmanageable and drifts immediately. **Delegation wants a subtree per perimeter.**
+⚠️ **Why Case A breaks here:** if every user lives in one global `OU=Users`, you **cannot** cleanly delegate "the Sales users" to the Sales team — you'd be reduced to per-object ACLs, which is unmanageable and drifts immediately. **Delegation wants a subtree per perimeter.**
 
 #### The nuance: it's a spectrum, not a binary
 
@@ -317,7 +317,7 @@ example.com
 ### 3.3 — Practical rules
 
 - 🔵 **Use an identical template** for repeated scopes — it is what makes deployment and delegation **scriptable**.
-- 🟡 **Use a stable code** (`SCOPE001`) rather than the commercial name (which changes on mergers/renames); put the friendly name as a suffix.
+- ⚠️ **Use a stable code** (`SCOPE001`) rather than the commercial name (which changes on mergers/renames); put the friendly name as a suffix.
 - 🟢 **Fix object naming conventions on day one too** — not just OU names. Decide a deterministic, collision-resistant scheme for `samAccountName`/UPN (e.g. `firstname.lastname`, with a documented tie-break rule for duplicates) and for computer names (a short, stable prefix encoding role/site, within the **15-character NetBIOS** limit). A convention chosen up front is far cheaper than renaming thousands of objects later, and it keeps scripted provisioning (§10) predictable.
 - 🟢 **Split `Computers` by machine role — at least Servers vs. Workstations.** A server baseline and a workstation baseline are never the same GPO, so separating them is what makes GPO targeting clean (link the server baseline to `OU=Servers`, the workstation baseline to `OU=Workstations`) instead of relying on WMI filters or security-group filtering. Subdivide further by role only where the GPO set genuinely differs (e.g. `Servers/RDS`, `Servers/SQL`) — not for cosmetic grouping.
 - ⚠️ **Keep depth reasonable** (3–4 levels). Deep trees complicate GPO and delegation with no benefit.
