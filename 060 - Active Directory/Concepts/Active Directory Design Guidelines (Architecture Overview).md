@@ -119,7 +119,7 @@ A single domain is simpler on **every** axis that matters operationally:
 
 🟢 **Fewer domains = smaller Tier 0 attack surface.** Every domain is another set of privileged groups, KRBTGT accounts, and DCs an attacker can target. Consolidation is a **security win**, not just an ops simplification.
 
-#### Demolishing the usual "we need another domain" arguments
+#### The usual "we need another domain" arguments
 
 Most requests for a second domain are really requests for something a single domain already provides:
 
@@ -162,7 +162,7 @@ The table maps each level to the behaviors it unlocks and the DCs it allows:
 
 🟡 Raising to the **WS2025 functional level locks every DC to Windows Server 2025**. You can no longer introduce a WS2022 DC afterwards. On a greenfield all-2025 build this is a non-issue; on an existing forest it is a real constraint to weigh.
 
-- The headline payload of the 2025 level is the **32k database page size** — a forest-wide ESE upgrade that lifts long-standing 8k limits. *Concretely: a **multivalued, non-linked** attribute can hold roughly **3,200 values instead of ~1,200**. (Note this does **not** apply to large group membership — `member` is a **linked** attribute with its own replication mechanism and was never bound by that limit.)* The upgrade is **decided at the forest level and requires *all* DCs to be 32k-capable**, which is exactly why **doing it at forest creation is ideal** (retrofitting later is heavier).
+- The main payload of the 2025 level is the **32k database page size** — a forest-wide ESE upgrade that lifts long-standing 8k limits. *Concretely: a **multivalued, non-linked** attribute can hold roughly **3,200 values instead of ~1,200**. (Note this does **not** apply to large group membership — `member` is a **linked** attribute with its own replication mechanism and was never bound by that limit.)* The upgrade is **decided at the forest level and requires *all* DCs to be 32k-capable**, which is exactly why **doing it at forest creation is ideal** (retrofitting later is heavier).
 - Beyond that, the 2025 level is largely about **supportability** — not a big bag of new end-user features.
 
 #### Don't confuse functional level with OS-level hardening
@@ -398,9 +398,9 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 
 ➡️ A local admin placed in the scope-A role groups has **no rights** on scope B. **Isolation by construction.**
 
-🟢 **Group scope — follow the A-G-DL-P model.** The group that actually *holds the permission* on the OU should be a **Domain Local** group; the **accounts** go into a **Global** group, which is then nested into the Domain Local one (**A**ccounts → **G**lobal → **D**omain **L**ocal → **P**ermission). Domain Local is the scope designed to carry resource permissions, and it can contain Global groups from any domain in the forest — which keeps the model clean if the forest ever grows beyond one domain. In a single-domain forest you can get away with plain Global role groups, but A-G-DL-P costs nothing to adopt up front and ages better.
+🟢 **Group scope — follow the A-G-DL-P model.** The group that actually *holds the permission* on the OU should be a **Domain Local** group; the **accounts** go into a **Global** group, which is then nested into the Domain Local one (**A**ccounts → **G**lobal → **D**omain **L**ocal → **P**ermission). Domain Local is the scope designed to carry resource permissions, and it can contain Global groups from any domain in the forest — which keeps the model clean if the forest ever grows beyond one domain. In a single-domain forest you can get away with plain Global role groups, but A-G-DL-P costs nothing up front and scales if the forest later grows beyond one domain.
 
-🟢 **Prefer Global over Universal for role groups (single domain).** A **Universal** group has its full membership replicated to **every Global Catalog** in the forest; a **Global** (or Domain Local) group's membership is not. In a single-domain forest, Universal therefore buys you **nothing** that Global doesn't already give you, while adding needless GC replication — so reserve Universal for the genuine cross-domain cases (it only earns its keep when a forest actually spans multiple domains).
+🟢 **Prefer Global over Universal for role groups (single domain).** A **Universal** group has its full membership replicated to **every Global Catalog** in the forest; a **Global** (or Domain Local) group's membership is not. In a single-domain forest, Universal adds needless GC replication for no benefit over Global — so reserve it for genuine cross-domain cases.
 
 🟡 **Keep group nesting flat to avoid Kerberos token bloat.** Every group a user belongs to (directly *and* through nesting, plus `SIDHistory`) adds a SID to their Kerberos ticket. Past a certain count the ticket exceeds the Kerberos **`MaxTokenSize`** and authentication **fails in confusing ways** — broken access to file shares, HTTP 400 "bad request / header too large" on web apps, logon oddities — rather than producing a clear "too many groups" error. So the A-G-DL-P layering above is right, but resist *deep* or redundant nesting: keep memberships purposeful, clean up `adminCount`/`SIDHistory` leftovers, and watch the per-account group count as a design metric on a large or long-lived forest.
 
@@ -433,14 +433,14 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 
 ## 🛡️ 5 — Security Baseline and Tier 0
 
-Security is **not optional plumbing** — it is a structural pillar. The depth of this topic is covered in its own document; this section is the checklist that every design must satisfy.
+Security is a structural pillar, covered in depth in its own document. This section is the checklist every design must satisfy.
 
 > **🔵 See the dedicated article:** [Active Directory Tiering Model for On-Premises Environments](Active%20Directory%20Tiering%20Model%20for%20On-Prem%20Environment.md) for the full Tier 0 / Tier 1 / Tier 2 model, Privileged Access Workstations (PAW), logon restrictions, and GPO hardening.
 
 Baseline checklist:
 
 - 🔴 **Tier 0 isolation**: Domain Controllers, AD-integrated DNS, and anything that can control AD belong to Tier 0. Keep Tier 0 credentials off lower tiers.
-- 🔴 **Treat every domain controller as a single-role appliance.** A DC's attack surface *is* a design choice. Build it on **Server Core** (no GUI, far fewer components to patch), run **nothing else on it** — no additional roles, no line-of-business software, no third-party agents beyond what Tier 0 mandates — and never use it for general browsing or as an admin jump box. The more a DC does, the more code can compromise the directory; keep it deliberately bare.
+- 🔴 **Treat every domain controller as a single-role appliance.** A DC's attack surface *is* a design choice. Build it on **Server Core** (no GUI, far fewer components to patch), run **nothing else on it** — no additional roles, no line-of-business software, no third-party agents beyond what Tier 0 mandates — and never use it for general browsing or as an admin jump box. The more a DC does, the more code can compromise the directory.
 - 🔴 **Authentication Policies & Silos** to cage privileged accounts.
 - 🔴 **Protected Users** for sensitive admin accounts — ⚠️ but beware Kerberos delegation side effects (these accounts cannot be delegated, which breaks double-hop apps).
 - 🔴 **Treat Kerberos delegation as a design decision, not a default.** Unconstrained delegation is a credential-theft trap — a server granted it caches the TGT of every user who reaches it, so a single compromised host can impersonate a Domain Admin. **Ban unconstrained delegation by design**; where a service genuinely needs to act on a user's behalf, use **constrained delegation** or **Resource-Based Constrained Delegation (RBCD)** scoped to the exact target. Mark every Tier 0 / sensitive account **`Account is sensitive and cannot be delegated`** (or place it in **Protected Users**) so it can never be delegated at all. Audit `userAccountControl` for the `TRUSTED_FOR_DELEGATION` flag as part of hygiene.
@@ -473,11 +473,11 @@ AD ships **two native JIT mechanisms**, and which one fits is a function of whet
 - Object count rarely drives DC count; **fault tolerance and geography** do. A few-thousand-object directory is light.
 - 🟢 In a single-domain forest, make **all DCs Global Catalog** — there is no downside.
 - 🔵 For a **physically insecure location** (branch office, unstaffed closet), prefer a **Read-Only Domain Controller (RODC)**: it holds no writable copy of the directory and, by default, **caches no account secrets** — so a stolen RODC exposes far less than a full DC.
-- 🔵 **The RODC's real design lever is its Password Replication Policy (PRP).** "Caches no secrets" is only the *default*: the PRP — an **Allowed** list and a **Denied** list — is what decides *whose* credentials the RODC may cache locally. Deliberately allow only the accounts that genuinely sign in at that site (and never a Tier 0 / privileged account), so a stolen RODC can leak, at worst, that handful of site-local passwords and nothing else. Designing the PRP per site is the difference between an RODC that contains a breach and one that quietly hoards more than it should. *(Established RODC behavior.)*
+- 🔵 **The RODC's real design lever is its Password Replication Policy (PRP).** "Caches no secrets" is only the *default*: the PRP — an **Allowed** list and a **Denied** list — is what decides *whose* credentials the RODC may cache locally. Deliberately allow only the accounts that genuinely sign in at that site (and never a Tier 0 / privileged account), so a stolen RODC can leak, at worst, that handful of site-local passwords. Design the PRP per site. *(Established RODC behavior.)*
 
 ### 6.2 — Centralized or distributed DCs?
 
-This is one of the design answers that has genuinely **changed over time**, and it deserves a deliberate decision rather than a reflex.
+This design answer has **changed over time** and deserves a deliberate decision rather than a reflex.
 
 Microsoft characterizes a branch/remote site as one with *"relatively few users, poor physical security, relatively poor network bandwidth to a hub site"*. Historically the deciding factor was that **last point**: slow, unreliable WAN links meant you put a DC (or RODC) in every site so users could still authenticate when the link was congested or down.
 
@@ -497,7 +497,7 @@ A local DC/RODC is still the right call when one of these holds:
 - ⚠️ **Sites model NETWORK topology, not organization.** Do not create a site per department/entity. Departments are **OUs**, not **sites**.
 - Use **one site** if everything is hosted in one datacenter/region; add sites only where there are distinct physical locations with local DCs.
 - 🔵 Map **subnets → sites** correctly so clients are steered to the right DC for logon and DFS — and declare **every** subnet, including **VPN pools, Wi-Fi ranges and cloud/Azure address space**. A client whose IP matches **no** defined subnet has **no site**, so DC-Locator hands it a DC **at random** — often across the WAN. This is one of the most common and most invisible misconfigurations.
-- 🟢 **Hunt the missing subnets for free.** Each DC logs every site-less client it is contacted by in `%windir%\debug\netlogon.log` with a `NO_CLIENT_SITE:` entry — scrape that file periodically and you have a free, exhaustive list of the subnets you forgot to declare.
+- 🟢 **Find the missing subnets automatically.** Each DC logs every site-less client it is contacted by in `%windir%\debug\netlogon.log` with a `NO_CLIENT_SITE:` entry — scrape that file periodically for an exhaustive list of the subnets you forgot to declare.
 - 🟢 **Rename `Default-First-Site-Name` on day one.** Give it a meaningful name (e.g. `DC-Paris`) before you build the topology — it is trivial up front and awkward to untangle once every subnet, link and DC already references it.
 - 🔵 **Know how DC-less branches are served.** Through **Automatic Site Coverage**, a DC automatically registers the site-specific SRV records for nearby sites that have **no DC of their own**, taking up coverage by **site-link cost** — so even a DC-less branch is steered to a *predictable* DC, *provided your site-link costs reflect the real network*. *(Established DC-Locator behavior.)*
 - 🟢 **Enable "Try Next Closest Site."** This DC-Locator setting makes a client whose own site has no available DC fall back to the **next-closest site by cost** rather than a random DC anywhere in the domain — the right default for a hub-and-spoke topology. *(Established DC-Locator behavior.)*
@@ -512,7 +512,7 @@ A local DC/RODC is still the right call when one of these holds:
 
 ### 6.5 — Time synchronization hierarchy
 
-Time is a structural dependency, not an afterthought: the **W32Time** service is essential to **Kerberos V5** — and therefore to AD DS authentication. Kerberos rejects a ticket whose clock skew exceeds the domain's tolerance (**5 minutes** by default), so a forest with drifting clocks silently breaks logon. A greenfield build should decide *where authoritative time lives* on day one.
+Time is a structural dependency: the **W32Time** service is essential to **Kerberos V5** — and therefore to AD DS authentication. Kerberos rejects a ticket whose clock skew exceeds the domain's tolerance (**5 minutes** by default), so a forest with drifting clocks silently breaks logon. A greenfield build should decide *where authoritative time lives* on day one.
 
 - 🟢 **The forest-root PDC Emulator is the authoritative time source.** It is the one DC you configure to synchronize with a **reliable external time source** — a trusted NTP server (or, in sensitive/air-gapped environments, a hardware **GPS/radio clock** appliance).
 - 🟢 **Everything else follows the domain hierarchy automatically.** Domain members and the other DCs run as time client type `NT5DS`: they sync up the AD hierarchy (members from their authenticating DC, DCs from the PDC Emulator) with **no per-host configuration**. Don't point individual members or DCs at external sources — it only creates competing time roots.
@@ -530,7 +530,7 @@ A greenfield forest is the moment to confirm the replication-integrity options t
 
 ### 6.7 — Forest recovery: a design pillar, not a backup job
 
-Forest recovery is the plan for the worst case — the **entire forest** is logically destroyed or compromised (ransomware, a bad schema change, mass deletion, a Tier 0 breach) and must be rebuilt from backups. It is a **design pillar**, not a line item, because the decisions that make it possible have to be taken *before* the disaster, not during it.
+Forest recovery is the plan for the worst case — the **entire forest** is logically destroyed or compromised (ransomware, a bad schema change, mass deletion, a Tier 0 breach) and must be rebuilt from backups. The decisions that make it possible have to be taken *before* the disaster, not during it.
 
 - 🔴 **A backup is only as good as its restore — and AD restore is not a file restore.** Microsoft publishes a dedicated **AD Forest Recovery Guide**, and the procedure is *not* "restore every DC." You **restore one DC per domain** from a trusted system-state backup, isolate it, clean up the metadata of every other DC, then **redeploy the remaining DCs** from that authoritative core. Treat the guide as a template and write a **custom plan** for your topology.
 - 🔵 **Keep backups offline and out of reach of the threat that would trigger the recovery.** Ransomware and a Tier 0 compromise are the realistic triggers, so an online backup the same attacker can reach is worthless. Keep **system-state backups of at least two DCs per domain**, offline / immutable, together with the **DSRM (Directory Services Restore Mode) password** (rotated via Windows LAPS, §10.2) you must enter to perform the restore.
@@ -634,7 +634,7 @@ A consistent prefix makes precedence and ownership obvious at a glance and keeps
 
 ## 🛠️ 10 — Tooling and Industrialization
 
-The single most valuable design principle in a well-templated forest is **consistency through automation**: identical structures should be produced identically, not rebuilt by hand each time. This section is about *which capabilities to plan for*, not how to script them.
+The guiding principle of a well-templated forest is **consistency through automation**: identical structures are produced identically, not rebuilt by hand. This section covers *which capabilities to plan for*, not how to script them.
 
 ### 10.1 — Capabilities to plan for
 
@@ -700,7 +700,7 @@ Everything above is **generic**. This section covers the one demanding applicati
 | **2. Horizontal isolation** | Entity A must not see/touch entity B → **watertight per-scope delegation** + optionally List-Object mode. In a single company, isolation is mostly *vertical* (by tier); here it is also *horizontal* (between peers). |
 | **3. Mutually untrusted local admins** | Local IT of 150 entities do not trust each other → the **rigor of delegation isolation becomes critical**, vs admins of one IT department who broadly trust each other. |
 
-That is all. **The multi-entity factor is one of degree (repetition, watertightness, untrusted admins), not of nature.**
+**The multi-entity factor is one of degree (repetition, watertightness, untrusted admins), not of nature.**
 
 > 🔴 **Assume the shared-forest security trade-off explicitly.** Because **the forest — not the OU — is the security boundary** (§2.1), per-OU delegation gives entities **administrative** isolation, **not** a security boundary between them. All 150 entities share one schema, one configuration partition and one Tier 0: a compromise of any entity that reaches Tier 0 brings down **every** entity at once. This is the deliberate price of mutualisation — you accept a shared blast radius in exchange for one infrastructure. It is precisely *why* the model **deports Tier 0 to the admin forest** and keeps **no permanent human Domain Admin** in the shared forest (§11.2). If any entity genuinely requires a hard security boundary from the others, it does **not** belong in the shared forest — it needs its own.
 
