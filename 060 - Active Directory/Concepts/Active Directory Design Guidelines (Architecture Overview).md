@@ -9,7 +9,7 @@ date: 2026-06-23
 
 This document is an **architecture overview** for designing a new Active Directory (AD) forest — or for reviewing an existing one against good practice. It is deliberately written as a **hub**: it lays out the structural decisions that shape every AD deployment, and links to the deeper, focused articles in this collection for the topics that deserve their own treatment (tiering, DNS scavenging, JIT elevation, foreign security principals).
 
-The guiding philosophy is simple: **the vast majority of "good AD design" is universal.** Whether you are building a single-company forest of 8,000 users or consolidating 150 small entities into one shared infrastructure, roughly 90% of the design is identical. What changes between scenarios is not the *nature* of the model but the *degree* to which certain dials — repetition, isolation, delegation rigor — are turned up.
+Here's the good news up front: **most of "good AD design" is universal.** Whether you're standing up a single-company forest of 8,000 users or folding 150 small entities into one shared infrastructure, about 90% of the work is the same. What really changes from one scenario to the next isn't the *nature* of the model — it's how far you turn up a few dials: how much you **repeat**, how watertight the **isolation** must be, and how strict the **delegation** has to be.
 
 For that reason, this article presents the **generic model first**, then closes with a dedicated section on one demanding application of it: the **shared forest hosting multiple delegated entities**.
 
@@ -38,6 +38,7 @@ For that reason, this article presents the **generic model first**, then closes 
 - 🟡 Warning: high chance of lockout or operational breakage
 - 🔵 Important: deployment constraint or sequencing requirement
 - 🟢 Recommendation: best practice to improve resilience
+- ⚠️ Caution: a common design mistake or nuance worth pausing on
 
 ---
 
@@ -154,7 +155,7 @@ Why this pattern, per Microsoft guidance:
 | Anti-pattern | Why it's a problem (per Microsoft) |
 |---|---|
 | **Single-label name** (`contoso`, no suffix) | Can't be registered; requires extra configuration; the DNS Server service **can't locate DCs**; domain members **don't do dynamic updates** to single-label zones by default. Microsoft: *"Do not use single-label DNS names."* |
-| **`.local` / any unregistered suffix** | Explicitly *not recommended*; `.local` collides with internet-standard special use. You also can't prove ownership, so **public CAs won't issue TLS certificates** for it¹ — friction for LDAPS, ADFS, and other TLS services. |
+| **`.local` / any unregistered suffix** | Explicitly *not recommended*; `.local` collides with internet-standard special use. You also can't prove ownership, so **public CAs won't issue TLS certificates** for it¹ — friction for LDAPS, AD FS, and other TLS services. |
 | **A real internet TLD on the intranet** (`.com`, `.net`, `.org`) | Intranet machines that also reach the internet can hit **name-resolution errors**. |
 | **Your exact public domain** (`example.com`) | Forces **split-brain DNS** — you must maintain a duplicate internal copy of the public zone. A dedicated subdomain avoids this entirely. |
 | **Acronyms / business-unit / division / geographic names** | Users may not recognize an acronym; BUs and divisions **change and become obsolete or misleading**; hard-to-spell geo names hurt usability. |
@@ -295,7 +296,7 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 
 ➡️ A local admin placed in the scope-A role groups has **no rights** on scope B. **Isolation by construction.**
 
-🟢 **Group scope — follow the A-G-DL-P model.** The group that actually *holds the permission* on the OU should be a **Domain Local** group; the **accounts** go into a **Global** group, which is then nested into the Domain Local one (**A**ccounts → **G**lobal → **D**omain **L**ocal → **P**ermission). Domain Local is the scope designed to carry resource permissions, and it can contain Global groups from any domain in the forest — which keeps the model clean if the forest ever grows beyond one domain. In a single-domain forest you can get away with plain Global role groups, but A-G-DL-P costs nothing to adopt up front and ages better.
+🟢 **Group scope — follow the A-G-DL-P model.** In plain terms: you put the *people* in one kind of group and attach the *permission* to another, then nest the first into the second — so who-you-are and what-you-can-do stay cleanly separated. Concretely, the group that actually *holds the permission* on the OU should be a **Domain Local** group; the **accounts** go into a **Global** group, which is then nested into the Domain Local one (**A**ccounts → **G**lobal → **D**omain **L**ocal → **P**ermission). Domain Local is the scope designed to carry resource permissions, and it can contain Global groups from any domain in the forest — which keeps the model clean if the forest ever grows beyond one domain. In a single-domain forest you can get away with plain Global role groups, but A-G-DL-P costs nothing to adopt up front and ages better.
 
 ### 3.2 — How to apply delegation
 
@@ -313,7 +314,7 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 
 ### 3.4 — The AdminSDHolder / SDProp gotcha
 
-🔵 There is one mechanism that **silently overrides OU delegation**, and every delegation design must account for it.
+🔵 There is one mechanism that **silently overrides OU delegation**, and every delegation design must account for it. In plain terms: AD keeps a master copy of the permissions for its most privileged accounts and, on a schedule, stamps that copy back over them — so any delegation you set on those particular accounts simply doesn't stick.
 
 - A background process called **SDProp** runs **every 60 minutes on the PDC Emulator**. It compares the ACL of every **protected** account and group against the template ACL on the **`AdminSDHolder`** object (in `CN=System`), and **resets** any that differ.
 - Crucially, **inheritance is disabled** on these protected objects — and it **stays disabled even if you move the object into another OU**. They are flagged with **`adminCount = 1`**.
@@ -341,7 +342,18 @@ Baseline checklist:
 - 🟢 Disable or tightly control the built-in **`Administrator`** account; prefer named admin accounts.
 - 🔵 **AD backup**: system state of at least 2 DCs, plus a **tested forest recovery** procedure kept offline.
 
-For cross-forest privileged access without permanent Domain Admins, see [Just-in-Time AD Admin Elevation with Shadow Principals (without MIM)](Just-in-Time%20AD%20Admin%20Elevation%20with%20Shadow%20Principals%20(without%20MIM).md).
+> 🔵 **This is the *design-level* minimum, not the hardening catalogue.** The items above are the structural security decisions a forest design must bake in. The **exhaustive** hardening surface — protocol and crypto enforcement, OS-level controls, CVE-driven settings, per-tier GPO baselines — is a **separate discipline** that this design hub deliberately does **not** re-list. Apply it in full from the dedicated references: the per-tier GPO hardening in the [Tiering Model](Active%20Directory%20Tiering%20Model%20for%20On-Prem%20Environment.md), the [Microsoft Security Compliance Toolkit](https://www.microsoft.com/en-us/download/details.aspx?id=55319) baselines, and the host-side measures in [WDAC, HVCI, Credential Guard & LSA Protection](../../040%20-%20Endpoint%20Security/OS%20Hardening/WDAC,%20HVCI,%20Credential%20Guard%20&%20LSA%20Protection.md). The rule of thumb: **design decides the structure; the hardening baseline decides the settings — follow it, don't paraphrase it.**
+
+#### Eliminating standing privilege — the JIT decision
+
+🟢 **Design for zero permanent privileged membership.** A clean directory has **no permanent human Domain/Enterprise Admin**: privileged accounts are *empty* of standing rights, and elevation is granted **just-in-time** for a bounded window, then expires on its own. This is a design decision to make up front, because it shapes where your admin identities live and how the forest is built — not a setting you bolt on afterwards.
+
+AD ships **two native JIT mechanisms**, and which one fits is a function of whether you run a separate administration forest — *this document does not prescribe one over the other*:
+
+- 🔵 **TTL group membership (single forest).** Since the 2016 functional level, AD supports **expiring links**: an admin account is added to a privileged group with a **time-to-live**, and the membership is removed automatically when it lapses. It is native, operationally simple, and easy to wrap with an approval or ticket reference — the natural starting point when there is **no admin/bastion forest**. It reduces standing privilege but does **not** create a new trust boundary (if Tier 0 is already compromised, it can be bypassed). See [Active Directory Just In Time Administration in a Single Forest](../How-to/Active%20Directory%20Just%20In%20Time%20Administration/Active%20Directory%20Just%20In%20Time%20Administration.md).
+- 🔵 **PAM trust + shadow principals (admin/bastion forest).** AD's **Privileged Access Management Optional Feature** combined with a **forest trust** and **shadow principals** delivers cross-forest JIT elevation, keeping Tier 0 identities entirely outside the production forest — the same model §10 leans on. It adds a real administrative boundary, at the cost of running a second forest (and the PAM feature is **irreversible** once enabled). See [Just-in-Time AD Admin Elevation with Shadow Principals (without MIM)](Just-in-Time%20AD%20Admin%20Elevation%20with%20Shadow%20Principals%20(without%20MIM).md).
+
+➡️ **Design takeaway:** commit to **JIT elevation with near-zero standing privilege** as a principle; pick the *mechanism* (in-forest TTL vs. bastion-forest shadow principals) to match whether an administration forest is part of your model — both are native, neither requires MIM or the cloud.
 
 ---
 
@@ -382,15 +394,17 @@ A local DC/RODC is still the right call when one of these holds:
 
 - Place the **PDC Emulator** on a robust, central DC; document all 5 FSMO roles.
 - 🔴 For virtualized DCs, ensure **VM-GenerationID** support (modern Hyper-V/VMware) to prevent USN rollback. Hypervisor hosts running DCs are **Tier 0**.
-- 🔵 The USN-rollback safeguard **only works if the hypervisor exposes a VM-GenerationID**: when the ID changes (snapshot restore, copy), the DC resets its InvocationID and discards its RID pool, forcing safe re-convergence. On a hypervisor that doesn't expose it, you fall back to the old, weaker USN-rollback *quarantine* — another reason to require a modern hypervisor for DCs.
+- 🔵 The USN-rollback safeguard **only works if the hypervisor exposes a VM-GenerationID**: when the ID changes (snapshot restore, copy), the DC resets its InvocationID and discards its RID pool, forcing safe re-convergence. On a hypervisor that doesn't expose it, you fall back to the old, weaker USN-rollback *quarantine* — another reason to require a modern hypervisor for DCs. In plain terms: if someone rolls a DC back to an old snapshot, this is the safety net that stops it from silently re-issuing identifiers it has already handed out and corrupting replication.
 - 🔴 **A snapshot is not a backup.** The VM-GenerationID safeguard prevents *corruption* on a snapshot revert, but it does **not** replace a real **system-state backup** and a **tested forest-recovery** procedure (per §4). Never treat "I can roll back the VM" as your AD recovery plan.
 
 ---
 
 ## 📡 6 — DNS Design
 
+DNS is the nervous system of an AD forest: domain controllers are found through it (via SRV records), so a handful of choices here quietly decide whether logon, replication and trust resolution stay healthy. The good news is that the defaults on modern Windows Server are sane — the job is mostly to *keep* the safe ones and avoid a couple of classic traps.
+
 - 🟢 Use **AD-integrated zones** (multi-master, replicated through AD).
-- � **Set dynamic updates to "Secure only"** on AD-integrated zones — this is the main security reason to use them. It ties each record to the authenticated computer that owns it, so an unauthenticated host **cannot overwrite or spoof** an existing record (name-takeover protection).
+- 🟢 **Set dynamic updates to "Secure only"** on AD-integrated zones — this is the main security reason to use them. It ties each record to the authenticated computer that owns it, so an unauthenticated host **cannot overwrite or spoof** an existing record (name-takeover protection).
 - 🔵 Configure **Aging and Scavenging** from day one — a greenfield forest is the ideal moment to get it right. See [Dns Aging and Scavenging Explained with verification script](Dns%20Aging%20and%20Scavenging%20Explained%20with%20verification%20script.md).
 - Set **forwarders** to central resolvers and **conditional forwarders** toward trusted forests (needed for cross-forest name resolution over trusts).
 - 🔵 **Point each DC's DNS client at *another* DC first**, then itself (loopback `127.0.0.1` last, never as the only entry). A DC that resolves only against itself can hit the **"DNS island" problem** at boot and fail to locate replication partners.
@@ -402,7 +416,7 @@ A local DC/RODC is still the right call when one of these holds:
 
 ## 🔗 7 — Trusts
 
-When the forest must interoperate with an administration forest and/or a resource forest:
+Trusts come into play the moment your forest has to interoperate with another one — typically an administration forest, a resource forest, or both:
 
 | Relationship | Recommended trust |
 |---|---|
@@ -446,7 +460,7 @@ A GPO linked to an OU applies, by default, to **every** user/computer in that OU
 
 ### 8.3 — Loopback processing
 
-🔵 **Loopback** makes a machine apply **user-side settings based on the *computer's* location**, not the user's. It is the right tool for **shared / special-purpose machines** — kiosks, classrooms, RDS/VDI session hosts, and DCs — where the user experience must depend on *where they logged in*, not *who they are*.
+🔵 **Loopback** makes a machine apply **user-side settings based on the *computer's* location**, not the user's. In plain terms: normally a user carries their own settings wherever they sign in; loopback flips that so the *machine* gets the final say over the user experience. It is the right tool for **shared / special-purpose machines** — kiosks, classrooms, RDS/VDI session hosts, and DCs — where the user experience must depend on *where they logged in*, not *who they are*.
 
 - **Replace mode** — ignore the user's own GPOs entirely; only the computer-location user settings apply (maximum lockdown, e.g. a kiosk).
 - **Merge mode** — apply the user's normal GPOs **then** add the computer-location user settings on top, the latter winning on conflict (e.g. an RDS host that layers extra restrictions over the user's baseline).
