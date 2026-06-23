@@ -681,7 +681,20 @@ The guiding principle of a well-templated forest is **consistency through automa
 🟢 **Plan two recurring, read-only feedback loops at design time.** Both run against a *live* forest, but deciding up front that they exist is an architecture choice:
 
 - **Operational health.** The native diagnostics (`repadmin`, `dcdiag`, `dfsrdiag`, `nltest`, `w32tm`) are scattered per-command and per-DC, so consolidate them into a single scheduled check. The companion [AD Health Check Script](../Tools/AD-HealthCheck/AD%20Health%20Check%20Script.md) auto-discovers every DC, runs the full battery **read-only** as an unattended scheduled task, and returns an exit code a monitor can consume.
+- **GPO hygiene.** Audit the GPO estate with **GPOZaurr** (open-source PowerShell): it flags empty/orphaned GPOs, broken links, permission issues and the `Authenticated Users` / MS16-072 trap (§9.2), with bulk-fix and HTML reporting.
 - **Security assessment.** Periodically score the directory and map real attack paths with **PingCastle** (risk scoring), **Purple Knight** (indicators of exposure), **BloodHound / SharpHound** (attack-path graphing) and — only if you run AD CS — **Locksmith** (certificate-template `ESC*` paths).
+
+> 🟢 **Useful community tools (all read-only, free).** A short, battle-tested toolbox worth knowing — pull them in as needed rather than reinventing the checks:
+>
+> | Tool | What it's for |
+> |---|---|
+> | **PingCastle** | Fast AD security scoring and a maturity report — the usual first-pass health/risk snapshot. |
+> | **Purple Knight** (Semperis) | Indicators of exposure/compromise across AD (and Entra ID). |
+> | **BloodHound / SharpHound** (SpecterOps) | Graphs real privilege-escalation and attack paths to Tier 0. |
+> | **GPOZaurr** (Evotec) | Full GPO-estate audit and cleanup, incl. the MS16-072 trap. |
+> | **Testimo** (Evotec) | Consolidated AD health checks across the forest in one report. |
+> | **ADACLScanner** | Reports and documents OU/object **delegation (ACLs)** — invaluable to verify §4. |
+> | **Locksmith** | Finds and fixes AD CS certificate-template `ESC*` paths *(only if you run AD CS)*. |
 
 ### 10.4 — Templated provisioning
 
