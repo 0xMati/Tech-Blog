@@ -414,7 +414,7 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 
 ### 4.3 — Isolation guardrails
 
-- 🔴 **List Object Mode** (`dsHeuristics`) if scopes must not even *enumerate* each other's objects (by default any authenticated user can browse the directory). It strengthens confidentiality but complicates troubleshooting — evaluate the trade-off.
+- ⚠️ **Enumeration isolation is a separate question from delegation.** By default any authenticated user can *browse* the whole directory; delegation only stops them *changing* things. If peers must not even **enumerate** each other's objects, AD offers **List Object Mode** — but it is a **forest-wide** change that can break directory-enumerating apps and adds overhead, so treat it as **only-if-required**, never a default. (Implementation detail deported to the Tiering Model / hardening references.)
 - 🟢 **Confidential attributes** for sensitive attributes when needed.
 - ⚠️ Watch **group delegation**: a local GroupAdmin must never be able to add itself to a privileged central group.
 
@@ -712,7 +712,7 @@ Everything above is **generic**. This section covers the one demanding applicati
 - **Tier 0 stays in the admin forest** via the trust (+ PAM/Shadow Principals); **no permanent human Domain Admin** in the shared forest.
 - **Give each entity its own login/mail identity without a new domain**: add a **UPN suffix per entity** (`user@entity-alpha.fr`) on the single shared domain (§2.1) — entities keep their own namespace while the directory stays one domain. Pair it with DNS zones as needed.
 - **Don't multiply GPOs per entity.** Reuse the GPO anti-proliferation principle (§9.5): a **shared GPO whose items are scoped per entity with Item-Level Targeting** (targeting `GRP-ENT001-*`) beats minting a fresh GPO set for every one of the 150 entities — which would be unmanageable.
-- **Consider List Object Mode** so entities cannot enumerate each other.
+- **Only if peers genuinely require enumeration isolation**, consider **List Object Mode** — a **forest-wide** change that can break directory-enumerating apps, so weigh the cost (§4.3).
 - **Cap what a delegated entity can create with directory quotas.** A delegated admin who can create objects can, in principle, create *thousands* of them and bloat the database for everyone in the shared forest. **NTDS directory quotas** (set per security principal on a partition, via `ntdsutil`) put a ceiling on the **number of objects** a given principal may own — a rarely-used but perfect fit for a multi-tenant forest, where it stops one entity's runaway script or abuse from degrading the shared infrastructure.
 - **Sites still follow network topology**, not entities — do not create 150 sites for 150 entities.
 
