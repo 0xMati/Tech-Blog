@@ -488,6 +488,15 @@ The single most valuable design principle in a well-templated forest is **consis
 | Config as code | Keep **OU structure, GPOs and delegation definitions under version control** |
 | GPO reproducibility | Treat GPOs as **versioned artifacts** that can be restored to a known-good state |
 
+🟢 The **Security Compliance Toolkit** is more than a bag of baselines: it ships **Policy Analyzer** and **`LGPO.exe`**, which let you **compare your live GPOs against the Microsoft baseline** (and against each other) to surface redundant, conflicting or drifted settings — exactly the feedback loop "config as code" needs. *(Microsoft fact: the SCT page lists Policy Analyzer, LGPO, Set Object Security and GPO-to-PolicyRules alongside the WS2025 baselines.)*
+
+🟢 **Lean on the native toolchain before reaching for anything custom.** The build and configuration surface is fully scriptable with in-box Microsoft tooling:
+
+- **`ADDSDeployment`** PowerShell module (`Install-ADDSForest`, `Install-ADDSDomainController`) — promote DCs from a documented script, not the GUI wizard.
+- **Active Directory Administrative Center (ADAC)** — the console that surfaces the **Recycle Bin**, **Fine-Grained Password Policies** and **Authentication Policies/Silos**, and that **echoes the equivalent PowerShell** for everything you click (a fast way to turn a GUI action into a repeatable script).
+- **AD Recycle Bin** — an **optional feature to enable at build time** (the enablement is **irreversible**); once on, a deleted object can be restored *with* its attributes and group memberships intact.
+- **GPMC** — back up, export and restore GPOs as files, which is what makes the "GPO as versioned artifact" goal above real.
+
 ### 9.2 — Daily operations
 
 | Need | Design choice |
@@ -495,11 +504,25 @@ The single most valuable design principle in a well-templated forest is **consis
 | Delegation | **RBAC role groups**, never direct ACLs; documented |
 | Local machine passwords | **Windows LAPS**, delegated read per scope |
 | Service accounts | **gMSA / dMSA** |
-| Hygiene & scoring | **PingCastle**, **Purple Knight**, and a recurring AD health review |
 | Stale object cleanup | A defined **lifecycle** for inactive users/computers |
-| Security monitoring | **Microsoft Defender for Identity (MDI)** on the DCs |
+| Security monitoring | **Microsoft Defender for Identity (MDI)** sensors on Tier 0 identity servers |
 
-### 9.3 — Templated provisioning
+🔵 **MDI is not just "on the DCs".** Its lightweight sensor runs on your **identity infrastructure** — domain controllers first, but also **AD CS, AD FS and Entra Connect servers** where they exist (all Tier 0). Deploy it everywhere that infrastructure lives, not only on the DCs. *(Microsoft fact: the MDI architecture page describes sensors running across the identity infrastructure; the per-role server list comes from the MDI deployment pages.)*
+
+### 9.3 — Health, diagnostics and security assessment
+
+**Operational health** relies on native diagnostics that ship with the DC role — but they are **scattered across commands and servers**: `repadmin` (replication), `dcdiag` (DC health), `dfsrdiag` (SYSVOL/DFSR), `nltest` (secure channel) and `w32tm` (time). Running each by hand, per DC, does not scale.
+
+🟢 **Consolidate them into a single scheduled check.** The companion script [AD Health Check Script](../Tools/AD-HealthCheck/AD%20Health%20Check%20Script.md) does exactly that: it auto-discovers every DC and runs FSMO, replication, services, connectivity, secure-channel, `dcdiag`, time-sync, storage and event-log checks, then emits a console summary, an HTML report, a CSV log and an optional alert email. It is **read-only**, designed to run **unattended as a scheduled task**, and returns an exit code (`0` = OK, `1` = WARN, `2` = FAIL) a monitoring system can consume.
+
+**Security assessment** is a separate, periodic exercise — score the directory and map what an attacker could actually reach:
+
+- 🟢 **PingCastle** *(third-party)* — fast risk **scoring** and reporting; the usual baseline for a recurring AD exposure review.
+- 🟢 **Purple Knight** *(third-party, Semperis)* — indicator-of-exposure scan across AD and Entra ID.
+- 🟢 **BloodHound / SharpHound** *(third-party, SpecterOps; community edition is free)* — graphs the **attack paths** to Tier 0, surfacing privilege-escalation chains that a flat permissions audit misses.
+- 🔵 **Locksmith** *(third-party)* — only relevant **once you run AD CS**: it finds the well-known certificate-template misconfigurations (the `ESC*` escalation paths). Skip it entirely if you have no PKI.
+
+### 9.4 — Templated provisioning
 
 🟢 Where a structure repeats, treat the **entity/scope as a template**: the OU subtree, the role groups, the delegation, the standard GPO links and the accidental-deletion protection should all be defined **once** and produced the **same way every time**. The design goal is that onboarding a new scope is a **single, predictable operation** — this is what keeps a large, delegated forest consistent and sustainable over time.
 
@@ -566,7 +589,7 @@ flowchart TD
 | **Trusts** | **Forest trust + Selective Auth + SID Filtering** |
 | **GPO** | Domain baseline + per-tier; avoid GPO proliferation; ILT over per-scope GPOs |
 | **Industrialization** | **Templated, repeatable provisioning** of each scope is the cornerstone |
-| **Tooling** | LAPS, gMSA/dMSA, PingCastle/Purple Knight, MDI |
+| **Tooling** | LAPS, gMSA/dMSA, scheduled AD health checks, PingCastle/Purple Knight/BloodHound, MDI |
 
 ---
 
