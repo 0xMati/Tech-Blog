@@ -390,10 +390,13 @@ A local DC/RODC is still the right call when one of these holds:
 ## 📡 6 — DNS Design
 
 - 🟢 Use **AD-integrated zones** (multi-master, replicated through AD).
+- � **Set dynamic updates to "Secure only"** on AD-integrated zones — this is the main security reason to use them. It ties each record to the authenticated computer that owns it, so an unauthenticated host **cannot overwrite or spoof** an existing record (name-takeover protection).
 - 🔵 Configure **Aging and Scavenging** from day one — a greenfield forest is the ideal moment to get it right. See [Dns Aging and Scavenging Explained with verification script](Dns%20Aging%20and%20Scavenging%20Explained%20with%20verification%20script.md).
 - Set **forwarders** to central resolvers and **conditional forwarders** toward trusted forests (needed for cross-forest name resolution over trusts).
+- 🔵 **Point each DC's DNS client at *another* DC first**, then itself (loopback `127.0.0.1` last, never as the only entry). A DC that resolves only against itself can hit the **"DNS island" problem** at boot and fail to locate replication partners.
 - 🔴 **DNS is a Tier 0 role** (hosted on the DCs). Do not delegate DNS to local admins.
-- 🟢 Enable protections: **DNS socket pool**, **cache locking**, and consider **DNSSEC** on critical zones.
+- 🟢 **Keep the default protections on**: the **DNS socket pool** and **cache locking** are enabled by default on modern Windows Server — don't disable them. Consider **DNSSEC** on critical zones to defend against cache poisoning.
+- 🔵 Don't let the AD zone collide with your **public** namespace — base AD on a dedicated subdomain (see §1.3) to avoid a **split-brain** zone you'd have to maintain by hand.
 
 ---
 
