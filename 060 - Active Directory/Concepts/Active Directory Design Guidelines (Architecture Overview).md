@@ -305,6 +305,8 @@ example.com
 │   │   ├── OU=Users
 │   │   ├── OU=Groups
 │   │   ├── OU=Computers
+│   │   │   ├── OU=Servers
+│   │   │   └── OU=Workstations
 │   │   └── OU=Admins         ← local admin accounts/groups for this scope
 │   └── OU=<Scope-B>
 │       └── (identical template)
@@ -317,11 +319,61 @@ example.com
 - 🔵 **Use an identical template** for repeated scopes — it is what makes deployment and delegation **scriptable**.
 - 🟡 **Use a stable code** (`SCOPE001`) rather than the commercial name (which changes on mergers/renames); put the friendly name as a suffix.
 - 🟢 **Fix object naming conventions on day one too** — not just OU names. Decide a deterministic, collision-resistant scheme for `samAccountName`/UPN (e.g. `firstname.lastname`, with a documented tie-break rule for duplicates) and for computer names (a short, stable prefix encoding role/site, within the **15-character NetBIOS** limit). A convention chosen up front is far cheaper than renaming thousands of objects later, and it keeps scripted provisioning (§10) predictable.
+- 🟢 **Split `Computers` by machine role — at least Servers vs. Workstations.** A server baseline and a workstation baseline are never the same GPO, so separating them is what makes GPO targeting clean (link the server baseline to `OU=Servers`, the workstation baseline to `OU=Workstations`) instead of relying on WMI filters or security-group filtering. Subdivide further by role only where the GPO set genuinely differs (e.g. `Servers/RDS`, `Servers/SQL`) — not for cosmetic grouping.
 - ⚠️ **Keep depth reasonable** (3–4 levels). Deep trees complicate GPO and delegation with no benefit.
 - 🟢 Avoid **Block Inheritance**; favor a clean GPO design instead (see §9).
 - 🔵 Protect OUs with **`ProtectedFromAccidentalDeletion`**.
 - 🟢 **Redirect the two default object containers on day one (`redirusr` / `redircmp`).** A user or computer created without an explicit OU lands in the built-in **`CN=Users`** / **`CN=Computers`** containers — and those are **containers, not OUs**, so **no GPO can be linked to them** and you cannot delegate them cleanly. Point the defaults at real OUs once at build time (`redirusr "OU=_Staging,DC=corp,DC=example,DC=com"` and the equivalent `redircmp`) so that even an object created by a down-level tool or a forgotten `-Path` still receives your baseline GPOs and lands somewhere you administer. *(Requires the WS2003 domain functional level or higher — always met on a greenfield build.)*
 - Note: the native **`Domain Controllers`** container does not move — DCs stay there with the Default Domain Controllers Policy.
+
+### 3.4 — The administration axis: tiering in the OU tree
+
+🔵 **The production scopes are only one axis; administration is a second, transverse one — and it must have its own OU subtree, organized by *tier*, not by department.** The `_Admin` node in the baseline is where the **tiering model (§5)** physically lands in the directory: it is the structure on which Authentication Policies & Silos, logon-restriction GPOs, and the *zero standing privilege* model are applied. Designing it as a clean tier subtree on day one is what makes all of §5 enforceable later.
+
+```
+example.com
+└── OU=_Admin
+    ├── OU=Tier0                     ← controls the forest itself
+    │   ├── OU=Accounts              (DA/EA, Tier 0 admin accounts)
+    │   ├── OU=Groups                (Tier 0 role/delegation groups)
+    │   ├── OU=ServiceAccounts       (gMSA/dMSA used by Tier 0)
+    │   └── OU=PAWs                  (Privileged Access Workstations)
+    ├── OU=Tier1                     ← server / application admins
+    │   ├── OU=Accounts
+    │   ├── OU=Groups
+    │   └── OU=ServiceAccounts
+    └── OU=Tier2                     ← workstation / helpdesk admins
+        ├── OU=Accounts
+        ├── OU=Groups
+        └── OU=ServiceAccounts
+```
+
+- 🔴 **One Authentication Silo per tier** maps directly onto these subtrees, so the boundary you draw in OUs *is* the boundary you enforce in Kerberos.
+- 🔴 **An admin account never lives in a production scope OU.** A Tier 0 identity belongs in `_Admin/Tier0/Accounts`, not in `Departments/<Scope>/Admins`; the per-scope `Admins` OU is for **local, lower-tier** delegated roles only.
+- 🟢 **Keep the tier axis identical and scriptable** just like the production template — the silos, GPOs and group nesting are then repeatable across tiers.
+
+> 🔵 This is the *shape* of the tiering model in the directory. The full Tier 0/1/2 logic, logon restrictions and per-tier GPO hardening live in the [Active Directory Tiering Model](Active%20Directory%20Tiering%20Model%20for%20On-Prem%20Environment.md) — this section only fixes **where it sits in the OU tree**.
+
+### 3.5 — Object lifecycle: staging and placement
+
+🔵 **Decide how an object *enters* the directory and *moves to its final OU* — placement is a flow, not a one-off.** This is where the `_Staging` OU earns its place and where the **Joiner–Mover–Leaver** lifecycle (§1.3) meets the OU design:
+
+- **Created → staged.** New users/computers land in `_Staging` (or arrive there via `redirusr`/`redircmp`), where they receive a **minimal, safe baseline** GPO and **no production rights** — a deliberate quarantine, not a dumping ground.
+- **Classified → placed.** Provisioning (§10.4) moves the object into its **final scope/tier OU**, at which point the scope's delegation and GPOs apply. The move is the act that grants the object its real posture.
+- **Disabled → retired.** On *Leaver*, the object is disabled, moved to a `_Disabled` holding OU (out of all production scopes, stripped of group membership), and deleted after a retention window — feeding the stale-object hygiene of §10.2.
+
+➡️ **Design takeaway:** an OU tree is not only *where objects rest* but *the path they travel*. Define the **entry point, the promotion step, and the exit OU** up front so no object is ever live without having passed through your baseline.
+
+### 3.6 — OU anti-patterns to avoid
+
+> ⚠️ **The most common OU-design mistakes — each one a delegation or GPO problem waiting to happen:**
+>
+> - 🔴 **Modeling the OU tree on the HR org chart.** The org chart reorganizes constantly; administration does not. An OU tree that mirrors departments-as-they-are-named breaks on the first reorg. Design around *who administers what*, not *who reports to whom*.
+> - 🔴 **Switching logic by depth.** Object-type at one level, scope at another, tier somewhere else — a hybrid that changes its sort key as you descend is the one genuinely unmaintainable design. Pick the top-level key (§3.1) and hold it.
+> - 🟡 **Block Inheritance scattered across the tree.** Each one is an invisible exception that makes GPO results unpredictable; fix the GPO design instead (§9).
+> - 🟡 **A flat `Computers` OU holding servers and workstations together.** Forces WMI/security-group filtering for every baseline; split by role instead (§3.3).
+> - 🟡 **Over-deep trees "for tidiness."** Levels you never delegate or link a GPO to are pure overhead — every level is a place for inheritance and delegation to go wrong.
+> - ⚠️ **Privileged accounts left in production scope OUs.** They belong in the tier subtree (§3.4); anywhere else and the Authentication Silo can't cage them.
 
 ---
 
@@ -388,6 +440,7 @@ Security is **not optional plumbing** — it is a structural pillar. The depth o
 Baseline checklist:
 
 - 🔴 **Tier 0 isolation**: Domain Controllers, AD-integrated DNS, and anything that can control AD belong to Tier 0. Keep Tier 0 credentials off lower tiers.
+- 🔴 **Treat every domain controller as a single-role appliance.** A DC's attack surface *is* a design choice. Build it on **Server Core** (no GUI, far fewer components to patch), run **nothing else on it** — no additional roles, no line-of-business software, no third-party agents beyond what Tier 0 mandates — and never use it for general browsing or as an admin jump box. The more a DC does, the more code can compromise the directory; keep it deliberately bare.
 - 🔴 **Authentication Policies & Silos** to cage privileged accounts.
 - 🔴 **Protected Users** for sensitive admin accounts — ⚠️ but beware Kerberos delegation side effects (these accounts cannot be delegated, which breaks double-hop apps).
 - 🔴 **Treat Kerberos delegation as a design decision, not a default.** Unconstrained delegation is a credential-theft trap — a server granted it caches the TGT of every user who reaches it, so a single compromised host can impersonate a Domain Admin. **Ban unconstrained delegation by design**; where a service genuinely needs to act on a user's behalf, use **constrained delegation** or **Resource-Based Constrained Delegation (RBCD)** scoped to the exact target. Mark every Tier 0 / sensitive account **`Account is sensitive and cannot be delegated`** (or place it in **Protected Users**) so it can never be delegated at all. Audit `userAccountControl` for the `TRUSTED_FOR_DELEGATION` flag as part of hygiene.
@@ -698,6 +751,7 @@ flowchart TD
 | **OU design** | Structured for **delegation + GPO**; identical template where repeated |
 | **Delegation** | **RBAC role groups** applied as inherited OU ACLs; never direct ACLs |
 | **Tier 0** | Isolated (or deported to an admin forest); no permanent human DA; **break-glass accounts** sealed and monitored |
+| **Domain controllers** | **Single-role appliance** — **Server Core**, no extra roles/software/agents, never an admin jump box |
 | **Kerberos delegation** | Ban **unconstrained**; use **constrained / RBCD** scoped; Tier 0 accounts marked *sensitive — cannot be delegated* |
 | **Audit / detection** | **Advanced Audit Policy** on DCs + **SACLs** on Tier 0 objects; **forward DC logs to a SIEM**; MDI sensors |
 | **Sites** | Follow **network topology**, not org structure; declare **every** subnet (VPN/Wi-Fi/cloud); enable **Try Next Closest Site** |
