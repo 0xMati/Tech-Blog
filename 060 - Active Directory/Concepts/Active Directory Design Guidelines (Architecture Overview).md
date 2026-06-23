@@ -19,6 +19,7 @@ For that reason, this article presents the **generic model first**, then closes 
 
 ### 🗂️ Quick Navigation
 
+- [🧭 0 — Positioning and Scope](#-0--positioning-and-scope-before-you-design)
 - [🌲 1 — Forest and Domain Design](#-1--forest-and-domain-design)
 - [🗂️ 2 — Organizational Unit (OU) Design](#-2--organizational-unit-ou-design)
 - [🔐 3 — Delegation Model](#-3--delegation-model)
@@ -39,6 +40,53 @@ For that reason, this article presents the **generic model first**, then closes 
 - 🔵 Important: deployment constraint or sequencing requirement
 - 🟢 Recommendation: best practice to improve resilience
 - ⚠️ Caution: a common design mistake or nuance worth pausing on
+
+---
+
+## 🧭 0 — Positioning and Scope (Before You Design)
+
+Before the first OU is drawn, four framing decisions determine *whether* and *how* an Active Directory forest should exist at all. They are the most upstream — and most often skipped — design choices, because they sit *above* the directory itself. Settle them first: everything in §1–§11 is the **implementation** of the answers you give here.
+
+### 0.1 — Do you still need AD DS at all?
+
+🔵 **Start by justifying the forest's existence.** A 2026 greenfield is no longer an automatic "of course we deploy AD." A brand-new organization can be **cloud-native (Entra ID-only)** — devices Entra-joined, apps integrated with Entra ID, no domain controller anywhere. AD DS earns its place only when something genuinely depends on it:
+
+- **Kerberos / NTLM** authentication for on-premises servers and legacy applications.
+- **Group Policy** as the management plane for domain-joined Windows.
+- **LDAP** line-of-business applications that bind to a directory.
+- **File / print** servers and other on-prem workloads relying on integrated Windows authentication (SQL with Windows auth, older middleware).
+
+➡️ **Design takeaway:** list the *actual* dependencies that require a domain. If the list is empty, you may not need AD DS — and the cheapest forest is the one you never build. If it is not empty, the forest exists to serve *those* dependencies, and that scope should shape how small and contained it can be.
+
+### 0.2 — Hybrid by default: AD DS and Entra ID
+
+🔵 **Almost no modern AD lives alone — design the Entra ID relationship up front.** In practice the forest is synchronized to **Entra ID**, and the *direction* and *tooling* of that sync are architecture decisions, not afterthoughts:
+
+- **Source of authority.** By default in a hybrid sync, **on-prem AD is authoritative** and objects flow **AD → Entra ID**; cloud edits don't write back unless you deliberately enable writeback. Decide, per object class, *who is master* — it dictates where you create and edit users, groups and devices. Microsoft is now also shipping **Source-of-Authority (SOA) management** to move authority to the cloud per object as part of a broader cloud-first direction, so treat "who is master" as an explicit, evolving choice rather than a given.
+- **Connect Sync vs Cloud Sync.** Two sync engines exist. **Microsoft Entra Connect Sync** is the full-featured on-prem sync server; **Microsoft Entra Cloud Sync** is the lightweight, cloud-managed model — multiple thin agents, configuration held in the cloud, native support for **disconnected / multi-forest** topologies, and **cloud-to-AD group provisioning**. Cloud Sync is Microsoft's stated strategic direction for hybrid identity; default to it unless a capability only Connect Sync offers forces your hand.
+- **Hybrid join and UPN alignment.** If devices must be both domain-joined and **Hybrid Entra-joined**, the on-prem UPN suffix has to be a **routable, verified domain** in the tenant — which ties straight back to the naming choice in §1.3 (a registered, dedicated subdomain, never `.local`). Getting the namespace right on day one is what makes hybrid identity painless later.
+
+➡️ **Design takeaway:** decide the **sync direction (source of authority)**, the **sync engine (Cloud Sync by default)**, and a **routable UPN** before building — they shape naming, the identity lifecycle (§0.3), and even whether some objects should exist on-prem at all.
+
+### 0.3 — Source of authority and the identity lifecycle (Joiner–Mover–Leaver)
+
+🟢 **Decide where identities are born, changed and retired — before you decide where they live.** §10 says "provisioning handled elsewhere"; this is that decision made explicit, and it is a genuine design pillar because it determines the *flow* every object follows:
+
+- **Joiner / Mover / Leaver (JML).** An identity is typically *created* from an authoritative HR/IGA source, *moved* (department, role, attributes) as it changes, then *disabled and deleted* on departure. Decide the **chain** — HR system → IGA/provisioning → AD → Entra ID — and which system owns each step.
+- **It wires directly into the rest of the design.** A deterministic creation source is what makes the **naming convention** (§2.3) and **templated provisioning** (§9.4, §10) actually hold, and the **Leaver** half is what feeds the **stale-object lifecycle** (§9.2, keyed on `lastLogonTimestamp`). Without an owned lifecycle the directory accretes orphaned and stale accounts no cleanup script can safely resolve.
+- **Governance tooling.** Where the lifecycle is rich (access reviews, entitlement management, joiner workflows), **Entra ID Governance** can drive it for hybrid identities — but the *decision* to own JML as a process is independent of any one tool.
+
+➡️ **Design takeaway:** name the **authoritative source** and the **JML owner** for each object class on day one. The directory is the *consumer* of that lifecycle, not its origin.
+
+### 0.4 — Operating model and ownership: who owns Tier 0
+
+🔵 **Name the owner of the forest's most privileged plane before you build it.** Tiering (§4) describes *what* Tier 0 is; this is the prior question of *who operates it* — a governance decision that shapes the whole build:
+
+- **Single team vs. shared / mutualized.** One internal IT team owning everything is a very different model from the shared-forest case (§10), where Tier 0 is **deported to an administration forest** and no single entity owns it directly. Decide which you are *before* §1, because it determines whether you build **one forest or two** and where privileged identities live.
+- **Standing privilege is an organizational decision, not just a technical one.** The "**zero permanent Domain Admin**" principle (§4) only holds if an *operating model* — approvals, on-call, break-glass custody — backs it. Decide who approves elevation, who holds the break-glass credentials, and who is accountable for Tier 0 hygiene.
+- **Document it as a deliverable.** The FSMO placement (§5.4), the recovery custody (§5.7) and the delegation map (§3) are only real if a named owner maintains them. An unowned Tier 0 is an ungoverned one.
+
+➡️ **Design takeaway:** an AD forest is also an *operating commitment*. Decide the ownership model — single-team or admin-forest-backed — as the **first architectural fork**, because §1's "one forest or two" follows directly from it.
 
 ---
 
@@ -426,6 +474,17 @@ A greenfield forest is the moment to confirm the replication-integrity options t
 - 🟢 **Leave site links transitive unless the network isn't.** By default AD bridges all site links (**"Bridge all site links"** is on), so any site can replicate through any other — usually what you want. Turn it off only when your physical routing is genuinely **non-transitive** (tightly hub-controlled), and then build explicit **site-link bridges** that mirror the real paths.
 - 🔵 **SYSVOL replicates with DFSR, not FRS.** On a greenfield WS2025 build this is automatic — the legacy **FRS** engine is fully removed — so there is nothing to migrate; just confirm DFSR and never reintroduce anything that depends on FRS.
 
+### 5.7 — Forest recovery: a design pillar, not a backup job
+
+Forest recovery is the plan for the worst case — the **entire forest** is logically destroyed or compromised (ransomware, a bad schema change, mass deletion, a Tier 0 breach) and must be rebuilt from backups. It is a **design pillar**, not a line item, because the decisions that make it possible have to be taken *before* the disaster, not during it.
+
+- 🔴 **A backup is only as good as its restore — and AD restore is not a file restore.** Microsoft publishes a dedicated **AD Forest Recovery Guide**, and the procedure is *not* "restore every DC." You **restore one DC per domain** from a trusted system-state backup, isolate it, clean up the metadata of every other DC, then **redeploy the remaining DCs** from that authoritative core. Treat the guide as a template and write a **custom plan** for your topology.
+- 🔵 **Keep backups offline and out of reach of the threat that would trigger the recovery.** Ransomware and a Tier 0 compromise are the realistic triggers, so an online backup the same attacker can reach is worthless. Keep **system-state backups of at least two DCs per domain**, offline / immutable, together with the **DSRM password** (rotated via Windows LAPS, §9.2) you must enter to perform the restore.
+- 🔵 **Recovery hygiene is part of the plan.** A real forest recovery includes **resetting the `krbtgt` account (twice)** and the **trust passwords**, and invalidating cached credentials — the same steps that contain a compromise. Decide this belongs in the runbook up front.
+- 🟢 **An untested plan is not a plan — drill it.** Microsoft recommends **practicing the recovery at least once a year**, and after major changes to the Enterprise/Domain Admins membership. Define your **RTO / RPO** for the directory (how fast you must be back, how much change you can lose) and prove the plan meets them on real hardware/VMs, not on paper. Keep a **documented topology map** (DCs, FSMO roles, backup status, trusts) as part of the plan.
+
+➡️ **Design takeaway:** decide *who owns* the recovery (§0.4), *where the offline backups live*, and *how often you drill* — at build time. The §4 backup bullet and the §5.4 "a snapshot is not a backup" rule are the same principle; this is the plan that turns them into a tested capability.
+
 ---
 
 ## 📡 6 — DNS Design
@@ -635,6 +694,9 @@ flowchart TD
 
 | Decision | Recommendation |
 |---|---|
+| **Positioning** | Justify **AD DS vs cloud-native**; design the **Entra ID** sync (source of authority, **Cloud Sync** by default, routable UPN) up front |
+| **Identity lifecycle** | Own **JML** from an authoritative HR/IGA source; AD *consumes* the lifecycle and drives stale-object cleanup |
+| **Operating model** | Name the **Tier 0 owner** (single team vs admin forest) before deciding one forest or two |
 | **Forests / domains** | **1 forest, 1 domain** unless a hard constraint forces otherwise |
 | **Functional level** | **WS2025 FFL** on a greenfield all-2025 fleet; decide the **32k page size** at forest creation |
 | **Naming** | **Registered, dedicated subdomain** prefix (`corp.example.com`); never single-label or `.local` |
@@ -644,6 +706,7 @@ flowchart TD
 | **Sites** | Follow **network topology**, not org structure; declare **every** subnet (VPN/Wi-Fi/cloud); enable **Try Next Closest Site** |
 | **DCs** | **2+ DCs**, all **GC + DNS** |
 | **Replication** | **Strict Replication Consistency** on; **SYSVOL on DFSR** (FRS is gone) |
+| **Forest recovery** | Offline / immutable backups of **2+ DCs**; **tested annually**; restore one DC per domain per the AD Forest Recovery Guide |
 | **DNS** | **AD-integrated + scavenging** from day one |
 | **Time** | Forest-root **PDC Emulator** syncs an external source; all else follows the hierarchy (`NT5DS`) |
 | **Trusts** | **Forest trust + Selective Auth + SID Filtering + TGT delegation off** |
@@ -662,3 +725,5 @@ flowchart TD
 - Microsoft — [Best Practices for Securing Active Directory](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/best-practices-for-securing-active-directory)
 - Microsoft — [Securing privileged access (Enterprise Access Model)](https://learn.microsoft.com/en-us/security/privileged-access-workstations/privileged-access-access-model)
 - Microsoft — [Delegating administration by using OU objects](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/delegating-administration-of-account-ous-and-resource-ous)
+- Microsoft — [AD Forest Recovery Guide](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/forest-recovery-guide/ad-forest-recovery-devise-a-plan)
+- Microsoft — [What is Microsoft Entra Cloud Sync?](https://learn.microsoft.com/en-us/entra/identity/hybrid/cloud-sync/what-is-cloud-sync)
