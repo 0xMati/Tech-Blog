@@ -352,17 +352,38 @@ For cross-forest privileged access without permanent Domain Admins, see [Just-in
 - 🔴 **Minimum 2 DCs** for resilience — never run a single DC in production.
 - Object count rarely drives DC count; **fault tolerance and geography** do. A few-thousand-object directory is light.
 - 🟢 In a single-domain forest, make **all DCs Global Catalog** — there is no downside.
+- 🔵 For a **physically insecure location** (branch office, unstaffed closet), prefer a **Read-Only Domain Controller (RODC)**: it holds no writable copy of the directory and, by default, **caches no account secrets** — so a stolen RODC exposes far less than a full DC.
 
-### 5.2 — Sites
+### 5.2 — Centralized or distributed DCs?
+
+This is one of the design answers that has genuinely **changed over time**, and it deserves a deliberate decision rather than a reflex.
+
+Microsoft characterizes a branch/remote site as one with *"relatively few users, poor physical security, relatively poor network bandwidth to a hub site"* — and the **RODC was designed precisely for that case**. Historically, the deciding factor was that **last point**: WAN links were slow and unreliable, so you put a DC (or RODC) in every site so users could still authenticate and reach resources when the link was congested or down.
+
+> 🟢 **What changed (design reasoning, not a Microsoft citation):** the widespread availability of **fast, reliable, often redundant links** (fiber, SD-WAN, 4G/5G failover) has largely removed the *bandwidth* argument. The modern default for most organizations is therefore to **centralize DCs in two or more datacenters** and let remote sites authenticate over the WAN — which also **shrinks the Tier 0 footprint** (fewer physically-exposed DCs to protect, consistent with §1.1 and the RODC note above).
+
+A local DC/RODC is still the right call when one of these holds:
+
+- 🔵 **Authentication must survive a WAN outage** — the site runs business-critical operations that cannot stop if the link drops (factory floor, point-of-sale, healthcare).
+- 🔵 **The link is genuinely unreliable or high-latency**, or has no redundant path.
+- 🔵 **A large user population** at the site makes WAN authentication traffic significant, or local services (DFS, print, PKI) need a nearby DC.
+- 🔴 If you do place one in a **physically insecure** site, make it an **RODC** (no writable copy, no cached secrets by default) — or place **no DC at all** and rely on the WAN.
+
+➡️ **Rule of thumb:** default to **centralized DCs over reliable links**; deploy a **local RODC** only where a WAN outage would actually stop the business or the link can't be trusted. Don't put a writable DC in an unsecured remote closet out of habit.
+
+### 5.3 — Sites
 
 - ⚠️ **Sites model NETWORK topology, not organization.** Do not create a site per department/entity. Departments are **OUs**, not **sites**.
 - Use **one site** if everything is hosted in one datacenter/region; add sites only where there are distinct physical locations with local DCs.
 - 🔵 Map **subnets → sites** correctly so clients are steered to the right DC for logon and DFS.
+- Why it matters for replication: **within a site**, DCs replicate almost immediately (change notification, uncompressed) — keep DCs that share a fast LAN in the same site. **Between sites**, replication is **scheduled and compressed** along site links to spare the WAN. Getting subnet-to-site mapping wrong therefore degrades both logon steering *and* replication efficiency.
 
-### 5.3 — FSMO and virtualization
+### 5.4 — FSMO and virtualization
 
 - Place the **PDC Emulator** on a robust, central DC; document all 5 FSMO roles.
 - 🔴 For virtualized DCs, ensure **VM-GenerationID** support (modern Hyper-V/VMware) to prevent USN rollback. Hypervisor hosts running DCs are **Tier 0**.
+- 🔵 The USN-rollback safeguard **only works if the hypervisor exposes a VM-GenerationID**: when the ID changes (snapshot restore, copy), the DC resets its InvocationID and discards its RID pool, forcing safe re-convergence. On a hypervisor that doesn't expose it, you fall back to the old, weaker USN-rollback *quarantine* — another reason to require a modern hypervisor for DCs.
+- 🔴 **A snapshot is not a backup.** The VM-GenerationID safeguard prevents *corruption* on a snapshot revert, but it does **not** replace a real **system-state backup** and a **tested forest-recovery** procedure (per §4). Never treat "I can roll back the VM" as your AD recovery plan.
 
 ---
 
