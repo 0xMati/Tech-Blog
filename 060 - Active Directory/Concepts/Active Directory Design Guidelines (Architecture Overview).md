@@ -75,7 +75,7 @@ A single domain is simpler on **every** axis that matters operationally:
 
 Most requests for a second domain are really requests for something a single domain already provides:
 
-- **"Different password policies per population."** → Solved by **PSOs (Fine-Grained Password Policies)** — multiple coexisting policies in one domain, targeted by group. *Example: a 25-character PSO applied to `Contoso-Tier0-Admins` while standard users keep the default 12-character policy — all inside `corp.contoso.com`.*
+- **"Different password policies per population."** → Solved by **PSOs (Fine-Grained Password Policies)** — multiple coexisting policies in one domain, targeted by group. *Example: a 25-character PSO applied to `Contoso-Tier0-Admins` while standard users keep the default 12-character policy — all inside `corp.contoso.com`.* *(When several PSOs resolve to one user, the **lowest `msDS-PasswordSettingsPrecedence`** wins — it is not a union of the policies, so design the precedence values deliberately.)*
 - **"Departments/entities must be administered separately."** → Solved by **OU delegation** (§3). Delegation is an *OU* concern, never a *domain* one. *Example: handing `OU=Sales` to the Sales IT team without giving them any rights over `OU=Finance`.*
 - **"Different GPOs per population."** → Solved by **OU structure + GPO linking** (§8). *Example: a stricter lockdown GPO linked only to `OU=Call-Center`, a looser one on `OU=Engineering`.*
 - **"We want a different DNS namespace per entity."** → Solved by **additional UPN suffixes** and DNS zones, without a new domain. *Example: users in `corp.contoso.com` can still sign in as `alice@fabrikam.com` by adding `fabrikam.com` as a UPN suffix.*
@@ -272,6 +272,7 @@ example.com
 - ⚠️ **Keep depth reasonable** (3–4 levels). Deep trees complicate GPO and delegation with no benefit.
 - 🟢 Avoid **Block Inheritance**; favor a clean GPO design instead (see §8).
 - 🔵 Protect OUs with **`ProtectedFromAccidentalDeletion`**.
+- 🟢 **Redirect the two default object containers on day one (`redirusr` / `redircmp`).** A user or computer created without an explicit OU lands in the built-in **`CN=Users`** / **`CN=Computers`** containers — and those are **containers, not OUs**, so **no GPO can be linked to them** and you cannot delegate them cleanly. Point the defaults at real OUs once at build time (`redirusr "OU=_Staging,DC=corp,DC=example,DC=com"` and the equivalent `redircmp`) so that even an object created by a down-level tool or a forgotten `-Path` still receives your baseline GPOs and lands somewhere you administer. *(Requires the WS2003 domain functional level or higher — always met on a greenfield build.)*
 - Note: the native **`Domain Controllers`** container does not move — DCs stay there with the Default Domain Controllers Policy.
 
 ---
@@ -300,6 +301,8 @@ For each delegated scope, define a small, repeatable set of **role groups**:
 🟢 **Group scope — follow the A-G-DL-P model.** In plain terms: you put the *people* in one kind of group and attach the *permission* to another, then nest the first into the second — so who-you-are and what-you-can-do stay cleanly separated. Concretely, the group that actually *holds the permission* on the OU should be a **Domain Local** group; the **accounts** go into a **Global** group, which is then nested into the Domain Local one (**A**ccounts → **G**lobal → **D**omain **L**ocal → **P**ermission). Domain Local is the scope designed to carry resource permissions, and it can contain Global groups from any domain in the forest — which keeps the model clean if the forest ever grows beyond one domain. In a single-domain forest you can get away with plain Global role groups, but A-G-DL-P costs nothing to adopt up front and ages better.
 
 🟢 **Prefer Global over Universal for role groups (single domain).** A **Universal** group has its full membership replicated to **every Global Catalog** in the forest; a **Global** (or Domain Local) group's membership is not. In a single-domain forest, Universal therefore buys you **nothing** that Global doesn't already give you, while adding needless GC replication — so reserve Universal for the genuine cross-domain cases (it only earns its keep when a forest actually spans multiple domains).
+
+🟡 **Keep group nesting flat to avoid Kerberos token bloat.** Every group a user belongs to (directly *and* through nesting, plus `SIDHistory`) adds a SID to their Kerberos ticket. Past a certain count the ticket exceeds the Kerberos **`MaxTokenSize`** and authentication **fails in confusing ways** — broken access to file shares, HTTP 400 "bad request / header too large" on web apps, logon oddities — rather than producing a clear "too many groups" error. So the A-G-DL-P layering above is right, but resist *deep* or redundant nesting: keep memberships purposeful, clean up `adminCount`/`SIDHistory` leftovers, and watch the per-account group count as a design metric on a large or long-lived forest.
 
 ### 3.2 — How to apply delegation
 
@@ -368,6 +371,7 @@ AD ships **two native JIT mechanisms**, and which one fits is a function of whet
 - Object count rarely drives DC count; **fault tolerance and geography** do. A few-thousand-object directory is light.
 - 🟢 In a single-domain forest, make **all DCs Global Catalog** — there is no downside.
 - 🔵 For a **physically insecure location** (branch office, unstaffed closet), prefer a **Read-Only Domain Controller (RODC)**: it holds no writable copy of the directory and, by default, **caches no account secrets** — so a stolen RODC exposes far less than a full DC.
+- 🔵 **The RODC's real design lever is its Password Replication Policy (PRP).** "Caches no secrets" is only the *default*: the PRP — an **Allowed** list and a **Denied** list — is what decides *whose* credentials the RODC may cache locally. Deliberately allow only the accounts that genuinely sign in at that site (and never a Tier 0 / privileged account), so a stolen RODC can leak, at worst, that handful of site-local passwords and nothing else. Designing the PRP per site is the difference between an RODC that contains a breach and one that quietly hoards more than it should. *(Established RODC behavior.)*
 
 ### 5.2 — Centralized or distributed DCs?
 
@@ -390,7 +394,11 @@ A local DC/RODC is still the right call when one of these holds:
 
 - ⚠️ **Sites model NETWORK topology, not organization.** Do not create a site per department/entity. Departments are **OUs**, not **sites**.
 - Use **one site** if everything is hosted in one datacenter/region; add sites only where there are distinct physical locations with local DCs.
-- 🔵 Map **subnets → sites** correctly so clients are steered to the right DC for logon and DFS.
+- 🔵 Map **subnets → sites** correctly so clients are steered to the right DC for logon and DFS — and declare **every** subnet, including **VPN pools, Wi-Fi ranges and cloud/Azure address space**. A client whose IP matches **no** defined subnet has **no site**, so DC-Locator hands it a DC **at random** — often across the WAN. This is one of the most common and most invisible misconfigurations.
+- 🟢 **Hunt the missing subnets for free.** Each DC logs every site-less client it is contacted by in `%windir%\debug\netlogon.log` with a `NO_CLIENT_SITE:` entry — scrape that file periodically and you have a free, exhaustive list of the subnets you forgot to declare.
+- 🟢 **Rename `Default-First-Site-Name` on day one.** Give it a meaningful name (e.g. `DC-Paris`) before you build the topology — it is trivial up front and awkward to untangle once every subnet, link and DC already references it.
+- 🔵 **Know how DC-less branches are served.** Through **Automatic Site Coverage**, a DC automatically registers the site-specific SRV records for nearby sites that have **no DC of their own**, taking up coverage by **site-link cost** — so even a DC-less branch is steered to a *predictable* DC, *provided your site-link costs reflect the real network*. *(Established DC-Locator behavior.)*
+- 🟢 **Enable "Try Next Closest Site."** This DC-Locator setting makes a client whose own site has no available DC fall back to the **next-closest site by cost** rather than a random DC anywhere in the domain — the right default for a hub-and-spoke topology. *(Established DC-Locator behavior.)*
 - Why it matters for replication: **within a site**, DCs replicate almost immediately (change notification, uncompressed) — keep DCs that share a fast LAN in the same site. **Between sites**, replication is **scheduled and compressed** along site links to spare the WAN. Getting subnet-to-site mapping wrong therefore degrades both logon steering *and* replication efficiency.
 
 ### 5.4 — FSMO and virtualization
@@ -409,6 +417,14 @@ Time is a structural dependency, not an afterthought: the **W32Time** service is
 - 🟢 **The PDC Emulator role can move**, so the external-source configuration is a property of *that role*, not of a fixed server. Document it as part of the FSMO placement (§5.4) so a role transfer doesn't orphan the time root.
 
 > 🟡 In a virtualized forest, make sure **host time integration does not fight W32Time** on a DC: a hypervisor that forces guest time sync can override the AD hierarchy and reintroduce skew. Let the AD hierarchy own time on DCs.
+
+### 5.6 — Replication safeguards
+
+A greenfield forest is the moment to confirm the replication-integrity options that are painful to retrofit once data is flowing.
+
+- 🔵 **Keep Strict Replication Consistency on.** It is the default on any forest created at the Windows Server 2003 forest functional level or later, and it must stay on: it stops a DC from inbound-replicating a **lingering object** — an object that was deleted elsewhere while this DC sat offline past the **tombstone lifetime** — by quarantining the stale source instead of letting the ghost spread. A reanimated object (especially a deleted security principal) is both a consistency *and* a security problem, which is exactly why this safeguard matters by design.
+- 🟢 **Leave site links transitive unless the network isn't.** By default AD bridges all site links (**"Bridge all site links"** is on), so any site can replicate through any other — usually what you want. Turn it off only when your physical routing is genuinely **non-transitive** (tightly hub-controlled), and then build explicit **site-link bridges** that mirror the real paths.
+- 🔵 **SYSVOL replicates with DFSR, not FRS.** On a greenfield WS2025 build this is automatic — the legacy **FRS** engine is fully removed — so there is nothing to migrate; just confirm DFSR and never reintroduce anything that depends on FRS.
 
 ---
 
@@ -522,8 +538,11 @@ The single most valuable design principle in a well-templated forest is **consis
 
 - **`ADDSDeployment`** PowerShell module (`Install-ADDSForest`, `Install-ADDSDomainController`) — promote DCs from a documented script, not the GUI wizard.
 - **Active Directory Administrative Center (ADAC)** — the console that surfaces the **Recycle Bin**, **Fine-Grained Password Policies** and **Authentication Policies/Silos**, and that **echoes the equivalent PowerShell** for everything you click (a fast way to turn a GUI action into a repeatable script).
-- **AD Recycle Bin** — an **optional feature to enable at build time** (the enablement is **irreversible**); once on, a deleted object can be restored *with* its attributes and group memberships intact.
+- **AD Recycle Bin** — an **optional feature to enable at build time** (the enablement is **irreversible**); once on, a deleted object can be restored *with* its attributes and group memberships intact. Note the recovery window is **finite**: a deleted object stays fully recoverable for `msDS-deletedObjectLifetime` — which **defaults to the `tombstoneLifetime` (180 days** on a modern forest) — after which it is purged. Know and document both values so "we can always restore it" doesn't quietly expire.
+- **KDS Root Key** — create it **early in the build** (`Add-KdsRootKey`). DCs deliberately **wait up to 10 hours** after the key is created before they will hand out gMSA/dMSA passwords, to let it replicate to every DC first. Forgetting this is the classic *"why can't I create my first gMSA?"* — generate the root key at forest-bootstrap time, not the day you finally need the account.
 - **GPMC** — back up, export and restore GPOs as files, which is what makes the "GPO as versioned artifact" goal above real.
+
+🟢 **Plan attribute indexing for the attributes your apps actually query.** If a line-of-business application filters LDAP searches on a particular attribute (custom or built-in), adding it to the index (`searchFlags`) turns a directory-wide scan into a fast indexed lookup. It is a cheap, low-risk tuning decision that is best taken deliberately at design time rather than discovered under load.
 
 ### 9.2 — Daily operations
 
@@ -538,6 +557,8 @@ The single most valuable design principle in a well-templated forest is **consis
 🔵 **MDI is not just "on the DCs".** Its lightweight sensor runs on your **identity infrastructure** — domain controllers first, but also **AD CS, AD FS and Entra Connect servers** where they exist (all Tier 0). Deploy it everywhere that infrastructure lives, not only on the DCs. *(Microsoft fact: the MDI architecture page describes sensors running across the identity infrastructure; the per-role server list comes from the MDI deployment pages.)*
 
 🟢 **Use the in-box Windows LAPS to its full extent — three options that are off by default.** The native **Windows LAPS** (built into WS2025, *not* the deprecated legacy MSI) does more than rotate each machine's local administrator password. It can also **encrypt** the stored password inside AD (so a directory read alone doesn't reveal it), keep a **password history** (to recover an older value after a restore), and — uniquely — **manage the DSRM (Directory Services Restore Mode) account password on the domain controllers themselves**. That last one is the often-forgotten win: the break-glass DC-recovery credential becomes a rotated, retrievable secret instead of a static password set once at promotion and never touched again. Decide to turn the three on at build time. *(Microsoft fact: the Windows LAPS overview lists password encryption, password history, and DSRM-account backup for domain controllers as native scenarios.)*
+
+🔵 **Drive the stale-object lifecycle from the *replicated* attribute.** For the "inactive users/computers" cleanup above, key your queries on **`lastLogonTimestamp`** — replicated to every DC, though deliberately coarse (it updates only roughly every **14 days**) — and **not** on `lastLogon`, which is accurate to the second but **non-replicated**, so it differs on every DC and is meaningless forest-wide. Reading the wrong one is the usual reason a "stale account" cleanup deletes accounts that are actually in use.
 
 ### 9.3 — Health, diagnostics and security assessment
 
@@ -585,6 +606,7 @@ That is all. **The multi-entity factor is one of degree (repetition, watertightn
 - **Give each entity its own login/mail identity without a new domain**: add a **UPN suffix per entity** (`user@entity-alpha.fr`) on the single shared domain (§1.1) — entities keep their own namespace while the directory stays one domain. Pair it with DNS zones as needed.
 - **Don't multiply GPOs per entity.** Reuse the GPO anti-proliferation principle (§8.5): a **shared GPO whose items are scoped per entity with Item-Level Targeting** (targeting `GRP-ENT001-*`) beats minting a fresh GPO set for every one of the 150 entities — which would be unmanageable.
 - **Consider List Object Mode** so entities cannot enumerate each other.
+- **Cap what a delegated entity can create with directory quotas.** A delegated admin who can create objects can, in principle, create *thousands* of them and bloat the database for everyone in the shared forest. **NTDS directory quotas** (set per security principal on a partition, via `ntdsutil`) put a ceiling on the **number of objects** a given principal may own — a rarely-used but perfect fit for a multi-tenant forest, where it stops one entity's runaway script or abuse from degrading the shared infrastructure.
 - **Sites still follow network topology**, not entities — do not create 150 sites for 150 entities.
 
 ```mermaid
@@ -619,8 +641,9 @@ flowchart TD
 | **OU design** | Structured for **delegation + GPO**; identical template where repeated |
 | **Delegation** | **RBAC role groups** applied as inherited OU ACLs; never direct ACLs |
 | **Tier 0** | Isolated (or deported to an admin forest); no permanent human DA |
-| **Sites** | Follow **network topology**, not org structure |
+| **Sites** | Follow **network topology**, not org structure; declare **every** subnet (VPN/Wi-Fi/cloud); enable **Try Next Closest Site** |
 | **DCs** | **2+ DCs**, all **GC + DNS** |
+| **Replication** | **Strict Replication Consistency** on; **SYSVOL on DFSR** (FRS is gone) |
 | **DNS** | **AD-integrated + scavenging** from day one |
 | **Time** | Forest-root **PDC Emulator** syncs an external source; all else follows the hierarchy (`NT5DS`) |
 | **Trusts** | **Forest trust + Selective Auth + SID Filtering + TGT delegation off** |
