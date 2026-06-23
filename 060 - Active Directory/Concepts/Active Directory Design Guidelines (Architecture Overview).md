@@ -469,7 +469,7 @@ A consistent prefix makes precedence and ownership obvious at a glance and keeps
 
 - Link a **domain baseline** (common security) high, inherited everywhere — this is the one link worth marking **`Enforced`**.
 - Use **per-tier GPOs** (Tier 0 on DCs/infra, Tier 1 on servers), aligned with the tiering model.
-- 🟡 **Limit GPO proliferation.** Many scopes × several GPOs each becomes unmanageable. Prefer **common, parameterized GPOs** (with ILT) over per-scope GPOs.
+- 🟡 **Limit GPO proliferation.** Many scopes × several GPOs each becomes unmanageable. Instead of one GPO per population (`GPO-Sales-Drives`, `GPO-Finance-Drives`, … — all identical bar one value), prefer **a single shared GPO whose individual settings are conditioned per population with Item-Level Targeting** (§8.2): one `U-Drive-Mappings` GPO holding a *map S: → \\\\srv\\sales* item targeted at `GRP-Sales`, a *map S: → \\\\srv\\finance* item targeted at `GRP-Finance`, and so on.
 - 🟢 **Disable the unused half of a GPO.** If a GPO carries only computer settings (or only user settings), disable the other half in its details — it **skips that half at processing time** and speeds up logon/startup.
 - 🟢 Base the security baseline on the **Microsoft Security Compliance Toolkit** (WS2025 baselines), and keep GPOs under **version control** (backup/export) so configuration is reproducible and reviewable.
 
