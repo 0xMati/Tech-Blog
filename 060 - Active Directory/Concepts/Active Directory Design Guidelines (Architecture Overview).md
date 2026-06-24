@@ -512,6 +512,7 @@ A local DC/RODC is still the right call when one of these holds:
 - 🔴 For virtualized DCs, ensure **VM-GenerationID** support (modern Hyper-V/VMware) to prevent USN rollback. Hypervisor hosts running DCs are **Tier 0**.
 - 🔵 The USN-rollback safeguard **only works if the hypervisor exposes a VM-GenerationID**: when the ID changes (snapshot restore, copy), the DC resets its InvocationID and discards its RID pool, forcing safe re-convergence. On a hypervisor that doesn't expose it, you fall back to the old, weaker USN-rollback *quarantine* — another reason to require a modern hypervisor for DCs.
 - 🔴 **A snapshot is not a backup.** The VM-GenerationID safeguard prevents *corruption* on a snapshot revert, but it does **not** replace a real **system-state backup** and a **tested forest-recovery** procedure (per §5). Never treat "I can roll back the VM" as your AD recovery plan.
+- 🔵 **Administering the hosts that run DCs is its own design topic.** A hypervisor hosting a DC is Tier 0, and so are its storage, backup, clustering and fabric admins. For the full administration model, see [Securing the Hyper-V Fabric Hosting Domain Controllers and Tier 0 Assets](Securing%20the%20Hyper-V%20Fabric%20Hosting%20Domain%20Controllers%20and%20Tier%200%20Assets.md).
 
 ### 6.5 — Time synchronization hierarchy
 

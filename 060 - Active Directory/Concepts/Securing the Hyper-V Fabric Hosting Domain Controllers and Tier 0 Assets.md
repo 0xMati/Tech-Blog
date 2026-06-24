@@ -106,7 +106,7 @@ If the host is Tier 0, it is administered **exactly like any other Tier 0 system
 
 ## 4. Storage and the VHDX Problem
 
-A Domain Controller's virtual disk **is** `NTDS.dit`. Anyone who can read that file off the storage layer has the credential database — no logon required.
+A Domain Controller's virtual disk **carries `NTDS.dit`** — the directory database (by default `C:\Windows\NTDS\ntds.dit`) lives inside the guest OS that the VHDX contains. Anyone who can read that virtual disk off the storage layer can extract `NTDS.dit` from it offline — the credential database, with no logon required.
 
 - **🔴 The storage layer is Tier 0.** The SAN/NAS/S2D volume, the storage fabric, and the **storage administrators** for the DC VHDX files are all Tier 0. A storage admin who can copy a LUN can copy a DC.
 - **🟢 Isolate Tier 0 storage.** DC and Tier 0 VHDX files live on **dedicated volumes/datastores** that lower-tier storage operators cannot reach. Don't park a DC disk on the general VM datastore.

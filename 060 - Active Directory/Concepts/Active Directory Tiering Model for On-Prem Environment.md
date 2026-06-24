@@ -119,7 +119,7 @@ These are systems that can **directly control Active Directory**. If compromised
 | MIM (Microsoft Identity Manager) servers | Can manage identities, group memberships, and provision privileged accounts in AD |
 | RADIUS/NPS servers authenticating DC access | Control who can authenticate to Tier 0 |
 
-> **🔴 Critical:** Any system that can **deploy code to**, **restore**, or **manage** a Tier 0 asset is itself Tier 0. This is the transitive trust principle.
+> **🔴 Critical:** Any system that can **deploy code to**, **restore**, or **manage** a Tier 0 asset is itself Tier 0. This is the transitive trust principle. For the virtualization layer specifically — administration model, dedicated vs. mixed fabric, storage, backup, clustering, and Guarded Fabric — see [Securing the Hyper-V Fabric Hosting Domain Controllers and Tier 0 Assets](Securing%20the%20Hyper-V%20Fabric%20Hosting%20Domain%20Controllers%20and%20Tier%200%20Assets.md).
 
 #### Tier 1 Assets — Servers and Applications
 
