@@ -1305,17 +1305,18 @@ Per-tier delta — substitute these four values when linking the GPO to each tie
 
 #### Network Segmentation for PAWs
 
-PAWs should be on a **dedicated VLAN** with strict firewall rules. The table below is the **Tier 0** example — adapt the VLAN and allowed destinations to the corresponding tier (Tier 1 PAW VLAN → Tier 1 servers, proxy for web, etc.):
+PAWs should be on a **dedicated VLAN** with strict firewall rules. The principle is the same for every tier — substitute the tier when applying it:
 
 | Source | Destination | Ports | Allow/Deny |
 |--------|-------------|-------|------------|
-| T0 PAW VLAN | Domain Controllers | 53, 88, 135, 389, 445, 636, 3268, 3269, 3389, 5985, 9389 | Allow |
-| T0 PAW VLAN | T0 Servers (AD CS, etc.) | 135, 445, 3389, 5985 | Allow |
-| T0 PAW VLAN | Internet | ALL | **Deny** |
-| T0 PAW VLAN | T1 Servers | ALL | **Deny** |
-| T0 PAW VLAN | T2 Workstations | ALL | **Deny** |
-| T0 PAW VLAN | Windows Update (if direct) | 443 | Allow (to Microsoft Update only) |
-| Any | T0 PAW VLAN | ALL | **Deny** (no inbound from non-T0) |
+| PAW VLAN | Same-tier Domain Controllers | 53, 88, 135, 389, 445, 636, 3268, 3269, 3389, 5985, 9389 | Allow |
+| PAW VLAN | Same-tier servers | 135, 445, 3389, 5985 | Allow |
+| PAW VLAN | Internet | ALL | **Deny** (Tier 1 dedicated may allow a filtering proxy on 443) |
+| PAW VLAN | Lower-tier systems | ALL | **Deny** |
+| PAW VLAN | Windows Update (if direct) | 443 | Allow (to Microsoft Update only) |
+| Any (lower/other tier) | PAW VLAN | ALL | **Deny** (no inbound from non-same-tier) |
+
+> **Tier 0 example:** the *PAW VLAN* is the T0 PAW VLAN, *same-tier servers* are the Tier 0 servers (AD CS, etc.), *lower-tier systems* are all Tier 1 servers and Tier 2 workstations, and the internet is denied with **no** proxy exception.
 
 ### 3.3 — Tier 0 PAW — Specifics
 
