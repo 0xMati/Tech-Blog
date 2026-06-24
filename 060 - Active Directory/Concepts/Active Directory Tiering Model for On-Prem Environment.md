@@ -1300,7 +1300,7 @@ Per-tier delta — substitute these four values when linking the GPO to each tie
 
 | Setting | Tier 0 | Tier 1 |
 |---------|--------|--------|
-| **Allow log on locally / through RDS** (PAW allowlist) | `T0-PAW-Admins`, `Administrators` | `T1-PAW-Admins`, `Administrators` |
+| **Allow log on locally / through RDS** (PAW allowlist) | `T0-Admins`, `Administrators` | `T1-Admins`, `Administrators` |
 | **Deny log on locally / from network** | `T1-DenyLogon-T0`, `T2-DenyLogon-T0` | the lower-tier Deny-logon groups scoped for Tier 1 |
 | **Outbound RDP (firewall)** | DCs / Tier 0 servers only | Tier 1 servers only |
 | **Local Administrators** | `T0-Admins` | `T1-Admins` |
