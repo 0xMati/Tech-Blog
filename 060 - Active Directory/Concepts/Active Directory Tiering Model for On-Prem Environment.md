@@ -1316,7 +1316,17 @@ PAWs should be on a **dedicated VLAN** with strict firewall rules. The principle
 | PAW VLAN | Windows Update (if direct) | 443 | Allow (to Microsoft Update only) |
 | Any (lower/other tier) | PAW VLAN | ALL | **Deny** (no inbound from non-same-tier) |
 
-> **Tier 0 example:** the *PAW VLAN* is the T0 PAW VLAN, *same-tier servers* are the Tier 0 servers (AD CS, etc.), *lower-tier systems* are all Tier 1 servers and Tier 2 workstations, and the internet is denied with **no** proxy exception.
+**Tier 0 example** — the same rules applied with Tier 0 values (internet fully denied, no proxy exception):
+
+| Source | Destination | Ports | Allow/Deny |
+|--------|-------------|-------|------------|
+| T0 PAW VLAN | Domain Controllers | 53, 88, 135, 389, 445, 636, 3268, 3269, 3389, 5985, 9389 | Allow |
+| T0 PAW VLAN | T0 Servers (AD CS, etc.) | 135, 445, 3389, 5985 | Allow |
+| T0 PAW VLAN | Internet | ALL | **Deny** |
+| T0 PAW VLAN | T1 Servers | ALL | **Deny** |
+| T0 PAW VLAN | T2 Workstations | ALL | **Deny** |
+| T0 PAW VLAN | Windows Update (if direct) | 443 | Allow (to Microsoft Update only) |
+| Any | T0 PAW VLAN | ALL | **Deny** (no inbound from non-T0) |
 
 ### 3.3 — Tier 0 PAW — Specifics
 
