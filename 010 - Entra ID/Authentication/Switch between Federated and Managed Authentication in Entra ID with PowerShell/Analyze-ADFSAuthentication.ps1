@@ -198,6 +198,14 @@ function Build-AdfsHtmlReport {
 
     $usersRows    = ConvertTo-CountTableRows -Groups $Data.TopUsers          -EmptyText 'No user data parsed.'
     $rpRows       = ConvertTo-CountTableRows -Groups $Data.TopRPs            -EmptyText 'No relying-party data parsed.'
+
+    $appUserRows = ''
+    foreach ($a in @($Data.AppUserCounts)) {
+        $appUserRows += "<tr><td>$(HtmlEncode $a.RelyingParty)</td><td style='text-align:right;'>$($a.DistinctUsers)</td><td style='text-align:right;'>$($a.Tokens)</td></tr>"
+    }
+    if ([string]::IsNullOrWhiteSpace($appUserRows)) {
+        $appUserRows = "<tr><td colspan='3' class='empty'>No user/app data parsed.</td></tr>"
+    }
     $protoRows    = ConvertTo-CountTableRows -Groups $Data.ByProtocol        -EmptyText 'No protocol data parsed.'
     $authRows     = ConvertTo-CountTableRows -Groups $Data.ByAuthType        -EmptyText 'No authentication-type data parsed.'
     $netRows      = ConvertTo-CountTableRows -Groups $Data.ByNetworkLocation -EmptyText 'No network-location data parsed.'
@@ -238,7 +246,7 @@ table{width:100%;border-collapse:collapse;font-size:.84rem}th{background:rgba(25
 .note{color:var(--muted);font-style:italic;font-size:.85rem;margin:.5rem 0}
 </style></head><body><div class='container'>
 <div class='hero'><h1>AD FS Authentication Analysis</h1><p class='subtitle'>Servers: $(HtmlEncode $Data.Servers) | Generated: $timestamp | Window: last $($Data.Days) day(s)</p><p style='margin-top:.85rem;'><strong>Focus:</strong> AD FS authentication activity (who and which apps authenticate through the farm) from Security audit events 1200/1202.</p></div>
-<nav class='section-nav'><a href='#summary'>Summary</a><a href='#users'>Users</a><a href='#apps'>Relying Parties</a><a href='#dist'>Distributions</a></nav>
+<nav class='section-nav'><a href='#summary'>Summary</a><a href='#users'>Users</a><a href='#apps'>Relying Parties</a><a href='#usersbyapp'>Users by App</a><a href='#dist'>Distributions</a></nav>
 
 <div id='summary'><h2>Summary</h2>
 <div class='summary-grid'>
@@ -253,6 +261,8 @@ table{width:100%;border-collapse:collapse;font-size:.84rem}th{background:rgba(25
 <div id='users'><h2>Top Users</h2><div class='card'><p class='note'>Top 20 users by token issuance count.</p><table><thead><tr><th>User</th><th style='text-align:right;'>Tokens</th></tr></thead><tbody>$usersRows</tbody></table></div></div>
 
 <div id='apps'><h2>Top Relying Parties (apps)</h2><div class='card'><p class='note'>Top 20 relying parties by token issuance count &mdash; applications that authenticate through the AD FS farm.</p><table><thead><tr><th>Relying Party</th><th style='text-align:right;'>Tokens</th></tr></thead><tbody>$rpRows</tbody></table></div></div>
+
+<div id='usersbyapp'><h2>Users by Application</h2><div class='card'><p class='note'>Distinct users per relying party. The <strong>exhaustive user-by-application list</strong> (one row per user per app, with first/last activity) is exported to <code>ADFS-UsersByApp-&lt;timestamp&gt;.csv</code>.</p><table><thead><tr><th>Relying Party</th><th style='text-align:right;'>Distinct Users</th><th style='text-align:right;'>Tokens</th></tr></thead><tbody>$appUserRows</tbody></table></div></div>
 
 <div id='dist'><h2>Distributions</h2>
 <div class='grid2'>
@@ -361,6 +371,32 @@ $topRPs = $allEvents | Where-Object RelyingParty |
     Sort-Object Count -Descending |
     Select-Object -First 20 Count, Name
 
+# User x App cross-tab: exhaustive list of users per application (token issuers).
+# One row per (RelyingParty, User) pair with token count and first/last activity.
+$usersByApp = $allEvents | Where-Object { $_.User -and $_.RelyingParty } |
+    Group-Object RelyingParty, User |
+    ForEach-Object {
+        $sorted = $_.Group | Sort-Object Time
+        [pscustomobject]@{
+            RelyingParty = $sorted[0].RelyingParty
+            User         = $sorted[0].User
+            Tokens       = $_.Count
+            FirstSeen    = $sorted[0].Time
+            LastSeen     = $sorted[-1].Time
+        }
+    } | Sort-Object RelyingParty, @{ Expression = 'Tokens'; Descending = $true }, User
+
+# Per-application distinct user counts (summary of the cross-tab above).
+$appUserCounts = $allEvents | Where-Object { $_.User -and $_.RelyingParty } |
+    Group-Object RelyingParty |
+    ForEach-Object {
+        [pscustomobject]@{
+            RelyingParty  = $_.Name
+            DistinctUsers = (@($_.Group | Select-Object -ExpandProperty User -Unique)).Count
+            Tokens        = $_.Count
+        }
+    } | Sort-Object DistinctUsers -Descending
+
 $byProtocol = $allEvents | Where-Object Protocol |
     Group-Object Protocol |
     Sort-Object Count -Descending |
@@ -406,6 +442,9 @@ $topUsers | Format-Table -AutoSize | Out-String | Write-Host
 Write-Host "Top 20 Relying Parties (apps):" -ForegroundColor Yellow
 $topRPs | Format-Table -AutoSize | Out-String | Write-Host
 
+Write-Host "Distinct users per application:" -ForegroundColor Yellow
+$appUserCounts | Format-Table -AutoSize | Out-String | Write-Host
+
 Write-Host "By protocol:" -ForegroundColor Yellow
 $byProtocol | Format-Table -AutoSize | Out-String | Write-Host
 
@@ -421,6 +460,8 @@ $byHour | Format-Table -AutoSize | Out-String | Write-Host
 # Export aggregated CSVs
 $topUsers   | Export-Csv -Path (Join-Path $OutputFolder "ADFS-TopUsers-$stamp.csv")    -NoTypeInformation -Encoding UTF8
 $topRPs     | Export-Csv -Path (Join-Path $OutputFolder "ADFS-TopRPs-$stamp.csv")      -NoTypeInformation -Encoding UTF8
+$usersByApp    | Export-Csv -Path (Join-Path $OutputFolder "ADFS-UsersByApp-$stamp.csv")    -NoTypeInformation -Encoding UTF8
+$appUserCounts | Export-Csv -Path (Join-Path $OutputFolder "ADFS-AppUserCounts-$stamp.csv") -NoTypeInformation -Encoding UTF8
 $byProtocol | Export-Csv -Path (Join-Path $OutputFolder "ADFS-ByProtocol-$stamp.csv")  -NoTypeInformation -Encoding UTF8
 $byAuthType | Export-Csv -Path (Join-Path $OutputFolder "ADFS-ByAuthType-$stamp.csv")  -NoTypeInformation -Encoding UTF8
 $byNetworkLocation | Export-Csv -Path (Join-Path $OutputFolder "ADFS-ByNetworkLocation-$stamp.csv") -NoTypeInformation -Encoding UTF8
@@ -435,6 +476,7 @@ Build-AdfsHtmlReport -OutputPath $htmlPath -Data @{
     TotalEvents       = $allEvents.Count
     TopUsers          = $topUsers
     TopRPs            = $topRPs
+    AppUserCounts     = $appUserCounts
     ByProtocol        = $byProtocol
     ByAuthType        = $byAuthType
     ByNetworkLocation = $byNetworkLocation
