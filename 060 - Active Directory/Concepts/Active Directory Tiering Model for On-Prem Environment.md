@@ -1328,6 +1328,8 @@ PAWs should be on a **dedicated VLAN** with strict firewall rules. The principle
 | T0 PAW VLAN | Windows Update (if direct) | 443 | Allow (to Microsoft Update only) |
 | Any | T0 PAW VLAN | ALL | **Deny** (no inbound from non-T0) |
 
+> **🔵 Tier vs. silo:** the matrix above segments at the **tier** level (VLAN). It does **not** separate silos *within* a tier (e.g. `T0-N2-ADFS` vs. `T0-N2-PKI`) — a per-silo VLAN does not scale. Intra-tier separation is enforced at the **host** layer with IPsec authentication plus group-conditioned firewall rules, not by adding subnets. See [Phase 8 — Granular Administration](#-phase-8--granular-administration-n-level-model-and-profile-based-delegation).
+
 ### 3.3 — Tier 0 PAW — Specifics
 
 Tier 0 is the strictest tier. Beyond the baseline, it applies the most restrictive end of every delta:
@@ -3114,6 +3116,44 @@ Rule: "Allow WinRM from T1-N2-Exchange"
 ```
 
 This prevents a SQL DBA (`T1-N2-SQL`) from connecting via WinRM to an Exchange server, even though both are T1. The tier boundary is enforced by GPO; the platform boundary is enforced by firewall rules.
+
+The rule above scopes by **Remote IP** (the admin PAW/jump host range). That is the simplest form, but it ties enforcement to addressing. To make the platform boundary identity-based — and to cover the case where several silos share a PAW VLAN — pair the firewall rule with IPsec and condition it on **group membership** (next section).
+
+#### Host Isolation: IPsec + Group-Conditioned Firewall (Server & Domain Isolation)
+
+When a client needs true micro-segmentation *inside* a tier — for example separating `T0-N2-ADFS` from `T0-N2-PKI` while both live in the same Tier 0 VLAN — the network layer is not enough. Enforcement moves to the host using **two layers**:
+
+| Layer | Boundary | Mechanism | Granularity |
+|-------|----------|-----------|-------------|
+| **L1 — Network** | Tier (T0 vs. T1 vs. T2) | VLAN + subnet ACL | Coarse — few VLANs |
+| **L2 — Host** | Silo / N-level (ADFS vs. PKI) | IPsec authentication + Windows Firewall "Allow the connection if it is secure", scoped by AD group | Fine — scales to N silos with no new subnet |
+
+> **🔵 Why IPsec is required here:** the **Remote Users** and **Remote Computers** conditions of a Windows Firewall rule only take effect on **IPsec-authenticated** traffic (rule action *"Allow the connection if it is secure"*). Without an IPsec Connection Security Rule first, you can only filter by IP and port — never by AD group. Group-conditioned firewalling is therefore not an option alongside IPsec; IPsec is its prerequisite.
+
+**Groups involved** (in addition to the `T0-N2-ADFS-Admins` / `T0-N2-PKI-Admins` user groups you already have):
+
+- `T0-N2-ADFS-Computers`, `T0-N2-PKI-Computers` — the target server computer objects, one group per silo.
+- A PAW source group — either per-silo (`T0-N2-ADFS-PAW`) or a shared `T0-PAW-Computers` pool. A shared pool is acceptable because the **Remote Users** condition already differentiates ADFS admins from PKI admins; per-silo PAW groups simply add a second, computer-level barrier.
+
+**On each target server** (GPO linked to the platform sub-OU):
+
+1. A **Connection Security Rule** requiring inbound authentication (computer Kerberos, optional second user authentication).
+2. An **inbound firewall rule** on the admin ports (RDP 3389, WinRM 5985, RPC 135 + dynamic, SMB 445) with action *"Allow if secure"*, **Authorized computers** = the silo's PAW group, **Authorized users** = the silo's admin group.
+
+Enriched silo matrix (replaces a flat source/destination table once you go intra-tier):
+
+| Source (PAW group) | Destination (server group) | Admin ports | IPsec | Authorized computers | Authorized users |
+|--------------------|----------------------------|-------------|-------|----------------------|------------------|
+| `T0-N2-ADFS-PAW` | `T0-N2-ADFS-Computers` | 3389, 5985, 135 + dynamic, 445 | Require | `T0-N2-ADFS-PAW` | `T0-N2-ADFS-Admins` |
+| `T0-N2-PKI-PAW` | `T0-N2-PKI-Computers` | 3389, 5985, 135 + dynamic, 445 | Require | `T0-N2-PKI-PAW` | `T0-N2-PKI-Admins` |
+
+**Result:** an ADFS PAW driven by an ADFS admin reaches the ADFS servers' admin ports; the *same* PAW pointed at a PKI server is refused **cryptographically**, even though both sit in the same T0 VLAN. This is the per-silo micro-segmentation a flat VLAN cannot provide.
+
+> **🟡 Two design guardrails:**
+> - **Bootstrap exemptions:** DNS, DC locator, DHCP and ICMP must be exempted from the IPsec policy, otherwise you create a chicken-and-egg lockout (Kerberos itself needs the DC). Define an exemption zone.
+> - **Phased rollout:** start in IPsec **request mode** (boundary zone) and only switch to **require mode** once authentication is verified end-to-end — going straight to *require* risks a mass lockout.
+>
+> The full IPsec policy build-out is a hardening exercise — deported to the Microsoft Security Compliance Toolkit / endpoint hardening; this section stays at the design level (model, groups, matrix, guardrails).
 
 ---
 
