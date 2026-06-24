@@ -1240,6 +1240,8 @@ Install a **clean** Windows 11 Enterprise (or Windows 10 Enterprise LTSC) from t
 | **Authentication** | Smartcard or FIDO2 security key required (phishing-resistant MFA); password-only logon disabled via GPO |
 | **Local admin** | Only the tier's PAW admin group — no Domain Admins |
 
+> **🔵 With no Internet on the PAW, how do tools and binaries get in?** Audit tools (PingCastle, ORADAD), patches and installers are downloaded on a lower-tier (Internet-facing) workstation and must cross into Tier 0 **without ever creating a Tier 2 → Tier 0 trust path** — never by RDP/SMB from the office desktop to a DC. The patterns (drop SAS, clean station with CDR, data diode) and the mandatory payload verification are covered in [Securely Importing Data and Binaries into Tier 0 Environments](Securely%20Importing%20Data%20and%20Binaries%20into%20Tier%200%20Environments.md).
+
 #### GPO — `PAW - Tier X Hardening`
 
 The bulk of PAW GPO hardening is **identical across tiers**. Create one baseline GPO (`PAW - Tier X Hardening`) carrying the common settings below, then link a per-tier copy to each `Tier N\PAW` OU and substitute only the handful of tier-specific values from the delta table that follows.
