@@ -3137,15 +3137,24 @@ When a client needs true micro-segmentation *inside* a tier — for example sepa
 
 **On each target server** (GPO linked to the platform sub-OU):
 
-1. A **Connection Security Rule** requiring inbound authentication (computer Kerberos, optional second user authentication).
+1. A **Connection Security Rule** requiring inbound authentication. Computer (Kerberos) authentication is the first factor; **add the second, user authentication whenever the firewall rule conditions on `Authorized users`** (the matrix below does) — without it there is no authenticated user identity for that condition to match, and the per-admin separation does not hold. User authentication is only optional if you scope solely by `Authorized computers`.
 2. An **inbound firewall rule** on the admin ports (RDP 3389, WinRM 5985, RPC 135 + dynamic, SMB 445) with action *"Allow if secure"*, **Authorized computers** = the silo's PAW group, **Authorized users** = the silo's admin group.
 
 Enriched silo matrix (replaces a flat source/destination table once you go intra-tier):
+
+**Variant A — dedicated PAW per silo** (`Authorized computers` and `Authorized users` both differentiate):
 
 | Source (PAW group) | Destination (server group) | Admin ports | IPsec | Authorized computers | Authorized users |
 |--------------------|----------------------------|-------------|-------|----------------------|------------------|
 | `T0-N2-ADFS-PAW` | `T0-N2-ADFS-Computers` | 3389, 5985, 135 + dynamic, 445 | Require | `T0-N2-ADFS-PAW` | `T0-N2-ADFS-Admins` |
 | `T0-N2-PKI-PAW` | `T0-N2-PKI-Computers` | 3389, 5985, 135 + dynamic, 445 | Require | `T0-N2-PKI-PAW` | `T0-N2-PKI-Admins` |
+
+**Variant B — shared PAW pool** (same `Authorized computers` everywhere — separation rests entirely on `Authorized users`, so the second user authentication is mandatory):
+
+| Source (PAW group) | Destination (server group) | Admin ports | IPsec | Authorized computers | Authorized users |
+|--------------------|----------------------------|-------------|-------|----------------------|------------------|
+| `T0-N2-SharedPAW` | `T0-N2-ADFS-Computers` | 3389, 5985, 135 + dynamic, 445 | Require | `T0-N2-SharedPAW` | `T0-N2-ADFS-Admins` |
+| `T0-N2-SharedPAW` | `T0-N2-PKI-Computers` | 3389, 5985, 135 + dynamic, 445 | Require | `T0-N2-SharedPAW` | `T0-N2-PKI-Admins` |
 
 **Result:** an ADFS PAW driven by an ADFS admin reaches the ADFS servers' admin ports; the *same* PAW pointed at a PKI server is refused **cryptographically**, even though both sit in the same T0 VLAN. This is the per-silo micro-segmentation a flat VLAN cannot provide.
 
