@@ -1196,11 +1196,13 @@ Every secret must have a designated home. If it's not in a vault, it's unmanaged
 
 ## 💻 Phase 3 — Privileged Access Workstations (PAW)
 
-PAWs are dedicated, hardened machines from which administrators perform privileged tasks. They ensure that Tier 0 credentials are only ever exposed on Tier 0-trusted hardware.
+PAWs are dedicated, hardened machines from which administrators perform privileged tasks. They ensure that privileged credentials are only ever exposed on hardware trusted at the **same tier or higher** as the systems being administered.
 
-### 3.1 — PAW Tier 0 — Hardware Requirements
+The structure below separates a **common PAW baseline** (hardware, OS hardening, GPO, network) that applies to every tier from the **per-tier deltas** (what tightens or relaxes between Tier 0 and Tier 1).
 
-Tier 0 PAWs must be **physical machines** — never VMs on a Tier 1 hypervisor (the hypervisor admin could extract credentials from memory).
+### 3.1 — PAW Hardware Baseline
+
+These requirements apply to **every** PAW, regardless of tier:
 
 | Requirement | Specification |
 |-------------|---------------|
@@ -1214,7 +1216,9 @@ Tier 0 PAWs must be **physical machines** — never VMs on a Tier 1 hypervisor (
 | **Peripherals** | No USB storage devices; USB ports restricted via GPO |
 | **Firmware** | Latest UEFI firmware, password-protected BIOS |
 
-### 3.2 — PAW Tier 0 — Operating System Hardening
+> **🔴 Virtualization rule:** A PAW must never run on a hypervisor from a **lower** tier — the hypervisor admin could extract credentials from guest memory. Tier 0 PAWs are therefore **physical only**; a Tier 1 dedicated PAW may at most be a VM on a **Tier 1** hypervisor, never on Tier 2. (See the per-tier deltas in §3.3 / §3.4.)
+
+### 3.2 — PAW OS Hardening Baseline
 
 Install a **clean** Windows 11 Enterprise (or Windows 10 Enterprise LTSC) from trusted media. Do NOT image from a standard workstation template.
 
@@ -1223,24 +1227,24 @@ Install a **clean** Windows 11 Enterprise (or Windows 10 Enterprise LTSC) from t
 | Setting | Configuration |
 |---------|---------------|
 | **OS** | Windows 11 Enterprise (latest build) or Windows 10 Enterprise LTSC |
-| **Internet access** | **BLOCKED** — no web browsing, no email, no Teams |
+| **Internet access** | **BLOCKED** by default — no web browsing, no email, no Teams (a Tier 1 dedicated PAW may allow proxy-filtered web; see §3.4) |
 | **Office applications** | **NOT installed** |
 | **Credential Guard** | Enabled (via GPO or Intune) |
 | **Device Guard / WDAC** | Enabled — only allow signed, trusted applications |
 | **BitLocker** | Full disk encryption, TPM + PIN |
-| **Windows Firewall** | All inbound blocked except RDP from authorized jump servers |
-| **Remote Desktop** | Outbound RDP allowed (to connect to DCs/T0 servers only) |
+| **Windows Firewall** | All inbound blocked except RDP from authorized admin jump hosts |
+| **Remote Desktop** | Outbound RDP allowed (to connect to **same-tier** DCs/servers only) |
 | **AppLocker / WDAC Policy** | Whitelist: MMC, PowerShell (constrained), RSAT tools, RDP client only |
-| **Windows Update** | Direct from Microsoft Update or a dedicated T0 WSUS |
+| **Windows Update** | Direct from Microsoft Update or a dedicated tier-owned WSUS |
 | **Antimalware** | Microsoft Defender for Endpoint (if available) or Defender AV with latest definitions |
 | **Authentication** | Smartcard or FIDO2 security key required (phishing-resistant MFA); password-only logon disabled via GPO |
-| **Local admin** | Only the T0 PAW admin group — no Domain Admins |
+| **Local admin** | Only the tier's PAW admin group — no Domain Admins |
 
-#### GPO for Tier 0 PAWs
+#### GPO — `PAW - Tier X Hardening`
 
-Create a GPO named `PAW - Tier 0 Hardening` and link it to the `Tier 0\PAW` OU.
+The bulk of PAW GPO hardening is **identical across tiers**. Create one baseline GPO (`PAW - Tier X Hardening`) carrying the common settings below, then link a per-tier copy to each `Tier N\PAW` OU and substitute only the handful of tier-specific values from the delta table that follows.
 
-Key settings:
+Common settings (same for every tier):
 
 ```
 Computer Configuration → Policies → Administrative Templates:
@@ -1281,18 +1285,27 @@ Computer Configuration → Policies → Administrative Templates:
 
 Computer Configuration → Policies → Windows Settings → Security Settings:
 ├── Local Policies → User Rights Assignment
-│   ├── Deny log on locally = T1-DenyLogon-T0, T2-DenyLogon-T0
-│   └── Deny access from network = T1-DenyLogon-T0, T2-DenyLogon-T0
+│   ├── Deny log on locally = <lower-tier Deny-logon groups>          ← per-tier (see delta)
+│   └── Deny access from network = <lower-tier Deny-logon groups>     ← per-tier (see delta)
 ├── Windows Firewall with Advanced Security
 │   ├── Inbound: Block all except required (Kerberos, LDAP, DNS to DCs)
-│   └── Outbound: Allow RDP to T0 servers/DCs only, block internet
+│   └── Outbound: Allow RDP to <same-tier servers/DCs> only, block internet  ← per-tier (see delta)
 └── Restricted Groups / Preferences
-    └── Local Administrators = T0-Admins only (remove all others)
+    └── Local Administrators = <tier PAW admin group> only (remove all others) ← per-tier (see delta)
 ```
+
+Per-tier delta — substitute these four values when linking the GPO to each tier's PAW OU:
+
+| Setting | Tier 0 | Tier 1 |
+|---------|--------|--------|
+| **Deny log on locally / from network** | `T1-DenyLogon-T0`, `T2-DenyLogon-T0` | the lower-tier Deny-logon groups scoped for Tier 1 |
+| **Outbound RDP (firewall)** | DCs / Tier 0 servers only | Tier 1 servers only |
+| **Local Administrators** | `T0-Admins` | `T1-Admins` |
+| **Internet access** | Blocked entirely | Proxy-filtered web allowed |
 
 #### Network Segmentation for PAWs
 
-PAWs should be on a **dedicated VLAN** with strict firewall rules:
+PAWs should be on a **dedicated VLAN** with strict firewall rules. The table below is the **Tier 0** example — adapt the VLAN and allowed destinations to the corresponding tier (Tier 1 PAW VLAN → Tier 1 servers, proxy for web, etc.):
 
 | Source | Destination | Ports | Allow/Deny |
 |--------|-------------|-------|------------|
@@ -1304,7 +1317,16 @@ PAWs should be on a **dedicated VLAN** with strict firewall rules:
 | T0 PAW VLAN | Windows Update (if direct) | 443 | Allow (to Microsoft Update only) |
 | Any | T0 PAW VLAN | ALL | **Deny** (no inbound from non-T0) |
 
-### 3.3 — PAW Tier 0 — Management Model
+### 3.3 — Tier 0 PAW — Specifics
+
+Tier 0 is the strictest tier. Beyond the baseline, it applies the most restrictive end of every delta:
+
+- **Physical hardware only** — never a VM (see the virtualization rule in §3.1).
+- **Internet blocked entirely** — no proxy, no web, no email.
+- **Local Administrators = `T0-Admins` only** — no Domain Admins, no lower-tier groups.
+- **Deny-logon** for `T1-DenyLogon-T0` and `T2-DenyLogon-T0`.
+
+#### Management Model
 
 Tier 0 PAWs cannot be managed by Tier 1 tools (SCCM, Intune). They must be self-managed or managed by Tier 0 infrastructure.
 
@@ -1317,23 +1339,37 @@ Tier 0 PAWs cannot be managed by Tier 1 tools (SCCM, Intune). They must be self-
 | **Inventory** | Manual inventory or a T0-only management tool |
 | **Incident response** | PAW is rebuilt from scratch (not reimaged from T1 infrastructure) |
 
-### 3.4 — PAW Tier 1 (Optional but Recommended)
+### 3.4 — Tier 1 PAW — Specifics (Optional but Recommended)
 
 For Tier 1, you have two options:
 
-**Option A: Dedicated PAW machines** — Same concept as T0 PAWs but for server administration. Can have internet access through a web proxy, but no email or personal use.
+**Option A: Dedicated PAW machines** — Same baseline as Tier 0 PAWs but for server administration. May be a VM on a Tier 1 hypervisor, and may have internet access through a web proxy — but no email or personal use.
 
 **Option B: Hardened jump servers** — Centralized servers that Tier 1 admins RDP into to manage Tier 1 infrastructure. Cheaper to deploy, easier to manage, but less secure than dedicated hardware.
 
 | Tier 1 PAW Feature | Option A (Dedicated) | Option B (Jump Server) |
 |---------------------|---------------------|----------------------|
-| Hardware isolation | Yes (physical) | No (shared server) |
+| Hardware isolation | Yes (physical or T1 VM) | No (shared server) |
 | Credential protection | Credential Guard + Remote Credential Guard | Remote Credential Guard (preferred) or Restricted Admin Mode (fallback) |
 | Cost | Higher (one per admin) | Lower (shared infrastructure) |
 | Management | Same as T0 PAW model | Can use T1 management tools |
 | Internet access | Proxy-filtered only | None (RDP only) |
 
-If using jump servers, configure **Remote Credential Guard** (preferred) so administrators retain Single Sign-On (SSO) to network resources from the remote session without ever exposing credentials on the jump server:
+Securing the remote session (Remote Credential Guard) applies to **both** options — see §3.5.
+
+### 3.5 — Securing the Remote Session: Remote Credential Guard vs. Restricted Admin Mode
+
+This applies to **every** PAW → target connection (Tier 0 and Tier 1). Both modes prevent credential caching on the remote machine, but **Remote Credential Guard is strictly superior** and should always be used when the infrastructure supports it.
+
+| Feature | Remote Credential Guard | Restricted Admin Mode |
+|---------|------------------------|----------------------|
+| Credential caching on target | No | No |
+| Single Sign-On from target | **Yes** — Kerberos requests redirected to PAW | **No** — logs in as local admin, no domain identity |
+| Network resource access from session | **Yes** — file shares, LDAP, RDP hop all work | **No** — cannot reach any network resource |
+| AD administration possible | **Yes** — full MMC, PowerShell, RSAT experience | **Severely limited** — no LDAP bind, no remote PS |
+| Security against relay attacks | Protected (Kerberos only, no NTLM forwarding) | Potentially exploitable (local admin token on target) |
+| Requirements | Windows 10 1607+ / Server 2016+ | Windows 8.1+ / Server 2012 R2+ |
+| **Recommendation** | **Always use this** for PAW → DC and PAW → T0/T1 connections | **Fallback only** — when target is Server 2012 R2 or older |
 
 ```powershell
 # Option 1 (PREFERRED): Remote Credential Guard — credentials stay on the source PAW,
@@ -1358,52 +1394,28 @@ mstsc /restrictedadmin /v:jumpserver01.domain.local
 
 > **🔵 Important:** Restricted Admin Mode should only be used as a **last resort** when Remote Credential Guard is not available. It logs you in as a local administrator on the target, with no access to domain resources from that session. This makes AD administration nearly impossible (no MMC snap-ins, no PowerShell remoting to other servers, no LDAP queries with your identity).
 
-### 3.5 — Remote Credential Guard vs. Restricted Admin Mode
-
-Both prevent credential caching on the remote machine, but **Remote Credential Guard is strictly superior** and should always be used when the infrastructure supports it.
-
-| Feature | Remote Credential Guard | Restricted Admin Mode |
-|---------|------------------------|----------------------|
-| Credential caching on target | No | No |
-| Single Sign-On from target | **Yes** — Kerberos requests redirected to PAW | **No** — logs in as local admin, no domain identity |
-| Network resource access from session | **Yes** — file shares, LDAP, RDP hop all work | **No** — cannot reach any network resource |
-| AD administration possible | **Yes** — full MMC, PowerShell, RSAT experience | **Severely limited** — no LDAP bind, no remote PS |
-| Security against relay attacks | Protected (Kerberos only, no NTLM forwarding) | Potentially exploitable (local admin token on target) |
-| Requirements | Windows 10 1607+ / Server 2016+ | Windows 8.1+ / Server 2012 R2+ |
-| **Recommendation** | **Always use this** for PAW → DC and PAW → T0/T1 connections | **Fallback only** — when target is Server 2012 R2 or older |
-
-> **Strong recommendation:** Deploy Remote Credential Guard via GPO on all PAWs. Only fall back to Restricted Admin Mode for legacy servers (2012 R2 and older) that do not support RCG. Plan to decommission these legacy servers to eliminate the need for Restricted Admin Mode entirely.
-
-```
-# GPO on PAW (source machine):
-# Computer Configuration → Administrative Templates → System → Credential Delegation
-# "Restrict delegation of credentials to remote servers" = Enabled
-# Use mode: Require Remote Credential Guard
-#
-# This forces ALL outbound RDP from this machine to use Remote Credential Guard.
-# If the target does not support it, the connection will fail (by design — prevents
-# accidental credential exposure on legacy targets).
-```
+> **Strong recommendation:** Deploy Remote Credential Guard via GPO on all PAWs (it is already part of the `PAW - Tier X Hardening` baseline in §3.2). Only fall back to Restricted Admin Mode for legacy servers (2012 R2 and older) that do not support RCG. Plan to decommission these legacy servers to eliminate the need for Restricted Admin Mode entirely.
 
 > **Note:** If you set the GPO mode to "Require Remote Credential Guard" and an admin tries to RDP to a Server 2012 R2 machine, the connection will be refused. This is intentional — it forces the organization to migrate legacy servers or use an explicit exception path.
 
 ### ✅ Phase 3 Checklist
 
-- [ ] Tier 0 PAW hardware procured (physical machines, TPM 2.0, Secure Boot, VBS-capable)
+- [ ] PAW hardware procured per baseline (TPM 2.0, Secure Boot, VBS-capable); Tier 0 = physical only
 - [ ] Clean OS installed from trusted media (not from standard workstation image)
 - [ ] BitLocker enabled with TPM + PIN
 - [ ] Credential Guard enabled and verified (`msinfo32` → Virtualization-Based Security: Running)
 - [ ] WDAC / AppLocker policy applied (whitelist only admin tools)
-- [ ] Internet access blocked (firewall or proxy)
+- [ ] Internet access blocked (Tier 0 = fully; Tier 1 dedicated = proxy-filtered only)
 - [ ] Email, Office apps, web browsers NOT installed
 - [ ] USB storage devices blocked via GPO
-- [ ] PAW hardening GPO created and linked to `Tier 0\PAW` OU
-- [ ] Dedicated admin VLAN configured for PAWs
-- [ ] Firewall rules: PAW → DCs/T0 servers only; all other traffic denied
-- [ ] Inbound connections to PAWs blocked from non-T0 sources
+- [ ] `PAW - Tier X Hardening` baseline GPO created; per-tier copy linked to each `Tier N\PAW` OU
+- [ ] Per-tier delta values substituted (Deny-logon groups, outbound RDP target, local admins, internet)
+- [ ] Dedicated admin VLAN configured per tier
+- [ ] Firewall rules: PAW → same-tier DCs/servers only; all other traffic denied
+- [ ] Inbound connections to PAWs blocked from lower/other tiers
 - [ ] Remote Credential Guard configured for outbound RDP connections
-- [ ] Local administrators group on PAW contains only `T0-Admins` (no Domain Admins)
-- [ ] PAW management model defined (no SCCM/Intune; T0-only WSUS or direct Microsoft Update)
+- [ ] Local administrators group on each PAW contains only its tier's admin group (no Domain Admins)
+- [ ] Tier 0 PAW management model defined (no SCCM/Intune; T0-only WSUS or direct Microsoft Update)
 - [ ] Event log forwarding configured (WEF to SIEM)
 - [ ] Tier 1 PAW or jump server strategy decided (dedicated hardware or shared jump servers)
 - [ ] Jump servers hardened if using Option B (Remote Credential Guard preferred; Restricted Admin only for legacy targets)
