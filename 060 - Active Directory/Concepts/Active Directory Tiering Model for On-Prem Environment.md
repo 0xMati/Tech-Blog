@@ -3149,6 +3149,16 @@ Enriched silo matrix (replaces a flat source/destination table once you go intra
 
 **Result:** an ADFS PAW driven by an ADFS admin reaches the ADFS servers' admin ports; the *same* PAW pointed at a PKI server is refused **cryptographically**, even though both sit in the same T0 VLAN. This is the per-silo micro-segmentation a flat VLAN cannot provide.
 
+> **⚠️ This is least-privilege and audit clarity — not a security boundary (inside Tier 0).** `T0-N2-ADFS` and `T0-N2-PKI` are both Tier 0 *precisely because compromising either one compromises the whole forest*: AD CS abuse (ESC / certificate forgery) yields Domain Admin, and theft of the ADFS token-signing key lets an attacker impersonate anyone. The two silos therefore share the **same blast radius** — whoever controls one can already pivot to the other by the very nature of Tier 0. A cryptographic firewall between them does **not** create a containment zone: it cannot stop a lateral move that the tier model already permits. Inside Tier 0, host isolation buys **least privilege, cleaner audit trails, and operational hygiene** (an ADFS admin's daily mistakes don't land on PKI hosts) — calling it "containment" would be security theater.
+
+**Where it becomes real containment: Tier 1.** Exchange, SQL and HyperV are **not** in a shared blast radius — compromising a SQL server should not hand over Exchange. There, blocking `T1-N2-SQL` from reaching an Exchange host genuinely confines an incident, which is exactly the boundary this document already states ("N2 group for Exchange cannot WinRM to SQL"). So the example that *justifies* the mechanism is T1-Exchange/SQL; ADFS/PKI is the T0 *hygiene* case.
+
+**Implication for shared vs. dedicated PAW:**
+
+- **Tier 0 — a shared `T0-PAW-Computers` pool is reasonable.** Since the silos share a blast radius anyway, a per-silo PAW adds little confinement value; the **Remote Users** condition already differentiates ADFS from PKI admins for least-privilege and audit.
+- **Tier 1 — prefer a dedicated PAW/jump host per platform** when you want the boundary to actually hold, because here it is real containment, not hygiene.
+- **If you do share a PAW, you must enable the second (user) authentication in the Connection Security Rule.** On a shared PAW the *computer* authentication is identical for every silo, so the **Remote Users** condition carries the entire separation — without user-level IPsec authentication backing it, that separation is cosmetic. A shared PAW is also a common pivot point: two silo identities active on one machine means that host is the shared exposure surface for both, which the firewall rule does not address.
+
 > **🟡 Two design guardrails:**
 > - **Bootstrap exemptions:** DNS, DC locator, DHCP and ICMP must be exempted from the IPsec policy, otherwise you create a chicken-and-egg lockout (Kerberos itself needs the DC). Define an exemption zone.
 > - **Phased rollout:** start in IPsec **request mode** (boundary zone) and only switch to **require mode** once authentication is verified end-to-end — going straight to *require* risks a mass lockout.
