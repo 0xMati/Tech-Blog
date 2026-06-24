@@ -1285,8 +1285,10 @@ Computer Configuration → Policies → Administrative Templates:
 
 Computer Configuration → Policies → Windows Settings → Security Settings:
 ├── Local Policies → User Rights Assignment
-│   ├── Deny log on locally = <lower-tier Deny-logon groups>          ← per-tier (see delta)
-│   └── Deny access from network = <lower-tier Deny-logon groups>     ← per-tier (see delta)
+│   ├── Allow log on locally = <tier PAW admin group>, Administrators   ← per-tier (PAW allowlist)
+│   ├── Allow log on through Remote Desktop Services = <tier PAW admin group>, Administrators  ← per-tier
+│   ├── Deny log on locally = <lower-tier Deny-logon groups>          ← assumed reminder of §2.2 (inherited)
+│   └── Deny access from network = <lower-tier Deny-logon groups>     ← assumed reminder of §2.2 (inherited)
 ├── Windows Firewall with Advanced Security
 │   ├── Inbound: Block all except required (Kerberos, LDAP, DNS to DCs)
 │   └── Outbound: Allow RDP to <same-tier servers/DCs> only, block internet  ← per-tier (see delta)
@@ -1302,6 +1304,12 @@ Per-tier delta — substitute these four values when linking the GPO to each tie
 | **Outbound RDP (firewall)** | DCs / Tier 0 servers only | Tier 1 servers only |
 | **Local Administrators** | `T0-Admins` | `T1-Admins` |
 | **Internet access** | Blocked entirely | Proxy-filtered web allowed |
+
+> **🔴 Logon rights — the `Allow log on locally` allowlist is not optional on a PAW.** Left at the default (*Not Defined*), `Allow log on locally` resolves to **`Administrators` + `Users`**, and on a domain-joined machine `Domain Users` is a member of the local `Users` group — so **any** domain account can open an interactive session on the PAW. The tier Deny GPOs from §2.2 do **not** close this gap: their deny groups only contain the **admins and service accounts of other tiers** (`Tx-Admins`, `Tx-ServiceAccounts`), not ordinary users. A standard, non-privileged user is in no deny group and would therefore be allowed in. Restricting `Allow log on locally` and `Allow log on through Remote Desktop Services` to `<tier PAW admin group>` + `Administrators` is what actually locks the PAW down to its named admins. The Deny lines above are kept as an **assumed reminder** — they are already applied by the §2.2 GPOs through OU inheritance; §2.2 remains the single source of truth for them.
+>
+> **⚠️ When you set `Allow log on locally`, you replace the default entirely** — you must list **every** principal that still needs it (at minimum `Administrators`), or you lock yourself out.
+
+> **🔵 Privilege rights are not part of tiering — follow the Microsoft Security Baselines.** The User Rights Assignment node also holds *privileges* (distinct from logon rights): `Take ownership of files or other objects` (SeTakeOwnership), `Debug programs`, `Back up / Restore files and directories`, `Impersonate a client after authentication`, `Load and unload device drivers`, `Act as part of the operating system`, `Create a token object`, and others. These are **OS-hardening controls, not tiering controls** — the tiering model governs only logon isolation. Leave them at their OS default here and harden them through the **Microsoft Security Baselines / Security Compliance Toolkit** (and the 040 endpoint-hardening material), so there is a single source of truth for privilege hardening rather than a competing list embedded in the tiering design.
 
 #### Network Segmentation for PAWs
 
