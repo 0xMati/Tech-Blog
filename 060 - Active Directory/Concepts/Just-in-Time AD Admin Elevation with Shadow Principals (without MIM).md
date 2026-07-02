@@ -103,7 +103,7 @@ This article is for you if:
 
 ## 🧠 2 — Concepts you need to master first
 
-Five concepts must be crystal-clear before you start touching commands. Skipping this section is the most common reason people get lost three steps into the build.
+Six concepts must be crystal-clear before you start touching commands. Skipping this section is the most common reason people get lost three steps into the build.
 
 ### 2.1 — SID (Security Identifier)
 
@@ -123,7 +123,9 @@ This is the lever the PAM feature pulls: by inserting and removing a SID from yo
 
 The `sIDHistory` attribute carries **additional SIDs** that a principal "also is". It exists for migration scenarios: when you move a user from one domain to another, the new account keeps the *old* SID in `sIDHistory` so existing ACLs continue to grant access.
 
-By default, AD does **SID Filtering** across trusts: SIDs from a foreign domain that don't belong there are stripped out of the authentication PAC. Without SID Filtering, an attacker on one side could forge SIDs of the other side. **Enabling SID History across a trust = disabling SID Filtering in that direction**, so this is *only* acceptable when the source domain is more trusted than the target — which is exactly the case for a bastion → production trust.
+By default, AD does **SID Filtering** across trusts: SIDs from a foreign domain that don't belong there are stripped out of the authentication PAC. Without SID Filtering, an attacker on one side could forge SIDs of the other side. **Enabling SID History across a trust relaxes SID Filtering in that direction**, so this is *only* acceptable when the source domain is more trusted than the target — which is exactly the case for a bastion → production trust.
+
+> **🔵 Important — SID History relaxation is only half the story.** Allowing SID History lets *foreign-domain* SIDs through, but AD still strips SIDs that belong to the **trusting forest itself** — which is exactly what a shadow principal injects. Honoring those requires a second, distinct flag covered in [§ 2.6](#26--the-pim-trust-attribute-trust_attribute_pim_trust). Do not assume `/enableSidHistory:yes` alone is enough.
 
 ### 2.4 — Shadow Principals (`msDS-ShadowPrincipal`)
 
@@ -187,7 +189,8 @@ You then create **a one-way forest trust** from `contoso.com` (production) trust
 
 - The arrow points **production trusts bastion** — accounts from `red.local` can be authorized in `contoso.com`, but not the other way.
 - The trust is **forest** (not external), so SID injection via shadow principals works across all domains in `contoso.com`.
-- The trust **allows SID History** (which implicitly disables SID Filtering in that direction).
+- The trust **allows SID History** (which relaxes SID Filtering in that direction).
+- The trust carries the **PIM trust attribute** (`TRUST_ATTRIBUTE_PIM_TRUST`, bit `0x400`), without which the shadow principals' same-forest SIDs are still filtered out (see [§ 2.6](#26--the-pim-trust-attribute-trust_attribute_pim_trust)).
 - The trust uses **Selective Authentication** so only explicitly granted servers in `contoso.com` accept logon from `red.local`.
 
 ```mermaid
@@ -210,7 +213,7 @@ flowchart LR
         DC01 --- DA
     end
 
-    BASTION -- "one-way forest trust:\ncontoso.com trusts red.local\n+ SID History enabled\n+ Selective Auth on" --> PROD
+    BASTION -- "one-way forest trust:\ncontoso.com trusts red.local\n+ SID History enabled\n+ PIM trust bit (0x400)\n+ Selective Auth on" --> PROD
 
     style BASTION fill:#1f2937,stroke:#ef4444,stroke-width:2px,color:#f9fafb
     style PROD fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#f9fafb
@@ -229,7 +232,7 @@ When `red\demoAdm` (a temporarily-elevated user) connects to `DC01.contoso.com`:
 
 1. `demoAdm` requests a TGT from `RED-DC1` in `red.local`. The TGT lifetime is **capped to 600 seconds** because that is the lowest TTL among its time-bound memberships (the shadow principal membership).
 2. `demoAdm` requests a referral TGT to `contoso.com`.
-3. `contoso.com`'s KDC validates the referral and **inspects the PAC**. It sees the SID of `CONTOSO\Domain Admins` (carried via the shadow principal and re-injected because SID History is allowed on the trust).
+3. `contoso.com`'s KDC validates the referral and **inspects the PAC**. It sees the SID of `CONTOSO\Domain Admins` (carried via the shadow principal and honored because the trust has both SID History allowed **and** the `TRUST_ATTRIBUTE_PIM_TRUST` bit set).
 4. The service ticket for `DC01` is built. `demoAdm` connects to `DC01` *as a Domain Admin of `CONTOSO`*, but only for the next 10 minutes, and only because `RED-PAW01` is on the `Allowed-To-Authenticate` list of `DC01` (Selective Authentication).
 5. At T+600s, the linked-attribute TTL expires. The shadow principal membership disappears in `red.local`. The next ticket request `demoAdm` makes will not contain the privileged SID. The session quietly de-elevates.
 
@@ -539,6 +542,41 @@ Set-ADObject -Identity $ShadowDN -Add @{ 'member' = $T0JdoeDN }
 
 Note that this is a *permanent* membership — no `<TTL=...>` prefix. The next section shows the time-bound variant.
 
+> **🟢 Recommendation — for anything beyond permanent Tier 0 owners, use the intermediate-group model in [§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group)** rather than adding users straight into the shadow principal.
+
+### 6.5 — Recommended production model: an intermediate manageable group
+
+The two approaches above put the **user account directly** into the shadow principal. That works, but it has a practical drawback: a shadow principal is objectClass `msDS-ShadowPrincipal`, **not** `group`. So the friendly, well-tooled group cmdlets do not apply to it:
+
+- `Get-ADGroup` does not return it → you **cannot** use `-ShowMemberTimeToLive` on it (see [§ 7.4](#74--observe-the-remaining-ttl)), so reading the remaining TTL forces you back to LDP.exe.
+- `Add-ADGroupMember` / `Remove-ADGroupMember` / `Get-ADGroupMember` are not reliable against a `msDS-ShadowPrincipal` on every build — you are stuck with raw `Set-ADObject`.
+- Delegating "who may elevate" means delegating write access on the sensitive `Shadow Principal Configuration` container itself.
+
+The cleaner, more operable model — and the one most real deployments use — is to insert **one ordinary security group** between the admins and the shadow principal:
+
+1. The shadow principal contains, as a **permanent** member, a normal group (e.g. `Tier0-Admins`).
+2. You elevate people by adding them **to that normal group** with a `<TTL=...>`, never touching the shadow principal again.
+
+```powershell
+# On RED-DC1, as Enterprise Admin of red.local
+# 1) A normal security group that will carry the elevations
+New-ADGroup -Name 'Tier0-Admins' -GroupScope Global -Path 'OU=ShadowGroups,DC=red,DC=local'
+$Tier0AdminsDN = (Get-ADGroup 'Tier0-Admins').DistinguishedName
+
+# 2) Make that group a PERMANENT member of the shadow principal (done once)
+$ShadowDN = (Get-ADObject -SearchBase $ShadowConfigDN `
+                -Filter "Name -eq 'T0-Admins-Contoso-DA'").DistinguishedName
+Set-ADObject -Identity $ShadowDN -Add @{ 'member' = $Tier0AdminsDN }
+```
+
+From now on, the shadow principal is never modified again: all day-to-day elevation happens on `Tier0-Admins`, a plain group. This buys you three things:
+
+- **Readable TTLs in pure PowerShell** via `Get-ADGroup -ShowMemberTimeToLive` — no LDP, no manual LDAP control ([§ 7.4](#74--observe-the-remaining-ttl)).
+- **Standard group tooling** (`Add-ADGroupMember`, `Get-ADGroupMember`, ...) works normally.
+- **Cleaner delegation and audit**: you delegate write on a single ordinary group (granular, per scope) instead of on the `Shadow Principal Configuration` container, and "who may elevate" (the group ACL) is cleanly separated from "which privilege" (the shadow principal).
+
+> **🟢 Recommendation — prefer the intermediate group for anything beyond a lab.** Reserve the direct model of [§ 6.4](#64--make-a-daily-driver-bastion-admin-a-permanent-member-optional) for the handful of permanent Tier 0 owners; drive every time-bound elevation through the intermediate group.
+
 ---
 
 ## ⏱️ 7 — End-to-end demo: just-in-time elevation
@@ -549,7 +587,7 @@ This is the section that ties everything together. We will:
 2. Add `demoAdm` to the bastion-side group already authorized by Selective Auth on `DC01.contoso.com` — without this, even a fully-elevated user cannot reach the target.
 3. Confirm `demoAdm` still cannot do anything privileged on `contoso.com` (Selective Auth lets the connection through, but no production privileges yet).
 4. Add `demoAdm` to the shadow principal **with a TTL of 600 seconds**.
-5. Observe the TTL via **LDP.exe**.
+5. Observe the remaining TTL (via `Get-ADGroup -ShowMemberTimeToLive`, or **LDP.exe** for a shadow principal).
 6. Run a privileged command against `contoso.com`.
 7. Wait for the TTL to expire and confirm they are no longer privileged.
 
@@ -613,7 +651,15 @@ That is it. `demoAdm` is now, for the next ten minutes:
 - Carrier of the SID of `CONTOSO\Domain Admins` in any new Kerberos ticket they request against `contoso.com`.
 - Constrained by the trust's Selective Auth ACE — i.e. they can only land on the production servers you previously whitelisted.
 
-### 7.4 — Observe the TTL via LDP.exe
+> **🟢 Recommendation — via the intermediate group ([§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group)).** If you followed the recommended production model, do not touch the shadow principal at all. Elevate on the ordinary `Tier0-Admins` group instead — same `<TTL=...>` syntax, but now readable with `Get-ADGroup -ShowMemberTimeToLive` and manageable with the standard group cmdlets:
+>
+> ```powershell
+> $DemoAdmDN     = (Get-ADUser -Identity demoAdm).DistinguishedName
+> $Tier0AdminsDN = (Get-ADGroup 'Tier0-Admins').DistinguishedName
+> Set-ADObject -Identity $Tier0AdminsDN -Add @{ 'member' = "<TTL=600,$DemoAdmDN>" }
+> ```
+
+### 7.4 — Observe the remaining TTL
 
 `LDP.exe` is the only built-in tool that can show the TTL of a linked attribute. You need to send the **LDAP_SERVER_LINK_TTL_OID** control: `1.2.840.113556.1.4.2309`.
 
@@ -633,6 +679,23 @@ member: <TTL=587,CN=demoAdm,OU=Admins,DC=red,DC=local>
 
 Each LDP refresh decreases the value. At zero, the link is removed by AD and disappears from the result.
 
+#### The easy way: `-ShowMemberTimeToLive` (only on real groups)
+
+If you used the intermediate-group model ([§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group)), you do **not** need LDP at all. The typed AD cmdlets carry a `-ShowMemberTimeToLive` switch that sends the LDAP TTL control for you and prints the `<TTL=...>` prefix directly in PowerShell:
+
+```powershell
+# On RED-DC1 — remaining TTL of each time-bound member, in plain PowerShell
+Get-ADGroup 'Tier0-Admins' -ShowMemberTimeToLive -Properties member |
+    Select-Object -ExpandProperty member
+# -> <TTL=587,CN=demoAdm,OU=Admins,DC=red,DC=local>
+
+# Or from the user's side (memberOf):
+Get-ADUser demoAdm -ShowMemberTimeToLive -Properties memberOf |
+    Select-Object -ExpandProperty memberOf
+```
+
+> **🔵 Important — why this does not work directly on a shadow principal.** `-ShowMemberTimeToLive` exists on `Get-ADGroup`, `Get-ADUser`, `Get-ADComputer` and `Get-ADServiceAccount` — cmdlets that operate on real `group` / principal objects. A shadow principal is objectClass `msDS-ShadowPrincipal`, so `Get-ADGroup` will not return it and you can only read it with `Get-ADObject`, which has **no** `-ShowMemberTimeToLive` switch. That is exactly why the intermediate-group model of [§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group) is easier to operate: the elevation lives on a real group, so this switch just works.
+
 ### 7.5 — Run a privileged operation against production
 
 From `RED-PAW01`, logged in as `red\demoAdm`, within the 600-second window:
@@ -649,7 +712,7 @@ whoami /groups | Select-String 'Domain Admins'
 
 `demoAdm` is now visibly a Domain Admin of `CONTOSO` on the production DC — without ever having been added to the production `Domain Admins` group itself. There is no membership change to audit on the `contoso.com` side. The audit trail is entirely on the **bastion** side: the `Set-ADObject -Add @{member=...}` is logged on `RED-DC1`.
 
-> **🟢 Recommendation — Centralize the bastion audit trail.** Configure auditing on the `Shadow Principal Configuration` container in `red.local` (Audit → Success → `Write Property`) and forward `RED-DC1`'s Security log to your SIEM. That gives you a single, queryable record of every just-in-time elevation: who elevated whom, into which shadow principal, with which TTL.
+> **🟢 Recommendation — Centralize the bastion audit trail.** Configure auditing (Audit → Success → `Write Property`) on **both** the `Shadow Principal Configuration` container *and* the intermediate elevation group `Tier0-Admins` ([§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group)) in `red.local`, then forward `RED-DC1`'s Security log to your SIEM. In the recommended model the day-to-day elevations land on the group, so auditing the container alone would miss them. Together they give you a single, queryable record of every just-in-time elevation: who elevated whom, into which scope, with which TTL.
 
 ### 7.6 — Wait and observe the de-elevation
 
