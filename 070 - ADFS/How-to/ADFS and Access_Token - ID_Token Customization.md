@@ -150,34 +150,34 @@ Before we can request tokens, we need to register an **Application Group** in AD
 3. Enter a name, e.g. `OIDC Debugger Test`
 4. Select the template **Server application accessing a web API** → click **Next**
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-30-21.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-30-21.png>)
 
 #### Server application (OIDC Client)
 
 5. Note the **Client ID** generated automatically (e.g. `73311fb6-dc1f-4ab4-96c1-16801f985071`)
 6. Add the **Redirect URI**: `https://oidcdebugger.com/debug` → click **Add**, then **Next**
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-30-36.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-30-36.png>)
 
 
 7. Check **Generate a shared secret** — copy and save it securely → click **Next**
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-31-00.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-31-00.png>)
 
 
 #### Web API (Resource)
 
 8. In the **Identifier** field, enter: `https://oidcdebugger` → click **Add**, then **Next**
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-31-33.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-31-33.png>)
 
 9. Choose an **Access Control Policy** (e.g. `Permit everyone`) → click **Next**
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-31-41.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-31-41.png>)
 
 10. Under **Application Permissions**, ensure at least `openid`, `profile`, `email` and `allatclaims` are checked → click **Next**
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-31-50.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-31-50.png>)
 
 11. Review the summary and click **Close**
 
@@ -241,7 +241,7 @@ Name                         Identifier
 OIDC Debugger Test - Web API {https://oidcdebugger}
 ```
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-32-56.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-32-56.png>)
 
 ---
 
@@ -287,13 +287,13 @@ $authUrl = "https://adfs.mathiasmotron.com/adfs/oauth2/authorize" +
 $authUrl
 ```
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-33-26.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-33-26.png>)
 
 Open the generated URL in a browser.
 
 After authentication, ADFS returns an **authorization code**.
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-33-40.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-33-40.png>)
 
 ---
 
@@ -328,15 +328,15 @@ The response contains:
 
 - `access_token`
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-33-53.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-33-53.png>)
 
 - `id_token`
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-34-01.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-34-01.png>)
 
 - `refresh_token`
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-34-08.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-34-08.png>)
 
 ---
 
@@ -382,7 +382,7 @@ $json | ConvertFrom-Json
 
 > **Note:** At this point (before adding claim rules), both tokens contain only default ADFS claims — no custom claims yet.
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-34-39.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-34-39.png>)
 
 ---
 
@@ -428,9 +428,9 @@ Set-AdfsWebApiApplication -TargetName "OIDC Debugger Test - Web API" -IssuanceTr
 
 > **Reminder:** Use the `windowsaccountname` + Active Directory store query syntax, not the simpler `samaccountname` pass-through syntax.
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-34-53.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-34-53.png>)
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-35-00.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-35-00.png>)
 ---
 
 ## 12. Test 1 — With `resource` and `allatclaims`
@@ -471,9 +471,9 @@ $resource = "https://oidcdebugger"
 
 > **Result:** Custom claims present in **both** tokens. ✓ AT / ✓ IT
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-35-11.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-35-11.png>)
 
-![](../assets/adfs-and-access-token-id-token-customization/2026-03-11-15-35-36.png)
+![](<./assets/ADFS and Access_Token - ID_Token Customization/2026-03-11-15-35-36.png>)
 
 ---
 

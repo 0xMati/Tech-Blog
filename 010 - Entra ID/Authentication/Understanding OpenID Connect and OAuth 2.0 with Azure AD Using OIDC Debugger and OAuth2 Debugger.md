@@ -49,15 +49,15 @@ Head over to the [Azure Portal](https://portal.azure.com) and create a new App R
 - For supported account types, choose what fits your scenario (e.g., Single tenant or Multitenant).
 - Set the Redirect URI to the URL used by OAuth 2.0 Debugger (usually something like `https://oauthdebugger.com/debug`).
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-07-43.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-07-43.png>)
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-09-24.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-09-24.png>)
 
 ### Step 2: Set Up Client Secrets
 
 Under **Certificates & secrets**, create a new client secret. You’ll need this secret for your OAuth client to authenticate securely.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-08-37.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-08-37.png>)
 
 ### Step 3: Input Your App Details in OAuth 2.0 Debugger
 
@@ -67,13 +67,13 @@ Now, open [OAuth 2.0 Debugger](https://oauthdebugger.com):
 - Add your **Client ID** and **Client Secret**.
 - Set the **Scopes** you want to request (e.g., `User.Read`).
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-13-10.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-13-10.png>)
 
 - Hit **Send Request** !
 
 You should receive an Authorization code with the requested scopes, ready to use for getting Access Token with the code.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-15-41.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-15-41.png>)
 
 ### Step 4 Exchanging the Authorization Code for an Access Token Using PowerShell
 
@@ -116,7 +116,7 @@ Explanation:
 
 The response will contain the access_token.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-22-33.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-22-33.png>)
 
 ---
 
@@ -132,9 +132,9 @@ Just like before, start by creating a new App Registration in the [Azure Portal]
 - Choose supported account types (single or multi-tenant).
 - Set the Redirect URI to `https://oidcdebugger.com/debug` (the default for OIDC Debugger).
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-25-36.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-25-36.png>)
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-26-27.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-26-27.png>)
 
 ### Step 2: Set Up Client Secrets
 
@@ -150,13 +150,13 @@ Head to [OIDC Debugger](https://oidcdebugger.com):
 - Add your **Client ID** and **Client Secret**.
 - Set scopes such as: `openid`
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-29-41.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-29-41.png>)
 
 - Click **Send Request** and authenticate when prompted.
 
 You should receive an Authorization code with the requested scopes, ready to use for getting Access Token with the code.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-30-55.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-30-55.png>)
 
 ### Step 4 Exchanging the Authorization Code for Access Token & id Token Using PowerShell
 
@@ -199,13 +199,13 @@ Explanation:
 
 The response will contain the access_token & id Token
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-33-27.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-33-27.png>)
 
 --> Additionally, you can decode the Access Token and ID Token from base64 to inspect their contents:
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-35-45.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-35-45.png>)
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-36-04.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-36-04.png>)
 
 ---
 
@@ -219,7 +219,7 @@ Let’s walk through a practical example where we create a Web API protected by 
 - Name it something like `MySuperWebAPI`.
 - Set supported account types according to your needs.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-42-08.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-42-08.png>)
 
 - Under **Expose an API**, add a new scope:
   - Scope name / Application ID URI: `api://mathiasmotron.com/MySuperCustomScope`
@@ -228,7 +228,7 @@ Let’s walk through a practical example where we create a Web API protected by 
   - Admin consent description: `Allows the app to access My Web API on behalf of the signed-in user`
   - Save the scope.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-44-24.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-44-24.png>)
 
 ### Step 2: Authorized Client Applications for OIDC Debugger
 
@@ -237,7 +237,7 @@ Let’s walk through a practical example where we create a Web API protected by 
 - Add the **Client ID** of the OIDC Debugger app here.
 - This step explicitly allows the OIDC Debugger app to request tokens for your API’s custom scopes.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-49-10.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-49-10.png>)
 
 
 ### Step 3: Use OIDC Debugger to Request Authorization Code
@@ -248,11 +248,11 @@ Let’s walk through a practical example where we create a Web API protected by 
 - Set the scope to your custom API scope (`api://mathiasmotron.com/MySuperCustomScope/MySuperCustomScope`).
 - Send the authorization request and log in to consent.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-51-07.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-51-07.png>)
 
 - You will receive an authorization code.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-51-27.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-51-27.png>)
 
 ### Step 4: Exchange the Authorization Code for Access Token
 
@@ -292,7 +292,7 @@ $response = Invoke-RestMethod -Method Post -Uri $tokenUrl -ContentType "applicat
 # Display the tokens response
 $response | Format-List
 ```
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-05-23-59-40.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-05-23-59-40.png>)
 
 - Receive an access token scoped for your API.
 
@@ -332,7 +332,7 @@ We’ll use the app registration we created earlier for OIDC Debugger, but now w
 
 Make sure to assign the delegated permission **User.Read** + **Mail.Read** (or others you need) under **API permissions**, and grant admin consent if required. This will allow your app to request tokens that can access Microsoft Graph.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-06-00-07-51.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-06-00-07-51.png>)
 
 ### Step 2: Configure OIDC Debugger with Your Existing App Details
 
@@ -343,16 +343,16 @@ Make sure to assign the delegated permission **User.Read** + **Mail.Read** (or o
 - Set the **Scopes** to request the permissions you assigned, for example:  
   `openid profile email User.Read Mail.Read`
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-06-00-09-11.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-06-00-09-11.png>)
 
 ### Step 3: Authenticate and Obtain Tokens
 
 - Click **Send Request**.
 - Complete the login prompt.
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-06-00-09-37.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-06-00-09-37.png>)
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-06-00-10-23.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-06-00-10-23.png>)
 
 - You’ll receive an **Authorization Code** that you can exchange for tokens (ID token and Access token).
 
@@ -395,7 +395,7 @@ $response = Invoke-RestMethod -Method Post -Uri $tokenUrl -ContentType "applicat
 # Display the tokens response
 $response | Format-List
 ```
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-06-00-13-53.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-06-00-13-53.png>)
 
 ### Step 5: Call Microsoft Graph API Using the Access Token
 
@@ -425,7 +425,7 @@ $response = Invoke-RestMethod -Uri $graphApiUrl -Headers $headers -Method Get
 $response | Format-List
 ```
 
-![](../assets/Understanding%20OpenID%20Connect%20and%20OAuth%202.0%20with%20Azure%20AD%20Using%20OIDC%20Debugger%20and%20OAuth2%20Debugger/2025-08-06-00-18-03.png)
+![](<./assets/Understanding OpenID Connect and OAuth 2.0 with Azure AD Using OIDC Debugger and OAuth2 Debugger/2025-08-06-00-18-03.png>)
 
 This demo shows how easy it is to obtain and use tokens for Microsoft Graph with Entra ID and OIDC Debugger, giving you a hands-on way to explore user info and Microsoft 365 APIs securely.
 

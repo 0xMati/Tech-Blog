@@ -52,7 +52,7 @@ Steps:
 3. Create or edit a policy
 4. Under **Session controls**, enable **Require token protection**
 
-![](../assets/Token%20Protection%20Conditional%20Access/2025-04-22-17-32-02.png)
+![](<./assets/Token Protection Conditional Access/2025-04-22-17-32-02.png>)
 
 
 ---

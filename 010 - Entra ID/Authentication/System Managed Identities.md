@@ -23,7 +23,7 @@ date: 2021-05-24
 
 When an Azure resource (like a VM or Function App) needs to access another Azure resource (like a Key Vault or Storage Account), storing credentials in code is insecure.
 
-![](../assets/System%20Managed%20Identities/2025-04-22-15-28-20.png)
+![](<./assets/System Managed Identities/2025-04-22-15-28-20.png>)
 
 **Managed Identity (MI)** solves this by assigning an identity to the resource so it can authenticate directly with Azure AD.
 
@@ -34,7 +34,7 @@ When an Azure resource (like a VM or Function App) needs to access another Azure
 3. The VM uses this token for authenticated API calls.
 
 
-![](../assets/System%20Managed%20Identities/2025-04-22-15-28-59.png)
+![](<./assets/System Managed Identities/2025-04-22-15-28-59.png>)
 
 
 ---
@@ -46,9 +46,9 @@ When an Azure resource (like a VM or Function App) needs to access another Azure
 | System-Assigned   | 1:1 relationship with a resource    |
 | User-Assigned     | 1:Many – reusable across resources  |
 
-![](../assets/System%20Managed%20Identities/2025-04-22-15-29-26.png)
+![](<./assets/System Managed Identities/2025-04-22-15-29-26.png>)
 
-![](../assets/System%20Managed%20Identities/2025-04-22-15-29-39.png)
+![](<./assets/System Managed Identities/2025-04-22-15-29-39.png>)
 
 Benefits:
 
@@ -68,7 +68,7 @@ When an application is registered in Azure AD, it creates:
 - An **Application Object** (global, static)
 - A **Service Principal** (tenant-scoped, instance of the app)
 
-![](../assets/System%20Managed%20Identities/2025-04-22-15-32-03.png)
+![](<./assets/System Managed Identities/2025-04-22-15-32-03.png>)
 
 
 
@@ -82,11 +82,11 @@ Service Principals are how **apps authenticate and get permissions** in your ten
 4. Use SP for scripting or automation scenarios
 
 
-![](../assets/System%20Managed%20Identities/2025-04-22-15-32-50.png)
+![](<./assets/System Managed Identities/2025-04-22-15-32-50.png>)
 
-![](../assets/System%20Managed%20Identities/2025-04-22-15-33-20.png)
+![](<./assets/System Managed Identities/2025-04-22-15-33-20.png>)
 
-![](../assets/System%20Managed%20Identities/2025-04-22-15-33-43.png)
+![](<./assets/System Managed Identities/2025-04-22-15-33-43.png>)
 
 ---
 

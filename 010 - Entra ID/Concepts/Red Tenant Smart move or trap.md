@@ -8,7 +8,7 @@ date: 2025-08-29
 ## TL;DR & Position
 A dedicated admin-only second tenant sounds clean on a whiteboard, but in real life it’s a bad idea. Microsoft guidance is to **avoid a second tenant for administration** and instead **harden a single production tenant** using the Enterprise Access Model (EAM) and Zero Trust controls.
 
-![](../assets/red-tenant-smart-move-or-trap/2025-08-29-01-03-39.png)
+![](<./assets/Red Tenant Smart move or trap/2025-08-29-01-03-39.png>)
 
 **Why:** a “red tenant” doubles licenses and operations, complicates incident response, weakens assurance in subtle ways (Conditional Access, device trust, logging), and creates an illusion of safety while the production tenant remains your blast radius.
 

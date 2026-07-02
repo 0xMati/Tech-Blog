@@ -65,15 +65,15 @@ You can grab Microsoft’s community-archived script here:
 
 - Run the script New-KrbtgtKeys.ps1
 
-![](../assets/krbtgt-password-rotation/2025-07-03-12-55-06.png)
+![](<./assets/Krbtgt Account and Recommendations/2025-07-03-12-55-06.png>)
 
 - You can review practical information about it:
 
-![](../assets/krbtgt-password-rotation/2025-07-03-12-55-56.png)
+![](<./assets/Krbtgt Account and Recommendations/2025-07-03-12-55-56.png>)
 
 - Run !
 
-![](../assets/krbtgt-password-rotation/2025-07-03-12-58-58.png)
+![](<./assets/Krbtgt Account and Recommendations/2025-07-03-12-58-58.png>)
 
 > **Notes:**
 > - This script is **not Microsoft-supported** — run it at your own risk and review the code beforehand. Microsoft also provides an [official guidance & PowerShell snippet](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/ad-forest-recovery-resetting-the-krbtgt-password) if you prefer a minimal, auditable script.

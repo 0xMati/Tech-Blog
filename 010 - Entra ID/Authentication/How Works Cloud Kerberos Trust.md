@@ -91,7 +91,7 @@ Before enabling **Cloud Kerberos Trust (CKT)** in your hybrid identity environme
     - onPremisesSecurityIdentifier (objectSID in Microsoft Entra Connect)
 Microsoft Entra Connect synchronizes these attributes by default. If you change which attributes to synchronize, make sure you select accountName, domainFQDN, and objectSID for synchronization.
 
-![](../assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-01-30.png)
+![](<./assets/How Works Cloud Kerberos Trust/2025-05-11-22-01-30.png>)
 
 
 
@@ -156,9 +156,9 @@ The following steps describe the technical flow behind Cloud Kerberos Trust auth
 > This exchange happens without needing VPN, certificate-based authentication, or AD FS federation.
 > This process is functionally similar to how clients interact with a Read-Only Domain Controller (RODC), but the partial TGT originates from Entra ID and is validated by a writable DC.
 
-![](../assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-20-35-01.png)
+![](<./assets/How Works Cloud Kerberos Trust/2025-05-11-20-35-01.png>)
 
-![](../assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-21-27-54.png)
+![](<./assets/How Works Cloud Kerberos Trust/2025-05-11-21-27-54.png>)
 
 
 ## 2. How DC Locator Works with Entra ID Joined Devices
@@ -248,7 +248,7 @@ Set-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName 
 Get-AzureADKerberosServer -Domain $domain -UserPrincipalName $userPrincipalName
 ```
 
-![](../assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-03-58.png)
+![](<./assets/How Works Cloud Kerberos Trust/2025-05-11-22-03-58.png>)
 
 
 ## 2. ✅ Configure Entra Connect Authentication Type
@@ -328,7 +328,7 @@ Shows if a **partial TGT** has been issued to the client.
 klist cloud_debug
 ```
 
-![](../assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-11-48.png)
+![](<./assets/How Works Cloud Kerberos Trust/2025-05-11-22-11-48.png>)
 
 If nothing appears, you can trigger a PRT refresh with:
 
@@ -345,15 +345,15 @@ OnPremTgt : YES
 CloudTgt  : YES
 ```
 
-![](../assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-13-16.png)
+![](<./assets/How Works Cloud Kerberos Trust/2025-05-11-22-13-16.png>)
 
-![](../assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-13-50.png)
+![](<./assets/How Works Cloud Kerberos Trust/2025-05-11-22-13-50.png>)
 
 **Event Viewer**
 - Go to: `Applications and Services Logs > Microsoft > Windows > User Device Registration`
 - Look for **Event ID 358** to confirm WHfB and Cloud Kerberos Trust policy was applied.
 
-![](../assets/How%20Works%20Cloud%20Kerberos%20Trust/2025-05-11-22-18-06.png)
+![](<./assets/How Works Cloud Kerberos Trust/2025-05-11-22-18-06.png>)
 
 **🛠 Common Issues & Fixes**
 

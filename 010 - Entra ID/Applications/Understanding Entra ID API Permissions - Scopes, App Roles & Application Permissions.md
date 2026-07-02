@@ -144,7 +144,7 @@ You add them under:
 API Permissions → Add a permission → Delegated permissions
 ```
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-12-56-31.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-12-56-31.png>)
 
 ### **2️⃣ Custom scopes**  
 Exposed by *your* API.  
@@ -154,7 +154,7 @@ You define them under:
 Expose an API → Add a scope
 ```
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-12-58-01.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-12-58-01.png>)
 
 Both behave the same way in tokens.
 
@@ -186,7 +186,7 @@ A scope expresses:
 }
 ```
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-13-04-06.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-13-04-06.png>)
 
 ### Example token with delegated permissions
 ```json
@@ -197,7 +197,7 @@ A scope expresses:
 }
 ```
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-13-22-08.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-13-22-08.png>)
 
 If you see `scp`, a **user is involved**.  
 If you see `scp` inside a **client_credentials** token → something is wrong.
@@ -214,7 +214,7 @@ You define them under:
 App roles → Create App Role
 ```
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-13-39-34.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-13-39-34.png>)
 
 You choose who can receive the role:
 
@@ -224,9 +224,9 @@ You choose who can receive the role:
 "allowedMemberTypes": ["User", "Application"]
 ```
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-13-39-53.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-13-39-53.png>)
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-13-40-12.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-13-40-12.png>)
 
 ---
 
@@ -274,7 +274,7 @@ Token contains (client_credentials):
 "roles": ["Orders.Read.All"]
 ```
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-13-52-07.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-13-52-07.png>)
 
 Displayed in the portal as:
 
@@ -282,7 +282,7 @@ Displayed in the portal as:
 
 But these are just **App Roles (Application)**.
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-14-14-10-58.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-14-14-10-58.png>)
 
 ---
 
@@ -689,17 +689,17 @@ Without role assignment, your token will be empty.
 
 - My API:
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-17-15-11-03.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-17-15-11-03.png>)
 
 - My Deamon:
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-17-15-11-26.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-17-15-11-26.png>)
 
 - The Entreprise App has no Assignment for my Deamon:
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-17-15-12-32.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-17-15-12-32.png>)
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-17-15-12-43.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-17-15-12-43.png>)
 
 > Result :
 error":"invalid_grant","error_description":"AADSTS501051: Application '935d9cd2-da80-4d36-b102-cb98ca6b0046'(MyDeamon) is not assigned to a role for the application 
@@ -707,7 +707,7 @@ error":"invalid_grant","error_description":"AADSTS501051: Application '935d9cd2-
 
 - Entreprise App with Assignment:
 
-![](../assets/understanding-entra-id-api-permissions-scopes-app-roles-application-permissions/2025-11-17-15-14-46.png)
+![](<./assets/Understanding Entra ID API Permissions - Scopes, App Roles & Application Permissions/2025-11-17-15-14-46.png>)
 
 > Roles are presents:
 

@@ -31,7 +31,7 @@ Get-WmiObject -Class Win32_Service -Filter "Name='FIMSynchronizationService' or 
 
 > You can find the MIM Portal App Pool Account here in IIS Manager :
 
-![](../assets/change-passwords-in-mim/2025-05-07-14-47-35.png)
+![](<./assets/Change Passwords in MIM/2025-05-07-14-47-35.png>)
 
 > You find all related SQL Account with this powershell command:
 
@@ -54,7 +54,7 @@ Or with the GUI in SharePoint Central Administration:
  - Security > Configure Managed Accounts
  - Check the Default Account
 
-![](../assets/change-passwords-in-mim/2025-05-07-14-57-03.png)
+![](<./assets/Change Passwords in MIM/2025-05-07-14-57-03.png>)
 
 
 ---

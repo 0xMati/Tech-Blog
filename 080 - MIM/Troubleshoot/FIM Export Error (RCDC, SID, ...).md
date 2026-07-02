@@ -9,7 +9,7 @@ date: 2025-04-22
 
 When trying to export RCDC configuration, the following error is displayed:
 
-![](../assets/fim-export-error-rcdc-sid/2025-04-22-17-51-24.png)
+![](<./assets/FIM Export Error (RCDC, SID, ...)/2025-04-22-17-51-24.png>)
 
 ### After Enabling Tracing
 
@@ -22,7 +22,7 @@ Description: HTTP 404. The resource you are looking for (or one of its dependenc
 Requested URL: /identitymanagement/ashx/Download.ashx
 ```
 
-![](../assets/fim-export-error-rcdc-sid/2025-04-22-17-51-35.png)
+![](<./assets/FIM Export Error (RCDC, SID, ...)/2025-04-22-17-51-35.png>)
 
 ### Root Cause and Resolution
 

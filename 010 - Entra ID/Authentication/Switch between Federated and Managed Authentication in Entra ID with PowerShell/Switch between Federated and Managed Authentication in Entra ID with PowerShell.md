@@ -222,7 +222,7 @@ Connect-MgGraph -Scopes "Domain.ReadWrite.All", "Directory.Read.All"
 Update-MgDomain -DomainId yourdomain.com -AuthenticationType Managed
 ```
 
-![](../../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-10-00-16.png)
+![](<./assets/2025-07-03-10-00-16.png>)
 
 ### ❌ Option 2: MSOnline module (deprecated and no longer functional)
 
@@ -345,7 +345,7 @@ You want a verified domain in Entra ID to delegate authentication to an existing
 
 Export the current AD FS signing certificate:
 
-![](../../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-09-51-08.png)
+![](<./assets/2025-07-03-09-51-08.png>)
 
 Then base64-encode it:
 
@@ -375,7 +375,7 @@ New-MgDomainFederationConfiguration `
     -PreferredAuthenticationProtocol "wsFed"
 ```
 
-![](../../assets/Switch%20from%20Federated%20Authentication%20to%20Managed%20Authentication%20in%20Entra%20ID/2025-07-03-09-54-10.png)
+![](<./assets/2025-07-03-09-54-10.png>)
 
 > **Notes:**
 > - `-MetadataExchangeUri` lets Entra ID import your AD FS metadata for certificate auto-rollover.

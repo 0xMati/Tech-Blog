@@ -217,9 +217,9 @@ LDAP Client
       └─ char 28/29 = 22            → not logged, not blocked (insecure)
 ```
 
-![PingCastle finding flagging dSHeuristics not in enforce mode](../assets/dsheuristics-hardening-active-directory/2025-12-11-15-08-33.png)
+![](<./assets/dSHeuristics Hardening in Active Directory/2025-12-11-15-08-33.png>)
 
-![Event Viewer entry for ID 3051 — audit-mode warning on a blocked-in-enforce LDAP add](../assets/dsheuristics-hardening-active-directory/2025-12-11-15-08-47.png)
+![](<./assets/dSHeuristics Hardening in Active Directory/2025-12-11-15-08-47.png>)
 
 ### After hardening — char 28/29 = `11` (enforce)
 

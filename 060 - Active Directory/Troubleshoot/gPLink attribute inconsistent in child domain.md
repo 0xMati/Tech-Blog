@@ -26,7 +26,7 @@ For example:
 
 [gPLink] = [LDAP://cn={6AC1786C-016F-11D2-945F-00C04fB984F9},cn=policies,cn=system,DC=domain,DC=local;0]
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-05-23-28-53.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-05-23-28-53.png>)
 
 ### Why it matters
 
@@ -39,7 +39,7 @@ When a GPO is deleted but its reference remains in a `gPLink` attribute:
 Maintaining consistency in `gPLink` values is therefore essential to ensure proper Group Policy behavior and clean administrative hygiene.
 
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-12-26.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-06-01-12-26.png>)
 
 
 ## 2. Common Causes of `gPLink` Inconsistencies
@@ -52,7 +52,7 @@ Inconsistent `gPLink` values usually appear when a GPO is deleted or moved witho
   A GPO created in the forest root domain is linked to an OU in a child domain. When the GPO is deleted in the root domain, the link is removed there, but **remains in the child domain**’s OU `gPLink` attribute.  
   > ⚠️ This behavior is by design — GPO deletions are **domain-local** and do not cascade to other domains.
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-05-23-31-04.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-05-23-31-04.png>)
 
 - **Manual GPO deletion via ADSIEdit or scripting**:  
   Deleting a GPO by removing its LDAP object or SYSVOL folder directly can leave stale references behind in `gPLink`.
@@ -235,9 +235,9 @@ if ($orphanedGpos.Count -eq 0) {
 
 Example :
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-06-00-14-41.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-06-00-14-41.png>)
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-06-00-14-56.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-06-00-14-56.png>)
 
 
 ## 4. Remediating Inconsistent `gPLink` References
@@ -460,9 +460,9 @@ if ($orphanedGpos.Count -gt 0) {
 Example :
 You can see that the script will prompt you to confirm deletion :
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-07-30.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-06-01-07-30.png>)
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-07-47.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-06-01-07-47.png>)
 
 > Once the remediation is done, you can use the backup file to restore the original OU configuration if needed (see section 5).
 
@@ -471,9 +471,9 @@ You can see that the script will prompt you to confirm deletion :
 
 If you need to restore the previous configuration, you can use this script, just edit the backup file path :
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-09-59.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-06-01-09-59.png>)
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-10-23.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-06-01-10-23.png>)
 
 
 ```powershell
@@ -516,7 +516,7 @@ foreach ($entry in $backupData) {
 Write-Host "`n🎉 Restoration complete." -ForegroundColor Cyan
 ```
 
-![](../assets/gplink-inconsistent-child-domain/2025-05-06-01-10-50.png)
+![](<./assets/gPLink attribute inconsistent in child domain/2025-05-06-01-10-50.png>)
 
 ## 📚 References
 

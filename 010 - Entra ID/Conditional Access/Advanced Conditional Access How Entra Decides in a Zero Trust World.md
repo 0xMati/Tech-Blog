@@ -62,7 +62,7 @@ Microsoft offers two ways to enforce MFA:
 - Enforce baseline MFA with minimal configuration
 - Limited visibility and flexibility
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-13-41-32.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-13-41-32.png>)
 
 **Conditional Access**
 - Requires **Microsoft Entra ID P1 or P2** (or equivalent bundles: *Microsoft 365 Business Premium, M365 E3/E5, EMS E3/E5*)
@@ -170,7 +170,7 @@ Applying it broadly to all users often increases friction without proportional s
 
 **Key point:** Sign-in Frequency reduces long-lived access **where the risk justifies it** — it is not meant to force unnecessary reauthentication for standard users.
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-13-57-35.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-13-57-35.png>)
 ---
 
 ### 7.2 Continuous Access Evaluation (CAE)
@@ -187,7 +187,7 @@ Reality check:
 - Not all apps support CAE
 - CAE **complements** CA — it doesn’t replace good design
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-13-49-18.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-13-49-18.png>)
 
 ---
 
@@ -228,7 +228,7 @@ Insider risk is **behavioral** (data & usage patterns), and is meant to drive **
 
 > **Common pitfall:** applying **User Risk** policies to **guests** and wondering why access turns into a permanent lockout.
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-14-06-15.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-14-06-15.png>)
 
 ---
 
@@ -243,7 +243,7 @@ Benefits:
 - Better sign-in logs diagnostics (which policy applied)
 - Ability to combine risk with other conditions (device, location, etc.)
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-14-07-19.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-14-07-19.png>)
 
 ---
 
@@ -279,7 +279,7 @@ It is the recommended control plane for:
 - Registration scope
 - Method availability per user/group
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-14-20-03.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-14-20-03.png>)
 
 ### 10.1 From legacy MFA/SSPR to unified method governance
 
@@ -334,7 +334,7 @@ Authentication Strength is **context-aware**. It can be used to:
 - require more secure methods for high-risk users
 - enforce specific methods for guest users (with cross-tenant settings)
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-14-26-01.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-14-26-01.png>)
 
 ---
 
@@ -402,7 +402,7 @@ Step-up enforced (e.g. phishing-resistant MFA)
 Access granted for that protected action
 ```
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-15-16-40.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-15-16-40.png>)
 
 ---
 
@@ -519,7 +519,7 @@ If your goal is to ensure that users must provide authentication during activati
 
 For example, if users sign in to the machine by using Windows Hello for Business, you can use On activation, require Microsoft Entra Conditional Access authentication context and Authentication Strengths. This option requires users to do passwordless sign-in with Microsoft Authenticator when they activate the role.
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-15-29-19.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-15-29-19.png>)
 ---
 
 ## 15. Device filters (dynamic targeting at sign-in time)
@@ -570,7 +570,7 @@ Role separation exists here too (dedicated roles):
 - Attribute Definition Administrator
 - Attribute Assignment Administrator
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-15-31-07.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-15-31-07.png>)
 ---
 
 # Chapter 3 — External users, break-glass, admin enforcement, and modern edge cases
@@ -611,7 +611,7 @@ Microsoft Entra now distinguishes several categories of external users, based on
 | **Service provider users** | External users coming from managed service providers (MSPs) | Outsourced IT or SOC providers |
 | **Other external users** | Catch-all category for external identities not matching the above | Edge or legacy scenarios |
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-15-35-40.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-15-35-40.png>)
 ---
 
 ### 17.1.2 Why this distinction matters for Conditional Access
@@ -852,7 +852,7 @@ Modern attacks increasingly target **non-human identities** because they often y
 - **Access reviews for service principals**: review privileged directory role assignments, permissions, orphaned SPs
 - **Custom security attributes**: govern and scope apps consistently
 
-![](../assets/advanced-conditional-access-how-entra-decides-zero-trust-world/2025-12-15-15-43-27.png)
+![](<./assets/Advanced Conditional Access How Entra Decides in a Zero Trust World/2025-12-15-15-43-27.png>)
 
 ---
 

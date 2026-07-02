@@ -644,9 +644,9 @@ if ($ExportCsv) {
 Write-Host "`n=== TLS / Schannel audit completed ===" -ForegroundColor Cyan
 ```
 
-![](../assets/audit-track-tls-protocols-cipher-suites/2026-01-29-16-00-11.png)
+![](<./assets/Audit and Track TLS Protocols and Cipher Suites on Domain Controllers/2026-01-29-16-00-11.png>)
 
-![](../assets/audit-track-tls-protocols-cipher-suites/2026-01-29-16-00-34.png)
+![](<./assets/Audit and Track TLS Protocols and Cipher Suites on Domain Controllers/2026-01-29-16-00-34.png>)
 
 ---
 

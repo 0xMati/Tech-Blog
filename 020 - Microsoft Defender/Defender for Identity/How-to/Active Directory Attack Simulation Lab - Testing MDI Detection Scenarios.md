@@ -58,13 +58,13 @@ Resolve-DnsName -Name "_ldap._tcp.dc._msdcs.mathiasmotron.com" -Type SRV | Out-F
 Resolve-DnsName -Name "_kerberos._tcp.mathiasmotron.com" -Type SRV | Out-File C:\AttackResults\1.ReconMapping\Resolve_SRV_kerberos.txt
 ```
 
-![](../Concepts/assets/Active%20Directory%20Attack%20Simulation%20Lab%20-%20Testing%20MDI%20Detection%20Scenarios/2025-10-24-11-29-24.png)
+![](<./assets/Active Directory Attack Simulation Lab - Testing MDI Detection Scenarios/2025-10-24-11-29-24.png>)
 
 **What to watch in MDI:**
 This is low-impact network discovery and normally should not produce high-severity alerts.
 Possible MDI signals: Network-mapping reconnaissance (DNS) or similar if many DNS queries come from the same host quickly.
 
-![](../Concepts/assets/Active%20Directory%20Attack%20Simulation%20Lab%20-%20Testing%20MDI%20Detection%20Scenarios/2025-10-24-13-15-48.png)
+![](<./assets/Active Directory Attack Simulation Lab - Testing MDI Detection Scenarios/2025-10-24-13-15-48.png>)
 
 > You can as well try to trigger the Alert with NSLOOKUP ls -d <domainname.com>
 
@@ -81,7 +81,7 @@ Purpose + expected info: domain name and functional info, Domain Admins membersh
 **How:**
 Run these commands from Commando VM PowerShell where PowerView.ps1 is available.
 
-![](../Concepts/assets/Active%20Directory%20Attack%20Simulation%20Lab%20-%20Testing%20MDI%20Detection%20Scenarios/2025-10-24-13-47-44.png)
+![](<./assets/Active Directory Attack Simulation Lab - Testing MDI Detection Scenarios/2025-10-24-13-47-44.png>)
 
 - Get basic domain metadata
 
@@ -161,7 +161,7 @@ RiskySPN Alternative
  **What to watch in MDI:**
 Regarding the environment or previous behavior detected, some alerts can occurs like "Security principal reconnaissance (LDAP)", "Account Enumeration reconnaissance (LDAP)", "Active Directory attributes reconnaissance (LDAP)", etc.
 
-![](../Concepts/assets/Active%20Directory%20Attack%20Simulation%20Lab%20-%20Testing%20MDI%20Detection%20Scenarios/2025-10-24-14-09-36.png)
+![](<./assets/Active Directory Attack Simulation Lab - Testing MDI Detection Scenarios/2025-10-24-14-09-36.png>)
 
 - SMB / session enumeration
 

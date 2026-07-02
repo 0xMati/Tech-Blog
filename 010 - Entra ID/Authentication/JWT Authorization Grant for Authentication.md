@@ -59,7 +59,7 @@ The client can now call APIs securely without using a client_secret.
   - **Client ID**
   - **Tenant ID**
 
-![](../assets/jwt-authorization-grant-authentication/2025-10-21-12-29-22.png)
+![](<./assets/JWT Authorization Grant for Authentication/2025-10-21-12-29-22.png>)
 
 ### 2. Create certificate and Upload Your Public Key
 
@@ -99,12 +99,12 @@ if ($loaded.PrivateKey) {
     Write-Host "Provider     : $($loaded.PrivateKey.CspKeyContainerInfo.ProviderName)"
 }
 ```
-![](../assets/jwt-authorization-grant-authentication/2025-10-21-12-38-17.png)
+![](<./assets/JWT Authorization Grant for Authentication/2025-10-21-12-38-17.png>)
 
 - Navigate to **Certificates & Secrets** in your App Registration.
 - Click **Upload certificate** and add your `.cer` file.
 
-![](../assets/jwt-authorization-grant-authentication/2025-10-21-12-52-15.png)
+![](<./assets/JWT Authorization Grant for Authentication/2025-10-21-12-52-15.png>)
 
 ### 3. Build the JWT
 
@@ -277,7 +277,7 @@ try {
 
 - Check that you have an Access Token from Entra ID :
 
-![](../assets/jwt-authorization-grant-authentication/2025-10-21-13-32-46.png)
+![](<./assets/JWT Authorization Grant for Authentication/2025-10-21-13-32-46.png>)
 
 ---
 

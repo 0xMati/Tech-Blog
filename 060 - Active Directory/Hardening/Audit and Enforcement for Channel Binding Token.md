@@ -254,7 +254,7 @@ $summary | Sort-Object Computer | Format-Table -AutoSize
 
 - Or with GPO:
 
-![](../assets/audit-enforcement-channel-binding-token/2025-12-03-12-24-05.png)
+![](<./assets/Audit and Enforcement for Channel Binding Token/2025-12-03-12-24-05.png>)
 
 ### Increase Logs verbosity to track CBT Events
 
@@ -705,7 +705,7 @@ Apply to the **Domain Controllers**:
 
 - Or with GPO:
 
-![](../assets/audit-enforcement-channel-binding-token/2025-12-03-12-25-04.png)
+![](<./assets/Audit and Enforcement for Channel Binding Token/2025-12-03-12-25-04.png>)
 
 ## References
 

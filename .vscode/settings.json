@@ -1,0 +1,13 @@
+{
+  // Paste Image (mushan.vscode-paste-image)
+  // Nouvelle convention : le dossier images est créé À CÔTÉ du .md,
+  // dans assets/<nom-complet-du-fichier-sans-extension>/.
+  // Le chemin inséré est toujours relatif "./assets/..." (jamais de ../),
+  // quelle que soit la profondeur de l'article dans l'arborescence.
+  "pasteImage.path": "${currentFileDir}/assets/${currentFileNameWithoutExt}",
+  "pasteImage.basePath": "${currentFileDir}",
+  "pasteImage.forceUnixStyleSeparator": true,
+  // Syntaxe a chevrons <...> : accepte tout caractere (parentheses, etc.)
+  // sans encodage. Le chemin reste toujours relatif "./assets/...".
+  "pasteImage.insertPattern": "![](<./assets/${currentFileNameWithoutExt}/${imageFileName}>)"
+}

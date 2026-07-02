@@ -21,7 +21,7 @@ Searching for a **binary SID** value through the Portal or using XPath isn’t p
 ### 1. Identify the SID
 First, locate the **conflicting SID** in the **Pending Export** object of the **FIM MA Connector Space**. You’ll find it represented as a hex string (e.g. `01 05 00 00 ...`).
 
-![](../assets/tracking-duplicate-objectsid/2025-04-22-15-45-36.png)
+![](<./assets/Tracking duplicate ObjectSID/2025-04-22-15-45-36.png>)
 
 Strip out the spaces to get a clean string:
 

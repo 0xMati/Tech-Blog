@@ -45,20 +45,20 @@ Also, you need the right permissions within Microsoft Defender XDR to take these
 
 Imagine you receive an alert about a user account suspected of being compromised.
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-01-23-24-44.png)
+![](<./assets/Automated Actions with MDI/2025-08-01-23-24-44.png>)
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-01-23-25-08.png)
+![](<./assets/Automated Actions with MDI/2025-08-01-23-25-08.png>)
 
 Using Defender for Identity, you can:
 
 1. Navigate to the user’s page in the portal.  
 2. Choose to **disable** the user’s Active Directory account to prevent any further sign-ins.  
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-01-23-25-37.png)
+![](<./assets/Automated Actions with MDI/2025-08-01-23-25-37.png>)
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-01-23-25-57.png)
+![](<./assets/Automated Actions with MDI/2025-08-01-23-25-57.png>)
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-01-23-26-17.png)
+![](<./assets/Automated Actions with MDI/2025-08-01-23-26-17.png>)
 
 3. Optionally, **reset the user’s password** to force them to choose a new one at next login.  
 4. Mark the user as **compromised** to highlight the risk level.  
@@ -136,17 +136,17 @@ To start automating actions based on Defender for Identity alerts, you first nee
    - Depending on your licensing and setup, you might also see the **Microsoft Defender XDR** connector available.  
    - You can connect either **MDI** or **Microsoft Defender XDR** (which includes MDI among other Defender solutions) based on what fits your environment.
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-02-00-02-07.png)
+![](<./assets/Automated Actions with MDI/2025-08-02-00-02-07.png>)
  
 4. Select the connector and click **Open connector page**.  
 5. Click on **Connect** or **Configure**.  
 6. Enable data collection for Defender for alerts.  
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-02-00-03-21.png)
+![](<./assets/Automated Actions with MDI/2025-08-02-00-03-21.png>)
 
 7. Wait a few minutes and verify that alerts start to flow into Sentinel.
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-02-00-04-19.png)
+![](<./assets/Automated Actions with MDI/2025-08-02-00-04-19.png>)
 
 #### Validation
 
@@ -159,11 +159,11 @@ SecurityAlert
 | take 5
 ```
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-02-00-08-22.png)
+![](<./assets/Automated Actions with MDI/2025-08-02-00-08-22.png>)
 
 Verify as well that incident are synced from XDR portal to Sentinel:
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-09-03-20-32-32.png)
+![](<./assets/Automated Actions with MDI/2025-09-03-20-32-32.png>)
 
 
 ### 3. Define and build our testing Scenario
@@ -188,15 +188,15 @@ This sets the foundation for automating your detection and response workflows.
 1. In the Azure portal, navigate to your Microsoft Sentinel workspace.  
 2. Go to the **Automation** tab and click **Create a playbook** with Incident Trigger.
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-02-12-02-21.png)
+![](<./assets/Automated Actions with MDI/2025-08-02-12-02-21.png>)
 
 4. Give it a meaningful name like "Playbook_Disable_AD_Account" and create the playbook.
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-09-03-21-08-15.png)
+![](<./assets/Automated Actions with MDI/2025-09-03-21-08-15.png>)
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-08-02-00-23-24.png)
+![](<./assets/Automated Actions with MDI/2025-08-02-00-23-24.png>)
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-09-03-21-09-17.png)
+![](<./assets/Automated Actions with MDI/2025-09-03-21-09-17.png>)
 
 5. Logic App Design will now open
 
@@ -205,7 +205,7 @@ This sets the foundation for automating your detection and response workflows.
 
 - Let start the test with an email sent :
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-09-03-20-45-15.png)
+![](<./assets/Automated Actions with MDI/2025-09-03-20-45-15.png>)
 
 -> You can find the example json to import here if you want to have more details about all the step (just fill/replace Email, SubscriptionID and ResourceGroup Name): 
 https://github.com/0xMati/Tech-Blog/blob/main/Security/Microsoft%20Defender%20for%20Identity/Common/assets/Automated%20Actions%20with%20MDI/PB_Honeytoken_AlertResponse_SendEmail.json
@@ -220,14 +220,14 @@ An automation rule links the previously created Playbook to an incident generate
 1. In the Microsoft Sentinel workspace, navigate to the **Automation** section.  
 2. Click **Create** > **Automation rule**.  
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-09-03-20-55-49.png)
+![](<./assets/Automated Actions with MDI/2025-09-03-20-55-49.png>)
 
 3. Give your automation rule a clear name, such as “AR_Honeytoken_IncidentResponse”.
 4. Define conditions.  
 5. In the **Actions** section, add the playbook you want to run automatically in response to the alert.  
 6. Save and activate the automation rule. 
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-09-03-20-57-14.png)
+![](<./assets/Automated Actions with MDI/2025-09-03-20-57-14.png>)
 
 ---
 
@@ -235,9 +235,9 @@ With this first automation rule in place, any Honeytoken incident will automatic
 
 - You can follow status of your playbook:
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-09-03-21-23-53.png)
+![](<./assets/Automated Actions with MDI/2025-09-03-21-23-53.png>)
 
-![](../Concepts/assets/Automated%20Actions%20with%20MDI/2025-09-03-21-24-13.png)
+![](<./assets/Automated Actions with MDI/2025-09-03-21-24-13.png>)
 
 **Now let’s enrich this scenario by disabling the corresponding Active Directory account :)**
 

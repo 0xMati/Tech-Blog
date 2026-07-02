@@ -19,7 +19,7 @@ Control paths are typically built using:
 
 These paths are often non-obvious and span multiple AD layers. A user might not have direct rights over a Domain Admin account, but might control a GPO applied to it, or be able to modify an object that eventually affects it.
 
-![](../assets/dangerous-acls-expose-gpos-privileged-group-members-attack-path/2025-05-06-22-53-21.png)
+![](<./assets/Dangerous ACLs expose GPOs applied to privileged group members (attack path)/2025-05-06-22-53-21.png>)
 
 This diagram illustrates a privilege escalation control path in Active Directory:
 
@@ -153,7 +153,7 @@ Get-GPO -All | ForEach-Object {
 
 Example :
 
-![](../assets/dangerous-acls-expose-gpos-privileged-group-members-attack-path/2025-05-07-00-24-44.png)
+![](<./assets/Dangerous ACLs expose GPOs applied to privileged group members (attack path)/2025-05-07-00-24-44.png>)
 
 
 If you need a version that exclude Built-in trustees (like "Domain Admins", "Enterprise Admins", "SYSTEM"),
@@ -174,7 +174,7 @@ Get-GPO -All | ForEach-Object {
 ```
 Example :
 
-![](../assets/dangerous-acls-expose-gpos-privileged-group-members-attack-path/2025-05-07-00-27-43.png)
+![](<./assets/Dangerous ACLs expose GPOs applied to privileged group members (attack path)/2025-05-07-00-27-43.png>)
 
 This will highlight any GPO where a non-Tier 0 Built-in group may have control.
 
@@ -228,7 +228,7 @@ $gposAtRisk | Sort-Object GPOName | Format-Table -AutoSize
 
 This helps correlate dangerous permissions with privileged application scope, which is where the real risk lies.
 
-![](../assets/dangerous-acls-expose-gpos-privileged-group-members-attack-path/2025-05-26-10-32-35.png)
+![](<./assets/Dangerous ACLs expose GPOs applied to privileged group members (attack path)/2025-05-26-10-32-35.png>)
 
 
 You can also find which GPO are linked to privileged objects, that exclude Built-in trustees (like "Domain Admins", "Enterprise Admins", "SYSTEM") :
@@ -372,7 +372,7 @@ if ($gpoFoldersAtRisk.Count -gt 0) {
 # $gpoFoldersAtRisk | Export-Csv "C:\Temp\SYSVOL_GPO_ACLs_AtRisk.csv" -NoTypeInformation -Encoding UTF8
 ```
 
-![](../assets/dangerous-acls-expose-gpos-privileged-group-members-attack-path/2025-05-26-10-54-16.png)
+![](<./assets/Dangerous ACLs expose GPOs applied to privileged group members (attack path)/2025-05-26-10-54-16.png>)
 
 You should review any GPO folder where suscpicious groups or account (like Everyone, Authenticated Users, or Domain Users, spécific user) have write access.
 

@@ -22,28 +22,28 @@ You may want to grant visibility to non-technical stakeholders (e.g., executives
 2. **Navigate to Roles & Permissions**  
    - In the left menu, select **Settings** → **Permissions & roles**.  
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-16-42-37.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-16-42-37.png>)
 
 3. **Create a Custom role**  
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-16-43-07.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-16-43-07.png>)
 
     - Scope permissions to Exposure Management Read
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-16-43-26.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-16-43-26.png>)
 
     - Add required Users
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-16-44-06.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-16-44-06.png>)
 
 
 ### Results
 
 > People will have access to Recommandations and Secure Score metrics, that can be filterd on MDI
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-16-45-12.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-16-45-12.png>)
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-16-46-16.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-16-46-16.png>)
 
 ---
 
@@ -61,11 +61,11 @@ Give stakeholders read‑only visibility into your Identity Secure Score and its
 
 > To view the improvement action but not update, you need at least the Service Support Administrator role.
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-21-07-07.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-21-07-07.png>)
 
 ### Results
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-21-07-46.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-21-07-46.png>)
 
 ---
 
@@ -81,27 +81,27 @@ Alerts in Microsoft Defender for Identity surface critical suspicious activities
 2. **Navigate to Roles & Permissions**  
    - In the left menu, select **Settings** → **Permissions & roles**.  
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-16-42-37.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-16-42-37.png>)
 
 3. **Create a Custom role** 
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-17-07-12.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-17-07-12.png>)
 
     - Scope permissions to Alerts / Security data basics Read
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-17-08-07.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-17-08-07.png>)
 
     - Optionaly you can scope Alerts and datas to a specific workload like MDI in Assignment
   ⚠️ -> MDI rely on MDCA, you need to add MDCA as a source to view MDI Alerts  
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-17-19-25.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-17-19-25.png>)
 
 
 ### Results
 
 > People will have read access to Alerts and basics security information, scoped.
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-17-20-29.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-17-20-29.png>)
 
 
 
@@ -126,13 +126,13 @@ Delegate access to these logs to enable auditors or analysts to track XDR config
 
 - Create a custom role in Purview
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-17-59-30.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-17-59-30.png>)
 
 ### Results
 
 > People will have read access to Audit logs, and are able to scope information on XDR infos.
 
-![](../Concepts/assets/Delegate%20Access%20to%20MDI/2025-07-17-18-00-34.png)
+![](<./assets/Delegate Access to MDI/2025-07-17-18-00-34.png>)
 
 
 ⚠️ Restricting Access to XDR‑Only Logs

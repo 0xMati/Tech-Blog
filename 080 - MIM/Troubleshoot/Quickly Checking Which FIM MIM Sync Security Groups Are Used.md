@@ -23,7 +23,7 @@ While Microsoft recommends using AD groups, it is not always the case in some en
 - On the Synchronization Service server, open **Component Services** or run **dcomcnfg**
 - Navigate to: `Component Services → Computers → My Computer → DCOM Config`
 
-![](../assets/quickly-checking-which-fim-mim-sync-security-groups-are-used/2025-08-05-00-53-46.png)
+![](<./assets/Quickly Checking Which FIM MIM Sync Security Groups Are Used/2025-08-05-00-53-46.png>)
 
 ### 2. Switch to Details View
 - If the console is showing icons, switch to **Details view** for easier navigation.
@@ -32,16 +32,16 @@ While Microsoft recommends using AD groups, it is not always the case in some en
 - Find **Forefront Identity Synchronization Manager** (FIMSync Service).
 - Right-click → **Properties**, then go to the **Security** tab.
 
-![](../assets/quickly-checking-which-fim-mim-sync-security-groups-are-used/2025-08-05-00-54-11.png)
+![](<./assets/Quickly Checking Which FIM MIM Sync Security Groups Are Used/2025-08-05-00-54-11.png>)
 
-![](../assets/quickly-checking-which-fim-mim-sync-security-groups-are-used/2025-08-05-00-54-35.png)
+![](<./assets/Quickly Checking Which FIM MIM Sync Security Groups Are Used/2025-08-05-00-54-35.png>)
 
 ### 4. Check Launch and Activation Permissions
 - In the Security tab, locate the **Launch and Activation Permissions** section.
 - Click **Edit** to view the assigned groups.  
   If the Edit button is greyed out, you may need to adjust registry permissions.
 
-  ![](../assets/quickly-checking-which-fim-mim-sync-security-groups-are-used/2025-08-05-00-55-11.png)
+  ![](<./assets/Quickly Checking Which FIM MIM Sync Security Groups Are Used/2025-08-05-00-55-11.png>)
 
 ### 5. Review the Groups
 The list should show the security groups that can launch, activate, or access the service, for example:

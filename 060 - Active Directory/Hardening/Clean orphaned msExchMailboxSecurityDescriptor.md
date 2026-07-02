@@ -57,7 +57,7 @@ $results | Format-Table -AutoSize
 
 You should see which SIDs resolve and identify any orphans before proceeding.
 
-![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-13-42.png)
+![](<./assets/Clean orphaned msExchMailboxSecurityDescriptor/2025-07-01-12-13-42.png>)
 
 ---
 
@@ -165,17 +165,17 @@ Write-Host "`nAll users processed." -ForegroundColor White
 
 - Test mode:
 
-![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-17-10.png)
+![](<./assets/Clean orphaned msExchMailboxSecurityDescriptor/2025-07-01-12-17-10.png>)
 
-![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-17-34.png)
+![](<./assets/Clean orphaned msExchMailboxSecurityDescriptor/2025-07-01-12-17-34.png>)
 
 - Delete mode:
 
-![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-18-43.png)
+![](<./assets/Clean orphaned msExchMailboxSecurityDescriptor/2025-07-01-12-18-43.png>)
 
-![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-18-56.png)
+![](<./assets/Clean orphaned msExchMailboxSecurityDescriptor/2025-07-01-12-18-56.png>)
 
-![](../assets/clean-orphaned-msexchmailboxsecuritydescriptor/2025-07-01-12-19-10.png)
+![](<./assets/Clean orphaned msExchMailboxSecurityDescriptor/2025-07-01-12-19-10.png>)
 
 ## 5. Next steps
 

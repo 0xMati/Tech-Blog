@@ -19,7 +19,7 @@ When working with Azure Active Directory (Azure AD), you’ll often encounter th
 
 **In short**: It’s the application’s global “profile” or “identity template.”
 
-![](../assets/Understanding%20App%20Registration,%20Enterprise%20Application,%20and%20Service%20Principal%20in%20Azure%20AD/2025-08-05-00-29-37.png)
+![](<./assets/Understanding App Registration, Enterprise Application, and Service Principal in Azure AD/2025-08-05-00-29-37.png>)
 
 ---
 
@@ -51,7 +51,7 @@ When working with Azure Active Directory (Azure AD), you’ll often encounter th
 
 An application must have an associated Enterprise Application (Service Principal) in a tenant in order to be used within that tenant. This is why in the developer’s tenant you typically see both the App Registration (the application definition) and the Service Principal (the instance of that app), allowing the app to authenticate and be authorized in that environment.
 
-![](../assets/Understanding%20App%20Registration,%20Enterprise%20Application,%20and%20Service%20Principal%20in%20Azure%20AD/2025-08-05-00-37-38.png)
+![](<./assets/Understanding App Registration, Enterprise Application, and Service Principal in Azure AD/2025-08-05-00-37-38.png>)
 
 ---
 

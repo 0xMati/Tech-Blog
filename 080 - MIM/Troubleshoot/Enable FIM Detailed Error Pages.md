@@ -25,9 +25,9 @@ While the default error page is user-friendly, it is not very helpful for admini
 > _The cause may be due to a missing or invalid server URL, a downed server, or an invalid server firewall configuration._  
 > _Ensure the portal configuration is present and points to the resource management service._
 
-![](../assets/enable-fim-detailed-error-pages/2025-04-22-17-42-54.png)
+![](<./assets/Enable FIM Detailed Error Pages/2025-04-22-17-42-54.png>)
 
-![](../assets/enable-fim-detailed-error-pages/2025-04-22-17-43-02.png)
+![](<./assets/Enable FIM Detailed Error Pages/2025-04-22-17-43-02.png>)
 
 
 The `web.config` file of the FIM Portal is typically located at:
@@ -70,7 +70,7 @@ To enable detailed error pages:
 4. Run IIS reset (`iisreset`)  
 5. Reproduce the issue to see detailed errors.
 
-![](../assets/enable-fim-detailed-error-pages/2025-04-22-17-42-02.png)
+![](<./assets/Enable FIM Detailed Error Pages/2025-04-22-17-42-02.png>)
 
 
 You should now get a clear hint about what is going wrong.

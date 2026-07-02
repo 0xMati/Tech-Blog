@@ -44,19 +44,19 @@ Example 1:
 
 If the Non-Refresh Interval and the Refresh Interval are seven (7) days then a resource record is considered as stale if not refreshed after fourteen (14) days.
 
-![](../assets/dns-aging-scavenging-explained/2025-12-03-17-27-55.png)
+![](<./assets/Dns Aging and Scavenging Explained with verification script/2025-12-03-17-27-55.png>)
 
 Example 2:
 
 If the Non-Refresh Interval and the Refresh Interval are seven (7) days then a resource record can be refreshed after 7 days starting from the last refresh. Once done, a new Non-Refresh Interval period will start.
 
-![](../assets/dns-aging-scavenging-explained/2025-12-03-17-28-22.png)
+![](<./assets/Dns Aging and Scavenging Explained with verification script/2025-12-03-17-28-22.png>)
 
 Example 3:
 
 Even if the Non-Refresh and Refresh intervals were elapsed, a resource record can be refreshed as long as the record was not removed from the DNS zone. Once done, a new Non-Refresh Interval will start and the record will no longer be considered as stale.
 
-![](../assets/dns-aging-scavenging-explained/2025-12-03-17-28-55.png)
+![](<./assets/Dns Aging and Scavenging Explained with verification script/2025-12-03-17-28-55.png>)
 
 ### 🔹 Scavenging: safely removing stale records
 
@@ -102,7 +102,7 @@ These two intervals combined determine how long a record can stay unchanged befo
 
 > If aging is not enabled on a zone, *no* record in that zone will ever be scavenged.
 
-![](../assets/dns-aging-scavenging-explained/2025-12-03-17-31-48.png)
+![](<./assets/Dns Aging and Scavenging Explained with verification script/2025-12-03-17-31-48.png>)
 
 ---
 
@@ -120,7 +120,7 @@ Specify a scavenging period (default: 7 days).
 
 Every time this timer fires, the server will scan eligible zones and delete stale dynamic records.
 
-![](../assets/dns-aging-scavenging-explained/2025-12-03-17-32-16.png)
+![](<./assets/Dns Aging and Scavenging Explained with verification script/2025-12-03-17-32-16.png>)
 
 ---
 

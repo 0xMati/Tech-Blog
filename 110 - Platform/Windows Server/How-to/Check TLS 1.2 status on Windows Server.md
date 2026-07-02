@@ -155,4 +155,4 @@ Write-Host ("3) Real TLS 1.2 handshake to {0}:443" -f $TargetHost) -ForegroundCo
 Test-Tls12Handshake -TargetHost $TargetHost | Format-List
 ```
 
-![](../../assets/check-tls-1-2-status-on-windows-server/2025-09-30-14-21-27.png)
+![](<./assets/Check TLS 1.2 status on Windows Server/2025-09-30-14-21-27.png>)

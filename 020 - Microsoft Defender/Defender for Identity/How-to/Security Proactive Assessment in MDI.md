@@ -25,15 +25,15 @@ MDI continuously evaluates your on-premises Active Directory environment and del
 2. Switch to the **Recommended actions** tab.  
 3. Filter or search for **“Defender for Identity”** under the Identity category.  
 
-![](../Concepts/assets/Security%20Proactive%20Assessment%20in%20MDI/2025-07-17-14-14-34.png)
+![](<./assets/Security Proactive Assessment in MDI/2025-07-17-14-14-34.png>)
 
 4. Click on any **Defender for Identity security posture assessment** to view details, recommendations, and remediation steps.  
 
-![](../Concepts/assets/Security%20Proactive%20Assessment%20in%20MDI/2025-07-17-14-15-18.png)
+![](<./assets/Security Proactive Assessment in MDI/2025-07-17-14-15-18.png>)
 
-![](../Concepts/assets/Security%20Proactive%20Assessment%20in%20MDI/2025-07-17-14-15-47.png)
+![](<./assets/Security Proactive Assessment in MDI/2025-07-17-14-15-47.png>)
 
-![](../Concepts/assets/Security%20Proactive%20Assessment%20in%20MDI/2025-07-17-14-16-03.png)
+![](<./assets/Security Proactive Assessment in MDI/2025-07-17-14-16-03.png>)
 
 5. Check back anytime—scores refresh every 24 hours, and impacted entity lists update continuously.
 

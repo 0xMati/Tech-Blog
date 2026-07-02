@@ -11,7 +11,7 @@ To determine whether your Active Directory Federation Services (AD FS) environme
 Get-WmiObject -Class SecurityTokenService -Namespace root/ADFS | Select-Object ConfigurationDatabaseConnectionString
 ```
 
-![](../assets/check-if-adfs-is-using-sql-or-wid/2025-04-08-15-56-41.png)
+![](<./assets/Check if ADFS is using SQL or WID/2025-04-08-15-56-41.png>)
 
 ### Output Interpretation
 

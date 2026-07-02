@@ -81,7 +81,7 @@ Key events to look for once Category 16 = 5:
 
 > The exact set of events depends on the operating system version of the DC. For LDAPS-specific tracking (channel binding, SSL bind details), see also Schannel events on the **System** log.
 
-![](../assets/audit-ldap-binds-queries-regedit/2025-06-17-15-12-55.png)
+![](<./assets/Audit LDAP Binds and Queries with Regedit/2025-06-17-15-12-55.png>)
 ---
 
 ### 5. Difference between Category 15 and Category 16

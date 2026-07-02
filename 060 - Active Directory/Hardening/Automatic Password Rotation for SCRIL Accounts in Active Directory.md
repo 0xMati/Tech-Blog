@@ -29,31 +29,31 @@ Set-ADObject -Identity (Get-ADDomain).DistinguishedName `
              -Replace @{'msDS-ExpirePasswordsOnSmartCardOnlyAccounts'=$true}
 ```
 
-![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-18-18.png)
+![](<./assets/Automatic Password Rotation for SCRIL Accounts in Active Directory/2025-05-13-13-18-18.png>)
 
-![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-19-27.png)
+![](<./assets/Automatic Password Rotation for SCRIL Accounts in Active Directory/2025-05-13-13-19-27.png>)
 
 **`SmartcardRequired = TRUE` on the user account**
 This enables the SCRIL flag.
 It can be set using Active Directory Users and Computers or PowerShell.
 
-![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-20-34.png)
+![](<./assets/Automatic Password Rotation for SCRIL Accounts in Active Directory/2025-05-13-13-20-34.png>)
 
 **`PasswordNeverExpires = FALSE`**
 The user account must allow password expiration. 
 If set to TRUE, the rotation mechanism is bypassed.
 
-![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-20-54.png)
+![](<./assets/Automatic Password Rotation for SCRIL Accounts in Active Directory/2025-05-13-13-20-54.png>)
 
 **A valid `pwdLastSet` value**
 A password must exist on the account. If not, expiration and rotation will not trigger.
 
-![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-22-34.png)
+![](<./assets/Automatic Password Rotation for SCRIL Accounts in Active Directory/2025-05-13-13-22-34.png>)
 
 **Password expiration policy applied** (via GPO or FGPP)
 The domain or Fine-Grained Password Policy must define a `maxPwdAge` greater than zero.
 
-![](../assets/automatic-password-rotation-scril-accounts/2025-05-13-13-21-51.png)
+![](<./assets/Automatic Password Rotation for SCRIL Accounts in Active Directory/2025-05-13-13-21-51.png>)
 
 ---
 

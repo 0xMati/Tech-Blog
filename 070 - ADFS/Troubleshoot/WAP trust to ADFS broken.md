@@ -14,23 +14,23 @@ In this lab scenario, the WAP authentication certificate expired. Communication 
 
 - **Remote Access Console** throws `0x8007520C`.  
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-07-30.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-07-30.png>)
 
 - **Event ID 422** on the proxy:  
   ```
   401 Unauthorized fetching proxy config.
   ```
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-07-50.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-07-50.png>)
 
 - **Event ID 394** on ADFS:  
   > “Proxy trust certificate … has expired.”  
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-08-43.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-08-43.png>)
 
 - **Event ID 276** indicates that the proxy trust should be re-established.
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-08-32.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-08-32.png>)
 
 
 
@@ -46,18 +46,18 @@ In this lab scenario, the WAP authentication certificate expired. Communication 
 
 2. **Re-open** Remote Access Management (no reboot required).
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-09-25.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-09-25.png>)
 
 3. **Run the wizard** again:  
    - Federation Service name: `adfs.tailspintoys.ca` (or yours).  
    - Pick the right SSL cert (thumbprint check!).  
    - Click through the screens—peek at the PowerShell if you’re curious.
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-09-37.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-09-37.png>)
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-09-47.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-09-47.png>)
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-09-55.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-09-55.png>)
 
 4. **Restart ADFS** on the proxy:
    ```powershell
@@ -66,7 +66,7 @@ In this lab scenario, the WAP authentication certificate expired. Communication 
 
 Trust is now re-established.
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-10-06.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-10-06.png>)
 
 ---
 
@@ -83,13 +83,13 @@ Install-WebApplicationProxy `
   -FederationServiceName $fsn
 ```
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-10-21.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-10-21.png>)
 
 Enter your AD FS admin credentials when prompted and wait for completion. Expected result: **Deployment Succeeded**.
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-10-30.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-10-30.png>)
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-10-34.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-10-34.png>)
 
 ---
 
@@ -100,9 +100,9 @@ Enter your AD FS admin credentials when prompted and wait for completion. Expect
 
 Users can now authenticate from the Internet again.
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-10-49.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-10-49.png>)
 
-![](../assets/wap-trust-to-adfs-broken/2025-06-24-20-10-55.png)
+![](<./assets/WAP trust to ADFS broken/2025-06-24-20-10-55.png>)
 ---
 
 ## Sources

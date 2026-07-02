@@ -18,20 +18,20 @@ date: 2025-05-10
    - Choose **Configure** > **Customize Synchronization options** > select **Optional Features**.
    - Enable Password Hash Synchronization
 
-![](../assets/How%20to%20use%20Stage%20Rollout%20for%20moving%20from%20ADFS%20to%20PHS/2025-05-21-11-59-15.png)
+![](<./assets/How to use Stage Rollout for moving from ADFS to PHS/2025-05-21-11-59-15.png>)
 
 2. **Enable Staged Rollout** (via Entra portal):
    - Create a dedicated Security or M365 Group that will scope Users performing PHS authN
    - Go to **Azure Portal** → **Microsoft Entra ID** → **Microsoft Entra Connect** → **Connect Sync**.
    - Enable **Stage Rollout**.
 
-![](../assets/How%20to%20use%20Stage%20Rollout%20for%20moving%20from%20ADFS%20to%20PHS/2025-05-21-12-02-01.png)
+![](<./assets/How to use Stage Rollout for moving from ADFS to PHS/2025-05-21-12-02-01.png>)
 
    - Assign your target security groups.
 
-![](../assets/How%20to%20use%20Stage%20Rollout%20for%20moving%20from%20ADFS%20to%20PHS/2025-05-21-12-02-33.png)
+![](<./assets/How to use Stage Rollout for moving from ADFS to PHS/2025-05-21-12-02-33.png>)
 
-![](../assets/How%20to%20use%20Stage%20Rollout%20for%20moving%20from%20ADFS%20to%20PHS/2025-05-21-12-02-49.png)
+![](<./assets/How to use Stage Rollout for moving from ADFS to PHS/2025-05-21-12-02-49.png>)
 
 3. **Monitor the rollout**:
    - Users in the group will start authenticating via PHS instead of ADFS.
