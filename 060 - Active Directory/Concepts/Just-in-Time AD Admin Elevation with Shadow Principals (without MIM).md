@@ -160,6 +160,16 @@ Even better: the **KDC** on a 2016+ DC reads those TTLs and **caps the TGT lifet
 
 > **🔵 Important — Irreversibility.** Enabling the PAM Optional Feature is a one-way door. There is no `Disable-ADOptionalFeature` for it. The schema changes and the unlocked behaviors stay forever. Run it on a **dedicated bastion forest**, never on your production forest.
 
+### 2.6 — The PIM trust attribute (`TRUST_ATTRIBUTE_PIM_TRUST`)
+
+This is the concept most articles about the bastion pattern silently skip — and the single most common reason a correctly-built lab produces **zero** elevation. Enabling SID History on the trust ([§ 2.3](#23--sid-history)) is *necessary but not sufficient*.
+
+Here is the subtlety. SID filtering normally strips, from an incoming trust, any SID whose domain portion belongs to the **trusting (production) forest itself** — because a foreign forest presenting *your own* domain's SIDs looks exactly like a SID-spoofing attack. But that is *precisely* what a shadow principal does: it presents the SID of `CONTOSO\Domain Admins` (a production SID) from inside `red.local`. With only `/enableSidHistory:yes`, that production-domain SID is still filtered out, and the elevation appears to do nothing.
+
+The flag that tells the production KDC "*this specific trust is a Privileged Access Management trust, so honor same-forest SIDs carried by the bastion*" is the trust attribute **`TRUST_ATTRIBUTE_PIM_TRUST` (bit `0x400`)** on the trusted-domain object (TDO). This is exactly the bit that MIM's `New-PAMTrust` cmdlet sets under the hood. Building the pattern *without* MIM means you must set it yourself — either via `netdom … /EnablePIMTrust:Yes` (where supported) or directly on the TDO's `trustAttributes` via LDAP. Both methods are shown in [§ 5.3](#53--create-the-trust-from-the-production-side).
+
+> **🔴 Critical — SID History alone will not elevate.** If you follow only the `/enableSidHistory:yes` guidance you will find that `whoami /groups` on the production DC never shows the injected group. The `TRUST_ATTRIBUTE_PIM_TRUST` bit is the missing half of the mechanism.
+
 ---
 
 ## 🏗️ 3 — Architecture overview
@@ -258,7 +268,8 @@ When `red\demoAdm` (a temporarily-elevated user) connects to `DC01.contoso.com`:
 ### 4.3 — The trust
 
 - Trust type: **forest trust**, **one-way**. From `contoso.com`'s point of view it is **incoming** (production trusts bastion); from `red.local`'s point of view it is **outgoing**. In `netdom` syntax it is created from `contoso.com` with `/domain:red.local /add /twoway:no`.
-- **`/enableSidHistory:yes`** — required for shadow principal SID injection to survive the trust. This flag **disables SID filtering** on this incoming forest trust, which is what allows foreign SIDs (such as `CONTOSO\Domain Admins` injected via a shadow principal) to be honored by `contoso.com` KDCs.
+- **`/enableSidHistory:yes`** — required for shadow principal SID injection to survive the trust. This flag relaxes SID filtering on this incoming forest trust so that foreign SIDs carried in the PAC are not stripped.
+- **`TRUST_ATTRIBUTE_PIM_TRUST` (bit `0x400`) set on the TDO** — required so that same-forest SIDs (such as `CONTOSO\Domain Admins`, injected via a shadow principal) are honored rather than filtered as spoofing. This is the bit MIM's `New-PAMTrust` sets; without MIM you set it yourself (see [§ 2.6](#26--the-pim-trust-attribute-trust_attribute_pim_trust) and [§ 5.3](#53--create-the-trust-from-the-production-side)). **Missing this bit is the number-one cause of "elevation does nothing".**
 - **`/SelectiveAuth:yes`** — required so a compromised bastion identity cannot suddenly browse `contoso.com` end-to-end. With Selective Auth, every authentication target server in `contoso.com` must be individually whitelisted via an `Allowed-To-Authenticate` ACE on its computer object.
 - Do **not** enable trust quarantine — it strips foreign SIDs and would defeat the entire pattern.
 
@@ -344,9 +355,40 @@ netdom trust contoso.com `
 Read this carefully:
 
 - `/twoway:no` — we want one-way only. The direction created by `netdom trust X /domain:Y /add` from forest X creates a trust where **X trusts Y** (i.e., users from Y can be authorized in X).
-- `/enableSidHistory:yes` — disables SID filtering inbound on the trust. Mandatory for shadow principal SID injection.
+- `/enableSidHistory:yes` — relaxes SID filtering inbound on the trust. Mandatory for shadow principal SID injection.
 - `/SelectiveAuth:yes` — turn on selective authentication on the trust. We will then individually whitelist target servers.
 - `/usero` / `/passwordo` — credentials of an Enterprise Admin in the **other** (bastion) forest. `/userd` / `/passwordd` — Enterprise Admin in **this** (production) forest. Using `*` prompts interactively, which is what you want — do not put passwords on the command line.
+
+#### Set the PIM trust bit (`TRUST_ATTRIBUTE_PIM_TRUST`)
+
+The command above builds a normal SID-History-enabled forest trust. It does **not**, on its own, set the `TRUST_ATTRIBUTE_PIM_TRUST` (`0x400`) bit that makes same-forest SID injection work (see [§ 2.6](#26--the-pim-trust-attribute-trust_attribute_pim_trust)). You must set it explicitly, using one of the two methods below.
+
+**Method A — `netdom` (simplest, but not on every build).** Recent `netdom` versions expose the switch directly:
+
+```powershell
+# On a contoso.com DC, as Enterprise Admin
+netdom trust contoso.com /domain:red.local /EnablePIMTrust:Yes
+```
+
+> **🔵 Important — `/EnablePIMTrust` is not present on all `netdom` builds.** If the switch is rejected as unknown, use Method B. The canonical, always-available path is MIM's `New-PAMTrust` cmdlet — but since this article builds the pattern *without* MIM, Method B is the supported no-MIM equivalent.
+
+**Method B — set the `trustAttributes` bit directly via LDAP.** This flips bit `0x400` on the trusted-domain object without touching MIM or any specific `netdom` build:
+
+```powershell
+# On a contoso.com DC, as Enterprise Admin
+$TdoDN = "CN=red.local,CN=System,DC=contoso,DC=com"
+$Tdo   = Get-ADObject -Identity $TdoDN -Properties trustAttributes
+
+# 0x400 = TRUST_ATTRIBUTE_PIM_TRUST. Preserve existing bits (SID history, forest transitive, etc.)
+$NewAttrs = $Tdo.trustAttributes -bor 0x400
+Set-ADObject -Identity $TdoDN -Replace @{ trustAttributes = $NewAttrs }
+
+# Confirm the bit is set
+(Get-ADObject -Identity $TdoDN -Properties trustAttributes).trustAttributes -band 0x400
+# Expected output: 1024  (i.e. the 0x400 bit is present)
+```
+
+> **🔴 Critical — do not clobber the other bits.** Always OR (`-bor`) the new bit onto the existing value. Overwriting `trustAttributes` with a bare `0x400` would wipe forest-transitivity and SID-history relaxation and silently break the trust.
 
 ### 5.4 — Verify trust health
 
@@ -361,6 +403,11 @@ Get-ADTrust -Filter "Target -eq 'red.local'" |
     Format-List Name, Direction, TrustType, SelectiveAuthentication,
                 SIDFilteringForestAware, SIDFilteringQuarantined,
                 ForestTransitive, IntraForest
+
+# Confirm the PIM trust bit (0x400) is set on the TDO
+$TdoDN = "CN=red.local,CN=System,DC=contoso,DC=com"
+(Get-ADObject -Identity $TdoDN -Properties trustAttributes).trustAttributes -band 0x400
+# Expected: 1024  (0 means the PIM trust bit is NOT set — shadow principal SID injection will fail)
 ```
 
 Expected:
@@ -369,6 +416,7 @@ Expected:
 - `SelectiveAuthentication` = `True`
 - `SIDFilteringForestAware` = `False` (i.e. SID filtering is **disabled** — the unintuitive boolean here means "this trust is not filtering forest SIDs")
 - `SIDFilteringQuarantined` = `False`
+- **`trustAttributes -band 0x400` = `1024`** (the `TRUST_ATTRIBUTE_PIM_TRUST` bit is set)
 
 > **🟡 Warning — Common pitfall: stale TDO.** If you ever recreate the bastion forest from scratch (lab iterations), **delete the trust on the production side first**, otherwise you end up with a `trustedDomain` object pointing at a vanished forest and a stale Kerberos referral chain. Cleanup: `netdom trust contoso.com /domain:red.local /remove /force` on the production DC, then `Get-ADObject -Filter "objectClass -eq 'trustedDomain'" -SearchBase "CN=System,DC=contoso,DC=com" | Remove-ADObject -Recursive -Confirm:$true` for orphans.
 
@@ -734,7 +782,7 @@ Most likely causes and how to diagnose each:
 | Symptom | Likely cause | Diagnosis |
 |---|---|---|
 | `whoami /groups` shows nothing from CONTOSO at all | Old Kerberos ticket from before the elevation | `klist purge` then retry |
-| Bastion SIDs are there but no production SID | SID filtering still active on the trust | `Get-ADTrust ... \| FL SIDFilteringForestAware`. Must be `False` |
+| Bastion SIDs are there but no production SID | `TRUST_ATTRIBUTE_PIM_TRUST` bit not set on the TDO (most common), or SID filtering still active | `(Get-ADObject "CN=red.local,CN=System,DC=contoso,DC=com" -Properties trustAttributes).trustAttributes -band 0x400` must return `1024`. Also check `Get-ADTrust ... \| FL SIDFilteringForestAware` (must be `False`) |
 | Production SID is there but access denied on the target | Selective Auth ACE missing on the target server | Verify the `Allowed-To-Authenticate` ACE on the target's computer object |
 | Works against some DCs but not others | Mixed-version DCs in production | Confirm every production DC that may serve the user is Server 2016+ |
 | Works for some accounts but not new ones | Replication latency between bastion DCs | Force `repadmin /syncall RED-DC1 /e /A /P` then retry |
@@ -814,12 +862,17 @@ Demote and remove `RED-DC1` / `RED-DC2`, retire PAWs, archive the audit trail. T
 - [Securing Active Directory administrative groups and accounts](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/appendix-g--securing-administrators-groups-in-active-directory) — Tier 0 hardening recommendations applicable to the bastion forest.
 - [Configuring selective authentication settings](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/cc794747(v=ws.10)) — `Allowed-To-Authenticate` ACE mechanics.
 - [Forest trust and SID filtering](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/security-considerations-of-trusts) — exact semantics of `/enableSidHistory` and quarantine.
+- [\[MS-ADTS\]: trustAttributes](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/e9a2d23c-c31e-4a6f-88a0-6646fdb51a3c) — authoritative bit definitions, including `TRUST_ATTRIBUTE_PIM_TRUST` (`0x400`) set in [§ 5.3](#53--create-the-trust-from-the-production-side).
 - [Microsoft Identity Manager Privileged Access Management](https://learn.microsoft.com/en-us/microsoft-identity-manager/pam/privileged-identity-management-for-active-directory-domain-services) — for comparison; same engine, with a portal and workflow on top.
 - [Govern on-premises Active Directory groups using Entra Privileged Identity Management](https://learn.microsoft.com/en-us/entra/id-governance/pim-for-groups-cloud-sync) — modern alternative covered in [§ 9](#-9--when-to-use-this-vs-mim-pam-vs-entra-pim-for-groups).
 
 ### Useful related articles in this blog
 
 - [Active Directory Tiering Model for On-Premises Environments](Active%20Directory%20Tiering%20Model%20for%20On-Prem%20Environment.md) — strongly recommended prerequisite reading.
+
+### Security research (understand the abuse side)
+
+- [How NOT to use the PAM trust — Leveraging Shadow Principals for Cross Forest Attacks (Nikhil "SamratAshok" Mittal)](http://www.labofapenetrationtester.com/2019/04/abusing-PAM.html) — why the `TRUST_ATTRIBUTE_PIM_TRUST` bit and the bastion forest are such high-value targets, and how the same primitive is abused if the bastion is compromised.
 
 ### LDAP control reference
 
