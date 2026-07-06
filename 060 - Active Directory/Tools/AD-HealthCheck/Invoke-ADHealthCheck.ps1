@@ -13,6 +13,7 @@
         - Connectivité / DC      : ping LDAP/Kerberos, dcdiag (tests ciblés), canal sécurisé (nltest)
         - Rôles FSMO             : localisation + accessibilité de chaque détenteur
         - Synchro horaire        : décalage réel mesuré via w32tm (seuils WARN/FAIL)
+                                   + état de synchro (Leap Indicator) et source (alerte si horloge hôte/CMOS sur un DC)
         - Stockage               : espace libre C: et volume NTDS.dit + taille de la base
         - Journal Directory Svc  : erreurs critiques récentes (1311, 2042, lingering, USN rollback...)
 
@@ -26,6 +27,10 @@
 
 .PARAMETER DomainName
     FQDN du domaine à contrôler. Par défaut : domaine de la machine d'exécution.
+
+.PARAMETER Forest
+    Étend les contrôles à TOUS les domaines de la forêt (découverte multi-domaines).
+    Par défaut, seul le domaine -DomainName est contrôlé.
 
 .PARAMETER OutputPath
     Dossier de sortie des rapports HTML/CSV. Par défaut : sous-dossier .\Reports.
@@ -105,10 +110,18 @@
     compte avec droits de lecture sur AD et accès réseau aux DC.
     Pour MailMethod Graph : modules Microsoft.Graph.Authentication et Microsoft.Graph.Users.Actions,
     app registration Entra ID avec permission applicative Mail.Send et un certificat.
+
+    Prérequis firewall (exécution à distance) : certains tests dcdiag (Services, KccEvent,
+    NetLogons, SysVolCheck, Advertising, FsmoCheck) et la lecture du journal Directory Service
+    s'appuient sur le SCM et l'Event Log distants (RPC). Si ces règles sont fermées sur un DC,
+    ces tests remontent en FAIL/WARN à tort alors qu'ils passent en local. Ouvrir sur chaque DC :
+        Enable-NetFirewallRule -DisplayGroup "Remote Service Management"
+        Enable-NetFirewallRule -DisplayGroup "Remote Event Log Management"
 #>
 [CmdletBinding()]
 param(
     [string]   $DomainName = $env:USERDNSDOMAIN,
+    [switch]   $Forest,
     [string]   $OutputPath = (Join-Path -Path $PSScriptRoot -ChildPath 'Reports'),
 
     [switch]   $SendEmail,
@@ -218,7 +231,9 @@ function Invoke-External {
     param([string] $FilePath, [string[]] $Arguments)
     try {
         $out = & $FilePath @Arguments 2>&1
-        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($out | Out-String) }
+        # -Width élevé : évite que Out-String n'enveloppe (wrap) les longues lignes à la largeur
+        # console (~80), ce qui casserait le parsing (ex. "Invalid service type ... WIN32_OWN_PROCESS").
+        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($out | Out-String -Width 4096) }
     }
     catch {
         return [pscustomobject]@{ ExitCode = -1; Output = $_.Exception.Message }
@@ -291,17 +306,53 @@ Write-Host ''
 #  1. Découverte du domaine et des DC
 # ------------------------------------------------------------------------------------
 try {
-    $Domain = Get-ADDomain -Identity $DomainName
-    $DomainControllers = Get-ADDomainController -Filter * -Server $DomainName |
-        Sort-Object HostName
+    if ($Forest) {
+        # Découverte forêt : tous les domaines de la forêt.
+        $forestObj   = Get-ADForest -Server $DomainName
+        $domainNames = @($forestObj.Domains)
+    }
+    else {
+        $domainNames = @($DomainName)
+    }
+
+    # Carte DNSRoot -> objet ADDomain (fournit PDCEmulator/RIDMaster/InfrastructureMaster par domaine).
+    $domainMap         = [ordered]@{}
+    $DomainControllers = New-Object System.Collections.Generic.List[object]
+    foreach ($dn in $domainNames) {
+        try {
+            $adDom = Get-ADDomain -Identity $dn -Server $dn
+            $domainMap[$adDom.DNSRoot] = $adDom
+            foreach ($d in (Get-ADDomainController -Filter * -Server $dn)) {
+                $DomainControllers.Add($d)
+            }
+        }
+        catch {
+            Record -DC "($dn)" -Category 'Discovery' -Check 'Domain query' -Status 'FAIL' `
+                   -Detail ("Unable to query domain '{0}': {1}" -f $dn, $_.Exception.Message)
+        }
+    }
+    if ($DomainControllers.Count -eq 0) { throw 'No domain controllers discovered.' }
+    $DomainControllers = $DomainControllers | Sort-Object Domain, HostName
+
+    # Domaine principal (celui passé en paramètre) : sert aux opérations de niveau forêt.
+    $primaryDNSRoot = (Get-ADDomain -Identity $DomainName -Server $DomainName).DNSRoot
+    $Domain = $domainMap[$primaryDNSRoot]
+    if (-not $Domain) { $Domain = @($domainMap.Values)[0] }
 }
 catch {
     Write-Host "ERROR: unable to query domain '$DomainName'. $($_.Exception.Message)" -ForegroundColor Red
     throw
 }
 
-Record -DC '(domain)' -Category 'Discovery' -Check 'DCs discovered' -Status 'INFO' `
-       -Detail ('{0} DCs: {1}' -f $DomainControllers.Count, ($DomainControllers.HostName -join ', '))
+$discoveryScope = if ($Forest) { '(forest)' } else { '(domain)' }
+$discoveryDetail = if ($domainMap.Count -gt 1) {
+    '{0} DC(s) across {1} domains ({2}): {3}' -f `
+        $DomainControllers.Count, $domainMap.Count, ($domainMap.Keys -join ', '), ($DomainControllers.HostName -join ', ')
+}
+else {
+    '{0} DCs: {1}' -f $DomainControllers.Count, ($DomainControllers.HostName -join ', ')
+}
+Record -DC $discoveryScope -Category 'Discovery' -Check 'DCs discovered' -Status 'INFO' -Detail $discoveryDetail
 
 # ------------------------------------------------------------------------------------
 #  2. Rôles FSMO : localisation + accessibilité
@@ -309,13 +360,18 @@ Record -DC '(domain)' -Category 'Discovery' -Check 'DCs discovered' -Status 'INF
 Write-Host ''
 Write-Host '--- FSMO Roles ---' -ForegroundColor White
 try {
-    $forest = Get-ADForest -Server $DomainName
+    $forestInfo = Get-ADForest -Server $DomainName
     $fsmo = [ordered]@{
-        'Schema Master'          = $forest.SchemaMaster
-        'Domain Naming Master'   = $forest.DomainNamingMaster
-        'PDC Emulator'           = $Domain.PDCEmulator
-        'RID Master'             = $Domain.RIDMaster
-        'Infrastructure Master'  = $Domain.InfrastructureMaster
+        'Schema Master'        = $forestInfo.SchemaMaster
+        'Domain Naming Master' = $forestInfo.DomainNamingMaster
+    }
+    # Rôles par domaine : un jeu PDC/RID/Infrastructure par domaine découvert.
+    $multiDom = ($domainMap.Count -gt 1)
+    foreach ($adDom in $domainMap.Values) {
+        $suffix = if ($multiDom) { " [$($adDom.DNSRoot)]" } else { '' }
+        $fsmo["PDC Emulator$suffix"]          = $adDom.PDCEmulator
+        $fsmo["RID Master$suffix"]            = $adDom.RIDMaster
+        $fsmo["Infrastructure Master$suffix"] = $adDom.InfrastructureMaster
     }
     foreach ($role in $fsmo.Keys) {
         $holder = $fsmo[$role]
@@ -343,7 +399,8 @@ catch {
 # ------------------------------------------------------------------------------------
 Write-Host ''
 Write-Host '--- Replication (replsummary) ---' -ForegroundColor White
-$repSummary = Invoke-External -FilePath 'repadmin.exe' -Arguments @('/replsummary', $DomainName)
+$replArgs   = if ($Forest) { @('/replsummary') } else { @('/replsummary', $DomainName) }
+$repSummary = Invoke-External -FilePath 'repadmin.exe' -Arguments $replArgs
 if ($repSummary.ExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($repSummary.Output)) {
     Record -DC '(domain)' -Category 'Replication' -Check 'replsummary' -Status 'FAIL' -Detail 'repadmin failed (RSAT installed?)'
 }
@@ -421,13 +478,24 @@ foreach ($dc in $DomainControllers) {
     }
 
     # 4d. Canal sécurisé (nltest /sc_query)
-    $sc = Invoke-External -FilePath 'nltest.exe' -Arguments @("/sc_query:$($Domain.DNSRoot)", "/server:$dcName")
+    # Note : le PDC Emulator est la racine de la chaîne des canaux sécurisés Netlogon
+    # (les autres DC entretiennent un canal vers lui, pas l'inverse). Sur le PDC, sc_query
+    # renvoie donc 1355 ERROR_NO_SUCH_DOMAIN par conception -> ce n'est PAS une panne.
+    $dcDomain = if ($dc.Domain -and $domainMap.Contains($dc.Domain)) { $domainMap[$dc.Domain] } else { $Domain }
+    $isPdc = ($dcName -eq $dcDomain.PDCEmulator)
+    $sc = Invoke-External -FilePath 'nltest.exe' -Arguments @("/sc_query:$($dcDomain.DNSRoot)", "/server:$dcName")
+    $scFirstLine = ($sc.Output -split "`r?`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1)
     if ($sc.Output -match 'NERR_Success|Success') {
         Record -DC $dcName -Category 'SecureChannel' -Check 'nltest /sc_query' -Status 'OK'
     }
+    elseif ($isPdc -and $sc.Output -match '1355|ERROR_NO_SUCH_DOMAIN') {
+        # Faux positif attendu sur le PDC : la racine du canal sécurisé n'a pas de canal sortant.
+        Record -DC $dcName -Category 'SecureChannel' -Check 'nltest /sc_query' -Status 'INFO' `
+               -Detail 'PDC Emulator : racine du canal sécurisé (1355 attendu, non applicable)'
+    }
     else {
         Record -DC $dcName -Category 'SecureChannel' -Check 'nltest /sc_query' -Status 'FAIL' `
-               -Detail (($sc.Output -split "`r?`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1))
+               -Detail $scFirstLine
     }
 
     # 4e. Réplication détaillée du DC (repadmin /showrepl)
@@ -463,7 +531,35 @@ foreach ($dc in $DomainControllers) {
             Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'OK'
         }
         elseif ($dcdiag.Output -match ("(?im)failed test\s+$([regex]::Escape($t))")) {
-            Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'FAIL' -Detail 'dcdiag: test failed'
+            # Cas particulier connu : sur Windows récent (Server 2019+/2025), le service DnsCache
+            # tourne en processus isolé (SvcHost isolation) et dcdiag le signale à tort comme
+            # "Invalid service type ... WIN32_OWN_PROCESS". Si c'est la SEULE anomalie du test
+            # Services, on dégrade en WARN (bénin, DNS fonctionnel) au lieu de FAIL.
+            if ($t -eq 'Services') {
+                # dcdiag coupe ses lignes à la largeur console du DC distant : "current value" et
+                # "WIN32_OWN_PROCESS" peuvent se retrouver sur deux lignes. On ne peut donc PAS
+                # matcher "DnsCache.*WIN32_OWN_PROCESS" sur une seule ligne. Approche robuste :
+                #  (1) extraire le nom du service juste après "Invalid service type:" (jamais coupé,
+                #      car en début de ligne) et vérifier que TOUS sont DnsCache ;
+                #  (2) aplatir toute la sortie pour confirmer le motif OWN_PROCESS/SHARE_PROCESS.
+                $invalidSvcs = @(
+                    ($dcdiag.Output -split "`r?`n") |
+                        ForEach-Object { if ($_ -match '(?i)Invalid service type:\s*(\S+)') { $Matches[1] } }
+                )
+                $flat = ($dcdiag.Output -replace "`r?`n", ' ')
+                $onlyDnsCacheOwnProc = ($invalidSvcs.Count -gt 0) -and
+                    (-not ($invalidSvcs | Where-Object { $_ -notmatch '(?i)^DnsCache$' })) -and
+                    ($flat -match '(?i)DnsCache.*current value\s+WIN32_OWN_PROCESS.*expected value\s+WIN32_SHARE_PROCESS')
+                if ($onlyDnsCacheOwnProc) {
+                    Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'WARN' -Detail 'DnsCache en processus isole (SvcHost isolation, attendu sur Windows recent) : faux positif dcdiag, DNS fonctionnel'
+                }
+                else {
+                    Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'FAIL' -Detail 'dcdiag: test failed'
+                }
+            }
+            else {
+                Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'FAIL' -Detail 'dcdiag: test failed'
+            }
         }
         else {
             Record -DC $dcName -Category 'DCDiag' -Check $t -Status 'WARN' -Detail 'dcdiag result indeterminate'
@@ -491,6 +587,30 @@ foreach ($dc in $DomainControllers) {
     }
     else {
         Record -DC $dcName -Category 'TimeSync' -Check 'W32Time offset' -Status 'OK' -Detail ("Offset {0:N3}s" -f $offsetSec)
+    }
+
+    # 4g-bis. Etat de synchro W32Time : Leap Indicator + source (via /query /status distant)
+    $w32status = Invoke-External -FilePath 'w32tm.exe' -Arguments @('/query', "/computer:$dcName", '/status')
+    $leapNotSync = $false
+    $timeSource = $null
+    foreach ($line in ($w32status.Output -split "`r?`n")) {
+        if ($line -match '(?i)Leap Indicator:\s*3\b') { $leapNotSync = $true }
+        if ($line -match '(?i)^\s*Source:\s*(.+?)\s*$') { $timeSource = $Matches[1].Trim() }
+    }
+    # Sources non fiables pour un DC : horloge de l'hôte Hyper-V ou horloge locale.
+    $unreliablePattern = '(?i)(VM IC|CMOS|Free-?running|Local CMOS)'
+    if ($leapNotSync) {
+        $srcTxt = if ($timeSource) { " (source: $timeSource)" } else { '' }
+        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time source' -Status 'FAIL' -Detail ("Leap Indicator 3 : horloge non synchronisee$srcTxt")
+    }
+    elseif ($timeSource -and $timeSource -match $unreliablePattern) {
+        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time source' -Status 'WARN' -Detail ("Source non fiable sur un DC : $timeSource (attendu : hierarchie de domaine ou NTP externe)")
+    }
+    elseif ($timeSource) {
+        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time source' -Status 'OK' -Detail ("Source : $timeSource")
+    }
+    else {
+        Record -DC $dcName -Category 'TimeSync' -Check 'W32Time source' -Status 'WARN' -Detail 'Etat W32Time non lisible (w32tm /query /status)'
     }
 
     # 4h. Espace disque + présence/volume NTDS.dit (via WMI/CIM distant)

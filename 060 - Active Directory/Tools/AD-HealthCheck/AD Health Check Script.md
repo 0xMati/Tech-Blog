@@ -39,6 +39,8 @@ Each check produces a status:
 - 🔴 **FAIL** — broken (e.g. core service stopped, replication failure, secure channel down)
 - ⚪ **INFO** — informational (e.g. NTDS.dit size, DC list)
 
+> 💡 **Known benign false positive (DnsCache):** on Windows Server 2019+ / 2025 the `DnsCache` service runs in an *isolated* SvcHost process (`WIN32_OWN_PROCESS`), while dcdiag still expects the legacy shared process (`WIN32_SHARE_PROCESS`). This makes the dcdiag **Services** test fail with *"Invalid service type"* even though DNS is perfectly healthy. The script detects this exact pattern and downgrades it to **WARN** (never masking a real service failure). Per Microsoft, the service type should **not** be changed based on this dcdiag message.
+
 ## Prerequisites
 
 - **PowerShell 5.1**
@@ -48,14 +50,44 @@ Each check produces a status:
 - For email delivery via **Microsoft Graph** (`-MailMethod Graph`): the `Microsoft.Graph.Authentication` and `Microsoft.Graph.Users.Actions` modules, plus an Entra ID app registration with the **`Mail.Send`** application permission (admin-consented).
 - An account with:
   - Read access to AD (domain user is enough for most checks)
-  - Remote admin rights on the DCs for the storage and event-log checks (Remote Registry, WMI/CIM, **Event Log Readers**)
+  - Remote admin rights on the DCs for the storage and event-log checks
   - Network access to the DCs (ICMP, LDAP 389, Kerberos 88, SMB 445, RPC)
+
+> ℹ️ The script does **not** use PowerShell Remoting (WinRM). All remote checks rely on classic protocols: RPC (SCM / Event Log), WMI/DCOM, Remote Registry and SMB admin shares.
+
+### Firewall rules on the domain controllers
+
+Several checks query the DCs remotely over RPC / WMI / SMB. If the corresponding inbound rules are closed, those checks are reported as **FAIL/WARN by mistake** even though they pass when run locally on the DC. Enable the following built-in rule groups on each DC:
+
+| Rule group (`Enable-NetFirewallRule -DisplayGroup ...`) | Protocol | Checks that need it |
+|---|---|---|
+| `Remote Service Management` | RPC (SCM) | `Get-Service`, dcdiag **Services** |
+| `Remote Event Log Management` | RPC (Event Log) | `Get-WinEvent` (Directory Service), dcdiag **KccEvent** |
+| `Windows Management Instrumentation (WMI-In)` | WMI / DCOM | Disk free space (`Get-CimInstance`) |
+| `Remote Registry` (service + rule) | RPC | Locating the `NTDS.dit` path |
+| `File and Printer Sharing (SMB-In)` | SMB 445 | `NTDS.dit` size via the `\\DC\C$` admin share |
+
+```powershell
+# Run on each DC (elevated)
+Enable-NetFirewallRule -DisplayGroup "Remote Service Management"
+Enable-NetFirewallRule -DisplayGroup "Remote Event Log Management"
+Enable-NetFirewallRule -DisplayGroup "Windows Management Instrumentation (WMI-In)"
+```
+
+### DNS resolution (multi-domain / `-Forest`)
+
+When scanning a forest with `-Forest`, the machine running the script must be able to resolve the **short names** of DCs in every domain (including child domains). If short-name resolution fails, dcdiag tests such as *Advertising*, *FsmoCheck*, *SysVolCheck* and *NetLogons* return errors 53 / 1722 that look like a DC outage but are only a DNS-suffix problem. Add every domain suffix to the client search list:
+
+```powershell
+Set-DnsClientGlobalSetting -SuffixSearchList @('contoso.com','child.contoso.com')
+```
 
 ## Parameters
 
 | Parameter | Default | Description |
 |---|---|---|
 | `-DomainName` | `$env:USERDNSDOMAIN` | FQDN of the domain to check |
+| `-Forest` | *(off)* | Scan **every domain** of the forest (all child domains) instead of a single domain |
 | `-OutputPath` | `.\Reports` | Output folder for HTML/CSV reports |
 | `-SendEmail` | *(off)* | Enables the summary email |
 | `-EmailOnlyOnIssue` | `$true` | With `-SendEmail`, only send when at least one WARN/FAIL is found |
