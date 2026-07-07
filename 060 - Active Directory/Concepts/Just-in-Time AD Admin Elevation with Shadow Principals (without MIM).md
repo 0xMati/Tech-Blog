@@ -595,6 +595,32 @@ From now on, the shadow principal is never modified again: all day-to-day elevat
 - **Standard group tooling** (`Add-ADGroupMember`, `Get-ADGroupMember`, ...) works normally.
 - **Cleaner delegation and audit**: you delegate write on a single ordinary group (granular, per scope) instead of on the `Shadow Principal Configuration` container, and "who may elevate" (the group ACL) is cleanly separated from "which privilege" (the shadow principal).
 
+#### Elevate through the group and read the remaining TTL
+
+Because the elevation now lives on an ordinary group, the whole round-trip — elevate, then verify how much time is left — is three lines of plain PowerShell, no LDP:
+
+```powershell
+# On RED-DC1
+# 1) Elevate: add the user to the intermediate group with a 1-hour TTL
+$UserDN        = (Get-ADUser -Identity 't0-jdoe').DistinguishedName
+$Tier0AdminsDN = (Get-ADGroup 'Tier0-Admins').DistinguishedName
+Set-ADObject -Identity $Tier0AdminsDN -Add @{ 'member' = "<TTL=3600,$UserDN>" }
+
+# 2) Read the remaining TTL from the GROUP side (-ShowMemberTimeToLive)
+Get-ADGroup 'Tier0-Admins' -ShowMemberTimeToLive -Properties member |
+    Select-Object -ExpandProperty member
+# -> <TTL=3587,CN=t0-jdoe,OU=Admins,DC=red,DC=local>
+
+# 3) Or read it from the USER side (memberOf), same switch
+Get-ADUser 't0-jdoe' -ShowMemberTimeToLive -Properties memberOf |
+    Select-Object -ExpandProperty memberOf
+# -> <TTL=3585,CN=Tier0-Admins,OU=ShadowGroups,DC=red,DC=local>
+```
+
+Each read returns the live remaining seconds; when it reaches zero, AD removes the link and it simply disappears from the output. Contrast this with a shadow principal, where the *only* built-in way to see the same number is LDP.exe with the `LDAP_SERVER_LINK_TTL_OID` control ([§ 7.4](#74--observe-the-remaining-ttl)) — which is exactly why the intermediate group is the operable choice.
+
+> **🔵 Important — `-ShowMemberTimeToLive` needs a real principal object.** The switch exists on `Get-ADGroup`, `Get-ADUser`, `Get-ADComputer` and `Get-ADServiceAccount`, but **not** on `Get-ADObject`. A `msDS-ShadowPrincipal` is only reachable through `Get-ADObject`, so this convenient read works **only** on the intermediate group, not on the shadow principal itself.
+
 > **🟢 Recommendation — prefer the intermediate group for anything beyond a lab.** Reserve the direct model of [§ 6.4](#64--make-a-daily-driver-bastion-admin-a-permanent-member-optional) for the handful of permanent Tier 0 owners; drive every time-bound elevation through the intermediate group.
 
 ---
