@@ -399,8 +399,13 @@ Set-ADObject -Identity $TdoDN -Replace @{ trustAttributes = $NewAttrs }
 # On a contoso.com DC
 nltest /domain_trusts /v /all_trusts
 
-netdom trust contoso.com /domain:red.local /verify
-netdom trust contoso.com /domain:red.local /verify /kerberos
+# One-way trust: /verify must authenticate on the red.local side too, so it
+# requires credentials valid in the bastion forest (the /domain: target).
+# Without /UserO + /PasswordO it fails with "Access is denied".
+netdom trust contoso.com /domain:red.local /verify `
+    /UserO:red.local\Administrator /PasswordO:*
+netdom trust contoso.com /domain:red.local /verify /kerberos `
+    /UserO:red.local\Administrator /PasswordO:*
 
 Get-ADTrust -Filter "Target -eq 'red.local'" |
     Format-List Name, Direction, TrustType, SelectiveAuthentication,
@@ -421,7 +426,9 @@ Expected:
 - `SIDFilteringQuarantined` = `False`
 - **`trustAttributes -band 0x400` = `1024`** (the `TRUST_ATTRIBUTE_PIM_TRUST` bit is set)
 
-> **🟡 Warning — Common pitfall: stale TDO.** If you ever recreate the bastion forest from scratch (lab iterations), **delete the trust on the production side first**, otherwise you end up with a `trustedDomain` object pointing at a vanished forest and a stale Kerberos referral chain. Cleanup: `netdom trust contoso.com /domain:red.local /remove /force` on the production DC, then `Get-ADObject -Filter "objectClass -eq 'trustedDomain'" -SearchBase "CN=System,DC=contoso,DC=com" | Remove-ADObject -Recursive -Confirm:$true` for orphans.
+> **� Important — `/verify` on a one-way trust needs `/UserO` + `/PasswordO`.** Because the trust built in [§ 5.3](#53--create-the-trust-from-the-production-side) is one-way (`/twoway:no`), `netdom … /verify` must authenticate on the `red.local` side to look up its `Domain Admins` group — and your production account has no rights there. Run bare (`netdom trust contoso.com /domain:red.local /verify`) it returns `Access is denied` on that group lookup. This is expected, not a misconfiguration: supply `/UserO:red.local\Administrator /PasswordO:*` (credentials of the `/domain:` target, i.e. the bastion forest) so the check can authenticate on both sides. The purely production-side checks (`Get-ADTrust`, the `trustAttributes -band 0x400` test) need no bastion credentials.
+
+> **�🟡 Warning — Common pitfall: stale TDO.** If you ever recreate the bastion forest from scratch (lab iterations), **delete the trust on the production side first**, otherwise you end up with a `trustedDomain` object pointing at a vanished forest and a stale Kerberos referral chain. Cleanup: `netdom trust contoso.com /domain:red.local /remove /force` on the production DC, then `Get-ADObject -Filter "objectClass -eq 'trustedDomain'" -SearchBase "CN=System,DC=contoso,DC=com" | Remove-ADObject -Recursive -Confirm:$true` for orphans.
 
 ### 5.5 — Whitelist target production servers (Selective Authentication)
 
