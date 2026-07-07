@@ -535,6 +535,8 @@ For a more graphical confirmation, open **ADSI Edit**, connect to the **Configur
 
 In many designs, your daily Tier 0 admins (`red\t0-jdoe`) **are** legitimate, full-time owners of the Tier 0 role. You can make them permanent members of the shadow principal. They will be effective `Domain Admins` of `contoso.com` whenever they need to be, but only **from a PAW**, only **to a whitelisted server**, and only **with no impact on the production directory itself** (their SID is in their token, not in any production group's `member` attribute).
 
+**Version 1 — permanent membership** (no `<TTL=...>` prefix). Use this for the handful of full-time Tier 0 owners:
+
 ```powershell
 # Use Set-ADObject rather than Add-ADGroupMember: shadow principals are not
 # objectClass=group, so the AD module's group cmdlets are not guaranteed to
@@ -546,7 +548,19 @@ $T0JdoeDN  = (Get-ADUser -Identity 't0-jdoe').DistinguishedName
 Set-ADObject -Identity $ShadowDN -Add @{ 'member' = $T0JdoeDN }
 ```
 
-Note that this is a *permanent* membership — no `<TTL=...>` prefix. The next section shows the time-bound variant.
+**Version 2 — time-bound membership** (with a `<TTL=<seconds>,...>` prefix). The exact same `Set-ADObject -Add @{member=...}` call, but the member DN is wrapped in the TTL syntax so AD removes it automatically after the delay. This is the true just-in-time form, and it works **directly on the shadow principal** — you do not need the intermediate group for the mechanism to function:
+
+```powershell
+$ShadowDN  = (Get-ADObject -SearchBase $ShadowConfigDN `
+                -Filter "Name -eq 'T0-Admins-Contoso-DA'").DistinguishedName
+$T0JdoeDN  = (Get-ADUser -Identity 't0-jdoe').DistinguishedName
+
+# <TTL=3600,...> = membership auto-expires after 3600 seconds (1 hour)
+Set-ADObject -Identity $ShadowDN `
+    -Add @{ 'member' = "<TTL=3600,$T0JdoeDN>" }
+```
+
+> **🔵 Important — TTL directly on the shadow principal vs. on an intermediate group.** Both versions above act **directly** on the `msDS-ShadowPrincipal` object, which is perfectly valid — the linked-attribute TTL and the KDC ticket-lifetime cap work identically whether the time-bound link lives on the shadow principal or on an ordinary group. The reason [§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group) still recommends an intermediate group is **operability**, not capability: reading the remaining TTL on a shadow principal forces you into LDP.exe (`Get-ADGroup -ShowMemberTimeToLive` does not accept a `msDS-ShadowPrincipal`, see [§ 7.4](#74--observe-the-remaining-ttl)), whereas on a real group the TTL is readable in one line of pure PowerShell.
 
 > **🟢 Recommendation — for anything beyond permanent Tier 0 owners, use the intermediate-group model in [§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group)** rather than adding users straight into the shadow principal.
 
