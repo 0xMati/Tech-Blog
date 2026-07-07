@@ -494,33 +494,32 @@ Copy these SIDs aside — you will need them on the bastion side. Example output
 
 Shadow principals live under `CN=Shadow Principal Configuration,CN=Services,CN=Configuration,DC=red,DC=local`. They are created with `New-ADObject`, type `msDS-ShadowPrincipal`, carrying the foreign SID in `msDS-ShadowPrincipalSid`.
 
+> **🔵 Important — read the SID live from the group, do not hard-code it.** `msDS-ShadowPrincipalSid` is an octet-string (SID) attribute, and AD validates the value. If you paste a **hard-coded SID string** and it does not match a real, well-formed SID, `New-ADObject` fails with the misleading `8212` *"the requested operation did not satisfy one or more constraints associated with the class of the object"* — the same error you get when the PAM feature is off, which sends you troubleshooting in the wrong direction. The robust pattern is to fetch the SID straight from the production group with `Get-ADGroup … -Server <corpDC>` and pass the resulting `ObjectSID` object (a `SecurityIdentifier`, not a string). The loop below does exactly that.
+
 ```powershell
 # On RED-DC1, as Enterprise Admin of red.local
-$ShadowConfigDN = 'CN=Shadow Principal Configuration,CN=Services,CN=Configuration,DC=red,DC=local'
+$CorpDC         = 'DC01.contoso.com'   # a reachable contoso.com DC
+$ShadowConfigDN = "CN=Shadow Principal Configuration,CN=Services," +
+                  (Get-ADRootDSE).configurationNamingContext
 
-# 1) Domain Admins of CONTOSO
-New-ADObject `
-    -Name 'T0-Admins-Contoso-DA' `
-    -Type 'msDS-ShadowPrincipal' `
-    -Path $ShadowConfigDN `
-    -OtherAttributes @{ 'msDS-ShadowPrincipalSid' = 'S-1-5-21-3623811015-3361044348-30300820-512' }
+# Map each production group to the shadow principal name to create for it
+$Map = @{
+    'Domain Admins'     = 'T0-Admins-Contoso-DA'
+    'Enterprise Admins' = 'T0-Admins-Contoso-EA'
+    'Schema Admins'     = 'T0-Admins-Contoso-SA'
+}
 
-# 2) Enterprise Admins of CONTOSO
-New-ADObject `
-    -Name 'T0-Admins-Contoso-EA' `
-    -Type 'msDS-ShadowPrincipal' `
-    -Path $ShadowConfigDN `
-    -OtherAttributes @{ 'msDS-ShadowPrincipalSid' = 'S-1-5-21-3623811015-3361044348-30300820-519' }
-
-# 3) Schema Admins of CONTOSO
-New-ADObject `
-    -Name 'T0-Admins-Contoso-SA' `
-    -Type 'msDS-ShadowPrincipal' `
-    -Path $ShadowConfigDN `
-    -OtherAttributes @{ 'msDS-ShadowPrincipalSid' = 'S-1-5-21-3623811015-3361044348-30300820-518' }
+foreach ($grp in $Map.Keys) {
+    # Fetch the real SID live from the production forest (never hard-code it)
+    $corp = Get-ADGroup -Identity $grp -Properties ObjectSID -Server $CorpDC
+    New-ADObject -Type 'msDS-ShadowPrincipal' `
+        -Name $Map[$grp] `
+        -Path $ShadowConfigDN `
+        -OtherAttributes @{ 'msDS-ShadowPrincipalSid' = $corp.ObjectSID }
+}
 ```
 
-> **🟡 Warning — "schema constraint" / "object class violation" error.** If `New-ADObject` returns *"the parameter is incorrect"* or *"a constraint violation occurred"*, the most likely cause is that the PAM Optional Feature is not actually enabled in `red.local`. Re-run `Get-ADOptionalFeature -Filter "Name -eq 'Privileged Access Management Feature'" | Select-Object EnabledScopes`. The `EnabledScopes` column **must** contain the DN of the bastion's `Partitions` container.
+> **🟡 Warning — "schema constraint" / "object class violation" error.** If `New-ADObject` returns *"the parameter is incorrect"* or *"a constraint violation occurred"* (`8212`), the two most likely causes are: **(1)** a hard-coded / malformed SID string (see the callout above — pass the group's `ObjectSID` object instead), or **(2)** the PAM Optional Feature is not actually enabled in `red.local`. Re-run `Get-ADOptionalFeature -Filter "Name -eq 'Privileged Access Management Feature'" | Select-Object EnabledScopes`. The `EnabledScopes` column **must** contain the DN of the bastion's `Partitions` container.
 
 ### 6.3 — Verify the shadow principals via ADSI Edit / LDP
 
@@ -822,7 +821,22 @@ Enable-ADOptionalFeature `
 
 ### 10.2 — `New-ADObject` of type `msDS-ShadowPrincipal` returns "constraint violation" / "object class violation"
 
-Cause: the PAM feature is not actually enabled in this forest (the schema knows about the class, but the partition state is not flipped).
+This is error `8212` (`ERROR_DS_OBJ_CLASS_VIOLATION`). It has **two** common causes — check both:
+
+**Cause A — malformed or hard-coded SID.** `msDS-ShadowPrincipalSid` is a validated octet-string (SID) attribute. Passing a hard-coded SID **string** that does not correspond to a real, well-formed SID triggers `8212` — which looks exactly like a schema/feature problem but is not. This is the most common cause in practice.
+
+Fix: never hard-code the SID. Read it live from the production group and pass the `ObjectSID` object:
+
+```powershell
+$CorpDC = 'DC01.contoso.com'
+$corp   = Get-ADGroup -Identity 'Domain Admins' -Properties ObjectSID -Server $CorpDC
+New-ADObject -Type 'msDS-ShadowPrincipal' `
+    -Name 'T0-Admins-Contoso-DA' `
+    -Path $ShadowConfigDN `
+    -OtherAttributes @{ 'msDS-ShadowPrincipalSid' = $corp.ObjectSID }
+```
+
+**Cause B — the PAM feature is not actually enabled** in this forest (the schema knows about the class, but the partition state is not flipped).
 
 Fix:
 
