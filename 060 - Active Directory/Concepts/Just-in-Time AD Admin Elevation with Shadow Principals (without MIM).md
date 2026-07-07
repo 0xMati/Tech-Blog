@@ -606,20 +606,15 @@ $UserDN        = (Get-ADUser -Identity 't0-jdoe').DistinguishedName
 $Tier0AdminsDN = (Get-ADGroup 'Tier0-Admins').DistinguishedName
 Set-ADObject -Identity $Tier0AdminsDN -Add @{ 'member' = "<TTL=3600,$UserDN>" }
 
-# 2) Read the remaining TTL from the GROUP side (-ShowMemberTimeToLive)
+# 2) Read the remaining TTL from the group (-ShowMemberTimeToLive)
 Get-ADGroup 'Tier0-Admins' -ShowMemberTimeToLive -Properties member |
     Select-Object -ExpandProperty member
 # -> <TTL=3587,CN=t0-jdoe,OU=Admins,DC=red,DC=local>
-
-# 3) Or read it from the USER side (memberOf), same switch
-Get-ADUser 't0-jdoe' -ShowMemberTimeToLive -Properties memberOf |
-    Select-Object -ExpandProperty memberOf
-# -> <TTL=3585,CN=Tier0-Admins,OU=ShadowGroups,DC=red,DC=local>
 ```
 
 Each read returns the live remaining seconds; when it reaches zero, AD removes the link and it simply disappears from the output. Contrast this with a shadow principal, where the *only* built-in way to see the same number is LDP.exe with the `LDAP_SERVER_LINK_TTL_OID` control ([§ 7.4](#74--observe-the-remaining-ttl)) — which is exactly why the intermediate group is the operable choice.
 
-> **🔵 Important — `-ShowMemberTimeToLive` needs a real principal object.** The switch exists on `Get-ADGroup`, `Get-ADUser`, `Get-ADComputer` and `Get-ADServiceAccount`, but **not** on `Get-ADObject`. A `msDS-ShadowPrincipal` is only reachable through `Get-ADObject`, so this convenient read works **only** on the intermediate group, not on the shadow principal itself.
+> **🔵 Important — `-ShowMemberTimeToLive` lives on `Get-ADGroup` only.** Among the AD cmdlets, **only `Get-ADGroup`** carries the `-ShowMemberTimeToLive` switch; `Get-ADUser`, `Get-ADComputer`, `Get-ADServiceAccount` and `Get-ADObject` do **not** (calling `Get-ADUser … -ShowMemberTimeToLive` fails with *"A parameter cannot be found that matches parameter name 'ShowMemberTimeToLive'"*). So you read the remaining TTL from the **group side**, on the `member` attribute — not from the user's `memberOf`. And because a `msDS-ShadowPrincipal` is reachable only through `Get-ADObject`, this convenient read works **only** on the intermediate group, never on the shadow principal itself.
 
 > **🟢 Recommendation — prefer the intermediate group for anything beyond a lab.** Reserve the direct model of [§ 6.4](#64--make-a-daily-driver-bastion-admin-a-permanent-member-optional) for the handful of permanent Tier 0 owners; drive every time-bound elevation through the intermediate group.
 
@@ -734,13 +729,9 @@ If you used the intermediate-group model ([§ 6.5](#65--recommended-production-m
 Get-ADGroup 'Tier0-Admins' -ShowMemberTimeToLive -Properties member |
     Select-Object -ExpandProperty member
 # -> <TTL=587,CN=demoAdm,OU=Admins,DC=red,DC=local>
-
-# Or from the user's side (memberOf):
-Get-ADUser demoAdm -ShowMemberTimeToLive -Properties memberOf |
-    Select-Object -ExpandProperty memberOf
 ```
 
-> **🔵 Important — why this does not work directly on a shadow principal.** `-ShowMemberTimeToLive` exists on `Get-ADGroup`, `Get-ADUser`, `Get-ADComputer` and `Get-ADServiceAccount` — cmdlets that operate on real `group` / principal objects. A shadow principal is objectClass `msDS-ShadowPrincipal`, so `Get-ADGroup` will not return it and you can only read it with `Get-ADObject`, which has **no** `-ShowMemberTimeToLive` switch. That is exactly why the intermediate-group model of [§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group) is easier to operate: the elevation lives on a real group, so this switch just works.
+> **🔵 Important — `-ShowMemberTimeToLive` is a `Get-ADGroup`-only switch.** It does **not** exist on `Get-ADUser`, `Get-ADComputer`, `Get-ADServiceAccount` or `Get-ADObject` — calling any of those with it fails with *"A parameter cannot be found that matches parameter name 'ShowMemberTimeToLive'"*. So you always read the remaining TTL from the **group** (`member` attribute), not from the user's `memberOf`. And since a shadow principal is objectClass `msDS-ShadowPrincipal` — reachable only through `Get-ADObject`, which has no such switch — reading its TTL still requires LDP.exe ([above](#74--observe-the-remaining-ttl)). That is exactly why the intermediate-group model of [§ 6.5](#65--recommended-production-model-an-intermediate-manageable-group) is easier to operate: the elevation lives on a real group, so `Get-ADGroup -ShowMemberTimeToLive` just works.
 
 ### 7.5 — Run a privileged operation against production
 
