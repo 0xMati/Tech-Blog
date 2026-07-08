@@ -764,6 +764,24 @@ Get-ADUser -Server contoso.com -Identity Administrator
 
 > **🟡 Warning — Kerberos ticket caveat.** A ticket already issued during the elevation window remains technically valid until it expires on its own clock — *but* on a Windows Server 2016+ KDC, the **TGT lifetime is automatically capped to the lowest TTL** of the user's time-bound memberships. So a 600s elevation produces a TGT with a 600s lifetime, not the default 10 hours. If your KDCs are 2012 R2, the cap does **not** apply and the user keeps the elevated TGT until natural expiry. This is one of the reasons every contoso.com DC that issues PAC entries for shadow principal members must be 2016+.
 
+#### Multiple time-bound memberships with different TTLs
+
+A user can hold several time-bound memberships at once (e.g. elevated into `Tier0-Admins` for 1 hour **and** into `Server-Admins` for 10 minutes). Two independent rules apply — do not confuse them:
+
+- **Each membership expires on its own TTL.** The links are unrelated: at T+600s the `Server-Admins` link is removed while the `Tier0-Admins` link keeps ~50 minutes. AD's database engine expires each one separately.
+- **The TGT is capped to the *shortest* remaining TTL.** The 2016+ KDC issues the TGT with a lifetime equal to the **minimum** of all the user's time-bound memberships — here **600s**, not 3600s. When that TGT expires, the next one is recomputed against whatever memberships are *still* valid: `Server-Admins` is now gone, so the fresh TGT reflects only `Tier0-Admins` and is capped to its remaining time (~50 min).
+
+```text
+T+0      member of Tier0-Admins (TTL 3600) + Server-Admins (TTL 600)
+         => TGT lifetime = 600  (the lowest)
+T+600    Server-Admins link auto-removed; old TGT expires
+         => new TGT lifetime = ~3000  (only Tier0-Admins left)
+T+3600   Tier0-Admins link auto-removed
+         => next TGT carries no elevated SID at all
+```
+
+> **🔵 Important — a short TTL "pulls down" every ticket.** Because the cap is the global minimum, a single short-lived elevation forces more frequent ticket renewals for the whole session while it is active. That is the intended security behavior — the privileged SID leaves the PAC as soon as *its* link expires, rather than lingering for the default 10 hours — but it is worth knowing when you design TTL values: mixing a very short TTL with a long one means the user re-authenticates on the short cadence until the short link ages out.
+
 ---
 
 ## ⚠️ 8 — What this pattern does NOT solve
