@@ -18,7 +18,7 @@ That capability is the subject of this article. It is sometimes called the **PAM
 
 > **🔵 Important — what this article is, and what it is not.**
 >
-> This is **not** a "MIM replacement" sales pitch. The bastion forest pattern delivers the *mechanics* of JIT elevation (time-bound group membership, KDC ticket lifetime cap, cross-forest SID injection). It does **not** deliver a request portal, an approval workflow, MFA-on-elevation, or audit dashboards. We discuss this explicitly in [§ 8 — What this pattern does NOT solve](#-8--what-this-pattern-does-not-solve).
+> This is **not** a "MIM replacement" sales pitch. The bastion forest pattern delivers the *mechanics* of JIT elevation (time-bound group membership, KDC ticket lifetime cap, cross-forest SID injection). It does **not** deliver a request portal, an approval workflow, MFA-on-elevation, or audit dashboards. We discuss this explicitly in [§ 9 — What this pattern does NOT solve](#-9--what-this-pattern-does-not-solve).
 >
 > This article is for architects and AD engineers who want to **understand the engine** and decide whether it fits their threat model.
 
@@ -31,11 +31,12 @@ That capability is the subject of this article. It is sometimes called the **PAM
 - [🤝 5 — Building the bastion forest and the trust](#-5--building-the-bastion-forest-and-the-trust)
 - [👥 6 — Creating shadow principals](#-6--creating-shadow-principals)
 - [⏱️ 7 — End-to-end demo: just-in-time elevation](#-7--end-to-end-demo-just-in-time-elevation)
-- [⚠️ 8 — What this pattern does NOT solve](#-8--what-this-pattern-does-not-solve)
-- [📊 9 — When to use this vs. MIM PAM vs. Entra PIM for Groups](#-9--when-to-use-this-vs-mim-pam-vs-entra-pim-for-groups)
-- [🩺 10 — Troubleshooting and common pitfalls](#-10--troubleshooting-and-common-pitfalls)
-- [🧹 11 — Cleanup and decommissioning](#-11--cleanup-and-decommissioning)
-- [📚 12 — References](#-12--references)
+- [🔌 8 — Operationalizing elevation with a constrained endpoint (JEA + gMSA)](#-8--operationalizing-elevation-with-a-constrained-endpoint-jea--gmsa)
+- [⚠️ 9 — What this pattern does NOT solve](#-9--what-this-pattern-does-not-solve)
+- [📊 10 — When to use this vs. MIM PAM vs. Entra PIM for Groups](#-10--when-to-use-this-vs-mim-pam-vs-entra-pim-for-groups)
+- [🩺 11 — Troubleshooting and common pitfalls](#-11--troubleshooting-and-common-pitfalls)
+- [🧹 12 — Cleanup and decommissioning](#-12--cleanup-and-decommissioning)
+- [📚 13 — References](#-13--references)
 
 ### 🎨 Reading Legend
 
@@ -263,7 +264,7 @@ When `red\demoAdm` (a temporarily-elevated user) connects to `DC01.contoso.com`:
 - Forest functional level: **Windows Server 2016 minimum**. Strongly recommended: Windows Server 2022 or 2025 for the latest PAC hardening (CVE-2022-37967 / Netlogon enforcement, Kerberos PAC signature).
 - Two Domain Controllers, both Server Core, in different physical locations if possible.
 - One or more dedicated PAWs that are **the only machines from which `red.local` admin accounts ever log in**.
-- A very tight OU structure: `Admins/`, `Workstations/`, `ShadowGroups/`. Nothing else.
+- A very tight OU structure: `Admins/`, `Workstations/`, `ShadowGroups/`, `Tier0/` (the latter holds the endpoint host and the broker's gMSA and groups from [§ 8](#-8--operationalizing-elevation-with-a-constrained-endpoint-jea--gmsa)). Nothing else.
 - No file shares, print services, web servers, AD CS — nothing that introduces attack surface.
 
 > **🟢 Recommendation — Treat the bastion forest like a HSM.** Read-only DCs are not appropriate (they can't host the PAM feature). Server Core. No GUI. No Edge. No third-party agents except your EDR. Backups handled by a dedicated, isolated backup target.
@@ -426,9 +427,9 @@ Expected:
 - `SIDFilteringQuarantined` = `False`
 - **`trustAttributes -band 0x400` = `1024`** (the `TRUST_ATTRIBUTE_PIM_TRUST` bit is set)
 
-> **� Important — `/verify` on a one-way trust needs `/UserO` + `/PasswordO`.** Because the trust built in [§ 5.3](#53--create-the-trust-from-the-production-side) is one-way (`/twoway:no`), `netdom … /verify` must authenticate on the `red.local` side to look up its `Domain Admins` group — and your production account has no rights there. Run bare (`netdom trust contoso.com /domain:red.local /verify`) it returns `Access is denied` on that group lookup. This is expected, not a misconfiguration: supply `/UserO:red.local\Administrator /PasswordO:*` (credentials of the `/domain:` target, i.e. the bastion forest) so the check can authenticate on both sides. The purely production-side checks (`Get-ADTrust`, the `trustAttributes -band 0x400` test) need no bastion credentials.
+> **🔵 Important — `/verify` on a one-way trust needs `/UserO` + `/PasswordO`.** Because the trust built in [§ 5.3](#53--create-the-trust-from-the-production-side) is one-way (`/twoway:no`), `netdom … /verify` must authenticate on the `red.local` side to look up its `Domain Admins` group — and your production account has no rights there. Run bare (`netdom trust contoso.com /domain:red.local /verify`) it returns `Access is denied` on that group lookup. This is expected, not a misconfiguration: supply `/UserO:red.local\Administrator /PasswordO:*` (credentials of the `/domain:` target, i.e. the bastion forest) so the check can authenticate on both sides. The purely production-side checks (`Get-ADTrust`, the `trustAttributes -band 0x400` test) need no bastion credentials.
 
-> **�🟡 Warning — Common pitfall: stale TDO.** If you ever recreate the bastion forest from scratch (lab iterations), **delete the trust on the production side first**, otherwise you end up with a `trustedDomain` object pointing at a vanished forest and a stale Kerberos referral chain. Cleanup: `netdom trust contoso.com /domain:red.local /remove /force` on the production DC, then `Get-ADObject -Filter "objectClass -eq 'trustedDomain'" -SearchBase "CN=System,DC=contoso,DC=com" | Remove-ADObject -Recursive -Confirm:$true` for orphans.
+> **🟡 Warning — Common pitfall: stale TDO.** If you ever recreate the bastion forest from scratch (lab iterations), **delete the trust on the production side first**, otherwise you end up with a `trustedDomain` object pointing at a vanished forest and a stale Kerberos referral chain. Cleanup: `netdom trust contoso.com /domain:red.local /remove /force` on the production DC, then `Get-ADObject -Filter "objectClass -eq 'trustedDomain'" -SearchBase "CN=System,DC=contoso,DC=com" | Remove-ADObject -Recursive -Confirm:$true` for orphans.
 
 ### 5.5 — Whitelist target production servers (Selective Authentication)
 
@@ -784,21 +785,357 @@ T+3600   Tier0-Admins link auto-removed
 
 ---
 
-## ⚠️ 8 — What this pattern does NOT solve
+## 🔌 8 — Operationalizing elevation with a constrained endpoint (JEA + gMSA)
+
+Sections 5 to 7 gave you the **engine**. Operated by hand, every request means a Tier 0 admin logs on to the bastion forest and types a `Set-ADObject -Add @{ member = "<TTL=...>" }` command. That does not scale, and it makes a human the bottleneck of every elevation.
+
+This section builds a **thin broker** that turns that manual step into a self-service call — **without deploying MIM**. It is the exact role the MIM PAM Service plays: something that maps an *eligible role* to a *time-bound write* on a shadow principal. Reduced to its essentials, that is a **JEA (Just Enough Administration) endpoint running under a group Managed Service Account (gMSA)** — no web server, no IIS, no keytab, all native to Windows since Server 2016.
+
+> **🔵 Important — this is the "portal" mitigation from [§ 9.1](#91--no-request-portal), actually built.** It removes the "a human must type the command" bottleneck. It does **not** add an approval workflow ([§ 9.2](#92--no-approval-workflow)) or MFA on elevation ([§ 9.3](#93--no-mfa-on-elevation)) — those remain out of scope for this minimal broker.
+
+### 8.0 — Prerequisites on the endpoint host
+
+Everything below is built on a single dedicated host, `RED-JIT01.red.local`. Before you start, it must satisfy:
+
+- **Windows Server 2016 or later**, domain-joined to the bastion forest `red.local`, hardened as a Tier 0 host.
+- **Windows PowerShell 5.1+** (ships in-box) — the JEA plumbing (`*-PSSessionConfiguration*`, `New-PSRoleCapabilityFile`) is native to it.
+- **The ActiveDirectory module (RSAT)** installed — the broker calls `Get-ADUser` / `Set-ADObject`, and the manifest declares `-RequiredModules ActiveDirectory`:
+
+  ```powershell
+  Install-WindowsFeature RSAT-AD-PowerShell
+  ```
+
+- **PowerShell remoting / WinRM enabled** — both `Register-PSSessionConfiguration` (server side) and `Invoke-Command` (client side) require it:
+
+  ```powershell
+  Enable-PSRemoting -Force
+  ```
+
+- **The gMSA infrastructure available** — a KDS root key must exist in the forest and this host must be authorized to retrieve the gMSA password. Both are set up in [§ 8.3](#83--create-the-gmsa-and-delegate-the-minimum-rights), which requires **one reboot** of the host to take effect.
+
+> **🔵 Important — one host, three identities to keep straight.** `RED-JIT01` runs the endpoint; the **gMSA** (`svc-JitBroker$`) is the identity that writes to AD; and **`JIT-Requestors`** is the group of humans allowed to connect. Do not conflate them — the host and the gMSA are Tier 0 assets; the requestors are ordinary, unprivileged admin accounts.
+
+### 8.1 — Why JEA (and why not a web API)
+
+[Just Enough Administration (JEA)](https://learn.microsoft.com/en-us/powershell/scripting/security/remoting/jea/overview) is the native Windows mechanism for exposing a **locked-down PowerShell endpoint** over WinRM. It is a perfect fit for this broker because it solves, natively, every problem a hand-rolled REST API would force you to solve yourself:
+
+- **Authentication** — WinRM authenticates the caller with **Kerberos via SSPI**. The gMSA simply carries the host SPN; there is **no keytab** to export or rotate (unlike a standalone web server doing its own Kerberos).
+- **Two distinct identities** — the caller (`RED\demoAdm`) is *authenticated and audited*, while the commands actually execute under the **gMSA** (the `RunAs`). The caller holds **no rights** on AD; it borrows the gMSA's single delegated right for the duration of one constrained command.
+- **Capability lock** — the endpoint exposes **only** the functions you whitelist. Everything else in the language is blocked **by the runtime**, not by your code — no free `Set-ADObject`, no shell, no file system.
+- **Native audit** — JEA records who ran which command with which arguments (over-the-shoulder transcripts + event logs) with zero extra code.
+
+On every call the endpoint:
+
+1. **Authenticates the caller** over WinRM/Kerberos — no anonymous access.
+2. **Looks up the requested role** in a local configuration file.
+3. **Verifies the caller is eligible** for that role.
+4. **Writes the time-bound membership** with the TTL **fixed by the configuration**, on the shadow principal that maps to the role.
+
+It deliberately does **not** let the client choose the TTL, accept a DN from the client (the client sends a **role name**; the server resolves the DN — the anti-injection boundary), approve, or challenge for MFA.
+
+> **🔵 Important — JEA fits when callers are Windows/PowerShell.** The client talks WinRM (`Invoke-Command`), not HTTP. If your requesters are admins on Windows PAWs, this is the simplest and most native option. If you must serve non-Windows clients or a web portal, that is the one case where a real REST API (behind IIS with integrated Windows auth, so the gMSA still needs no keytab) is worth the extra bricks.
+
+### 8.2 — Architecture
+
+```text
+┌────────────────────────────────────────────────────────────────┐
+│  Hardened Tier 0 host   RED-JIT01.red.local   (bastion forest)  │
+│                                                                 │
+│    JEA endpoint  "JitElevation"  (WinRM, RestrictedRemoteServer)│
+│        │                                                        │
+│        ├─ RunAs ────────►  gMSA   RED\svc-JitBroker$            │
+│        │                                                        │
+│        └─ exposes ONLY ─►  Request-Elevation, Get-EligibleRoles │
+│                                                                 │
+│    Module:  JitElevation  (.psm1 + .psd1 + config.json + .psrc) │
+│    Session: JitElevation.pssc                                   │
+└────────────────────────────────────────────────────────────────┘
+        ▲                                        │
+        │ 1. Invoke-Command                      │ 3. Set-ADObject
+        │    { Request-Elevation -Role 'DA-...' }│    -Add member <TTL=...>
+        │    (WinRM / Kerberos, no keytab)       │    (executed as the gMSA)
+        │                                        ▼
+   red\demoAdm  (PAW)                      red.local  Active Directory
+                                           (shadow principals = enforcement point)
+```
+
+The critical design property is unchanged from the manual flow: **Active Directory remains the enforcement point.** The endpoint only writes the time-bound link; the AD database engine expires it, and the 2016+ KDC caps the TGT. There is **no revocation logic, no cleanup job, no scheduler** — which keeps the attack surface minimal.
+
+> **🔴 Critical — the endpoint host and its gMSA are Tier 0.** `RED\svc-JitBroker$` can grant `Domain Admins` in production. Anyone who compromises **the host** or **the gMSA identity** can self-elevate. The host must be protected **exactly like a domain controller**: no third-party agents of unknown provenance, restricted RDP, no internet egress, PAW-only administration.
+
+### 8.3 — Create the gMSA and delegate the minimum rights
+
+Run on a bastion (`red.local`) domain controller as an Enterprise / Domain Admin.
+
+```powershell
+# 1. KDS root key — once per forest (skip if it already exists).
+#    Remove the -EffectiveTime backdating in production; it is only for a lab
+#    so the key is usable immediately instead of after 10 hours of replication.
+Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))
+
+# 2. A group listing the host(s) allowed to retrieve the gMSA password
+New-ADGroup -Name 'JIT-Broker-Hosts' -GroupScope Global -Path 'OU=Tier0,DC=red,DC=local'
+Add-ADGroupMember -Identity 'JIT-Broker-Hosts' -Members 'RED-JIT01$'
+
+# 3. The gMSA itself (the host SPN is registered automatically for WinRM/Kerberos)
+New-ADServiceAccount -Name 'svc-JitBroker' `
+    -DNSHostName 'RED-JIT01.red.local' `
+    -PrincipalsAllowedToRetrieveManagedPassword 'JIT-Broker-Hosts' `
+    -ManagedPasswordIntervalInDays 30
+
+# 4. The connection gate: a group whose members may OPEN the JEA endpoint.
+#    Being in this group only allows *connecting*; eligibility for a specific
+#    role is still enforced per-role by config.json (§ 8.4) — two gates, not one.
+New-ADGroup -Name 'JIT-Requestors' -GroupScope Global -Path 'OU=Tier0,DC=red,DC=local'
+Add-ADGroupMember -Identity 'JIT-Requestors' -Members 'demoAdm','t0-jdoe'
+
+# 5. On the endpoint host RED-JIT01: reboot it first (see callout below), then
+#    install and verify the gMSA.
+Install-ADServiceAccount -Identity 'svc-JitBroker'
+Test-ADServiceAccount   -Identity 'svc-JitBroker'   # must return True
+```
+
+> **🔵 Important — reboot `RED-JIT01` after adding it to `JIT-Broker-Hosts`.** A computer only learns its new group memberships (here, the right to retrieve the gMSA password) after a reboot, once its Kerberos identity carries the group SID. Skip the reboot and `Test-ADServiceAccount` returns `False` while `Install-ADServiceAccount` fails with *"Cannot install service account"*. Reboot the host, then run step 5.
+
+Now delegate **only** the right the endpoint needs: writing the `member` attribute on the shadow principals. Do **not** add the gMSA to any privileged group — with JEA the RunAs account does **not** need to be a local admin either.
+
+```powershell
+# Grant "Write property: member" on the shadow principals, inherited from the
+# container but scoped to msDS-ShadowPrincipal child objects only.
+dsacls "CN=Shadow Principal Configuration,CN=Services,CN=Configuration,DC=red,DC=local" `
+    /I:S /G "RED\svc-JitBroker$:WP;member;msDS-ShadowPrincipal"
+```
+
+> **🟢 Recommendation — least privilege, verified.** The gMSA must be able to write `member` on the shadow principals and **nothing else**. Confirm it is not a member of any admin group (`Get-ADPrincipalGroupMembership svc-JitBroker`) and that the ACE above is the only privileged right it holds. This single-attribute, single-object-class delegation is what keeps a compromise of the endpoint recoverable.
+
+### 8.4 — The role mapping file (`config.json`)
+
+The module reads a plain JSON file that ships inside it. Each role maps to a target shadow principal, a hard TTL, and the list of accounts allowed to request it.
+
+```json
+{
+  "roles": {
+    "DA-Contoso": {
+      "target": "CN=T0-Admins-Contoso-DA,CN=Shadow Principal Configuration,CN=Services,CN=Configuration,DC=red,DC=local",
+      "maxTtlSeconds": 3600,
+      "eligible": [ "RED\\demoAdm", "RED\\t0-jdoe" ]
+    },
+    "EA-Contoso": {
+      "target": "CN=T0-Admins-Contoso-EA,CN=Shadow Principal Configuration,CN=Services,CN=Configuration,DC=red,DC=local",
+      "maxTtlSeconds": 1800,
+      "eligible": [ "RED\\t0-jdoe" ]
+    }
+  }
+}
+```
+
+- `target` — the DN the endpoint writes to. The client never sees or supplies it.
+- `maxTtlSeconds` — the elevation duration, **fixed here**, never chosen by the caller.
+- `eligible` — the exact `DOMAIN\sam` accounts allowed to request that role.
+
+> **🔴 Critical — the config file is a Tier 0 secret.** Whoever can edit it can add themselves to `eligible` for `DA-Contoso` and grant themselves Domain Admins. Protect it accordingly: **read = the gMSA only**, **write = a dedicated change-control group only**, no one else. Keep it under **Git** so every mapping change is reviewed and attributable.
+
+> **🔵 Important — validate integrity, not just permissions.** ACLs stop the ordinary user; they do not prove the file was not tampered with. Store the file in Git (signed commits ideally), review every diff, and — if your threat model warrants it — verify a known hash/signature before trusting the mapping.
+
+### 8.5 — The `JitElevation` module
+
+JEA loads its role capabilities from a **module**, so the whole broker ships as one small module in `$env:PSModulePath` on the host — typically `C:\Program Files\WindowsPowerShell\Modules\JitElevation\`:
+
+```text
+JitElevation\
+├── JitElevation.psd1                 # module manifest
+├── JitElevation.psm1                 # the code: Request-Elevation + Get-EligibleRoles
+├── config.json                       # the role mapping (§ 8.4)
+└── RoleCapabilities\
+    └── JitOperator.psrc              # capability file (§ 8.6)
+```
+
+The manifest is minimal:
+
+```powershell
+# JitElevation.psd1
+New-ModuleManifest `
+    -Path 'C:\Program Files\WindowsPowerShell\Modules\JitElevation\JitElevation.psd1' `
+    -RootModule 'JitElevation.psm1' `
+    -ModuleVersion '1.0.0' `
+    -RequiredModules 'ActiveDirectory' `
+    -FunctionsToExport 'Request-Elevation','Get-EligibleRoles'
+```
+
+The module ships **two** functions: the privileged `Request-Elevation` (the exact same business logic the manual flow performed by hand — the three server-side checks, then the time-bound write) and a **read-only** `Get-EligibleRoles` that lets a caller discover which roles they may request, without ever revealing target DNs or other users' eligibility:
+
+```powershell
+# JitElevation.psm1
+function Request-Elevation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Role
+    )
+
+    # 1. Load the mapping shipped with the module
+    $config = Get-Content -Raw "$PSScriptRoot\config.json" | ConvertFrom-Json
+
+    # 2. The caller identity comes from JEA, NEVER from a parameter (anti-spoofing)
+    $caller = $PSSenderInfo.UserInfo.Identity.Name       # e.g. RED\demoAdm
+
+    # 3. Resolve the role SERVER-SIDE. The client sends a role name, never a DN.
+    $def = $config.roles.$Role
+    if (-not $def)                          { throw "Unknown role '$Role'." }
+    if ($def.eligible -notcontains $caller) { throw "You are not eligible for '$Role'." }
+
+    # 4. Write the time-bound membership. TTL comes from config; runs as the gMSA.
+    $callerDn = (Get-ADUser -Identity ($caller -replace '^.*\\', '')).DistinguishedName
+    $ttl      = [int]$def.maxTtlSeconds
+    Set-ADObject -Identity $def.target -Add @{ 'member' = "<TTL=$ttl,$callerDn>" }
+
+    [pscustomobject]@{ Status = 'granted'; Role = $Role; TtlSeconds = $ttl; Caller = $caller }
+}
+
+function Get-EligibleRoles {
+    # Read-only discovery: returns ONLY the roles the caller is eligible for.
+    # No privileged write, and no target DN is disclosed — safe to expose.
+    [CmdletBinding()]
+    param()
+
+    $config = Get-Content -Raw "$PSScriptRoot\config.json" | ConvertFrom-Json
+    $caller = $PSSenderInfo.UserInfo.Identity.Name       # e.g. RED\demoAdm
+
+    foreach ($roleName in $config.roles.PSObject.Properties.Name) {
+        $def = $config.roles.$roleName
+        if ($def.eligible -contains $caller) {
+            [pscustomobject]@{
+                Role       = $roleName
+                TtlSeconds = [int]$def.maxTtlSeconds
+            }
+        }
+    }
+}
+
+Export-ModuleMember -Function Request-Elevation, Get-EligibleRoles
+```
+
+> **🔴 Critical — never trust input from the client.** The caller comes from `$PSSenderInfo` (set by JEA from the authenticated Kerberos identity), **not** from a parameter — a caller cannot claim to be someone else. The three checks (role exists → caller eligible → TTL from config) are the entire security value of the endpoint. If you ever let the client pass the target DN or the TTL, you have rebuilt a privilege-escalation tool: a caller could target `Enterprise Admins` for 30 days.
+
+### 8.6 — The role capability file (`.psrc`)
+
+The capability file declares **exactly** what a connected operator may run. Everything not listed is unavailable.
+
+```powershell
+New-PSRoleCapabilityFile `
+    -Path 'C:\Program Files\WindowsPowerShell\Modules\JitElevation\RoleCapabilities\JitOperator.psrc' `
+    -VisibleFunctions 'Request-Elevation','Get-EligibleRoles'
+```
+
+Those two names are the capability lock: an operator connecting to this endpoint can call `Request-Elevation` and `Get-EligibleRoles` and **nothing else** — no `Set-ADObject`, no `Get-Content`, no arbitrary cmdlets, no language shell.
+
+### 8.7 — The session configuration (`.pssc`) and registering the endpoint
+
+The session configuration file sets the two things that matter: **run as the gMSA**, and **which groups map to which capability**.
+
+```powershell
+New-PSSessionConfigurationFile `
+    -Path 'C:\ProgramData\JEA\JitElevation.pssc' `
+    -SessionType RestrictedRemoteServer `
+    -GroupManagedServiceAccount 'RED\svc-JitBroker$' `
+    -TranscriptDirectory 'C:\ProgramData\JEA\Transcripts' `
+    -RunAsVirtualAccount:$false `
+    -RoleDefinitions @{
+        'RED\JIT-Requestors' = @{ RoleCapabilities = 'JitOperator' }
+    }
+```
+
+- `SessionType RestrictedRemoteServer` — no interactive shell; only the whitelisted commands.
+- `GroupManagedServiceAccount` — commands execute as the gMSA (the identity holding the `member` write). **No keytab, no stored password.**
+- `TranscriptDirectory` — native over-the-shoulder audit of every session.
+- `RoleDefinitions` — only members of `RED\JIT-Requestors` may even connect, and they receive the `JitOperator` capability. Eligibility for a *specific* role is then further narrowed by `config.json`.
+
+Register (and later update) the endpoint on the host:
+
+```powershell
+Register-PSSessionConfiguration -Name 'JitElevation' `
+    -Path 'C:\ProgramData\JEA\JitElevation.pssc' -Force
+
+# Verify it is registered and running as the gMSA
+Get-PSSessionConfiguration -Name 'JitElevation' | Format-List Name, RunAsUser, Permission
+```
+
+> **🔵 Important — WinRM + Kerberos means no keytab.** The endpoint authenticates callers through WinRM using the host's Kerberos SPN via **SSPI**, so the gMSA needs no exported keytab and no manually managed secret. This is the concrete payoff of choosing JEA over a self-hosted web server that would have to do its own Kerberos.
+
+### 8.8 — Calling the endpoint from an admin workstation
+
+From the bastion PAW, as an eligible account (`RED\demoAdm`, member of `RED\JIT-Requestors`), Kerberos supplies the identity through WinRM automatically. First, discover which roles you may request — read-only, no elevation happens:
+
+```powershell
+Invoke-Command -ComputerName RED-JIT01.red.local `
+    -ConfigurationName JitElevation `
+    -ScriptBlock { Get-EligibleRoles }
+
+# Role        TtlSeconds
+# ----        ----------
+# DA-Contoso        3600
+```
+
+Then request the elevation itself — again a single line:
+
+```powershell
+Invoke-Command -ComputerName RED-JIT01.red.local `
+    -ConfigurationName JitElevation `
+    -ScriptBlock { Request-Elevation -Role 'DA-Contoso' }
+
+# Status  Role        TtlSeconds Caller
+# ------  ----        ---------- ------
+# granted DA-Contoso        3600 RED\demoAdm
+```
+
+Verify the time-bound link exactly as in [§ 7](#-7--end-to-end-demo-just-in-time-elevation): the membership now carries a TTL on the shadow principal. Because the target is a shadow principal (not a regular group), read the remaining seconds with **LDP.exe** (control OID `1.2.840.113556.1.4.2309`) — a plain `Get-ADObject` shows the member DN but **not** the TTL, since the `-ShowMemberTimeToLive` switch exists only on `Get-ADGroup` (see [§ 7.4](#74--observe-the-remaining-ttl)). Then `klist purge` and confirm the production SID appears in `whoami /groups`.
+
+### 8.9 — Security model: the endpoint is Tier 0
+
+Everything that makes the bastion forest valuable makes this endpoint a first-class target. Keep the full threat picture in mind:
+
+| Asset | If compromised | Primary control |
+|---|---|---|
+| The host `RED-JIT01` | Attacker mints arbitrary elevations | Treat as a DC: PAW-only admin, no internet, EDR, restricted RDP |
+| The gMSA identity | Attacker writes `member` on any shadow principal | Scope `PrincipalsAllowedToRetrieveManagedPassword` to this host only; least-privilege ACE (§ 8.3) |
+| `config.json` | Attacker grants themselves any role | Read = gMSA, write = change-control group, Git-reviewed (§ 8.4) |
+| Endpoint access | Unauthorized elevation requests | `RoleDefinitions` gate connection to `RED\JIT-Requestors`; capability lock exposes only `Request-Elevation` and the read-only `Get-EligibleRoles` |
+
+> **🔴 Critical — do not co-host the endpoint.** Registering this JEA endpoint on a general-purpose server, a management jump box, or anything below Tier 0 defeats the entire pattern. It belongs on a dedicated, hardened, bastion-forest Tier 0 host — nothing else.
+
+### 8.10 — Native audit, limits and break-glass
+
+- **Audit (native).** JEA writes a session transcript to `TranscriptDirectory` and logs module/command activity, recording **who** ran `Request-Elevation` with **which** role. Complement it with directory-service auditing on the `Shadow Principal Configuration` container so the `member` writes are independently recorded on the DC:
+
+  ```powershell
+  # Enable the audit policy, then set a SACL on the container to audit writes
+  auditpol /set /subcategory:"Directory Service Changes" /success:enable
+  dsacls "CN=Shadow Principal Configuration,CN=Services,CN=Configuration,DC=red,DC=local" `
+      /I:S /A "Everyone:WP;member;msDS-ShadowPrincipal"
+  ```
+
+- **No approval, no MFA.** The endpoint grants directly to any eligible caller. If you need a second approver or an MFA challenge, that is where you graduate to MIM PAM or Entra PIM for Groups (see [§ 10](#-10--when-to-use-this-vs-mim-pam-vs-entra-pim-for-groups)) — or extend `Request-Elevation` yourself.
+- **Break-glass path.** If the endpoint host is down, elevation must still be possible. Document a runbook where a bastion **Enterprise Admin** performs the manual [§ 6](#-6--creating-shadow-principals) / [§ 7](#-7--end-to-end-demo-just-in-time-elevation) `Set-ADObject` write directly. The endpoint is a convenience layer, never a single point of failure for emergency access.
+
+---
+
+## ⚠️ 9 — What this pattern does NOT solve
 
 Be honest with yourself and your security team. The PAM Trust + shadow principals pattern is a **mechanism**, not a **product**. It delivers cryptographically-enforced just-in-time elevation, but here is everything it does **not** include — and what you need to bolt on.
 
-### 8.1 — No request portal
+### 9.1 — No request portal
 
 There is no web page where a user clicks "Elevate me now" and an approver clicks "Approve". The elevation is a PowerShell command run by someone privileged in the bastion forest. In practice, this means **someone in your Tier 0 team always has to be available** to perform the `Set-ADObject -Add @{member=...}` call.
 
 Mitigations:
 
-- A self-service portal calling a constrained PowerShell endpoint (JEA — Just Enough Administration) — you write maybe 200 lines of PowerShell to expose a `Request-Elevation` cmdlet to non-admins.
+- The **constrained JEA endpoint built in [§ 8](#-8--operationalizing-elevation-with-a-constrained-endpoint-jea--gmsa)** — a native, locked-down PowerShell endpoint that turns the manual `Set-ADObject` call into an eligible-role self-service request under a gMSA, without any of the MIM stack.
+- A web front-end (or ITSM integration) placed **on top of** that §8 endpoint — a page that collects the request and calls `Request-Elevation` server-side, if your requesters are not comfortable on the command line.
 - An ITSM workflow (ServiceNow, JIRA SD) where requesters file a ticket and an on-call admin runs the elevation.
 - Stick to MIM PAM or Entra PIM if a polished UX is non-negotiable.
 
-### 8.2 — No approval workflow
+### 9.2 — No approval workflow
 
 Once you give an admin the right to elevate `demoAdm`, that admin can do it any time, for any TTL, with no second approver. The bastion forest is your unit of trust — admins inside it are by definition privileged.
 
@@ -807,7 +1144,7 @@ Mitigations:
 - A JEA endpoint that requires a second admin to co-sign a request (custom).
 - Two-person rule via PIM for Groups / MIM PAM if approvals are mandatory.
 
-### 8.3 — No MFA on elevation
+### 9.3 — No MFA on elevation
 
 The elevation command is just LDAP. There is no native way to require an MFA challenge before adding `demoAdm` to the shadow principal.
 
@@ -817,21 +1154,21 @@ Mitigations:
 - Wrap the elevation in a custom flow that calls a TOTP provider before executing the LDAP write.
 - Use Entra PIM for Groups + Cloud Sync writeback if MFA-on-activation is a hard requirement and Entra is acceptable.
 
-### 8.4 — No native reporting
+### 9.4 — No native reporting
 
 You will see *that* a `member` link was added on the shadow principal in the bastion DC's Security log, but no built-in dashboard tells you "*last week, 17 elevations were performed against `T0-Admins-Contoso-DA`, average duration 47 minutes*". You build that yourself on top of your SIEM.
 
-### 8.5 — No revocation API beyond "remove the link"
+### 9.5 — No revocation API beyond "remove the link"
 
 If you elevate someone for 8 hours and need to cut them off after 30 minutes, the operational primitive is `Set-ADObject -Remove @{member=...}` — and the user **keeps their current Kerberos service tickets** until they expire (default 10 hours minus the elevation cap). Real revocation requires kicking sessions on the target server, which is out of scope of this pattern.
 
-### 8.6 — No protection against compromise of the bastion itself
+### 9.6 — No protection against compromise of the bastion itself
 
 If `red.local` is compromised, the attacker can mint elevations at will into `contoso.com`. **The bastion is now your single most valuable target**. Every recommendation about hardening (Tier 0 isolation, PAW, EDR, no internet egress, strict change management, attested boot) applies to the bastion **even more** than it does to production.
 
 ---
 
-## 📊 9 — When to use this vs. MIM PAM vs. Entra PIM for Groups
+## 📊 10 — When to use this vs. MIM PAM vs. Entra PIM for Groups
 
 There is no universally right answer. Pick the row that matches your constraints.
 
@@ -850,9 +1187,9 @@ There is no universally right answer. Pick the row that matches your constraints
 
 ---
 
-## 🩺 10 — Troubleshooting and common pitfalls
+## 🩺 11 — Troubleshooting and common pitfalls
 
-### 10.1 — `Enable-ADOptionalFeature` returns "operation is not supported"
+### 11.1 — `Enable-ADOptionalFeature` returns "operation is not supported"
 
 Cause: the forest functional level is below Windows Server 2016, or the cmdlet was run against the wrong target.
 
@@ -868,7 +1205,7 @@ Enable-ADOptionalFeature `
     -Target red.local
 ```
 
-### 10.2 — `New-ADObject` of type `msDS-ShadowPrincipal` returns "constraint violation" / "object class violation"
+### 11.2 — `New-ADObject` of type `msDS-ShadowPrincipal` returns "constraint violation" / "object class violation"
 
 This is error `8212` (`ERROR_DS_OBJ_CLASS_VIOLATION`). It has **two** common causes — check both:
 
@@ -897,7 +1234,7 @@ Get-ADOptionalFeature -Filter "Name -eq 'Privileged Access Management Feature'" 
 
 If empty, re-run `Enable-ADOptionalFeature` (§ 5.2) as Enterprise Admin of the bastion forest.
 
-### 10.3 — `Set-ADObject -Add @{member="<TTL=600,...>"}` succeeds but the link never expires
+### 11.3 — `Set-ADObject -Add @{member="<TTL=600,...>"}` succeeds but the link never expires
 
 Cause: you ran it on a Windows Server 2012 R2 DC, or against a forest where the PAM feature is not enabled. The TTL syntax is silently parsed as a regular DN (the `<TTL=...>` prefix is ignored), so the link becomes permanent.
 
@@ -908,7 +1245,7 @@ Set-ADObject -Server RED-DC1.red.local -Identity $ShadowDN `
     -Add @{ 'member' = "<TTL=600,$DemoAdmDN>" }
 ```
 
-### 10.4 — Elevated user does not see the production SID in `whoami /groups`
+### 11.4 — Elevated user does not see the production SID in `whoami /groups`
 
 Most likely causes and how to diagnose each:
 
@@ -920,7 +1257,7 @@ Most likely causes and how to diagnose each:
 | Works against some DCs but not others | Mixed-version DCs in production | Confirm every production DC that may serve the user is Server 2016+ |
 | Works for some accounts but not new ones | Replication latency between bastion DCs | Force `repadmin /syncall RED-DC1 /e /A /P` then retry |
 
-### 10.5 — Stale TDO after lab reset
+### 11.5 — Stale TDO after lab reset
 
 If you destroy and recreate the bastion forest without first deleting the trust on the production side, you end up with a `trustedDomain` object on `contoso.com` that points to a forest with new SIDs. Symptoms: every authentication attempt from the new bastion returns `KRB_AP_ERR_MODIFIED` or `STATUS_TRUSTED_DOMAIN_FAILURE`.
 
@@ -938,13 +1275,13 @@ Get-ADObject -SearchBase "CN=System,DC=contoso,DC=com" `
 # Then rebuild the trust from scratch (§ 5.3)
 ```
 
-### 10.6 — Name suffix routing conflicts
+### 11.6 — Name suffix routing conflicts
 
 If `red.local`'s UPN suffix or any of its additional name suffixes collides with anything declared on the `contoso.com` side (typical mistake: someone added `red.local` as a UPN suffix on production), Kerberos referrals get confused.
 
 Fix: check via *Active Directory Domains and Trusts* → right-click the trust → *Name Suffix Routing* tab on the production side. Disable any suffix routing for `red.local` that is not strictly required. On a one-way trust, you usually want *only* the root namespace `red.local` to be enabled and nothing else.
 
-### 10.7 — TGT lifetime is not capped to the TTL
+### 11.7 — TGT lifetime is not capped to the TTL
 
 Cause: the user is authenticating through a Windows Server 2012 R2 KDC in the production forest. The ticket lifetime cap behavior was introduced with the PAM feature in 2016.
 
@@ -952,31 +1289,31 @@ Fix: upgrade all production DCs that will serve elevated users to Windows Server
 
 ---
 
-## 🧹 11 — Cleanup and decommissioning
+## 🧹 12 — Cleanup and decommissioning
 
 If you decide to abandon the bastion forest pattern (typically because you migrated to Entra PIM for Groups), the cleanup order matters.
 
-### 11.1 — Stop creating new elevations and let in-flight ones expire
+### 12.1 — Stop creating new elevations and let in-flight ones expire
 
 Communicate to your admin team, then revoke any delegated rights granted to non-Enterprise-Admin operators on the `Shadow Principal Configuration` container. Inspect the ACL with `Get-Acl "AD:CN=Shadow Principal Configuration,CN=Services,CN=Configuration,DC=red,DC=local"`, identify each ACE that allows write to your delegated bastion operators, and remove it (e.g. via `dsacls` or `Set-Acl` after editing the ACL object). Once only Enterprise Admins can write, no new elevations can be issued.
 
 Wait for the longest TTL you allow (typically 8 hours) to elapse so that all in-flight elevations age out naturally.
 
-### 11.2 — Remove the shadow principals
+### 12.2 — Remove the shadow principals
 
 ```powershell
 Get-ADObject -SearchBase $ShadowConfigDN -Filter "objectClass -eq 'msDS-ShadowPrincipal'" |
     Remove-ADObject -Confirm:$true
 ```
 
-### 11.3 — Remove the trust
+### 12.3 — Remove the trust
 
 ```powershell
 # On a contoso.com DC, as Enterprise Admin
 netdom trust contoso.com /domain:red.local /remove /force
 ```
 
-### 11.4 — Decommission the bastion forest
+### 12.4 — Decommission the bastion forest
 
 Demote and remove `RED-DC1` / `RED-DC2`, retire PAWs, archive the audit trail. The PAM feature stays "enabled" in the schema of the bastion forest — but the bastion forest no longer exists, so this is harmless.
 
@@ -984,7 +1321,7 @@ Demote and remove `RED-DC1` / `RED-DC2`, retire PAWs, archive the audit trail. T
 
 ---
 
-## 📚 12 — References
+## 📚 13 — References
 
 ### Official Microsoft documentation
 
@@ -997,7 +1334,7 @@ Demote and remove `RED-DC1` / `RED-DC2`, retire PAWs, archive the audit trail. T
 - [Forest trust and SID filtering](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/security-considerations-of-trusts) — exact semantics of `/enableSidHistory` and quarantine.
 - [\[MS-ADTS\]: trustAttributes](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/e9a2d23c-c31e-4a6f-88a0-6646fdb51a3c) — authoritative bit definitions, including `TRUST_ATTRIBUTE_PIM_TRUST` (`0x400`) set in [§ 5.3](#53--create-the-trust-from-the-production-side).
 - [Microsoft Identity Manager Privileged Access Management](https://learn.microsoft.com/en-us/microsoft-identity-manager/pam/privileged-identity-management-for-active-directory-domain-services) — for comparison; same engine, with a portal and workflow on top.
-- [Govern on-premises Active Directory groups using Entra Privileged Identity Management](https://learn.microsoft.com/en-us/entra/id-governance/pim-for-groups-cloud-sync) — modern alternative covered in [§ 9](#-9--when-to-use-this-vs-mim-pam-vs-entra-pim-for-groups).
+- [Govern on-premises Active Directory groups using Entra Privileged Identity Management](https://learn.microsoft.com/en-us/entra/id-governance/pim-for-groups-cloud-sync) — modern alternative covered in [§ 10](#-10--when-to-use-this-vs-mim-pam-vs-entra-pim-for-groups).
 
 ### Useful related articles in this blog
 
