@@ -175,7 +175,7 @@ The flag that tells the production KDC "*this specific trust is a Privileged Acc
 
 ---
 
-## 🏗️ 3 — Architecture overview
+## 🏗 3 — Architecture overview
 
 ### 3.1 — The big picture
 
@@ -621,7 +621,7 @@ Each read returns the live remaining seconds; when it reaches zero, AD removes t
 
 ---
 
-## ⏱️ 7 — End-to-end demo: just-in-time elevation
+## ⏱ 7 — End-to-end demo: just-in-time elevation
 
 This is the section that ties everything together. We will:
 
@@ -1120,7 +1120,7 @@ Everything that makes the bastion forest valuable makes this endpoint a first-cl
 
 ---
 
-## ⚠️ 9 — What this pattern does NOT solve
+## ⚠ 9 — What this pattern does NOT solve
 
 Be honest with yourself and your security team. The PAM Trust + shadow principals pattern is a **mechanism**, not a **product**. It delivers cryptographically-enforced just-in-time elevation, but here is everything it does **not** include — and what you need to bolt on.
 
