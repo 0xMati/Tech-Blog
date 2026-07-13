@@ -3081,6 +3081,55 @@ foreach ($a in $Auditors) {
 }
 ```
 
+#### Optional — pushing the condition down to the silo (intra-tier Kerberos separation)
+
+The default model above stops the Kerberos boundary at the **tier**: every T0-N* account shares one `T0-Silo` with the same issuance condition, so at the DC level a `T0-N2-PKI` account and a `T0-N2-ADFS` account are **interchangeable**. Their separation rests entirely on the host firewall + IPsec layer of §8.7.
+
+You **can** move that separation into the Kerberos layer as well, by conditioning the Authentication Policy not on the tier silo but on the **source PAW group of the specific silo**. Instead of `AuthenticationSilo == "T0-Silo"`, the policy tests the *machine* the request comes from:
+
+```powershell
+# Device-bound policy: a PKI admin only gets a TGT from a PKI PAW
+New-ADAuthenticationPolicy -Name "T0-PKI-AuthPolicy" `
+    -Description "T0 PKI admins may only obtain a TGT from a PKI PAW" `
+    -UserTGTLifetimeMins 240 `
+    -UserAllowedToAuthenticateFrom (
+        New-ADAuthenticationPolicyCriteria -AllowedToAuthenticateFrom `
+            "O:SYG:SYD:(XA;OICI;CR;;;WD;(Member_of_any {SID($T0PkiPawSID)}))"
+    ) `
+    -Enforce  # audit first
+```
+
+This yields **device-bound TGTs**: a `T0-N2-PKI` account is refused a ticket the moment it authenticates from anything other than a PKI PAW — enforced **at ticket issuance on the DC**, not at the network layer. You can attach it either via a **dedicated per-silo silo** (`T0-PKI-Silo`, `T0-ADFS-Silo`) or by assigning the policy directly to the N-level accounts.
+
+> **🔵 Same reservation as §8.7 applies.** Inside **Tier 0** this is still **hygiene**, not containment — a device-bound TGT does nothing about the shared blast radius (owning the ADFS silo already makes you a forest identity authority, no PKI PAW needed). Its real containment value is in **Tier 1**, where it adds a second, DC-enforced barrier on top of the firewall so that a `T1-N2-SQL` account cannot even obtain a ticket from an Exchange jump host. Treat per-silo Kerberos conditions as **T1 hardening first, T0 audit-clarity second**.
+
+#### 🛠️ Hardening the mechanism: device-bound TGTs + JEA
+
+The §8.7 firewall rules govern **which host you can reach**; they say nothing about **what you can do once on it**. Two native controls tighten both ends and reduce the reliance on local `Administrators` membership:
+
+| Control | Layer | What it constrains | Intra-tier value |
+|---------|-------|--------------------|------------------|
+| **Authentication Policy — device-bound TGT** | Kerberos (DC) | *Where* an N-level account may authenticate from (its own PAW group) | Moves the silo boundary from network to ticket issuance — hardest to bypass |
+| **JEA (Just Enough Administration)** | Session (target host) | *What* commands the account may run once connected | Removes the need for full local admin — an operator gets only the cmdlets of their platform |
+
+- **Device-bound TGT** (above) — makes the PAW→silo binding cryptographic and DC-enforced, so a stolen firewall exception or an IP spoof is not enough; the account still cannot get a ticket off the wrong PAW.
+- **JEA** — a constrained PowerShell endpoint on the target server exposes **only** the role's cmdlets under a virtual/gMSA run-as account. A `T1-N2-SQL` operator connects to a SQL host and sees only SQL operations — never a full admin shell — and a `T0-N1-Auditors` account gets a genuinely read-only session:
+
+```powershell
+# Role capability: SQL operators may restart the service and read config, nothing else
+# (SqlOps.psrc)
+@{
+    VisibleCmdlets  = 'Get-Service', @{ Name = 'Restart-Service'; Parameters = @{ Name = 'Name'; ValidateSet = 'MSSQLSERVER' } }
+    VisibleFunctions = 'Get-SqlDatabase'
+}
+
+# Session config registered on the SQL host, run under a gMSA
+Register-PSSessionConfiguration -Name 'T1-SQL-JEA' `
+    -Path .\SqlOps.pssc -RunAsVirtualAccount
+```
+
+> **🟢 Why pair them.** The firewall answers *"can these packets reach the host?"*, the device-bound TGT answers *"is this account even allowed a ticket from this PAW?"*, and JEA answers *"what can it do after landing?"*. Stacked, they turn a coarse "T0 admin" or "T1 admin" into a least-privilege, platform-scoped, DC-enforced role — the closest native AD gets to per-silo separation without adding subnets. **The Tier 0 caveat still stands:** these sharpen least privilege and audit inside T0, but the shared blast radius is only truly reduced by removing the shared trophy itself (offloading PKI/ADFS out of the production forest — see the architecture hub).
+
 ---
 
 ### 8.7 — GPO Strategy for N-Levels
