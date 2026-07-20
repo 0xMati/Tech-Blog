@@ -190,6 +190,8 @@ After the restart, Netlogon stops publishing that root A record entirely.
 > Restart-Service Netlogon
 > ```
 
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-17-05-56.png>)
+
 > ⚠️ **Know the limitation — this is important.** `DnsAvoidRegisterRecords` filters by **record type**, **not by IP address**. Netlogon has no way to say "publish `192.168.99.x` but not `172.16.x`". It's all-or-nothing *per record type*. That's why the truly *selective* lever — the one that cares about *which NIC* — is **Step 1**. Step 2 is here to suppress the zone-root entries that would otherwise leak the admin IP because they aggregate every bound address.
 
 > 📎 **Start minimal, expand only if it leaks.** `LdapIpAddress` (the zone-root A) is the usual troublemaker; `GcIpAddress` (the `gc._msdcs` A) is next in line on a GC. Both are **A records that carry an IP** — those are the ones worth suppressing here. Leave the **SRV** mnemonics (`Ldap`, `Dc`, `Gc`, `Kdc`…) alone: they point at the host *name* `MM-DC1.contoso.com`, which Step 1 already cleaned up — carpet-bombing them will break DC location. Add records one at a time, verify, repeat.
@@ -250,6 +252,8 @@ Get-NetIPInterface | Sort-Object InterfaceMetric |
 ```
 
 > 🧭 **Fun fact / sanity note:** Microsoft has always recommended *against* multihomed domain controllers precisely because of this DNS behavior (and routing quirks). If you can avoid the second NIC entirely, do — but when a management network is a hard requirement, the three steps above are your friend.
+
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-17-15-35.png>)
 
 ---
 
