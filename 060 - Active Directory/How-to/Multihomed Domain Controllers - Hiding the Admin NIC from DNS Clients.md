@@ -263,23 +263,23 @@ Everything above **hides** the admin IP from clients. But what if you *still* wa
 
 That's where **DNS Policies** and **Zone Scopes** come in (Windows Server **2016+**). This is a *refinement layered on top of* the baseline — never a replacement for it. And there is **no GUI** for this: it's PowerShell (or `dnscmd`) all the way.
 
-### 🔹 The mental model
+### 🔹 How it works
 
-Think of a normal DNS zone as a single filing cabinet. **Zone Scopes** let you add **extra, separate drawers** inside the same cabinet. Each drawer holds its own set of records.
+A **Zone Scope** is a second, independent copy of records that lives inside the same zone. A zone always has a **default scope**; you can add one or more **custom scopes** alongside it.
 
-- **Default scope** = the normal drawer everyone uses. Dynamic updates (DNS Client + Netlogon) only ever write **here**.
-- **Custom scope** (e.g. `AdminScope`) = a second drawer **you** fill by hand (static records only — nothing writes to it automatically).
+- **Default scope** = the zone's normal records. Dynamic updates (DNS Client + Netlogon) only ever write **here**.
+- **Custom scope** (e.g. `AdminScope`) = records **you** add manually (static only — nothing updates it automatically).
 
-A **Query Resolution Policy** is the receptionist who decides *which drawer* to open for a given request, based on criteria like **where the query came from** (client subnet) and **what name** was asked (FQDN).
+A **Query Resolution Policy** then decides *which scope* answers a given request, based on **where the query came from** (client subnet) and **what name** was asked (FQDN).
 
 So the four building blocks are:
 
 | Object | Role | Cmdlet |
 |---|---|---|
 | **Client Subnet** | Defines the *source* network of the requester | `Add-DnsServerClientSubnet` |
-| **Zone Scope** | The extra "drawer" holding admin records (zone-level) | `Add-DnsServerZoneScope` |
+| **Zone Scope** | The extra scope holding admin records (zone-level) | `Add-DnsServerZoneScope` |
 | **Record in scope** | The actual admin A record (static) | `Add-DnsServerResourceRecord … -ZoneScope` |
-| **Query Policy** | The receptionist: subnet + FQDN → scope | `Add-DnsServerQueryResolutionPolicy` |
+| **Query Policy** | Maps subnet + FQDN → scope | `Add-DnsServerQueryResolutionPolicy` |
 
 Let's build them in order. **All of this runs on the DNS server (the DC).**
 
