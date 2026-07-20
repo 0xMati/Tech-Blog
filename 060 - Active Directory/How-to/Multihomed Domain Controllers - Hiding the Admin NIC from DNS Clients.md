@@ -23,7 +23,7 @@ Our lab setup for the whole article:
 | Item | Value |
 |---|---|
 | Domain | `contoso.com` |
-| Domain controller | `dc01` |
+| Domain controller | `MM-DC1` |
 | **Production** NIC (clients live here) | `192.168.99.1` |
 | **Administration** NIC (clients CANNOT reach this) | `172.16.1.1` |
 | Admin network (where admins query from) | `172.16.1.0/24` |
@@ -40,17 +40,17 @@ Before fixing anything, let's understand what's happening under the hood. If you
 
 ### 🔹 What is a DNS record, really?
 
-DNS is basically a giant phone book. You ask "what's the IP of `dc01.contoso.com`?" and it answers "`192.168.99.1`". The entry that maps a name to an IPv4 address is called an **A record**.
+DNS is basically a giant phone book. You ask "what's the IP of `MM-DC1.contoso.com`?" and it answers "`192.168.99.1`". The entry that maps a name to an IPv4 address is called an **A record**.
 
 ```text
-dc01.contoso.com   →   A   →   192.168.99.1
+MM-DC1.contoso.com   →   A   →   192.168.99.1
 ```
 
 Simple. The catch: a single name can have **several** A records.
 
 ```text
-dc01.contoso.com   →   A   →   192.168.99.1   (production NIC)
-dc01.contoso.com   →   A   →   172.16.1.1   (administration NIC)
+MM-DC1.contoso.com   →   A   →   192.168.99.1   (production NIC)
+MM-DC1.contoso.com   →   A   →   172.16.1.1   (administration NIC)
 ```
 
 Now we have a problem waiting to happen. Which one does the client get?
@@ -82,7 +82,7 @@ Every network adapter in Windows has a checkbox: *"Register this connection's ad
 So your admin NIC, left with defaults, cheerfully registers:
 
 ```text
-dc01.contoso.com   →   A   →   172.16.1.1
+MM-DC1.contoso.com   →   A   →   172.16.1.1
 ```
 
 That's culprit #1: the host's own A record via the admin card.
@@ -101,7 +101,7 @@ Among the things Netlogon publishes is the **root-of-zone A record** — the rec
 
 | Culprit | Registers | Controlled by |
 |---|---|---|
-| **DNS Client** | Host A record (`dc01`) via each NIC | Per-adapter "Register this connection" setting |
+| **DNS Client** | Host A record (`MM-DC1`) via each NIC | Per-adapter "Register this connection" setting |
 | **Netlogon** | Root-of-zone A (`LdapIpAddress`), `_msdcs` records, SRV records — for **all** bound IPs | `DnsAvoidRegisterRecords` registry value |
 
 To win, we address **both**. Let's go.
@@ -186,9 +186,9 @@ Get-DnsServerResourceRecord -ZoneName "contoso.com" -RRType A |
 Then remove the offending entries. The host A record:
 
 ```powershell
-# Delete dc01's admin A record
+# Delete MM-DC1's admin A record
 Remove-DnsServerResourceRecord -ZoneName "contoso.com" -RRType A `
-    -Name "dc01" -RecordData "172.16.1.1" -Force
+    -Name "MM-DC1" -RecordData "172.16.1.1" -Force
 ```
 
 And the root-of-zone *"(same as parent folder)"* A record (its name is `@`):
@@ -231,7 +231,7 @@ Get-NetIPInterface | Sort-Object InterfaceMetric |
 
 ## Part 4 — The Optional Refinement: DNS Policies & Zone Scopes
 
-Everything above **hides** the admin IP from clients. But what if you *still* want the admin IP to be resolvable — **only** for machines on the admin network? For example, your admin workstations should reach `dc01` at `172.16.1.1`, while everyone else keeps getting `192.168.99.1`.
+Everything above **hides** the admin IP from clients. But what if you *still* want the admin IP to be resolvable — **only** for machines on the admin network? For example, your admin workstations should reach `MM-DC1` at `172.16.1.1`, while everyone else keeps getting `192.168.99.1`.
 
 That's where **DNS Policies** and **Zone Scopes** come in (Windows Server **2016+**). This is a *refinement layered on top of* the baseline — never a replacement for it. And there is **no GUI** for this: it's PowerShell (or `dnscmd`) all the way.
 
@@ -279,7 +279,7 @@ Get-DnsServerClientSubnet   # verify
 
 ### 2️⃣ Create the scope — at the ZONE level
 
-A crucial point that confuses everyone: **a zone scope is created on the *zone* (`contoso.com`), never on a record (`dc01`)**. `dc01` isn't a zone — it's just an A record living *inside* the zone.
+A crucial point that confuses everyone: **a zone scope is created on the *zone* (`contoso.com`), never on a record (`MM-DC1`)**. `MM-DC1` isn't a zone — it's just an A record living *inside* the zone.
 
 ```powershell
 Add-DnsServerZoneScope -ZoneName "contoso.com" -Name "AdminScope"
@@ -293,7 +293,7 @@ Now add the admin A record — but **into `AdminScope`**, not the default drawer
 
 ```powershell
 Add-DnsServerResourceRecord -ZoneName "contoso.com" -A `
-    -Name "dc01" -IPv4Address "172.16.1.1" -ZoneScope "AdminScope"
+    -Name "MM-DC1" -IPv4Address "172.16.1.1" -ZoneScope "AdminScope"
 ```
 
 Remember: this drawer is **static**. Nothing refreshes it automatically. If the admin IP ever changes, you update it here by hand.
@@ -303,10 +303,10 @@ Remember: this drawer is **static**. Nothing refreshes it automatically. If the 
 Finally, the receptionist. This is the object that **ties it all together**: *if* the query comes from the admin subnet **AND** asks for a specific DC name, *then* answer from `AdminScope`.
 
 ```powershell
-Add-DnsServerQueryResolutionPolicy -Name "AdminPolicy_dc01" `
+Add-DnsServerQueryResolutionPolicy -Name "AdminPolicy_MM-DC1" `
     -Action ALLOW `
     -ClientSubnet "EQ,AdminSubnet" `
-    -Fqdn "EQ,dc01.contoso.com" `
+    -Fqdn "EQ,MM-DC1.contoso.com" `
     -ZoneScope "AdminScope,1" `
     -ZoneName "contoso.com"
 
@@ -316,11 +316,11 @@ Get-DnsServerQueryResolutionPolicy -ZoneName "contoso.com"   # verify
 Let's decode every parameter, because each one matters:
 
 - `-ClientSubnet "EQ,AdminSubnet"` → match only queries **coming from** the admin network.
-- `-Fqdn "EQ,dc01.contoso.com"` → match only queries **for this exact name**.
+- `-Fqdn "EQ,MM-DC1.contoso.com"` → match only queries **for this exact name**.
 - `-ZoneScope "AdminScope,1"` → send matches to `AdminScope`. (More on that `,1` below.)
 - `-ZoneName "contoso.com"` → the policy applies to this zone.
 
-The criteria are **cumulative (AND)**: a query must be from the admin subnet **and** ask for `dc01.contoso.com` for the policy to fire. Anything else falls through to the default scope.
+The criteria are **cumulative (AND)**: a query must be from the admin subnet **and** ask for `MM-DC1.contoso.com` for the policy to fire. Anything else falls through to the default scope.
 
 ### 🔹 What's that `,1` in `"AdminScope,1"`?
 
@@ -351,15 +351,15 @@ Scopes are **separate record sets**, not layers that stack. There is no "look in
 
 ### ✅ Why targeting the FQDN saves you
 
-This is exactly why the policy uses `-Fqdn "EQ,dc01.contoso.com"` instead of matching the whole zone. Watch how it plays out:
+This is exactly why the policy uses `-Fqdn "EQ,MM-DC1.contoso.com"` instead of matching the whole zone. Watch how it plays out:
 
 | Query from admin subnet | Name requested | Policy fires? | Scope used | Result |
 |---|---|---|---|---|
-| ✔ Yes | `dc01.contoso.com` | ✅ Yes (both criteria) | `AdminScope` | Admin IP `172.16.1.1` |
-| ✔ Yes | `fileserver.contoso.com` | ❌ No (FQDN ≠ dc01) | **default** | Normal prod IP |
+| ✔ Yes | `MM-DC1.contoso.com` | ✅ Yes (both criteria) | `AdminScope` | Admin IP `172.16.1.1` |
+| ✔ Yes | `fileserver.contoso.com` | ❌ No (FQDN ≠ MM-DC1) | **default** | Normal prod IP |
 | ✔ Yes | `anything-else.contoso.com` | ❌ No | **default** | Normal prod resolution |
 
-The key realization: **for every name except `dc01`, the policy never triggers**, so those queries **never enter** `AdminScope` — and therefore never hit the "no fallback" wall. They flow to the default scope like always. The "no fallback" rule only applies *after* routing; the FQDN filter makes sure we only route the names we've actually populated.
+The key realization: **for every name except `MM-DC1`, the policy never triggers**, so those queries **never enter** `AdminScope` — and therefore never hit the "no fallback" wall. They flow to the default scope like always. The "no fallback" rule only applies *after* routing; the FQDN filter makes sure we only route the names we've actually populated.
 
 ### ⚠️ Gotcha #2 — 1-to-1 correspondence is mandatory
 
@@ -373,7 +373,7 @@ Get this wrong and:
 - Record in scope but **no** FQDN in a policy → nothing routes there → the record is **never served**.
 - FQDN in a policy but **no** record in the scope → queries get routed into an **empty drawer** → **empty answer** for that name.
 
-You can list several FQDNs in one policy (`-Fqdn "EQ,dc01.contoso.com,dc02.contoso.com"`), but every one of them must have its matching record in the scope. Keep the scope **minimal** — just the DC A records you truly need. Resist the urge to recreate SRV/`_msdcs` in there; that path leads to madness.
+You can list several FQDNs in one policy (`-Fqdn "EQ,MM-DC1.contoso.com,MM-DC2.contoso.com"`), but every one of them must have its matching record in the scope. Keep the scope **minimal** — just the DC A records you truly need. Resist the urge to recreate SRV/`_msdcs` in there; that path leads to madness.
 
 ### ⚠️ Gotcha #3 — Scopes and policies do NOT replicate
 
