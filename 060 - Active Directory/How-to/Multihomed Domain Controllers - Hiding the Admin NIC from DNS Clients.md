@@ -13,7 +13,7 @@ That's the whole problem in one sentence: **the DC advertises an IP the clients 
 
 In this article we'll:
 
-- Demystify **how a DC registers itself in DNS** (no prior DNS expertise required — we'll build it up from scratch).
+- Demystify **how a DC registers itself in DNS**.
 - Understand **why** the failures are intermittent.
 - Fix it properly with a **rock-solid baseline** (stop publishing the admin IP, and clean up what's already there).
 - Go further with an **optional, surgical refinement** using DNS Policies and Zone Scopes — including all the sharp edges nobody warns you about.
@@ -35,6 +35,8 @@ Our lab setup for the whole article:
 ## Part 1 — DNS 101: How does a client even find a Domain Controller?
 
 Before fixing anything, let's understand what's happening under the hood. If you already know all this, skip to Part 2 — but honestly, this is where the "aha!" moment lives.
+
+
 
 ### 🔹 What is a DNS record, really?
 
