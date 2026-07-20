@@ -65,6 +65,8 @@ For a normal service with two reachable IPs, round-robin is fine. But here, **on
 
 > 🧠 **This is the root cause of the "it works intermittently" symptom.** Nothing is broken. DNS is doing exactly what it was designed to do — it just doesn't know that one of those IPs is unreachable for clients.
 
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-21-35.png>)
+
 ### 🔹 "Netmask ordering" — a partial helper, not a fix
 
 Windows DNS has a feature called **netmask ordering** (aka subnet prioritization): if the client's own subnet matches one of the returned records, DNS floats that record to the top. Sounds like it could save us, right?
@@ -86,6 +88,8 @@ So your admin NIC, left with defaults, cheerfully registers:
 ```text
 MM-DC1.contoso.com   →   A   →   172.16.1.1
 ```
+
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-27-14.png>)
 
 That's culprit #1: the host's own A record via the admin card.
 

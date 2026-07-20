@@ -9,5 +9,11 @@
   "pasteImage.forceUnixStyleSeparator": true,
   // Syntaxe a chevrons <...> : accepte tout caractere (parentheses, etc.)
   // sans encodage. Le chemin reste toujours relatif "./assets/...".
-  "pasteImage.insertPattern": "![](<./assets/${currentFileNameWithoutExt}/${imageFileName}>)"
+  "pasteImage.insertPattern": "![](<./assets/${currentFileNameWithoutExt}/${imageFileName}>)",
+
+  // Desactive le collage/drop d'image NATIF de VS Code en Markdown, qui genere
+  // des liens encodes en %20 sans chevrons (image non affichee dans la preview).
+  // On force ainsi l'usage de l'extension Paste Image (Ctrl+Alt+V).
+  "markdown.editor.filePaste.enabled": false,
+  "markdown.editor.drop.enabled": false
 }
