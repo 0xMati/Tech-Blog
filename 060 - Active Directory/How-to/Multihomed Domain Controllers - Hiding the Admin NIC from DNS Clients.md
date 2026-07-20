@@ -53,7 +53,7 @@ MM-DC1.contoso.com   →   A   →   192.168.99.1   (production NIC)
 MM-DC1.contoso.com   →   A   →   172.16.1.1   (administration NIC)
 ```
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-09-50.png>)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-02-34.png>)
 
 Now we have a problem waiting to happen. Which one does the client get?
 
@@ -65,7 +65,7 @@ For a normal service with two reachable IPs, round-robin is fine. But here, **on
 
 > 🧠 **This is the root cause of the "it works intermittently" symptom.** Nothing is broken. DNS is doing exactly what it was designed to do — it just doesn't know that one of those IPs is unreachable for clients.
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-21-35.png>)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-03-09.png>)
 
 ### 🔹 "Netmask ordering" — a partial helper, not a fix
 
@@ -89,7 +89,7 @@ So your admin NIC, left with defaults, cheerfully registers:
 MM-DC1.contoso.com   →   A   →   172.16.1.1
 ```
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-27-14.png>)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-04-22.png>)
 
 That's culprit #1: the host's own A record via the admin card.
 
@@ -111,9 +111,9 @@ Among the things Netlogon publishes is the **root-of-zone A record** — the rec
 | **DNS Client** | Host A record (`MM-DC1`) via each NIC | Per-adapter "Register this connection" setting |
 | **Netlogon** | Root-of-zone A (`LdapIpAddress`), `_msdcs` records, SRV records — for **all** bound IPs | `DnsAvoidRegisterRecords` registry value |
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-47-56.png>)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-05-18.png>)
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-49-46.png>)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-05-45.png>)
 
 To win, we address **both**. Let's go.
 
@@ -134,7 +134,7 @@ First, identify your adapters so you use the right name:
 Get-NetAdapter | Format-Table Name, InterfaceIndex, InterfaceDescription, Status
 ```
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-56-54.png>)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-06-43.png>)
 
 Say the admin card is named `Admin`. Disable its DNS registration:
 
@@ -145,7 +145,7 @@ Set-DnsClient -InterfaceAlias "Admin" `
     -UseSuffixWhenRegistering $false
 ```
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-17-01-38.png>)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-07-30.png>)
 
 - `RegisterThisConnectionsAddress $false` → the DNS Client stops registering the host A record via this NIC.
 - `UseSuffixWhenRegistering $false` → it also stops registering the connection-specific suffix. Belt and suspenders.
@@ -190,7 +190,7 @@ After the restart, Netlogon stops publishing that root A record entirely.
 > Restart-Service Netlogon
 > ```
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-17-05-56.png>)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-08-36.png>)
 
 > ⚠️ **Know the limitation — this is important.** `DnsAvoidRegisterRecords` filters by **record type**, **not by IP address**. Netlogon has no way to say "publish `192.168.99.x` but not `172.16.x`". It's all-or-nothing *per record type*. That's why the truly *selective* lever — the one that cares about *which NIC* — is **Step 1**. Step 2 is here to suppress the zone-root entries that would otherwise leak the admin IP because they aggregate every bound address.
 
