@@ -53,6 +53,8 @@ MM-DC1.contoso.com   →   A   →   192.168.99.1   (production NIC)
 MM-DC1.contoso.com   →   A   →   172.16.1.1   (administration NIC)
 ```
 
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-09-50.png>)
+
 Now we have a problem waiting to happen. Which one does the client get?
 
 ### 🔹 Round-robin: DNS deals the cards
