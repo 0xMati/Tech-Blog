@@ -111,9 +111,9 @@ Among the things Netlogon publishes is the **root-of-zone A record** — the rec
 | **DNS Client** | Host A record (`MM-DC1`) via each NIC | Per-adapter "Register this connection" setting |
 | **Netlogon** | Root-of-zone A (`LdapIpAddress`), `_msdcs` records, SRV records — for **all** bound IPs | `DnsAvoidRegisterRecords` registry value |
 
-![](assets/Multihomed%20Domain%20Controllers%20-%20Hiding%20the%20Admin%20NIC%20from%20DNS%20Clients/2026-07-20-16-47-56.png)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-47-56.png>)
 
-![](assets/Multihomed%20Domain%20Controllers%20-%20Hiding%20the%20Admin%20NIC%20from%20DNS%20Clients/2026-07-20-16-49-46.png)
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-49-46.png>)
 
 To win, we address **both**. Let's go.
 
