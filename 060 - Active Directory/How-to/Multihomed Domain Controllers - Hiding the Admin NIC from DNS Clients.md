@@ -93,7 +93,6 @@ MM-DC1.contoso.com   →   A   →   172.16.1.1
 
 That's culprit #1: the host's own A record via the admin card.
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-32-15.png>)
 
 ### 🔹 Culprit #2 — the Netlogon service (the DC locator records)
 
@@ -111,6 +110,10 @@ Among the things Netlogon publishes is the **root-of-zone A record** — the rec
 |---|---|---|
 | **DNS Client** | Host A record (`MM-DC1`) via each NIC | Per-adapter "Register this connection" setting |
 | **Netlogon** | Root-of-zone A (`LdapIpAddress`), `_msdcs` records, SRV records — for **all** bound IPs | `DnsAvoidRegisterRecords` registry value |
+
+![](assets/Multihomed%20Domain%20Controllers%20-%20Hiding%20the%20Admin%20NIC%20from%20DNS%20Clients/2026-07-20-16-47-56.png)
+
+![](assets/Multihomed%20Domain%20Controllers%20-%20Hiding%20the%20Admin%20NIC%20from%20DNS%20Clients/2026-07-20-16-49-46.png)
 
 To win, we address **both**. Let's go.
 
@@ -174,9 +177,18 @@ Restart-Service Netlogon
 
 After the restart, Netlogon stops publishing that root A record entirely.
 
-> ⚠️ **Know the limitation — this is important.** `DnsAvoidRegisterRecords` filters by **record type**, **not by IP address**. Netlogon has no way to say "publish `192.168.99.x` but not `172.16.x`". It's all-or-nothing *per record type*. That's why the truly *selective* lever — the one that cares about *which NIC* — is **Step 1**. Step 2 is here to suppress the zone-root/SRV entries that would otherwise leak the admin IP because they aggregate every bound address.
+> 🔸 **Is your DC a Global Catalog?** Then there's a second A record that leaks: `gc._msdcs.contoso.com` (internally the `GcIpAddress` record). It only exists on GC servers, and it aggregates every bound IP the same way — so it can hand out `172.16.1.1` too. If (and only if) you see the admin IP show up on `gc._msdcs`, add `GcIpAddress` alongside `LdapIpAddress`:
+>
+> ```powershell
+> Set-ItemProperty -Path $key -Name 'DnsAvoidRegisterRecords' `
+>     -Type MultiString -Value @('LdapIpAddress','GcIpAddress')
+>
+> Restart-Service Netlogon
+> ```
 
-> 📎 `LdapIpAddress` is the usual troublemaker for a multihomed DC. There are other mnemonics (`LdapIpAddress`, `Gc`, `GcIpAddress`, `DsaCname`, etc.) if you need finer control, but don't go carpet-bombing the list — removing SRV types you actually need will break DC location. Start with `LdapIpAddress`, verify, and only add more if a specific record keeps leaking.
+> ⚠️ **Know the limitation — this is important.** `DnsAvoidRegisterRecords` filters by **record type**, **not by IP address**. Netlogon has no way to say "publish `192.168.99.x` but not `172.16.x`". It's all-or-nothing *per record type*. That's why the truly *selective* lever — the one that cares about *which NIC* — is **Step 1**. Step 2 is here to suppress the zone-root entries that would otherwise leak the admin IP because they aggregate every bound address.
+
+> 📎 **Start minimal, expand only if it leaks.** `LdapIpAddress` (the zone-root A) is the usual troublemaker; `GcIpAddress` (the `gc._msdcs` A) is next in line on a GC. Both are **A records that carry an IP** — those are the ones worth suppressing here. Leave the **SRV** mnemonics (`Ldap`, `Dc`, `Gc`, `Kdc`…) alone: they point at the host *name* `MM-DC1.contoso.com`, which Step 1 already cleaned up — carpet-bombing them will break DC location. Add records one at a time, verify, repeat.
 
 ### 3️⃣ Clean up the records that are already there
 
