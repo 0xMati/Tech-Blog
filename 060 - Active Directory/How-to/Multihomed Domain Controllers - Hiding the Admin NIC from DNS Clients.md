@@ -198,34 +198,40 @@ After the restart, Netlogon stops publishing that root A record entirely.
 
 ### 3️⃣ Clean up the records that are already there
 
-Steps 1 and 2 stop **future** registrations. They do **not** retroactively delete what's already sitting in the zone. Time to sweep. Run these on the DNS server hosting `contoso.com`.
+Steps 1 and 2 stop **future** registrations. They do **not** retroactively delete what's already sitting in the zone. Time to sweep. Run these on the DNS server hosting the zone — and remember there are **two zones** to check: `contoso.com` **and** `_msdcs.contoso.com` (the DC-locator machinery keeps `gc` A records and GUID-based CNAMEs there too).
 
-First, *look* before you delete — find every A record pointing at the admin range:
-
-```powershell
-# Show all A records whose IP is in the admin range
-Get-DnsServerResourceRecord -ZoneName "contoso.com" -RRType A |
-    Where-Object { $_.RecordData.IPv4Address -like "172.16.*" } |
-    Format-Table HostName, @{n='IP';e={$_.RecordData.IPv4Address}}
-```
-
-Then remove the offending entries. The host A record:
+First, *look* before you delete — scan **both** zones for any A record in the admin range:
 
 ```powershell
-# Delete MM-DC1's admin A record
-Remove-DnsServerResourceRecord -ZoneName "contoso.com" -RRType A `
-    -Name "MM-DC1" -RecordData "172.16.1.1" -Force
+$adminPrefix = '172.16.'
+
+'contoso.com','_msdcs.contoso.com' | ForEach-Object {
+    Write-Host "=== Zone: $_ ===" -ForegroundColor Cyan
+    Get-DnsServerResourceRecord -ZoneName $_ -RRType A |
+        Where-Object { "$($_.RecordData.IPv4Address)" -like "$adminPrefix*" } |
+        Format-Table HostName, @{n='IP';e={"$($_.RecordData.IPv4Address)"}}
+}
 ```
 
-And the root-of-zone *"(same as parent folder)"* A record (its name is `@`):
+> 💡 **Why the `"$(...)"` quoting matters.** `RecordData.IPv4Address` is an `IPAddress` **object**, not a string. A bare `-like "172.16.*"` comparison silently matches **nothing**. Forcing it to a string with `"$($_.RecordData.IPv4Address)"` makes the filter actually work. (Ask me how I know. 😅)
+
+Now delete whatever showed up. The most reliable way is to **fetch the record object first, then remove it by `-InputObject`** — the `-Name`/`-RecordData` form is finicky about the IP type and often throws *"Failed to get … record"*:
 
 ```powershell
-# Delete the zone-root A record pointing at the admin IP
-Remove-DnsServerResourceRecord -ZoneName "contoso.com" -RRType A `
-    -Name "@" -RecordData "172.16.1.1" -Force
+'contoso.com','_msdcs.contoso.com' | ForEach-Object {
+    $zone = $_
+    Get-DnsServerResourceRecord -ZoneName $zone -RRType A |
+        Where-Object { "$($_.RecordData.IPv4Address)" -like "$adminPrefix*" } |
+        ForEach-Object {
+            Write-Host "Removing $($_.HostName) -> $($_.RecordData.IPv4Address) from $zone" -ForegroundColor Yellow
+            Remove-DnsServerResourceRecord -ZoneName $zone -InputObject $_ -Force
+        }
+}
 ```
 
-> 🔁 Don't forget the **`_msdcs.contoso.com`** zone. The DC-locator machinery keeps GUID-based CNAMEs and `gc` A records there too. Sweep it the same way, and repeat the whole cleanup for **every DC** you've hardened.
+> 🧹 This one loop cleans **both** zones and every offending record (host A, the zone-root *"(same as parent folder)"* `@` record, `gc`…) in a single pass — no need to know each name in advance. Repeat the whole cleanup for **every DC** you've hardened.
+
+> ✅ A *"Failed to get … record"* / *record not found* error just means that particular record wasn't there — harmless, carry on.
 
 ### ✅ Validate the baseline
 
