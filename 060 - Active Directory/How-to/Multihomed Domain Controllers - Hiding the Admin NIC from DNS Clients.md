@@ -93,6 +93,8 @@ MM-DC1.contoso.com   →   A   →   172.16.1.1
 
 That's culprit #1: the host's own A record via the admin card.
 
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-32-15.png>)
+
 ### 🔹 Culprit #2 — the Netlogon service (the DC locator records)
 
 This is the sneaky one. A domain controller is not just any server — it advertises a whole catalog of **SRV records** and special A records so that clients can *locate* domain services (LDAP, Kerberos, Global Catalog…). This is the job of the **Netlogon** service.

@@ -10,6 +10,9 @@
   // Syntaxe a chevrons <...> : accepte tout caractere (parentheses, etc.)
   // sans encodage. Le chemin reste toujours relatif "./assets/...".
   "pasteImage.insertPattern": "![](<./assets/${currentFileNameWithoutExt}/${imageFileName}>)",
+  // CLE : ne PAS encoder les espaces en %20 (defaut = urlEncodeSpace).
+  // On veut des espaces litteraux, geres par les chevrons <...>.
+  "pasteImage.encodePath": "none",
 
   // Desactive le collage/drop d'image NATIF de VS Code en Markdown, qui genere
   // des liens encodes en %20 sans chevrons (image non affichee dans la preview).
