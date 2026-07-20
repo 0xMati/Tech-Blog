@@ -24,7 +24,7 @@ Our lab setup for the whole article:
 |---|---|
 | Domain | `contoso.com` |
 | Domain controller | `dc01` |
-| **Production** NIC (clients live here) | `10.2.0.1` |
+| **Production** NIC (clients live here) | `192.168.99.1` |
 | **Administration** NIC (clients CANNOT reach this) | `172.16.1.1` |
 | Admin network (where admins query from) | `172.16.1.0/24` |
 
@@ -34,22 +34,22 @@ Our lab setup for the whole article:
 
 ## Part 1 — DNS 101: How does a client even find a Domain Controller?
 
-Before fixing anything, let's understand what's happening under the hood. If you already know all this, skip to Part 2 — but honestly, this is where the "aha!" moment lives.
+Before fixing anything, let's understand what's happening under the hood. If you already know all this, skip to Part 2.
 
 
 
 ### 🔹 What is a DNS record, really?
 
-DNS is basically a giant phone book. You ask "what's the IP of `dc01.contoso.com`?" and it answers "`10.2.0.1`". The entry that maps a name to an IPv4 address is called an **A record**.
+DNS is basically a giant phone book. You ask "what's the IP of `dc01.contoso.com`?" and it answers "`192.168.99.1`". The entry that maps a name to an IPv4 address is called an **A record**.
 
 ```text
-dc01.contoso.com   →   A   →   10.2.0.1
+dc01.contoso.com   →   A   →   192.168.99.1
 ```
 
 Simple. The catch: a single name can have **several** A records.
 
 ```text
-dc01.contoso.com   →   A   →   10.2.0.1     (production NIC)
+dc01.contoso.com   →   A   →   192.168.99.1   (production NIC)
 dc01.contoso.com   →   A   →   172.16.1.1   (administration NIC)
 ```
 
@@ -57,7 +57,7 @@ Now we have a problem waiting to happen. Which one does the client get?
 
 ### 🔹 Round-robin: DNS deals the cards
 
-When a name has multiple A records, the DNS server hands them out in a **rotating order** — this is called **round-robin**. First client gets `10.2.0.1` on top, next client gets `172.16.1.1` on top, and so on. It's a primitive load-balancing trick.
+When a name has multiple A records, the DNS server hands them out in a **rotating order** — this is called **round-robin**. First client gets `192.168.99.1` on top, next client gets `172.16.1.1` on top, and so on. It's a primitive load-balancing trick.
 
 For a normal service with two reachable IPs, round-robin is fine. But here, **one of the two IPs is a dead end for clients**. So roughly *half the time*, the client is told to go talk to `172.16.1.1` — a network it can't even route to. Hello, random failures. 👋
 
@@ -166,7 +166,7 @@ Restart-Service Netlogon
 
 After the restart, Netlogon stops publishing that root A record entirely.
 
-> ⚠️ **Know the limitation — this is important.** `DnsAvoidRegisterRecords` filters by **record type**, **not by IP address**. Netlogon has no way to say "publish `10.2.0.x` but not `172.16.x`". It's all-or-nothing *per record type*. That's why the truly *selective* lever — the one that cares about *which NIC* — is **Step 1**. Step 2 is here to suppress the zone-root/SRV entries that would otherwise leak the admin IP because they aggregate every bound address.
+> ⚠️ **Know the limitation — this is important.** `DnsAvoidRegisterRecords` filters by **record type**, **not by IP address**. Netlogon has no way to say "publish `192.168.99.x` but not `172.16.x`". It's all-or-nothing *per record type*. That's why the truly *selective* lever — the one that cares about *which NIC* — is **Step 1**. Step 2 is here to suppress the zone-root/SRV entries that would otherwise leak the admin IP because they aggregate every bound address.
 
 > 📎 `LdapIpAddress` is the usual troublemaker for a multihomed DC. There are other mnemonics (`LdapIpAddress`, `Gc`, `GcIpAddress`, `DsaCname`, etc.) if you need finer control, but don't go carpet-bombing the list — removing SRV types you actually need will break DC location. Start with `LdapIpAddress`, verify, and only add more if a specific record keeps leaking.
 
@@ -215,7 +215,7 @@ Get-DnsServerResourceRecord -ZoneName "contoso.com" -RRType A |
     Where-Object { $_.RecordData.IPv4Address -like "172.16.*" }
 ```
 
-If that last command returns **nothing**, 🎉 you're done — clients will now only ever receive `10.2.0.1`.
+If that last command returns **nothing**, 🎉 you're done — clients will now only ever receive `192.168.99.1`.
 
 A couple of good-hygiene checks while you're here:
 
@@ -231,7 +231,7 @@ Get-NetIPInterface | Sort-Object InterfaceMetric |
 
 ## Part 4 — The Optional Refinement: DNS Policies & Zone Scopes
 
-Everything above **hides** the admin IP from clients. But what if you *still* want the admin IP to be resolvable — **only** for machines on the admin network? For example, your admin workstations should reach `dc01` at `172.16.1.1`, while everyone else keeps getting `10.2.0.1`.
+Everything above **hides** the admin IP from clients. But what if you *still* want the admin IP to be resolvable — **only** for machines on the admin network? For example, your admin workstations should reach `dc01` at `172.16.1.1`, while everyone else keeps getting `192.168.99.1`.
 
 That's where **DNS Policies** and **Zone Scopes** come in (Windows Server **2016+**). This is a *refinement layered on top of* the baseline — never a replacement for it. And there is **no GUI** for this: it's PowerShell (or `dnscmd`) all the way.
 
