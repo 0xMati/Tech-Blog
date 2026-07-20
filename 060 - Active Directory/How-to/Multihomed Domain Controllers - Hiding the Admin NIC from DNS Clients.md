@@ -134,6 +134,8 @@ First, identify your adapters so you use the right name:
 Get-NetAdapter | Format-Table Name, InterfaceIndex, InterfaceDescription, Status
 ```
 
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-16-56-54.png>)
+
 Say the admin card is named `Admin`. Disable its DNS registration:
 
 ```powershell
@@ -142,6 +144,8 @@ Set-DnsClient -InterfaceAlias "Admin" `
     -RegisterThisConnectionsAddress $false `
     -UseSuffixWhenRegistering $false
 ```
+
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-17-01-38.png>)
 
 - `RegisterThisConnectionsAddress $false` → the DNS Client stops registering the host A record via this NIC.
 - `UseSuffixWhenRegistering $false` → it also stops registering the connection-specific suffix. Belt and suspenders.
