@@ -242,9 +242,11 @@ Force a fresh registration and confirm the admin IP does **not** come back:
 ipconfig /registerdns
 Restart-Service Netlogon
 
-# Wait a moment, then re-check the zone
-Get-DnsServerResourceRecord -ZoneName "contoso.com" -RRType A |
-    Where-Object { $_.RecordData.IPv4Address -like "172.16.*" }
+# Wait a moment, then re-check BOTH zones
+'contoso.com','_msdcs.contoso.com' | ForEach-Object {
+    Get-DnsServerResourceRecord -ZoneName $_ -RRType A |
+        Where-Object { "$($_.RecordData.IPv4Address)" -like "172.16.*" }
+}
 ```
 
 If that last command returns **nothing**, 🎉 you're done — clients will now only ever receive `192.168.99.1`.
