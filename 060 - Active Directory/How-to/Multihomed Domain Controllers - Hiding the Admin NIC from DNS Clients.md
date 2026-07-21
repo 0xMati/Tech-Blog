@@ -506,7 +506,39 @@ Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
 Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
 ```
 
-> 🧹 **Need to roll it back?** Remove in reverse order: `Remove-DnsServerQueryResolutionPolicy -ZoneName $Zone -Name $PolicyName -Force`, then `Remove-DnsServerZoneScope -ZoneName $Zone -Name $ScopeName -Force` (this drops the record inside it too), then `Remove-DnsServerClientSubnet -Name $SubnetName -Force`.
+> 🧹 **Need to roll it back?** Remove the objects in **reverse order** (the policy first, so no query is routed into a scope you're about to delete). Re-uses the same variables as the recap script:
+
+```powershell
+# --- Same variables as above ---
+$Zone       = "contoso.com"
+$DcName     = "MM-DC1"
+$SubnetName = "AdminSubnet"
+$ScopeName  = "AdminScope"
+$PolicyName = "AdminPolicy_$DcName"
+# --------------------
+
+# 1) Policy first (stop routing anything into the scope)
+if (Get-DnsServerQueryResolutionPolicy -ZoneName $Zone -Name $PolicyName -ErrorAction SilentlyContinue) {
+    Remove-DnsServerQueryResolutionPolicy -ZoneName $Zone -Name $PolicyName -Force
+}
+
+# 2) Zone scope (this also drops the static record living inside it)
+if (Get-DnsServerZoneScope -ZoneName $Zone -Name $ScopeName -ErrorAction SilentlyContinue) {
+    Remove-DnsServerZoneScope -ZoneName $Zone -Name $ScopeName -Force
+}
+
+# 3) Client subnet (last — nothing references it anymore)
+if (Get-DnsServerClientSubnet -Name $SubnetName -ErrorAction SilentlyContinue) {
+    Remove-DnsServerClientSubnet -Name $SubnetName -Force
+}
+
+# --- Verify everything is gone ---
+Get-DnsServerQueryResolutionPolicy -ZoneName $Zone | Where-Object Name -eq $PolicyName
+Get-DnsServerZoneScope    -ZoneName $Zone | Where-Object ZoneScope -eq $ScopeName
+Get-DnsServerClientSubnet | Where-Object Name -eq $SubnetName
+```
+
+The three `Get-*` at the end should return **nothing** — that's your confirmation the rollback is clean. Run this on **every DC** where you applied the recap script.
 
 ---
 
