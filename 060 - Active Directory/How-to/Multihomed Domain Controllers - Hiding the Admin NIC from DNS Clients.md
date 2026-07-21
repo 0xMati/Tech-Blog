@@ -342,7 +342,7 @@ Get-NetIPInterface | Sort-Object InterfaceMetric |
 > | **Baseline (Step 3️⃣)** | The DC no longer answers DNS on the admin IP | One clean default scope, self-healing, nothing to filter |
 > | **Isolated admin subnet** | A lot of simplicity: a static, hand-maintained `ProdScope` on every DC, forever | The DC stays reachable by admins **and** the admin record stays hidden from everyone else |
 >
-> Bottom line: **Part 4 is not just a nicety** — in an isolated-admin-network design it becomes the *only* mechanism that can hide the admin IP. But note it's a **heavier** build than the one Part 4 walks through (which assumes a clean default scope): you must add a `ProdScope` and route prod clients into it. If you can reach the prod IP over a route, do Step 3️⃣ and save yourself all of this.
+> Bottom line: **Part 4 is not just a nicety** — in an isolated-admin-network design it's the *only* thing that can hide the admin IP at all. But it's a permanent, hand-maintained workaround. If you can reach the prod IP over a route, do Step 3️⃣ and skip the whole mess.
 
 ---
 
