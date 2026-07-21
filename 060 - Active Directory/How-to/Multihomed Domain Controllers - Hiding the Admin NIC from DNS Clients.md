@@ -23,12 +23,15 @@ Our lab setup for the whole article:
 | Item | Value |
 |---|---|
 | Domain | `contoso.com` |
-| Domain controller | `MM-DC1` |
-| **Production** NIC (clients live here) | `192.168.99.1` |
-| **Administration** NIC (clients CANNOT reach this) | `172.16.1.1` |
-| Admin network (where admins query from) | `172.16.1.0/24` |
+| Domain controller | `MM-DC1` (DC + DNS) |
+| **Production** NIC (DC — *every* client queries DNS here) | `192.168.99.1` |
+| **Administration** NIC (OOB/management — to hide) | `172.16.1.1` |
+| Ordinary client network (no route to the admin net) | e.g. `10.0.0.0/24` |
+| Admin workstation network | `172.16.1.0/24` |
 
 > 💡 Throughout the article, remember the golden rule we're aiming for: **the admin NIC (`172.16.1.1`) must never end up in a DNS answer given to a normal client.**
+
+> 🗺️ **One routing assumption that makes the whole story consistent.** Admin workstations sit on `172.16.1.0/24`, but they point their DNS at the DC's **production** IP `192.168.99.1` (over a route) — **never** at `172.16.1.1`. So the admin NIC is a *pure management interface* (RDP, WinRM, backup, monitoring…), never a DNS resolver for anyone. That single decision is what lets us safely stop the DNS server from listening on the admin IP (Part 3, Step 3️⃣) **without** cutting the admins off — and it keeps Part 4 meaningful. (It assumes the route is **un-NATted**, so the DC still sees the real `172.16.1.x` source address — more on that in Part 4.)
 
 ---
 
@@ -75,9 +78,9 @@ Not quite. Netmask ordering **reorders** the list; it does **not remove** the ba
 
 ---
 
-## Part 2 — Who keeps registering the admin IP? (There are TWO culprits)
+## Part 2 — Who keeps registering the admin IP? (There are THREE culprits)
 
-Here's the key insight that trips up most people. On a domain controller, **two different components** register records in DNS, and you must tame **both** — otherwise you fix one and the other silently puts the bad IP back.
+Here's the key insight that trips up most people. On a domain controller, **three different components** register records in DNS, and you must tame **all of them** — otherwise you fix one and another silently puts the bad IP back.
 
 ### 🔹 Culprit #1 — the DNS Client service (per-NIC registration)
 
@@ -104,24 +107,39 @@ Among the things Netlogon publishes is the **root-of-zone A record** — the rec
 
 > ⚠️ **This is why fixing only the NIC checkbox isn't enough.** You untick the box, delete the record… and within the hour Netlogon puts `172.16.1.1` right back into the zone. Whack-a-mole. 🔨
 
-### 🔹 Summary of the two sources
+### 🔹 Culprit #3 — the DNS Server service itself (the one everyone forgets)
+
+Here's the culprit almost every tutorial misses — and the one that quietly defeats the other two fixes. **If the DC also runs the DNS Server role** (nearly all of them do), the DNS Server service **registers a host A record for every IP address it is configured to _listen on_**.
+
+By default, DNS listens on **all** of the server's IPs — including the admin NIC. So even after you untick the NIC checkbox (culprit #1) *and* muzzle Netlogon (culprit #2), the DNS Server calmly re-adds:
+
+```text
+MM-DC1.contoso.com   →   A   →   172.16.1.1
+```
+
+…straight into its own zone, **ignoring the DNS Client settings entirely** (it's a different service). This is spelled out in Microsoft **KB 2023004**, which lists **three** services responsible for the host A record: Netlogon, the DNS Server service, and the DHCP/DNS Client.
+
+> 🕵️ **How to catch it red-handed.** `repadmin /showobjmeta <DC> "<dnsNode DN>"` on the `dnsRecord` attribute shows the **Originating DSA** (the DC that last wrote the record). In the lab it pointed at the DC itself, with a version counter climbing to `Ver: 245` while the admin IP kept reappearing — proof the DNS Server was re-writing the record on its own.
+
+### 🔹 Summary of the three sources
 
 | Culprit | Registers | Controlled by |
 |---|---|---|
 | **DNS Client** | Host A record (`MM-DC1`) via each NIC | Per-adapter "Register this connection" setting |
 | **Netlogon** | Root-of-zone A (`LdapIpAddress`), `_msdcs` records, SRV records — for **all** bound IPs | `DnsAvoidRegisterRecords` registry value |
+| **DNS Server service** | Host A for **every IP it listens on** | DNS Server **"Listen On"** interfaces list |
 
 ![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-05-18.png>)
 
 ![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-05-45.png>)
 
-To win, we address **both**. Let's go.
+To win, we address **all three**. Let's go.
 
 ---
 
 ## Part 3 — The Baseline Fix (do this first, always)
 
-The strategy: **make the admin IP stop being published**, then **clean up** whatever is already in DNS. Three steps. This alone solves the intermittent-failure problem for clients.
+The strategy: **make the admin IP stop being published**, then **clean up** whatever is already in DNS. Four steps. This alone solves the intermittent-failure problem for clients.
 
 ### 1️⃣ Stop the admin NIC from registering itself
 
@@ -158,7 +176,9 @@ Get-DnsClient | Select-Object InterfaceAlias, RegisterThisConnectionsAddress
 
 > 🛠️ **The registry equivalent** (handy for GPO or scripting): on the admin interface key
 > `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{GUID}`
-> set `DisableDynamicUpdate = 1`. This is exactly what the cmdlet does under the covers.
+> the cmdlet sets **`RegistrationEnabled = 0`** for that NIC. (It does **not** set the broader,
+> server-wide `DisableDynamicUpdate` — a different switch you don't need here, and one that would
+> also stop your *production* NIC from registering.)
 
 That neutralizes **culprit #1**. But Netlogon (culprit #2) is still out there.
 
@@ -196,9 +216,37 @@ After the restart, Netlogon stops publishing that root A record entirely.
 
 > 📎 **Start minimal, expand only if it leaks.** `LdapIpAddress` (the zone-root A) is the usual troublemaker; `GcIpAddress` (the `gc._msdcs` A) is next in line on a GC. Both are **A records that carry an IP** — those are the ones worth suppressing here. Leave the **SRV** mnemonics (`Ldap`, `Dc`, `Gc`, `Kdc`…) alone: they point at the host *name* `MM-DC1.contoso.com`, which Step 1 already cleaned up — carpet-bombing them will break DC location. Add records one at a time, verify, repeat.
 
-### 3️⃣ Clean up the records that are already there
+### 3️⃣ Stop the DNS Server from listening on (and auto-registering) the admin IP
 
-Steps 1 and 2 stop **future** registrations. They do **not** retroactively delete what's already sitting in the zone. Time to sweep. Run these on the DNS server hosting the zone — and remember there are **two zones** to check: `contoso.com` **and** `_msdcs.contoso.com` (the DC-locator machinery keeps `gc` A records and GUID-based CNAMEs there too).
+This is the step the forums forget — and without it, the two fixes above are silently undone (this is exactly what culprit #3 does). Tell the DNS Server service to **listen only on the production IP**, so it stops auto-registering the admin address.
+
+There is **no** `-ListenAddresses` parameter on `Set-DnsServerSetting`; the reliable, long-standing way is `dnscmd` — the CLI equivalent of unticking the admin IP under **DNS console → server Properties → Interfaces → _Listen on only the following IP addresses_**:
+
+```powershell
+# Restrict DNS listening to the production IP only
+dnscmd MM-DC1 /ResetListenAddresses 192.168.99.1
+
+Restart-Service DNS
+```
+
+Verify what the service **actually** listens on — don't trust `Get-DnsServer` here, its `ListenAddresses` reads back empty on some versions. Check the live sockets instead:
+
+```powershell
+Get-NetTCPConnection -LocalPort 53 -State Listen |
+    Select-Object LocalAddress, LocalPort | Sort-Object LocalAddress -Unique
+```
+
+The admin IP (`172.16.1.1`) must **not** appear — only `192.168.99.1` (plus the loopbacks `127.0.0.1` / `::1`).
+
+> 🧭 **Also check the zone's Name Servers tab.** DNS console → zone `contoso.com` → Properties → **Name Servers**: if `172.16.1.1` is listed for this DC, remove it. (It's often just a live reflection of the A records — but verify.)
+
+> ⛔ **Don't reach for the global `DisableDynamicUpdate`.** You'll find advice to set `DisableDynamicUpdate = 1` on `HKLM\...\Tcpip\Parameters` (server-wide). Skip it: it's too broad (it also kills the **production** NIC's registration) and — proven in the lab — **unnecessary** once this Listen On step is done. Note too that `Restart-Service Dnscache` is blocked by Windows, so that setting would only take effect after a reboot anyway.
+
+That neutralizes **culprit #3** — the real reason the admin IP kept coming back.
+
+### 4️⃣ Clean up the records that are already there
+
+Steps 1, 2 and 3 stop **future** registrations. They do **not** retroactively delete what's already sitting in the zone. Time to sweep. Run these on the DNS server hosting the zone — and remember there are **two zones** to check: `contoso.com` **and** `_msdcs.contoso.com` (the DC-locator machinery keeps `gc` A records and GUID-based CNAMEs there too).
 
 First, *look* before you delete — scan **both** zones for any A record in the admin range:
 
@@ -231,6 +279,8 @@ Now delete whatever showed up. The most reliable way is to **fetch the record ob
 
 > 🧹 This one loop cleans **both** zones and every offending record (host A, the zone-root *"(same as parent folder)"* `@` record, `gc`…) in a single pass — no need to know each name in advance. Repeat the whole cleanup for **every DC** you've hardened.
 
+> 🔁 **On AD-integrated zones, delete on _every_ DC before forcing replication.** A record's IPs are values of a single multi-valued attribute (`dnsRecord`) that AD replicates as one block, last-writer-wins. If just **one** replica still holds the admin IP, it will **resurrect** it forest-wide at the next replication cycle (that mysterious "it comes back after ~15 min"). Purge it on **all** DCs first, *then* `repadmin /syncall /AdePq` — never sync while one DC is still dirty, or it re-poisons the others.
+
 > ✅ A *"Failed to get … record"* / *record not found* error just means that particular record wasn't there — harmless, carry on.
 
 ### ✅ Validate the baseline
@@ -259,15 +309,34 @@ Get-NetIPInterface | Sort-Object InterfaceMetric |
     Format-Table InterfaceAlias, AddressFamily, InterfaceMetric
 ```
 
-> 🧭 **Fun fact / sanity note:** Microsoft has always recommended *against* multihomed domain controllers precisely because of this DNS behavior (and routing quirks). If you can avoid the second NIC entirely, do — but when a management network is a hard requirement, the three steps above are your friend.
+> 🧭 **Fun fact / sanity note:** Microsoft has always recommended *against* multihomed domain controllers precisely because of this DNS behavior (and routing quirks). If you can avoid the second NIC entirely, do — but when a management network is a hard requirement, the four steps above are your friend.
 
 ![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-17-15-35.png>)
+
+> ⚠️ **Caveat before you go further — "Listen On" and "reachability" are two sides of the same coin.**
+> Step 3️⃣ removed the admin IP from the DNS server's **Listen On** list. Remember that *listening* and *auto-registering* are **coupled**: dropping `172.16.1.1` from Listen On kills the rogue A record **and** stops the DC from answering **any** DNS query sent to `172.16.1.1:53`.
+>
+> That's usually exactly what you want — but it has a consequence:
+>
+> - ✅ **If the admin subnet can route to the DC's production IP** (`192.168.99.1`) — our setup — admin clients point their DNS at `192.168.99.1`, present their real `172.16.1.0/24` source address (route must be **un-NATted**), and everything below (Part 4) still works. No conflict. This is the recommended design.
+> - ⛔ **If the admin subnet is fully isolated** (no route to `192.168.99.1`) **and** you still need this DC to serve DNS to those admin clients, then you **cannot** apply Step 3️⃣ on this DC — the admin clients would lose their only resolver.
+>
+> In that isolated case the trade-off flips: you **keep** `172.16.1.1` in Listen On (so the DC stays reachable), which means the DNS Server **will** keep auto-registering `MM-DC1 → 172.16.1.1`. Since you can no longer *delete* the record, the **only** way to keep it hidden from everyone else is to **rely entirely on the Zone Scopes of Part 4** to serve that answer *exclusively* to the admin subnet.
+>
+> | Scenario | You sacrifice | You keep |
+> |---|---|---|
+> | **Baseline (Step 3️⃣)** | The DC no longer answers DNS on the admin IP | Simplicity: the admin record **never exists** — nothing to filter |
+> | **Isolated admin subnet** | Simplicity: you **must** deploy Zone Scopes | The DC stays reachable by admins **and** the admin record stays hidden from everyone else |
+>
+> Bottom line: **Part 4 is not just a nicety** — in an isolated-admin-network design it becomes the *only* mechanism that can hide the admin IP, because Step 3️⃣ is off the table there.
 
 ---
 
 ## Part 4 — The Optional Refinement: DNS Policies & Zone Scopes
 
 Everything above **hides** the admin IP from clients. But what if you *still* want the admin IP to be resolvable — **only** for machines on the admin network? For example, your admin workstations should reach `MM-DC1` at `172.16.1.1`, while everyone else keeps getting `192.168.99.1`.
+
+> 🧩 **Prerequisite — this only makes sense with asymmetric reachability.** This refinement assumes the admin workstations on `172.16.1.0/24` **can** actually reach `172.16.1.1` (they're on that network), while ordinary clients **cannot**. It also assumes those admins query DNS on the DC's prod IP `192.168.99.1` over an **un-NATted** route, so the DC still sees their real `172.16.1.x` source. If the admin network is genuinely isolated (no route to the prod IP) or NATted, stop at Part 3 — serving an IP nobody can route to just recreates the original bug.
 
 That's where **DNS Policies** and **Zone Scopes** come in (Windows Server **2016+**). This is a *refinement layered on top of* the baseline — never a replacement for it. And there is **no GUI** for this: it's PowerShell (or `dnscmd`) all the way.
 
@@ -304,14 +373,16 @@ Add-DnsServerClientSubnet -Name "AdminSubnet" -IPv4Subnet "172.16.1.0/24"
 Get-DnsServerClientSubnet   # verify
 ```
 
-> 🔎 **How to be sure which subnet to declare?** From an admin box, check which source IP it uses to reach the DC:
+> 🔎 **How to be sure which subnet to declare?** From an admin box, check which source IP it presents when it queries the DC — i.e. the source it uses to reach the DC's **production** IP over the route (that's the address the policy will match, not the admin NIC's IP):
 > ```powershell
-> Find-NetRoute -RemoteIPAddress "172.16.1.1" |
+> Find-NetRoute -RemoteIPAddress "192.168.99.1" |
 >     Select-Object -First 1 IPAddress, InterfaceAlias
 > ```
 > The returned `IPAddress` is the source — its subnet is what goes into `AdminSubnet`.
 
 > ☝️ **Gotcha — DNS forwarders.** Client-subnet matching only works if the admin machines query the DC **directly**. If they go through an intermediate DNS forwarder, the authoritative DC sees the *forwarder's* IP as the source, not the admin's — and the policy won't match the way you expect. (In a simple, forwarder-free setup, you're fine.)
+
+> 🛑 **Gotcha — NAT on the admin→prod route.** Same trap, different cause. Because our admins reach the DC's prod IP `192.168.99.1` *across a route*, that route must **not** NAT their traffic. If the gateway rewrites the source to its own IP, the DC sees that instead of `172.16.1.x`, the `ClientSubnet` match fails, and the admin quietly falls through to the default scope (getting `192.168.99.1` instead of `172.16.1.1`). Keep the admin→prod path routed, not NATted.
 
 ### 2️⃣ Create the scope — at the ZONE level
 
@@ -429,11 +500,12 @@ Records in an AD-integrated zone replicate between DCs via Active Directory. But
 ## TL;DR
 
 - A **multihomed DC** publishes **all** its IPs in DNS. Thanks to **round-robin**, clients randomly get the **admin IP they can't reach** → intermittent failures.
-- **Two** components register that IP: the **DNS Client** (per-NIC) and **Netlogon** (DC-locator records, including the zone-root `LdapIpAddress`). Fix **both**.
+- **Three** components register that IP: the **DNS Client** (per-NIC), **Netlogon** (DC-locator records, including the zone-root `LdapIpAddress`), and — the one everyone forgets — the **DNS Server service**, which auto-registers a host A for **every IP it listens on**. Fix **all three**.
 - **Baseline (do this first):**
   1. `Set-DnsClient -RegisterThisConnectionsAddress $false` on the **admin NIC**.
   2. `DnsAvoidRegisterRecords = LdapIpAddress` under Netlogon, then restart it.
-  3. **Purge** the leftover `172.16.x` A records (host + zone-root `@` + `_msdcs`).
+  3. `dnscmd <DC> /ResetListenAddresses <prodIP>` + `Restart-Service DNS` so DNS stops **listening on** (and registering) the admin IP. Also clear the admin IP from the zone's **Name Servers** tab.
+  4. **Purge** the leftover `172.16.x` A records (host + zone-root `@` + `_msdcs`) — on **every** DC, *then* `repadmin /syncall` (or one replica resurrects it).
 - **Optional refinement** (Server 2016+): **DNS Policies / Zone Scopes** let the **admin subnet** still resolve the admin IP — but:
   - **No fallback** inside a scope → always **target the DC FQDN**, never the whole zone.
   - **1-to-1**: each name = one record in the scope **+** one FQDN in a policy.
