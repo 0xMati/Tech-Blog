@@ -105,6 +105,10 @@ Netlogon re-registers this catalog **on startup and roughly every hour**. And cr
 
 Among the things Netlogon publishes is the **root-of-zone A record** — the record for `contoso.com` itself (shown as *"(same as parent folder)"* in the DNS console). Internally this is called the **`LdapIpAddress`** record. If the admin IP is bound, Netlogon adds `172.16.1.1` there too.
 
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-05-18.png>)
+
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-05-45.png>)
+
 > ⚠️ **This is why fixing only the NIC checkbox isn't enough.** You untick the box, delete the record… and within the hour Netlogon puts `172.16.1.1` right back into the zone. Whack-a-mole. 🔨
 
 ### 🔹 Culprit #3 — the DNS Server service itself (the one everyone forgets)
@@ -129,9 +133,7 @@ MM-DC1.contoso.com   →   A   →   172.16.1.1
 | **Netlogon** | Root-of-zone A (`LdapIpAddress`), `_msdcs` records, SRV records — for **all** bound IPs | `DnsAvoidRegisterRecords` registry value |
 | **DNS Server service** | Host A for **every IP it listens on** | DNS Server **"Listen On"** interfaces list |
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-05-18.png>)
 
-![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-20-20-05-45.png>)
 
 To win, we address **all three**. Let's go.
 
@@ -238,6 +240,8 @@ Get-NetTCPConnection -LocalPort 53 -State Listen |
 
 The admin IP (`172.16.1.1`) must **not** appear — only `192.168.99.1` (plus the loopbacks `127.0.0.1` / `::1`).
 
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-21-10-57-58.png>)
+
 > 🧭 **Also check the zone's Name Servers tab.** DNS console → zone `contoso.com` → Properties → **Name Servers**: if `172.16.1.1` is listed for this DC, remove it. (It's often just a live reflection of the A records — but verify.)
 
 > ⛔ **Don't reach for the global `DisableDynamicUpdate`.** You'll find advice to set `DisableDynamicUpdate = 1` on `HKLM\...\Tcpip\Parameters` (server-wide). Skip it: it's too broad (it also kills the **production** NIC's registration) and — proven in the lab — **unnecessary** once this Listen On step is done. Note too that `Restart-Service Dnscache` is blocked by Windows, so that setting would only take effect after a reboot anyway.
@@ -321,14 +325,24 @@ Get-NetIPInterface | Sort-Object InterfaceMetric |
 > - ✅ **If the admin subnet can route to the DC's production IP** (`192.168.99.1`) — our setup — admin clients point their DNS at `192.168.99.1`, present their real `172.16.1.0/24` source address (route must be **un-NATted**), and everything below (Part 4) still works. No conflict. This is the recommended design.
 > - ⛔ **If the admin subnet is fully isolated** (no route to `192.168.99.1`) **and** you still need this DC to serve DNS to those admin clients, then you **cannot** apply Step 3️⃣ on this DC — the admin clients would lose their only resolver.
 >
-> In that isolated case the trade-off flips: you **keep** `172.16.1.1` in Listen On (so the DC stays reachable), which means the DNS Server **will** keep auto-registering `MM-DC1 → 172.16.1.1`. Since you can no longer *delete* the record, the **only** way to keep it hidden from everyone else is to **rely entirely on the Zone Scopes of Part 4** to serve that answer *exclusively* to the admin subnet.
+> In that isolated case the trade-off flips: you **keep** `172.16.1.1` in Listen On (so the DC stays reachable), which means the DNS Server **will** keep auto-registering `MM-DC1 → 172.16.1.1`. And here's the catch most people miss: **dynamic auto-registration always writes into the _default_ scope.** So the default scope now holds *both* `192.168.99.1` **and** `172.16.1.1` — and the vanilla Part 4 policy (admin subnet → `AdminScope`, *everyone else* → default) would hand your **production** clients that polluted default scope. The double-resolution bug is back. ❗
+>
+> Part 4 as written only works because Step 3️⃣ ran first and left the **default scope clean** — `AdminScope` then merely *adds* an answer for admins. Take Step 3️⃣ away and that premise collapses.
+>
+> To actually hide the admin IP when the default scope is polluted, `AdminScope` alone is **not enough** — you need a **three-scope** design that routes *everyone* out of the dirty default scope:
+>
+> 1. **`AdminScope`** → holds `172.16.1.1`, served **to the admin subnet** (policy #1).
+> 2. **`ProdScope`** → holds **only** `192.168.99.1` (static), served **to everyone else** (policy #2). This is what keeps prod clients away from the polluted default scope.
+> 3. **Default scope** → polluted by auto-registration, now served **to nobody**.
+>
+> Note the cost: `ProdScope` is **static**, so dynamic registration no longer maintains the DC's prod A record for you — you carry it by hand (and repeat all of this on every DC, since scopes/policies don't replicate — see Part 5).
 >
 > | Scenario | You sacrifice | You keep |
 > |---|---|---|
-> | **Baseline (Step 3️⃣)** | The DC no longer answers DNS on the admin IP | Simplicity: the admin record **never exists** — nothing to filter |
-> | **Isolated admin subnet** | Simplicity: you **must** deploy Zone Scopes | The DC stays reachable by admins **and** the admin record stays hidden from everyone else |
+> | **Baseline (Step 3️⃣)** | The DC no longer answers DNS on the admin IP | Simplicity: the admin record **never exists** — one clean default scope, nothing to filter |
+> | **Isolated admin subnet** | A lot of simplicity: **three** scopes + a static, hand-maintained `ProdScope`, on every DC | The DC stays reachable by admins **and** the admin record stays hidden from everyone else |
 >
-> Bottom line: **Part 4 is not just a nicety** — in an isolated-admin-network design it becomes the *only* mechanism that can hide the admin IP, because Step 3️⃣ is off the table there.
+> Bottom line: **Part 4 is not just a nicety** — in an isolated-admin-network design it becomes the *only* mechanism that can hide the admin IP. But note it's a **heavier** build than the one Part 4 walks through (which assumes a clean default scope): you must add a `ProdScope` and route prod clients into it. If you can reach the prod IP over a route, do Step 3️⃣ and save yourself all of this.
 
 ---
 
