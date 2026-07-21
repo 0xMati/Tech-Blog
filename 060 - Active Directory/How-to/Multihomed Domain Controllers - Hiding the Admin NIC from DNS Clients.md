@@ -327,20 +327,20 @@ Get-NetIPInterface | Sort-Object InterfaceMetric |
 >
 > In that isolated case the trade-off flips: you **keep** `172.16.1.1` in Listen On (so the DC stays reachable), which means the DNS Server **will** keep auto-registering `MM-DC1 → 172.16.1.1`. And here's the catch most people miss: **dynamic auto-registration always writes into the _default_ scope.** So the default scope now holds *both* `192.168.99.1` **and** `172.16.1.1` — and the vanilla Part 4 policy (admin subnet → `AdminScope`, *everyone else* → default) would hand your **production** clients that polluted default scope. The double-resolution bug is back. ❗
 >
-> Part 4 as written only works because Step 3️⃣ ran first and left the **default scope clean** — `AdminScope` then merely *adds* an answer for admins. Take Step 3️⃣ away and that premise collapses.
+> Part 4 as written only works because Step 3️⃣ ran first and left the **default scope clean** — `AdminScope` then merely *adds* an answer for admins. Take Step 3️⃣ away and that premise collapses: `AdminScope` hides nothing from prod clients, because prod clients read the **polluted default scope**, not `AdminScope`.
 >
-> To actually hide the admin IP when the default scope is polluted, `AdminScope` alone is **not enough** — you need a **three-scope** design that routes *everyone* out of the dirty default scope:
+> In theory you could patch it by adding a second scope — a static **`ProdScope`** holding *only* `192.168.99.1` — and a policy routing every non-admin query for `MM-DC1` into it, so prod clients never touch the dirty default scope. It works on paper, but it's **not worth it in practice:**
 >
-> 1. **`AdminScope`** → holds `172.16.1.1`, served **to the admin subnet** (policy #1).
-> 2. **`ProdScope`** → holds **only** `192.168.99.1` (static), served **to everyone else** (policy #2). This is what keeps prod clients away from the polluted default scope.
-> 3. **Default scope** → polluted by auto-registration, now served **to nobody**.
+> - `ProdScope` is **static** — dynamic registration only ever writes the default scope, so you now **hand-maintain** the DC's own prod A record forever, and it never self-heals (IP change, scavenging, rebuild… all manual).
+> - Scopes and policies **don't replicate** (see Part 5), so you repeat this static plumbing on **every DC**, for **every DC name**.
+> - You're permanently papering over a record you can't delete — any gap in the policies and the admin IP leaks straight back out.
 >
-> Note the cost: `ProdScope` is **static**, so dynamic registration no longer maintains the DC's prod A record for you — you carry it by hand (and repeat all of this on every DC, since scopes/policies don't replicate — see Part 5).
+> Compare that to Step 3️⃣: one command, the admin record simply **never exists**, nothing to filter, self-healing. The lesson is blunt — **make the admin subnet route to the prod IP so you *can* run Step 3️⃣.** The isolated design is a last resort, not a goal.
 >
 > | Scenario | You sacrifice | You keep |
 > |---|---|---|
-> | **Baseline (Step 3️⃣)** | The DC no longer answers DNS on the admin IP | Simplicity: the admin record **never exists** — one clean default scope, nothing to filter |
-> | **Isolated admin subnet** | A lot of simplicity: **three** scopes + a static, hand-maintained `ProdScope`, on every DC | The DC stays reachable by admins **and** the admin record stays hidden from everyone else |
+> | **Baseline (Step 3️⃣)** | The DC no longer answers DNS on the admin IP | One clean default scope, self-healing, nothing to filter |
+> | **Isolated admin subnet** | A lot of simplicity: a static, hand-maintained `ProdScope` on every DC, forever | The DC stays reachable by admins **and** the admin record stays hidden from everyone else |
 >
 > Bottom line: **Part 4 is not just a nicety** — in an isolated-admin-network design it becomes the *only* mechanism that can hide the admin IP. But note it's a **heavier** build than the one Part 4 walks through (which assumes a clean default scope): you must add a `ProdScope` and route prod clients into it. If you can reach the prod IP over a route, do Step 3️⃣ and save yourself all of this.
 
