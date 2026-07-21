@@ -509,15 +509,75 @@ Get-DnsServerResourceRecord -ZoneName $Zone -ZoneScope $ScopeName -Name $DcName 
 Get-DnsServerQueryResolutionPolicy -ZoneName $Zone -Name $PolicyName
 ```
 
-Then test resolution from both sides — the admin box must get the admin IP, everyone else the prod IP:
+### 🧪 Lab-only — making the admin box actually reach the DC
+
+Before you can test, there's a **lab-specific** hurdle to clear. In a real network, admin machines reach the DC's production IP through a proper **L3 router/firewall** that preserves their `172.16.1.x` source. In a typical home lab there's no such router — **the DC itself is the only thing bridging the two subnets** (it has a leg on each). That triggers a couple of Windows behaviours you must relax **for the lab only**.
+
+> ⚠️ **This whole subsection is a lab crutch, not a production step.** In production you never route client traffic *through* a DC's NICs — a dedicated router does it, and you leave the DC's host model alone. Here we bend it just so a single test VM can present a `172.16.1.x` source to the DC.
+
+**On the test client (the VM):** give it an admin-side identity, but keep the DC's **production** IP as its DNS server, and use the DC's **admin** leg as its gateway (that's the on-link router into the other subnet):
+
+| Setting | Value |
+|---|---|
+| IP address | `172.16.1.9` |
+| Subnet mask | `255.255.255.0` |
+| Default gateway | `172.16.1.1` (the DC's admin leg — on-link) |
+| Preferred DNS | `192.168.99.1` (the DC's prod IP — what we query) |
+
+**On the DC:** enable IP forwarding (so it routes between its two legs) **and** the weak host model (so it accepts, on its admin leg, a packet destined to its *prod* IP — the default *strong* host model would drop it):
 
 ```powershell
-# From an ADMIN box (source 172.16.1.x) -> expect 172.16.1.1
+# Identify the two NIC aliases first
+Get-NetAdapter | Format-Table Name, InterfaceAlias, InterfaceDescription, Status
+
+# Current forwarding state (all Disabled by default)
+Get-NetIPInterface | Select-Object InterfaceAlias, AddressFamily, Forwarding
+
+# Route between the two legs (adapt the aliases: here "Admin" and "Ethernet")
+Set-NetIPInterface -InterfaceAlias "Admin"    -Forwarding Enabled
+Set-NetIPInterface -InterfaceAlias "Ethernet" -Forwarding Enabled
+
+# Accept/emit cross-interface packets (weak host model)
+Set-NetIPInterface -InterfaceAlias "Admin"    -WeakHostReceive Enabled -WeakHostSend Enabled
+Set-NetIPInterface -InterfaceAlias "Ethernet" -WeakHostReceive Enabled -WeakHostSend Enabled
+```
+
+Sanity-check the path from the VM before resolving — you want the DC reachable on port 53 **with your admin source preserved**:
+
+```powershell
+Test-NetConnection 192.168.99.1 -Port 53
+```
+
+The key line is `SourceAddress : 172.16.1.9` with `TcpTestSucceeded : True` — that proves the DC sees your real `172.16.1.x` source (the very thing `ClientSubnet` matches on). If it's `False`, the forwarding/host-model tweak above isn't in effect yet.
+
+### ✅ Test resolution from both sides
+
+The admin box must get the admin IP, everyone else the prod IP:
+
+```powershell
+# From the ADMIN box (source 172.16.1.x) -> expect 172.16.1.1
+Clear-DnsClientCache
 Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
 
-# From an ORDINARY client            -> expect 192.168.99.1
+# From an ORDINARY client (source 192.168.99.x) -> expect 192.168.99.1
+Clear-DnsClientCache
 Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
 ```
+
+> 🧠 Both commands are **identical** — what changes is the **machine running them** (its source IP). Same query, same server, different source → different scope → different answer. That's the whole point.
+
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-21-11-37-37.png>)
+
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-21-11-49-51.png>)
+
+> 🧹 **Lab cleanup — undo the networking crutch.** Once you're done testing, put the DC's host model back to its safe defaults (leave forwarding/weak-host on only if this box is genuinely meant to route):
+>
+> ```powershell
+> Set-NetIPInterface -InterfaceAlias "Admin"    -Forwarding Disabled -WeakHostReceive Disabled -WeakHostSend Disabled
+> Set-NetIPInterface -InterfaceAlias "Ethernet" -Forwarding Disabled -WeakHostReceive Disabled -WeakHostSend Disabled
+> ```
+>
+> And revert the test VM to its normal subnet/gateway.
 
 > 🧹 **Need to roll it back?** Remove the objects in **reverse order** (the policy first, so no query is routed into a scope you're about to delete). Re-uses the same variables as the recap script:
 
