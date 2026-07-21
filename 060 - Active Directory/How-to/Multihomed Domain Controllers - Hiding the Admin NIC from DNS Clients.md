@@ -449,6 +449,65 @@ In our case there's **only one scope**, so the weight is irrelevant — `1` is j
 
 > 🧩 Don't confuse **weight** (splits traffic *between scopes*) with **`-ProcessingOrder`** (decides which *policy* is evaluated first when you have several). With a single scope and a single policy, neither matters much yet.
 
+### 🔹 Putting it all together — the recap script
+
+Here's the whole Part 4 in one block. Adjust the variables at the top, and run it **on every DC** that should apply this behavior (remember: scopes and policies **don't replicate** — see Part 5). It's idempotent-ish: it checks for each object before creating it, so you can re-run it safely.
+
+```powershell
+# --- Adjust these ---
+$Zone       = "contoso.com"
+$DcName     = "MM-DC1"                 # short name of the DC's A record
+$DcFqdn     = "$DcName.$Zone"
+$AdminIp    = "172.16.1.1"             # the admin IP to serve to admins only
+$AdminNet   = "172.16.1.0/24"          # the admin SOURCE subnet (requester's IP)
+$SubnetName = "AdminSubnet"
+$ScopeName  = "AdminScope"
+$PolicyName = "AdminPolicy_$DcName"
+# --------------------
+
+# 1) Client subnet (the admin source network)
+if (-not (Get-DnsServerClientSubnet -Name $SubnetName -ErrorAction SilentlyContinue)) {
+    Add-DnsServerClientSubnet -Name $SubnetName -IPv4Subnet $AdminNet
+}
+
+# 2) Zone scope (on the ZONE, not the record)
+if (-not (Get-DnsServerZoneScope -ZoneName $Zone -Name $ScopeName -ErrorAction SilentlyContinue)) {
+    Add-DnsServerZoneScope -ZoneName $Zone -Name $ScopeName
+}
+
+# 3) The admin A record, INSIDE the scope (static)
+if (-not (Get-DnsServerResourceRecord -ZoneName $Zone -ZoneScope $ScopeName -Name $DcName -RRType A -ErrorAction SilentlyContinue)) {
+    Add-DnsServerResourceRecord -ZoneName $Zone -ZoneScope $ScopeName -A -Name $DcName -IPv4Address $AdminIp
+}
+
+# 4) The policy: admin subnet + this FQDN -> the scope
+if (-not (Get-DnsServerQueryResolutionPolicy -ZoneName $Zone -Name $PolicyName -ErrorAction SilentlyContinue)) {
+    Add-DnsServerQueryResolutionPolicy -Name $PolicyName -Action ALLOW `
+        -ClientSubnet "EQ,$SubnetName" `
+        -Fqdn "EQ,$DcFqdn" `
+        -ZoneScope "$ScopeName,1" `
+        -ZoneName $Zone
+}
+
+# --- Verify ---
+Get-DnsServerClientSubnet -Name $SubnetName
+Get-DnsServerZoneScope    -ZoneName $Zone
+Get-DnsServerResourceRecord -ZoneName $Zone -ZoneScope $ScopeName -Name $DcName -RRType A
+Get-DnsServerQueryResolutionPolicy -ZoneName $Zone -Name $PolicyName
+```
+
+Then test resolution from both sides — the admin box must get the admin IP, everyone else the prod IP:
+
+```powershell
+# From an ADMIN box (source 172.16.1.x) -> expect 172.16.1.1
+Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
+
+# From an ORDINARY client            -> expect 192.168.99.1
+Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
+```
+
+> 🧹 **Need to roll it back?** Remove in reverse order: `Remove-DnsServerQueryResolutionPolicy -ZoneName $Zone -Name $PolicyName -Force`, then `Remove-DnsServerZoneScope -ZoneName $Zone -Name $ScopeName -Force` (this drops the record inside it too), then `Remove-DnsServerClientSubnet -Name $SubnetName -Force`.
+
 ---
 
 ## Part 5 — The Sharp Edges of Zone Scopes (read this before you deploy)
