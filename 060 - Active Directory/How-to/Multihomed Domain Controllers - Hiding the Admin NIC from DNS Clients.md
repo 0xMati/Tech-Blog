@@ -408,6 +408,8 @@ Now add the admin A record — but **into `AdminScope`**, not the default drawer
 ```powershell
 Add-DnsServerResourceRecord -ZoneName "contoso.com" -A `
     -Name "MM-DC1" -IPv4Address "172.16.1.1" -ZoneScope "AdminScope"
+
+Get-DnsServerResourceRecord -ZoneName "contoso.com" -ZoneScope "AdminScope" -RRType A
 ```
 
 Remember: this drawer is **static**. Nothing refreshes it automatically. If the admin IP ever changes, you update it here by hand.
@@ -435,6 +437,17 @@ Let's decode every parameter, because each one matters:
 - `-ZoneName "contoso.com"` → the policy applies to this zone.
 
 The criteria are **cumulative (AND)**: a query must be from the admin subnet **and** ask for `MM-DC1.contoso.com` for the policy to fire. Anything else falls through to the default scope.
+
+### 🔹 What's that `EQ,` prefix in the criteria?
+
+Every criterion value (`-ClientSubnet`, `-Fqdn`, …) **must** start with a comparison operator: **`EQ,`** (equals) or **`NE,`** (not-equals). It's not optional — drop it and the cmdlet rejects the value outright:
+
+```text
+Add-DnsServerQueryResolutionPolicy : The value AdminSubnet provided in criteria ClientSubnet is invalid.
+    + FullyQualifiedErrorId : WIN32 9990,Add-DnsServerQueryResolutionPolicy
+```
+
+So `-ClientSubnet "EQ,AdminSubnet"` reads as *"client subnet **equals** AdminSubnet"*. The `NE,` form is handy for the inverse logic — e.g. `-ClientSubnet "NE,AdminSubnet"` to match *everyone except* the admins. You can also OR several values within one operator by comma-separating them: `"EQ,AdminSubnet,BackupSubnet"`.
 
 ### 🔹 What's that `,1` in `"AdminScope,1"`?
 
