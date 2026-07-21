@@ -598,6 +598,10 @@ Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
 
 ![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-21-11-49-51.png>)
 
+Switching network cards between resolution :
+
+![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-21-12-00-46.png>)
+
 > 🧹 **Lab cleanup — undo the networking crutch.** Once you're done testing, put the DC's host model back to its safe defaults (leave forwarding/weak-host on only if this box is genuinely meant to route):
 >
 > ```powershell
