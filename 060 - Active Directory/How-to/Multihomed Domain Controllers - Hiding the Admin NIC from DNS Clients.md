@@ -387,13 +387,6 @@ Add-DnsServerClientSubnet -Name "AdminSubnet" -IPv4Subnet "172.16.1.0/24"
 Get-DnsServerClientSubnet   # verify
 ```
 
-> 🔎 **How to be sure which subnet to declare?** From an admin box, check which source IP it presents when it queries the DC — i.e. the source it uses to reach the DC's **production** IP over the route (that's the address the policy will match, not the admin NIC's IP):
-> ```powershell
-> Find-NetRoute -RemoteIPAddress "192.168.99.1" |
->     Select-Object -First 1 IPAddress, InterfaceAlias
-> ```
-> The returned `IPAddress` is the source — its subnet is what goes into `AdminSubnet`.
-
 > ☝️ **Gotcha — DNS forwarders.** Client-subnet matching only works if the admin machines query the DC **directly**. If they go through an intermediate DNS forwarder, the authoritative DC sees the *forwarder's* IP as the source, not the admin's — and the policy won't match the way you expect. (In a simple, forwarder-free setup, you're fine.)
 
 > 🛑 **Gotcha — NAT on the admin→prod route.** Same trap, different cause. Because our admins reach the DC's prod IP `192.168.99.1` *across a route*, that route must **not** NAT their traffic. If the gateway rewrites the source to its own IP, the DC sees that instead of `172.16.1.x`, the `ClientSubnet` match fails, and the admin quietly falls through to the default scope (getting `192.168.99.1` instead of `172.16.1.1`). Keep the admin→prod path routed, not NATted.
