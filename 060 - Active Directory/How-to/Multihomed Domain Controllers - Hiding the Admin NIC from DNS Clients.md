@@ -550,21 +550,15 @@ Test-NetConnection 192.168.99.1 -Port 53
 
 The key line is `SourceAddress : 172.16.1.9` with `TcpTestSucceeded : True` — that proves the DC sees your real `172.16.1.x` source (the very thing `ClientSubnet` matches on). If it's `False`, the forwarding/host-model tweak above isn't in effect yet.
 
-### ✅ Test resolution from both sides
-
-The admin box must get the admin IP, everyone else the prod IP:
+Then test resolution from both sides — the admin box must get the admin IP, everyone else the prod IP:
 
 ```powershell
-# From the ADMIN box (source 172.16.1.x) -> expect 172.16.1.1
-Clear-DnsClientCache
+# From an ADMIN box (source 172.16.1.x) -> expect 172.16.1.1
 Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
 
-# From an ORDINARY client (source 192.168.99.x) -> expect 192.168.99.1
-Clear-DnsClientCache
+# From an ORDINARY client            -> expect 192.168.99.1
 Resolve-DnsName MM-DC1.contoso.com -Server 192.168.99.1 -Type A
 ```
-
-> 🧠 Both commands are **identical** — what changes is the **machine running them** (its source IP). Same query, same server, different source → different scope → different answer. That's the whole point.
 
 ![](<./assets/Multihomed Domain Controllers - Hiding the Admin NIC from DNS Clients/2026-07-21-11-37-37.png>)
 
