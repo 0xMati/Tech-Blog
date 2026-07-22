@@ -218,6 +218,16 @@ After the restart, Netlogon stops publishing that root A record entirely.
 
 > 📎 **Start minimal, expand only if it leaks.** `LdapIpAddress` (the zone-root A) is the usual troublemaker; `GcIpAddress` (the `gc._msdcs` A) is next in line on a GC. Both are **A records that carry an IP** — those are the ones worth suppressing here. Leave the **SRV** mnemonics (`Ldap`, `Dc`, `Gc`, `Kdc`…) alone: they point at the host *name* `MM-DC1.contoso.com`, which Step 1 already cleaned up — carpet-bombing them will break DC location. Add records one at a time, verify, repeat.
 
+> ➕ **Side effect — you also lose the *prod* apex, and how to get it back.** Because the filter is per *type*, suppressing `LdapIpAddress` drops the zone-root A record for **every** IP — not just `172.16.1.1`, but `192.168.99.1` too. So `contoso.com` (the *"(same as parent folder)"* entry) no longer resolves to **this** DC. Usually harmless (clients locate DCs via SRV records, and in a multi-DC domain the other DCs still publish their own apex). But if something in your environment resolves the bare domain name `contoso.com`, just **recreate the apex by hand — with the prod IP only:**
+>
+> ```powershell
+> # Static root-of-zone A record, production IP only
+> Add-DnsServerResourceRecord -ZoneName "contoso.com" -A `
+>     -Name "@" -IPv4Address "192.168.99.1"
+> ```
+>
+> `-Name "@"` is the zone root. Suppressing dynamic registration (above) never *forbids* the record — it only stops Netlogon from rewriting it, which is precisely what lets your static, prod-only version stick. Being a real `dnsRecord` in an AD-integrated zone, it **replicates** normally, so you add it **once** (not per DC). The catch is the usual one: it's **static** — if the prod IP ever changes, you update it yourself.
+
 ### 3️⃣ Stop the DNS Server from listening on (and auto-registering) the admin IP
 
 This is the step the forums forget — and without it, the two fixes above are silently undone (this is exactly what culprit #3 does). Tell the DNS Server service to **listen only on the production IP**, so it stops auto-registering the admin address.
