@@ -3432,6 +3432,108 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 
 ---
 
+### 8.10 — Administering Non-Windows Tier 0 / Tier 1 Assets
+
+Everything up to this point assumed the target is a **domain-joined Windows host**: it receives GPOs, authenticates with Kerberos, stores a LAPS password, and can be placed in an Authentication Silo. A large part of a real estate does **none** of that — firewalls, switches and routers, ESXi/vCenter, SAN/NAS arrays, Linux appliances, out-of-band controllers (iLO/iDRAC), HSMs. These devices are **not** in the domain, so the whole Windows toolbox (deny-logon GPO, silos, IPsec group-conditioned firewall, LAPS) simply does not reach them.
+
+That does not put them outside the tiering model. They are classified into tiers like everything else — they just need a **different administration pattern**.
+
+#### The common principle: the identity stays in Active Directory
+
+The goal is to **never create local accounts on each device**. Instead, the device keeps using **AD accounts**, and two things are separated and delegated back to AD:
+
+- **Authentication** — *who are you?* → the password is validated against AD.
+- **Authorization** — *what are you allowed to do?* → decided from the account's **AD group membership**.
+
+The key consequence: **access rights are carried by an AD group, not configured on the device.** To change what an administrator can do, you move them between AD groups — you never reconfigure the 200 switches. To revoke access entirely, you disable the AD account and it is gone everywhere at once.
+
+```
+[1] Admin signs in to a dedicated Non-Windows PAW with an AD account
+        │
+        ▼
+[2] From the PAW, SSH / HTTPS to the appliance
+        │
+        ▼
+[3] Appliance ── "is this valid? what level?" ──► AD-backed authentication
+        │                                              (directly, or via an AAA server)
+        ▼                                                     │
+[4] Decision (allow + access level) is derived from the account's AD group
+        │
+        ▼
+[5] Appliance opens the session and logs it
+```
+
+#### Two ways to back the device with AD
+
+| | Direct (LDAPS) | Indirect (AAA server) |
+|---|---|---|
+| **Who talks to AD** | the appliance itself | an intermediate server only |
+| **Typical for** | ESXi/vCenter, SAN/NAS, Linux appliances, recent firewalls | network gear (switches, routers, firewalls) |
+| **Device speaks** | LDAPS (636) to a DC | RADIUS or TACACS+ to the AAA server |
+
+- **Direct** — the appliance binds to a domain controller over LDAPS, validates the account and reads its groups. Simple, no middleware.
+- **Indirect** — network devices historically don't speak LDAP; they speak **RADIUS** or **TACACS+**. An **AAA server** acts as a translator between the device and AD. This is also the safer design at scale: only the AAA server touches the DCs, instead of hundreds of devices opening connections to your most critical assets.
+
+> **🔵 Windows can be the AAA server for RADIUS, but not TACACS+.** The **NPS** (Network Policy Server) role is a free, domain-joined RADIUS server — it covers AD-backed authentication for most appliances. Microsoft provides **no** TACACS+ server, so estates that want **per-command authorization** on network gear (allow `show`, deny `configure` — the network equivalent of JEA) rely on a third-party TACACS+ product. That capability is worth knowing exists; its configuration is out of scope here. In every case the **identity still lives in AD** — the third-party server validates against AD and reads the groups; it does not store accounts.
+
+#### Classifying non-Windows assets into tiers
+
+The rule is unchanged from Phase 0: **what controls or hosts the identity of the forest is Tier 0.** Applied to non-Windows gear:
+
+| Tier | Non-Windows examples | Why |
+|------|---------------------|-----|
+| **🛡️ Tier 0** | ESXi/SAN **hosting a domain controller**, the switches/firewalls carrying the **DC / admin network**, HSMs backing the PKI | Compromise = control over, or a snapshot of, the identity fabric |
+| **⚙️ Tier 1** | Access/distribution network gear, ESXi/SAN with **no** T0 guest, business appliances | Independent systems; a breach is confined to that platform |
+
+> **🔴 A hypervisor or storage array that hosts a Tier 0 guest *is* Tier 0.** It sits *below* the DC and can clone it or read its disk offline — this is the same blast-radius rule as the Hyper-V fabric discussion. Do not administer such a host from a Tier 1 jump box.
+
+#### Example — administering a Tier 0 core switch
+
+Take a switch that carries the Domain Controller VLAN. It is **Tier 0**, it is **not** domain-joined, and it must be administered end-to-end from Tier 0:
+
+```
+[1] Admin signs in to a Tier 0 Non-Windows PAW as t0-net-n2-john.doe
+    (member of T0-Net-N2-Switching)
+        │
+        ▼
+[2] SSH from the PAW to SW-CORE-01  (login: t0-net-n2-john.doe)
+        │
+        ▼
+[3] SW-CORE-01 doesn't know the account → sends a RADIUS request to NPS
+        │
+        ▼
+[4] NPS validates the password against AD and reads John's groups
+        │
+        ▼
+[5] NPS network policy: "member of T0-Net-N2-Switching" → return the admin level
+        │
+        ▼
+[6] SW-CORE-01 opens the admin session — every command is logged (accounting)
+```
+
+What this demonstrates, and why it maps cleanly onto the rest of the model:
+
+1. **The identity lives in AD** — no local `john` account on the switch. Disable the AD account and access to every device is revoked instantly.
+2. **Authorization is carried by the group** — promote John from `T0-Net-N2-Switching` to `T0-Net-N3` and his rights change with **zero** device reconfiguration.
+3. **The switch never talks to AD directly** — it only knows NPS; the DCs are never exposed to the device fleet.
+4. **The PAW is still the entry point** — non-Windows administration starts from a hardened, tier-matched workstation, exactly like Windows administration. A Tier 0 device is administered from a Tier 0 PAW, by a `t0-*` account — never from a Tier 1 jump host.
+
+The same pattern covers the **direct** case with a one-line change of plumbing: an ESXi/vCenter that hosts Tier 0 guests joins its identity source to AD over **LDAPS**, and the vCenter *Administrator* role is granted to a `T0-Virt-N2` **group** instead of individual accounts. Different transport, identical principle — identity in AD, rights carried by the group, administration from a tier-matched PAW.
+
+#### N-levels and guardrails carry over
+
+The N-level model from §8.2 transposes directly: create per-family groups (`T0-Net-N2-Switching`, `T0-Virt-N2`, `T0-Storage-N2`, …) and nest them under `T0-Admins` exactly like the Windows N-level groups, so the tier boundary and JIT logic apply unchanged. Because the Windows enforcement layers (silo, IPsec, GPO) don't reach these devices, lean on the controls that **do**:
+
+- a **dedicated non-Windows PAW** per tier (Tier 0 devices administered only from a Tier 0 PAW);
+- **MFA at the AAA / appliance layer** where supported;
+- a **protected bind/service account** for the LDAPS or AAA connection, treated as a Tier 0 secret;
+- a **documented local break-glass account** per device (unique password, vaulted) for the day AD or the AAA server is unreachable;
+- **session logging** (AAA accounting, or bastion session recording) to keep the audit trail the GPO/silo layer would otherwise give you.
+
+> **🟢 Bottom line.** Non-Windows assets are full members of the tiering model — they are classified by the same blast-radius rule, administered from the same tier-matched PAWs, and authorized from the same AD groups. Only the *transport* changes (LDAPS or RADIUS/TACACS+ instead of Kerberos + GPO), and Microsoft natively covers the RADIUS half through NPS.
+
+---
+
 ### ✅ Phase 8 Checklist
 
 - [ ] N-level model defined for each tier (N1/N2/N3 scope and population documented)
@@ -3459,6 +3561,12 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 - [ ] Dual approval required for `Schema Admins` and `Enterprise Admins` JIT elevation
 - [ ] N-level group membership added to monthly health check review
 - [ ] Training updated for T0/T1/T2 admins explaining their N-level scope
+- [ ] Non-Windows assets inventoried and classified by tier (T0 if hosting/carrying identity)
+- [ ] AD-backed authentication chosen per device family (direct LDAPS vs. RADIUS/TACACS+ via AAA)
+- [ ] Per-family N-level groups created and nested under `Tx-Admins` (e.g. `T0-Net-N2-Switching`)
+- [ ] Dedicated non-Windows PAW provisioned per tier (T0 devices administered from T0 PAW only)
+- [ ] Break-glass local account documented and vaulted per non-Windows device
+- [ ] AAA/bind service accounts protected and session logging (accounting/recording) enabled
 
 ---
 
@@ -3482,6 +3590,7 @@ Write-EventLog -LogName "Application" -Source "JIT-Admin" -EventId 9100 `
 |---------|-------------|------------|
 | **Starting with PAWs** | Without logon restrictions and OU structure, PAWs provide no real protection | Always implement Phases 1 and 2 before Phase 3 |
 | **Forgetting hypervisors** | A Hyper-V/VMware admin who hosts DCs is de facto Tier 0 | Classify hypervisors hosting T0 VMs as T0 |
+| **Non-Windows gear left unmanaged** | Switches, firewalls, ESXi, SAN aren't domain-joined, so GPO/silo/LAPS never reach them — local accounts sprawl | Back them with AD (LDAPS or RADIUS/TACACS+ via AAA); classify by tier; administer from a tier-matched PAW |
 | **SCCM/MECM misclassification** | If SCCM can push code to DCs, it's Tier 0 | Audit SCCM boundaries and client deployment scope |
 | **Exchange as Tier 1** | `Exchange Windows Permissions` often has DCSync-equivalent rights | Audit and remediate; classify as T0 if WriteDACL exists |
 | **Backup operators ignored** | Anyone who can restore a DC has Tier 0 access | Classify backup infrastructure as T0 |
