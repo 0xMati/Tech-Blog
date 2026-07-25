@@ -3440,7 +3440,7 @@ That does not put them outside the tiering model. They are classified into tiers
 
 #### The common principle: the identity stays in Active Directory
 
-The goal is to **never create local accounts on each device**. Instead, the device keeps using **AD accounts**, and two things are separated and delegated back to AD:
+The goal is to **never create local accounts on each device** (except a single, documented break-glass account per device — see the guardrails below). Instead, the device keeps using **AD accounts**, and two things are separated and delegated back to AD:
 
 - **Authentication** — *who are you?* → the password is validated against AD.
 - **Authorization** — *what are you allowed to do?* → decided from the account's **AD group membership**.
@@ -3448,7 +3448,7 @@ The goal is to **never create local accounts on each device**. Instead, the devi
 The key consequence: **access rights are carried by an AD group, not configured on the device.** To change what an administrator can do, you move them between AD groups — you never reconfigure the 200 switches. To revoke access entirely, you disable the AD account and it is gone everywhere at once.
 
 ```
-[1] Admin signs in to a dedicated Non-Windows PAW with an AD account
+[1] Admin signs in to a tier-matched PAW with an AD account
         │
         ▼
 [2] From the PAW, SSH / HTTPS to the appliance
@@ -3492,7 +3492,7 @@ The rule is unchanged from Phase 0: **what controls or hosts the identity of the
 Take a switch that carries the Domain Controller VLAN. It is **Tier 0**, it is **not** domain-joined, and it must be administered end-to-end from Tier 0:
 
 ```
-[1] Admin signs in to a Tier 0 Non-Windows PAW as t0-net-n2-john.doe
+[1] Admin signs in to a Tier 0 PAW as t0-net-n2-john.doe
     (member of T0-Net-N2-Switching)
         │
         ▼
@@ -3524,7 +3524,7 @@ The same pattern covers the **direct** case with a one-line change of plumbing: 
 
 The N-level model from §8.2 transposes directly: create per-family groups (`T0-Net-N2-Switching`, `T0-Virt-N2`, `T0-Storage-N2`, …) and nest them under `T0-Admins` exactly like the Windows N-level groups, so the tier boundary and JIT logic apply unchanged. Because the Windows enforcement layers (silo, IPsec, GPO) don't reach these devices, lean on the controls that **do**:
 
-- a **dedicated non-Windows PAW** per tier (Tier 0 devices administered only from a Tier 0 PAW);
+- a **tier-matched PAW** (Tier 0 devices administered only from a Tier 0 PAW) — optionally one *dedicated* to non-Windows tooling, to keep the DC-admin PAW minimal;
 - **MFA at the AAA / appliance layer** where supported;
 - a **protected bind/service account** for the LDAPS or AAA connection, treated as a Tier 0 secret;
 - a **documented local break-glass account** per device (unique password, vaulted) for the day AD or the AAA server is unreachable;
@@ -3564,7 +3564,7 @@ The N-level model from §8.2 transposes directly: create per-family groups (`T0-
 - [ ] Non-Windows assets inventoried and classified by tier (T0 if hosting/carrying identity)
 - [ ] AD-backed authentication chosen per device family (direct LDAPS vs. RADIUS/TACACS+ via AAA)
 - [ ] Per-family N-level groups created and nested under `Tx-Admins` (e.g. `T0-Net-N2-Switching`)
-- [ ] Dedicated non-Windows PAW provisioned per tier (T0 devices administered from T0 PAW only)
+- [ ] Tier-matched PAW used for non-Windows administration (T0 devices from a T0 PAW only; a PAW dedicated to non-Windows tooling is optional)
 - [ ] Break-glass local account documented and vaulted per non-Windows device
 - [ ] AAA/bind service accounts protected and session logging (accounting/recording) enabled
 
