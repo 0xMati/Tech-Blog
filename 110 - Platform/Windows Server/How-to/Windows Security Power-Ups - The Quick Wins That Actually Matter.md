@@ -28,9 +28,9 @@ The goal is simple:
 
 | Level | Meaning | Deployment rule |
 | --- | --- | --- |
-| **Level 1 — Equip now** | High value, low complexity, limited compatibility risk | Pilot quickly, validate, then expand |
-| **Level 2 — Scan before firing** | Strong control with known application or protocol dependencies | Audit first, remediate dependencies, then enforce |
-| **Level 3 — Boss fight** | High-value architectural change | Treat as a project with owners, telemetry, milestones, and rollback |
+| **Level 1 — Do now** | High value, low complexity, limited compatibility risk | Pilot quickly, validate, then expand |
+| **Level 2 — Test first** | Strong control with known application or protocol dependencies | Audit first, remediate dependencies, then enforce |
+| **Level 3 — Plan and build** | High-value architectural change | Treat as a project with owners, telemetry, milestones, and rollback |
 
 The level describes deployment complexity, not security value. A Level 3 control can be essential; it simply deserves more engineering than one registry key and optimism.
 
@@ -38,36 +38,36 @@ The level describes deployment complexity, not security value. A Level 3 control
 
 | Power-up | Level | Main attack path reduced | First proof point |
 | --- | --- | --- | --- |
-| Windows LAPS | Equip now | Password reuse and lateral movement | Unique, rotating local password is backed up |
-| Remove unnecessary local administrators | Equip now | Privilege escalation | Managed local Administrators membership |
-| Patch Windows and third-party software | Equip now | Exploitation of known vulnerabilities | Update compliance and enforced deadline |
-| Microsoft Defender Antivirus hardening | Equip now | Malware execution and tampering | Real-time, cloud, behavior, and tamper protection active |
-| Windows Firewall on every profile | Equip now | Remote exploitation and lateral movement | All profiles enabled; inbound exceptions justified |
-| Remove SMBv1 | Equip now | Legacy SMB exploitation and downgrade | SMB1 feature absent and no dependency observed |
-| Disable unnecessary Print Spooler | Equip now | Print service exploitation | Service disabled where printing is not required |
-| Remove PowerShell 2.0 | Equip now | Downgrade to weak script visibility | Optional feature absent |
-| Remove unused software and roles | Equip now | Unnecessary attack surface | Approved software and role inventory |
-| Secure Boot and TPM health | Equip now | Boot-chain and offline tampering | Secure Boot on; TPM ready and owned |
-| Microsoft Security Baseline | Scan before firing | Configuration drift and insecure defaults | Baseline comparison report |
-| Attack Surface Reduction rules | Scan before firing | Office, script, driver, and ransomware tradecraft | Audit telemetry reviewed before Block |
-| LSA protection and Credential Guard | Scan before firing | Credential dumping and pass-the-hash | `RunAsPPL` and VBS state verified |
-| BitLocker with recovery escrow | Scan before firing | Offline data theft | Encryption complete and recovery key retrievable |
-| SMB signing | Scan before firing | SMB relay and traffic tampering | Signing required; incompatible devices identified |
-| Disable LLMNR, NetBIOS name resolution, and unused WPAD | Scan before firing | Name-poisoning credential capture | No production dependency; policies enforced |
-| Harden RDP and WinRM | Scan before firing | Remote administration abuse | Restricted sources, strong authentication, useful logs |
-| Modernize TLS | Scan before firing | Legacy protocol and cipher use | Real handshake proves TLS 1.2 or later |
-| Advanced audit policy and centralized logs | Scan before firing | Invisible attacker activity | Critical events arrive centrally with correct timestamps |
-| Reduce and remove NTLM | Boss fight | Relay, pass-the-hash, and weak authentication | NTLM audit shows known, shrinking dependencies |
-| LDAP signing and channel binding | Boss fight | LDAP relay and tampering | DC audit events show no incompatible clients |
-| Passwordless user authentication | Boss fight | Password phishing and reuse | Windows Hello for Business or passkey adoption |
-| Application control | Boss fight | Unapproved executable and script execution | App Control policy succeeds in Audit before Enforce |
-| Endpoint detection and response | Boss fight | Post-compromise activity | Devices onboarded, healthy, and producing telemetry |
-| Privileged access separation | Boss fight | Credential exposure across security tiers | Separate admin identities and restricted logon paths |
-| Resilient, tested recovery | Boss fight | Ransomware and destructive attacks | Successful restore test, not merely a green backup job |
+| Windows LAPS | Do now | Password reuse and lateral movement | Unique, rotating local password is backed up |
+| Remove unnecessary local administrators | Do now | Privilege escalation | Managed local Administrators membership |
+| Patch Windows and third-party software | Do now | Exploitation of known vulnerabilities | Update compliance and enforced deadline |
+| Microsoft Defender Antivirus hardening | Do now | Malware execution and tampering | Real-time, cloud, behavior, and tamper protection active |
+| Windows Firewall on every profile | Do now | Remote exploitation and lateral movement | All profiles enabled; inbound exceptions justified |
+| Remove SMBv1 | Do now | Legacy SMB exploitation and downgrade | SMB1 feature absent and no dependency observed |
+| Disable unnecessary Print Spooler | Do now | Print service exploitation | Service disabled where printing is not required |
+| Remove PowerShell 2.0 | Do now | Downgrade to weak script visibility | Optional feature absent |
+| Remove unused software and roles | Do now | Unnecessary attack surface | Approved software and role inventory |
+| Secure Boot and TPM health | Do now | Boot-chain and offline tampering | Secure Boot on; TPM ready and owned |
+| Microsoft Security Baseline | Test first | Configuration drift and insecure defaults | Baseline comparison report |
+| Attack Surface Reduction rules | Test first | Office, script, driver, and ransomware tradecraft | Audit telemetry reviewed before Block |
+| LSA protection and Credential Guard | Test first | Credential dumping and pass-the-hash | `RunAsPPL` and VBS state verified |
+| BitLocker with recovery escrow | Test first | Offline data theft | Encryption complete and recovery key retrievable |
+| SMB signing | Test first | SMB relay and traffic tampering | Signing required; incompatible devices identified |
+| Disable LLMNR, NetBIOS name resolution, and unused WPAD | Test first | Name-poisoning credential capture | No production dependency; policies enforced |
+| Harden RDP and WinRM | Test first | Remote administration abuse | Restricted sources, strong authentication, useful logs |
+| Modernize TLS | Test first | Legacy protocol and cipher use | Real handshake proves TLS 1.2 or later |
+| Advanced audit policy and centralized logs | Test first | Invisible attacker activity | Critical events arrive centrally with correct timestamps |
+| Reduce and remove NTLM | Plan and build | Relay, pass-the-hash, and weak authentication | NTLM audit shows known, shrinking dependencies |
+| LDAP signing and channel binding | Plan and build | LDAP relay and tampering | DC audit events show no incompatible clients |
+| Passwordless user authentication | Plan and build | Password phishing and reuse | Windows Hello for Business or passkey adoption |
+| Application control | Plan and build | Unapproved executable and script execution | App Control policy succeeds in Audit before Enforce |
+| Endpoint detection and response | Plan and build | Post-compromise activity | Devices onboarded, healthy, and producing telemetry |
+| Privileged access separation | Plan and build | Credential exposure across security tiers | Separate admin identities and restricted logon paths |
+| Resilient, tested recovery | Plan and build | Ransomware and destructive attacks | Successful restore test, not merely a green backup job |
 
 ---
 
-## Level 1 — Equip now
+## Level 1 — Do now
 
 ### 1. Deploy Windows LAPS
 
@@ -170,7 +170,7 @@ Get-Tpm | Select-Object TpmPresent, TpmReady, TpmEnabled, TpmActivated
 
 ---
 
-## Level 2 — Scan before firing
+## Level 2 — Test first
 
 ### 11. Start from a Microsoft Security Baseline
 
@@ -266,7 +266,7 @@ Forward critical events through Windows Event Forwarding, an agent, or a SIEM. S
 
 ---
 
-## Level 3 — The boss fights
+## Level 3 — Plan and build
 
 ### 20. Reduce, restrict, and eventually remove NTLM
 
@@ -365,4 +365,4 @@ The best first control is not always the most advanced one. It is the control th
 - [Windows Firewall overview](https://learn.microsoft.com/windows/security/operating-system-security/network-security/windows-firewall/)
 - [Security Compliance Toolkit](https://www.microsoft.com/download/details.aspx?id=55319)
 
-Stack the small wins, measure the result, and save the heroic boss music for the controls that genuinely need it.
+Stack the small wins, measure the result, and save the heavy planning for the controls that genuinely need it.
