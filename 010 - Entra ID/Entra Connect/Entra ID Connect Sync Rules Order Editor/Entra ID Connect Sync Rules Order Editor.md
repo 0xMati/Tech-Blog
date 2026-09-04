@@ -21,7 +21,7 @@ Changing random precedence numbers is also a good way to turn a five-minute task
 
 > Test rule-order changes on a staging server first. Precedence changes can alter joins, projections, scoping, and attribute authority during the next synchronization.
 
-![](<./assets/Entra ID Connect Sync Rules Order Editor/2026-09-04-16-09-36.png>)
+![Entra ID Connect Sync Rules Order Editor interface](./assets/EntraIDConnectSyncRulesOrderEditor-UI.png)
 
 ## What the tool does
 
