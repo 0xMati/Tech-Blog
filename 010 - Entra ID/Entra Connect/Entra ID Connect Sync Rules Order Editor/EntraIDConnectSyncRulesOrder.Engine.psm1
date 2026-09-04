@@ -305,40 +305,122 @@ function Get-ADSyncRuleOrderMovePlan {
         throw 'Original and desired rule collections do not contain the same identifiers.'
     }
 
+    $originalPositions = @{}
+    for ($index = 0; $index -lt $originalIdentifiers.Count; $index++) {
+        $originalPositions[$originalIdentifiers[$index]] = $index
+    }
+    $rulesByIdentifier = @{}
+    foreach ($rule in $DesiredRules) {
+        $rulesByIdentifier[[string]$rule.Identifier] = $rule
+    }
+
+    $ruleCount = $desiredIdentifiers.Count
+    $bestStandardCounts = [int[]]::new($ruleCount)
+    $bestTotalCounts = [int[]]::new($ruleCount)
+    $previousIndexes = [int[]]::new($ruleCount)
+    for ($index = 0; $index -lt $ruleCount; $index++) {
+        $currentRule = $rulesByIdentifier[$desiredIdentifiers[$index]]
+        $bestStandardCounts[$index] = if ([bool]$currentRule.IsStandardRule) { 1 } else { 0 }
+        $bestTotalCounts[$index] = 1
+        $previousIndexes[$index] = -1
+
+        for ($candidateIndex = 0; $candidateIndex -lt $index; $candidateIndex++) {
+            if ($originalPositions[$desiredIdentifiers[$candidateIndex]] -ge
+                $originalPositions[$desiredIdentifiers[$index]]) {
+                continue
+            }
+            $candidateStandardCount = $bestStandardCounts[$candidateIndex]
+            if ([bool]$currentRule.IsStandardRule) {
+                $candidateStandardCount++
+            }
+            $candidateTotalCount = $bestTotalCounts[$candidateIndex] + 1
+            if ($candidateStandardCount -gt $bestStandardCounts[$index] -or
+                ($candidateStandardCount -eq $bestStandardCounts[$index] -and
+                    $candidateTotalCount -gt $bestTotalCounts[$index])) {
+                $bestStandardCounts[$index] = $candidateStandardCount
+                $bestTotalCounts[$index] = $candidateTotalCount
+                $previousIndexes[$index] = $candidateIndex
+            }
+        }
+    }
+
+    $bestEndIndex = 0
+    for ($index = 1; $index -lt $ruleCount; $index++) {
+        if ($bestStandardCounts[$index] -gt $bestStandardCounts[$bestEndIndex] -or
+            ($bestStandardCounts[$index] -eq $bestStandardCounts[$bestEndIndex] -and
+                $bestTotalCounts[$index] -gt $bestTotalCounts[$bestEndIndex])) {
+            $bestEndIndex = $index
+        }
+    }
+    $keptIdentifiers = @{}
+    for ($index = $bestEndIndex; $index -ge 0; $index = $previousIndexes[$index]) {
+        $keptIdentifiers[$desiredIdentifiers[$index]] = $true
+        if ($previousIndexes[$index] -lt 0) {
+            break
+        }
+    }
+
+    $relativeOperations = [System.Collections.Generic.List[object]]::new()
+    $segmentStart = 0
+    for ($keepIndex = 0; $keepIndex -lt $ruleCount; $keepIndex++) {
+        if (-not $keptIdentifiers.ContainsKey($desiredIdentifiers[$keepIndex])) {
+            continue
+        }
+        for ($index = $keepIndex - 1; $index -ge $segmentStart; $index--) {
+            $relativeOperations.Add([pscustomobject]@{
+                    Identifier       = $desiredIdentifiers[$index]
+                    Placement        = 'Before'
+                    AnchorIdentifier = $desiredIdentifiers[$index + 1]
+                })
+        }
+        $segmentStart = $keepIndex + 1
+    }
+    for ($index = $segmentStart; $index -lt $ruleCount; $index++) {
+        $relativeOperations.Add([pscustomobject]@{
+                Identifier       = $desiredIdentifiers[$index]
+                Placement        = 'After'
+                AnchorIdentifier = $desiredIdentifiers[$index - 1]
+            })
+    }
+
     $working = [System.Collections.Generic.List[string]]::new()
     foreach ($identifier in $originalIdentifiers) {
         $working.Add($identifier)
     }
-
     $moves = @()
-    for ($targetIndex = 0; $targetIndex -lt $desiredIdentifiers.Count; $targetIndex++) {
-        $desiredIdentifier = $desiredIdentifiers[$targetIndex]
-        if ($working[$targetIndex] -eq $desiredIdentifier) {
-            continue
-        }
-
-        $sourceIndex = $working.IndexOf($desiredIdentifier)
+    foreach ($relativeOperation in $relativeOperations) {
+        $sourceIndex = $working.IndexOf($relativeOperation.Identifier)
         if ($sourceIndex -lt 0) {
-            throw "Rule '$desiredIdentifier' disappeared while calculating the move plan."
+            throw "Rule '$($relativeOperation.Identifier)' disappeared while calculating the move plan."
         }
-
-        $anchorIdentifier = $working[$targetIndex]
         $working.RemoveAt($sourceIndex)
-        $working.Insert($targetIndex, $desiredIdentifier)
-        $rule = $DesiredRules | Where-Object Identifier -eq $desiredIdentifier | Select-Object -First 1
-        $anchor = $DesiredRules | Where-Object Identifier -eq $anchorIdentifier | Select-Object -First 1
+        $anchorIndex = $working.IndexOf($relativeOperation.AnchorIdentifier)
+        if ($anchorIndex -lt 0) {
+            throw "Anchor rule '$($relativeOperation.AnchorIdentifier)' disappeared while calculating the move plan."
+        }
+        $targetIndex = if ($relativeOperation.Placement -eq 'Before') { $anchorIndex } else { $anchorIndex + 1 }
+        $working.Insert($targetIndex, $relativeOperation.Identifier)
+
+        $rule = $rulesByIdentifier[$relativeOperation.Identifier]
+        $anchor = $rulesByIdentifier[$relativeOperation.AnchorIdentifier]
         $moves += [pscustomobject]@{
             Sequence         = $moves.Count + 1
-            Identifier       = $desiredIdentifier
+            Identifier       = $relativeOperation.Identifier
             RuleName         = [string]$rule.Name
             Connector        = [string]$rule.Connector
-            BeforeIdentifier = $anchorIdentifier
-            BeforeRuleName   = [string]$anchor.Name
+            Placement        = $relativeOperation.Placement
+            AnchorIdentifier = $relativeOperation.AnchorIdentifier
+            AnchorRuleName   = [string]$anchor.Name
             FromPosition     = $sourceIndex + 1
             ToPosition       = $targetIndex + 1
         }
     }
 
+    for ($index = 0; $index -lt $ruleCount; $index++) {
+        if ($working[$index] -ne $desiredIdentifiers[$index]) {
+            throw 'The optimized move plan did not reproduce the requested rule order.'
+        }
+    }
     return @($moves)
 }
 
@@ -346,7 +428,8 @@ function New-ADSyncRuleOrderCloneObject {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$SourceRule,
-        [Parameter(Mandatory)][guid]$BeforeIdentifier,
+        [Parameter(Mandatory)][guid]$AnchorIdentifier,
+        [Parameter(Mandatory)][ValidateSet('Before', 'After')][string]$Placement,
         [Parameter(Mandatory)][string]$Name
     )
 
@@ -356,17 +439,24 @@ function New-ADSyncRuleOrderCloneObject {
     else {
         [timespan]::Zero
     }
-    $clone = New-ADSyncRule `
-        -Name $Name `
-        -Identifier ([guid]::NewGuid()) `
-        -Description ([string]$SourceRule.Description) `
-        -Direction $SourceRule.Direction `
-        -Connector $SourceRule.Connector `
-        -SourceObjectType $SourceRule.SourceObjectType `
-        -TargetObjectType $SourceRule.TargetObjectType `
-        -LinkType $SourceRule.LinkType `
-        -PrecedenceBefore $BeforeIdentifier `
-        -SoftDeleteExpiryInterval $softDeleteExpiryInterval
+    $newRuleParameters = @{
+        Name                     = $Name
+        Identifier               = [guid]::NewGuid()
+        Description              = [string]$SourceRule.Description
+        Direction                = $SourceRule.Direction
+        Connector                = $SourceRule.Connector
+        SourceObjectType         = $SourceRule.SourceObjectType
+        TargetObjectType         = $SourceRule.TargetObjectType
+        LinkType                 = $SourceRule.LinkType
+        SoftDeleteExpiryInterval = $softDeleteExpiryInterval
+    }
+    if ($Placement -eq 'Before') {
+        $newRuleParameters.PrecedenceBefore = $AnchorIdentifier
+    }
+    else {
+        $newRuleParameters.PrecedenceAfter = $AnchorIdentifier
+    }
+    $clone = New-ADSyncRule @newRuleParameters
 
     $clone.Disabled = [bool]$SourceRule.Disabled
     if ('EnablePasswordSync' -in $clone.PSObject.Properties.Name -and
@@ -506,20 +596,21 @@ function Test-ADSyncRuleOrderClone {
     return @($differences)
 }
 
-function Move-ADSyncRuleOrderLiveRuleBefore {
+function Move-ADSyncRuleOrderLiveRuleRelative {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][guid]$Identifier,
-        [Parameter(Mandatory)][guid]$BeforeIdentifier
+        [Parameter(Mandatory)][guid]$AnchorIdentifier,
+        [Parameter(Mandatory)][ValidateSet('Before', 'After')][string]$Placement
     )
 
     $sourceRule = Get-ADSyncRule | Where-Object Identifier -eq $Identifier | Select-Object -First 1
-    $anchorRule = Get-ADSyncRule | Where-Object Identifier -eq $BeforeIdentifier | Select-Object -First 1
+    $anchorRule = Get-ADSyncRule | Where-Object Identifier -eq $AnchorIdentifier | Select-Object -First 1
     if (-not $sourceRule) {
         throw "Rule '$Identifier' was not found."
     }
     if (-not $anchorRule) {
-        throw "Anchor rule '$BeforeIdentifier' was not found."
+        throw "Anchor rule '$AnchorIdentifier' was not found."
     }
     if ($sourceRule.Identifier -eq $anchorRule.Identifier) {
         throw 'A rule cannot be moved before itself.'
@@ -535,7 +626,8 @@ function Move-ADSyncRuleOrderLiveRuleBefore {
     }
     $clone = New-ADSyncRuleOrderCloneObject `
         -SourceRule $sourceRule `
-        -BeforeIdentifier $anchorRule.Identifier `
+        -AnchorIdentifier $anchorRule.Identifier `
+        -Placement $Placement `
         -Name $cloneName
 
     if ($sourceWasStandard) {
@@ -580,7 +672,13 @@ function Move-ADSyncRuleOrderLiveRuleBefore {
     $liveIdentifiers = @($liveRules | ForEach-Object { $_.Identifier.ToString() })
     $cloneIndex = [array]::IndexOf($liveIdentifiers, $clone.Identifier.ToString())
     $anchorIndex = [array]::IndexOf($liveIdentifiers, $anchorRule.Identifier.ToString())
-    if ($cloneIndex -lt 0 -or $anchorIndex -lt 0 -or $cloneIndex -ge $anchorIndex) {
+    $relativeOrderIsValid = if ($Placement -eq 'Before') {
+        $cloneIndex -lt $anchorIndex
+    }
+    else {
+        $cloneIndex -gt $anchorIndex
+    }
+    if ($cloneIndex -lt 0 -or $anchorIndex -lt 0 -or -not $relativeOrderIsValid) {
         throw "Relative-order verification failed for '$($sourceRule.Name)'."
     }
 
@@ -696,16 +794,17 @@ function Invoke-ADSyncRuleOrderMovePlan {
             else {
                 [string]$move.Identifier
             }
-            $anchorIdentifier = if ($identifierMap.ContainsKey([string]$move.BeforeIdentifier)) {
-                $identifierMap[[string]$move.BeforeIdentifier]
+            $anchorIdentifier = if ($identifierMap.ContainsKey([string]$move.AnchorIdentifier)) {
+                $identifierMap[[string]$move.AnchorIdentifier]
             }
             else {
-                [string]$move.BeforeIdentifier
+                [string]$move.AnchorIdentifier
             }
 
-            $operation = Move-ADSyncRuleOrderLiveRuleBefore `
+            $operation = Move-ADSyncRuleOrderLiveRuleRelative `
                 -Identifier ([guid]$sourceIdentifier) `
-                -BeforeIdentifier ([guid]$anchorIdentifier)
+                -AnchorIdentifier ([guid]$anchorIdentifier) `
+                -Placement $move.Placement
             $operations.Add($operation)
             $identifierMap[[string]$move.Identifier] = $operation.ReplacementId
         }

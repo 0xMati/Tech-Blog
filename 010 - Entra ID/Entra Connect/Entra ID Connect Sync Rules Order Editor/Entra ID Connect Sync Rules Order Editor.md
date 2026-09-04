@@ -66,7 +66,7 @@ Keep both files in the same directory.
 - An account allowed to administer the local synchronization engine.
 - No synchronization cycle in progress when applying a plan.
 
-Use a staging server for initial validation. The tool can operate on an active server, but that path deliberately requires a stronger confirmation token.
+Use a staging server for initial validation. The tool can operate on an active server, but the confirmation window identifies that path prominently in red.
 
 ## Quick start
 
@@ -134,11 +134,14 @@ Keyboard shortcuts:
 | `Ctrl+PageUp` / `Ctrl+PageDown` | Move by ten positions |
 | `Ctrl+Home` / `Ctrl+End` | Move to the first or last position |
 
-Moving one rule shifts the intervening rows, but their relative order remains unchanged. The engine then reduces the desired result to operations such as:
+Moving one rule shifts the intervening rows, but their relative order remains unchanged. The engine then preserves the largest possible set of untouched rules. Microsoft standard rules are prioritized first, followed by the total number of preserved rules. The remaining changes become relative operations such as:
 
 ```text
 Move Rule D before Rule B
+Move Rule A after Rule C
 ```
+
+The **Operation** column identifies the rules that will actually be reconstructed. A rule whose numeric precedence only shifts because another rule is inserted around it is not touched. A Microsoft rule is cloned only when it must be the source of a relative operation, such as when the requested order reverses two Microsoft rules.
 
 `Discard plan` returns the grid to the order loaded from ADSync. It does not modify the live engine.
 
@@ -150,7 +153,7 @@ The Apply workflow performs these checks and actions:
 
 1. reads the scheduler state again;
 2. requires the current cycle to be idle;
-3. asks for an explicit server-specific confirmation token;
+3. displays a confirmation window with the server mode, operation count, Microsoft clone validation, and custom recreation count;
 4. verifies that the live rule fingerprint still matches the loaded state;
 5. creates a `PreApply` safety snapshot;
 6. pauses the scheduler if it was enabled;
@@ -160,32 +163,29 @@ The Apply workflow performs these checks and actions:
 10. restores the scheduler to its previous enabled state;
 11. reloads the live rules and creates a `PostApply` safety snapshot after success.
 
-Confirmation tokens are case-sensitive:
-
-```text
-Staging server: APPLY <COMPUTERNAME>
-Active server:  APPLY ACTIVE <COMPUTERNAME>
-```
+The confirmation window requires an explicit click on **Apply on STAGING** or **Apply on ACTIVE**. No server name needs to be typed. If Microsoft standard rules are operation sources, the window displays a red warning, the exact clone count, and a scrollable list containing each rule name, connector, placement, and anchor rule. Otherwise it confirms that no Microsoft rule will be cloned.
 
 > The tool does not start a synchronization profile after Apply. Run and review the required Full Synchronization manually according to your change procedure.
 
 ## What moving a rule really means
 
-Entra ID Connect does not provide a harmless drag-and-drop API for precedence. The tool uses `PrecedenceBefore` and reconstructs the moved rule.
+Entra ID Connect does not provide a harmless drag-and-drop API for precedence. The tool uses `PrecedenceBefore` or `PrecedenceAfter` and reconstructs only the rules selected by the optimized relative plan.
 
 For a custom rule:
 
 - the original rule is removed;
-- an equivalent rule is created before the anchor rule;
+- an equivalent rule is created before or after the anchor rule;
 - mappings, scopes, joins, state, and key properties are compared;
 - the recreated rule receives a new GUID.
 
-For a Microsoft standard rule:
+When a Microsoft standard rule must be an operation source:
 
 - a custom clone is created at the requested position;
 - the clone is verified;
 - the original Microsoft rule is disabled only after verification;
 - the original standard rule remains present for rollback.
+
+If a Microsoft rule merely receives a different numeric precedence because another rule is inserted before or after it, it remains untouched and is not cloned.
 
 This is why a precedence change deserves the same review discipline as any other synchronization-rule change. The GUI is smoother; the engine is still real.
 
@@ -230,7 +230,7 @@ It does **not** restore:
 - exact historical precedence numbers;
 - any other Entra ID Connect configuration.
 
-Moving a Microsoft standard rule adds a custom clone while retaining the disabled original. Because that changes the rule inventory count, an older order snapshot may be intentionally rejected rather than guessed back into place.
+When a Microsoft standard rule must be the source of a relative operation, the tool adds a custom clone and retains the disabled original. Because that changes the rule inventory count, an older order snapshot may be intentionally rejected rather than guessed back into place. Microsoft rules whose numeric precedence only shifts remain untouched and do not change the inventory count.
 
 ## Recommended workflow
 

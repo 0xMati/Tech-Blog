@@ -341,6 +341,21 @@ function Get-DesiredRules {
     return @($script:RuleItems)
 }
 
+function Get-MicrosoftCloneOperations {
+    param([object[]]$Moves)
+    if ($Moves.Count -eq 0) {
+        return @()
+    }
+    $standardIdentifiers = @($script:OriginalRules | Where-Object { [bool]$_.IsStandardRule } |
+            ForEach-Object { [string]$_.Identifier })
+    return @($Moves | Where-Object { [string]$_.Identifier -in $standardIdentifiers })
+}
+
+function Get-MicrosoftCloneCount {
+    param([object[]]$Moves)
+    return @(Get-MicrosoftCloneOperations -Moves $Moves).Count
+}
+
 function Update-PlanPreview {
     if ($script:OriginalRules.Count -eq 0) {
         return
@@ -363,14 +378,21 @@ function Update-PlanPreview {
         }
     }
     $RuleGrid.Items.Refresh()
+    $microsoftCloneCount = Get-MicrosoftCloneCount -Moves $moves
     if ($script:SyncCycleInProgress) {
-        $PlanText.Text = "$($script:RuleItems.Count) live rules | APPLY LOCKED: cycle in progress"
+        $PlanText.Text = "$($script:RuleItems.Count) live rules | APPLY LOCKED: cycle in progress | Microsoft clones: $microsoftCloneCount"
         $PlanText.Foreground = '#C62828'
         $PlanText.FontWeight = 'Bold'
     }
     elseif ($moves.Count -gt 0) {
-        $PlanText.Text = "$($script:RuleItems.Count) live rules | PLAN NOT APPLIED: $($moves.Count) relative move(s)"
-        $PlanText.Foreground = '#A15C00'
+        $cloneValidation = if ($microsoftCloneCount -gt 0) {
+            "WARNING: $microsoftCloneCount Microsoft clone(s)"
+        }
+        else {
+            'Microsoft clones: 0'
+        }
+        $PlanText.Text = "$($script:RuleItems.Count) live rules | PLAN NOT APPLIED: $($moves.Count) relative move(s) | $cloneValidation"
+        $PlanText.Foreground = if ($microsoftCloneCount -gt 0) { '#C62828' } else { '#A15C00' }
         $PlanText.FontWeight = 'Bold'
     }
     else {
@@ -542,11 +564,17 @@ function Find-NextRule {
 }
 
 function Show-ApplyConfirmation {
-    param([int]$MoveCount, [bool]$IsStaging, [string]$BackupPath)
+    param(
+        [int]$MoveCount,
+        [object[]]$MicrosoftCloneOperations,
+        [bool]$IsStaging,
+        [string]$BackupPath
+    )
+    $microsoftCloneCount = @($MicrosoftCloneOperations).Count
     $confirmationWindow = [System.Windows.Window]::new()
     $confirmationWindow.Title = 'Confirm live ADSync changes'
     $confirmationWindow.Width = 620
-    $confirmationWindow.Height = 360
+    $confirmationWindow.Height = if ($microsoftCloneCount -gt 0) { 480 } else { 340 }
     $confirmationWindow.WindowStartupLocation = 'CenterOwner'
     $confirmationWindow.Owner = $window
     $confirmationWindow.ResizeMode = 'NoResize'
@@ -561,27 +589,50 @@ function Show-ApplyConfirmation {
     $warning.Text = if ($IsStaging) { 'Apply on STAGING server' } else { 'Apply on ACTIVE server' }
     $panel.Children.Add($warning) | Out-Null
 
-    $details = [System.Windows.Controls.TextBlock]::new()
-    $details.Margin = '0,14,0,12'
-    $details.TextWrapping = 'Wrap'
-    $details.Text = "$MoveCount relative move(s) will be applied on $($env:COMPUTERNAME).`nThe scheduler will be paused and restored automatically.`nA new pre-Apply safety snapshot will be created under:`n$BackupPath`n`nThis tool does not restore Entra Connect configuration."
-    $panel.Children.Add($details) | Out-Null
-
-    $instruction = [System.Windows.Controls.TextBlock]::new()
-    $instruction.Margin = '0,4,0,6'
-    $instruction.FontWeight = 'SemiBold'
-    $confirmationToken = if ($IsStaging) {
-        "APPLY $($env:COMPUTERNAME)"
+    $validation = [System.Windows.Controls.TextBlock]::new()
+    $validation.Margin = '0,14,0,0'
+    $validation.FontFamily = 'Bahnschrift SemiBold'
+    $validation.FontSize = 15
+    $validation.TextWrapping = 'Wrap'
+    if ($microsoftCloneCount -gt 0) {
+        $validation.Foreground = '#C62828'
+        $validation.Text = "WARNING: $microsoftCloneCount Microsoft standard rule(s) will be cloned and the original rule(s) disabled."
     }
     else {
-        "APPLY ACTIVE $($env:COMPUTERNAME)"
+        $validation.Foreground = '#006B5B'
+        $validation.Text = 'Validation: no Microsoft standard rule will be cloned.'
     }
-    $instruction.Text = "Type exactly: $confirmationToken"
-    $panel.Children.Add($instruction) | Out-Null
-    $confirmationInput = [System.Windows.Controls.TextBox]::new()
-    $confirmationInput.Height = 34
-    $confirmationInput.Padding = '7,5'
-    $panel.Children.Add($confirmationInput) | Out-Null
+    $panel.Children.Add($validation) | Out-Null
+
+    if ($microsoftCloneCount -gt 0) {
+        $cloneListLabel = [System.Windows.Controls.TextBlock]::new()
+        $cloneListLabel.Margin = '0,12,0,5'
+        $cloneListLabel.FontWeight = 'SemiBold'
+        $cloneListLabel.Text = 'Microsoft standard rules to clone:'
+        $panel.Children.Add($cloneListLabel) | Out-Null
+
+        $cloneList = [System.Windows.Controls.ListBox]::new()
+        $cloneList.Height = [Math]::Min(126, 12 + (38 * $microsoftCloneCount))
+        $cloneList.Background = 'White'
+        $cloneList.BorderBrush = '#B9C5CC'
+        $cloneList.BorderThickness = '1'
+        $cloneList.Padding = '4'
+        foreach ($operation in $MicrosoftCloneOperations) {
+            $cloneItem = [System.Windows.Controls.TextBlock]::new()
+            $cloneItem.Text = "$($operation.RuleName) [$($operation.Connector)]`n$($operation.Placement) $($operation.AnchorRuleName)"
+            $cloneItem.TextWrapping = 'Wrap'
+            $cloneItem.Margin = '2'
+            $cloneList.Items.Add($cloneItem) | Out-Null
+        }
+        $panel.Children.Add($cloneList) | Out-Null
+    }
+
+    $details = [System.Windows.Controls.TextBlock]::new()
+    $details.Margin = '0,12,0,12'
+    $details.TextWrapping = 'Wrap'
+    $customRecreationCount = $MoveCount - $microsoftCloneCount
+    $details.Text = "$MoveCount relative move(s) will be applied on $($env:COMPUTERNAME).`nCustom rule recreations: $customRecreationCount`nThe scheduler will be paused and restored automatically.`nA new pre-Apply safety snapshot will be created under:`n$BackupPath`n`nThis tool does not restore Entra Connect configuration."
+    $panel.Children.Add($details) | Out-Null
 
     $buttons = [System.Windows.Controls.StackPanel]::new()
     $buttons.Orientation = 'Horizontal'
@@ -591,11 +642,13 @@ function Show-ApplyConfirmation {
     $cancel.Content = 'Cancel'
     $cancel.Width = 95
     $cancel.Margin = '0,0,8,0'
+    $cancel.IsCancel = $true
     $apply = [System.Windows.Controls.Button]::new()
-    $apply.Content = 'Apply live'
-    $apply.Width = 105
-    $apply.Background = '#A12622'
+    $apply.Content = if ($IsStaging) { 'Apply on STAGING' } else { 'Apply on ACTIVE' }
+    $apply.Width = 145
+    $apply.Background = if ($IsStaging) { '#006B5B' } else { '#A12622' }
     $apply.Foreground = 'White'
+    $apply.IsDefault = $true
     $buttons.Children.Add($cancel) | Out-Null
     $buttons.Children.Add($apply) | Out-Null
     $panel.Children.Add($buttons) | Out-Null
@@ -604,13 +657,8 @@ function Show-ApplyConfirmation {
     $script:ConfirmationAccepted = $false
     $cancel.Add_Click({ $confirmationWindow.Close() })
     $apply.Add_Click({
-            if ($confirmationInput.Text -ceq $confirmationToken) {
-                $script:ConfirmationAccepted = $true
-                $confirmationWindow.Close()
-            }
-            else {
-                [System.Windows.MessageBox]::Show($confirmationWindow, 'The confirmation text is not exact.') | Out-Null
-            }
+            $script:ConfirmationAccepted = $true
+            $confirmationWindow.Close()
         })
     $confirmationWindow.ShowDialog() | Out-Null
     return $script:ConfirmationAccepted
@@ -772,8 +820,13 @@ $ApplyButton.Add_Click({
         try {
             $moves = @(Get-ADSyncRuleOrderMovePlan -OriginalRules $script:OriginalRules -DesiredRules (Get-DesiredRules))
             if ($moves.Count -eq 0) { return }
+            $microsoftCloneOperations = @(Get-MicrosoftCloneOperations -Moves $moves)
             $scheduler = Get-ADSyncScheduler
-            if (-not (Show-ApplyConfirmation -MoveCount $moves.Count -IsStaging ([bool]$scheduler.StagingModeEnabled) -BackupPath $BackupRoot)) {
+            if (-not (Show-ApplyConfirmation `
+                        -MoveCount $moves.Count `
+                        -MicrosoftCloneOperations $microsoftCloneOperations `
+                        -IsStaging ([bool]$scheduler.StagingModeEnabled) `
+                        -BackupPath $BackupRoot)) {
                 return
             }
             Set-EditorEnabled -Enabled $false
