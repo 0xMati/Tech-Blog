@@ -822,6 +822,12 @@ $ApplyButton.Add_Click({
             if ($moves.Count -eq 0) { return }
             $microsoftCloneOperations = @(Get-MicrosoftCloneOperations -Moves $moves)
             $scheduler = Get-ADSyncScheduler
+            if ([bool]$scheduler.SyncCycleInProgress) {
+                Update-ServerState
+                Update-PlanPreview
+                Set-EditorStatus 'A synchronization cycle is in progress. Wait for it to finish, then reload live rules.' -Level Warning
+                return
+            }
             if (-not (Show-ApplyConfirmation `
                         -MoveCount $moves.Count `
                         -MicrosoftCloneOperations $microsoftCloneOperations `
@@ -846,12 +852,20 @@ $ApplyButton.Add_Click({
                 -ConfirmationToken $confirmationToken `
                 -AllowActiveServer:(!$scheduler.StagingModeEnabled) `
                 -Confirm:$false
+            $completionMessage = "Apply completed.`nOperations: $($result.Operations.Count)`nPre-Apply safety snapshot: $($result.Backup.Path)`n`nNo synchronization profile was started.`nEntra Connect configuration recovery is outside this tool."
+            $completionTitle = 'Entra ID Connect sync rules order applied'
+            $completionImage = [System.Windows.MessageBoxImage]::Information
+            if (-not $result.SchedulerRestored) {
+                $completionMessage += "`n`nWARNING: The rules were applied, but the scheduler could not be re-enabled.`n$($result.SchedulerRestoreError)`nRe-enable and verify the scheduler manually."
+                $completionTitle = 'Rules applied - scheduler warning'
+                $completionImage = [System.Windows.MessageBoxImage]::Warning
+            }
             [System.Windows.MessageBox]::Show(
                 $window,
-                "Apply completed.`nOperations: $($result.Operations.Count)`nPre-Apply safety snapshot: $($result.Backup.Path)`n`nNo synchronization profile was started.`nEntra Connect configuration recovery is outside this tool.",
-                'Entra ID Connect sync rules order applied',
+                $completionMessage,
+                $completionTitle,
                 [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Information
+                $completionImage
             ) | Out-Null
             Update-LiveRules -CreateBackup -BackupLabel 'PostApply'
         }

@@ -157,11 +157,14 @@ function New-ADSyncRuleOrderBackup {
         New-Item -Path $BackupRoot -ItemType Directory -Force | Out-Null
     }
 
-    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
     $safeLabel = $Label -replace '[^A-Za-z0-9_.-]', '_'
     $backupPath = Join-Path $BackupRoot "$timestamp-$($env:COMPUTERNAME)-$safeLabel"
+    if (Test-Path -LiteralPath $backupPath) {
+        $backupPath += "-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+    }
     $configurationPath = Join-Path $backupPath 'ServerConfiguration'
-    New-Item -Path $configurationPath -ItemType Directory -Force | Out-Null
+    New-Item -Path $configurationPath -ItemType Directory -ErrorAction Stop | Out-Null
 
     $rules = @(Get-ADSyncRule)
     $connectors = @(Get-ADSyncConnector)
@@ -220,6 +223,13 @@ function Get-ADSyncRuleOrderBackupSequence {
     $manifest = @(Import-Csv -LiteralPath $manifestPath -Delimiter ';')
     if ($manifest.Count -eq 0) {
         throw "The backup manifest is empty: $manifestPath"
+    }
+    $manifestRelativePaths = @($manifest | ForEach-Object { [string]$_.RelativePath })
+    if (@($manifestRelativePaths | Sort-Object -Unique).Count -ne $manifestRelativePaths.Count) {
+        throw 'The backup manifest contains duplicate relative paths.'
+    }
+    if (@($manifestRelativePaths | Where-Object { $_ -ieq 'Rules.csv' }).Count -ne 1) {
+        throw 'The backup manifest must contain exactly one Rules.csv entry.'
     }
     $backupPrefix = $resolvedBackupPath + [IO.Path]::DirectorySeparatorChar
     foreach ($entry in $manifest) {
@@ -539,7 +549,7 @@ function Test-ADSyncRuleOrderClone {
             'Connector', 'Direction', 'SourceObjectType', 'TargetObjectType', 'LinkType',
             'Disabled', 'Description', 'SoftDeleteExpiryInterval', 'EnablePasswordSync'
         )) {
-        if ([string]$SourceRule.$propertyName -ne [string]$CloneRule.$propertyName) {
+        if ([string]$SourceRule.$propertyName -cne [string]$CloneRule.$propertyName) {
             $differences += $propertyName
         }
     }
@@ -562,7 +572,7 @@ function Test-ADSyncRuleOrderClone {
                 $_.ValueMergeType,
                 $_.ExecuteOnce
         } | Sort-Object)
-    if (@(Compare-Object $sourceMappings $cloneMappings).Count -gt 0) {
+    if (@(Compare-Object $sourceMappings $cloneMappings -CaseSensitive).Count -gt 0) {
         $differences += 'AttributeFlowMappings'
     }
 
@@ -576,7 +586,7 @@ function Test-ADSyncRuleOrderClone {
                         '{0}|{1}|{2}' -f $_.Attribute, $_.ComparisonOperator, $_.ComparisonValue
                     } | Sort-Object) -join '&&')
         } | Sort-Object)
-    if (@(Compare-Object $sourceScopes $cloneScopes).Count -gt 0) {
+    if (@(Compare-Object $sourceScopes $cloneScopes -CaseSensitive).Count -gt 0) {
         $differences += 'ScopeFilter'
     }
 
@@ -584,13 +594,22 @@ function Test-ADSyncRuleOrderClone {
             (@($_.JoinConditionList | ForEach-Object {
                         '{0}|{1}|{2}' -f $_.CSAttribute, $_.MVAttribute, $_.CaseSensitive
                     } | Sort-Object) -join '&&')
-        } | Sort-Object)
+        })
     $cloneJoins = @($CloneRule.JoinFilter | ForEach-Object {
             (@($_.JoinConditionList | ForEach-Object {
                         '{0}|{1}|{2}' -f $_.CSAttribute, $_.MVAttribute, $_.CaseSensitive
                     } | Sort-Object) -join '&&')
-        } | Sort-Object)
-    if (@(Compare-Object $sourceJoins $cloneJoins).Count -gt 0) {
+        })
+    $joinFiltersDiffer = $sourceJoins.Count -ne $cloneJoins.Count
+    if (-not $joinFiltersDiffer) {
+        for ($index = 0; $index -lt $sourceJoins.Count; $index++) {
+            if ($sourceJoins[$index] -cne $cloneJoins[$index]) {
+                $joinFiltersDiffer = $true
+                break
+            }
+        }
+    }
+    if ($joinFiltersDiffer) {
         $differences += 'JoinFilter'
     }
     return @($differences)
@@ -630,9 +649,19 @@ function Move-ADSyncRuleOrderLiveRuleRelative {
         -Placement $Placement `
         -Name $cloneName
 
-    if ($sourceWasStandard) {
-        Add-ADSyncRule -SynchronizationRule $clone -ErrorAction Stop | Out-Null
-        try {
+    $operation = [pscustomobject]@{
+        SourceRule        = $sourceRule
+        ReplacementId     = $clone.Identifier.ToString()
+        OriginalId        = $Identifier.ToString()
+        SourceWasStandard = $sourceWasStandard
+        OriginalDisabled  = $originalDisabled
+        RuleName          = [string]$sourceRule.Name
+    }
+    $mutationMayHaveStarted = $false
+    try {
+        if ($sourceWasStandard) {
+            $mutationMayHaveStarted = $true
+            Add-ADSyncRule -SynchronizationRule $clone -ErrorAction Stop | Out-Null
             $createdRule = Get-ADSyncRule | Where-Object Identifier -eq $clone.Identifier | Select-Object -First 1
             if (-not $createdRule) {
                 throw "Clone '$($clone.Identifier)' was not found after creation."
@@ -643,15 +672,22 @@ function Move-ADSyncRuleOrderLiveRuleRelative {
             }
             $sourceRule.Disabled = $true
             Add-ADSyncRule -SynchronizationRule $sourceRule -ErrorAction Stop | Out-Null
+            $disabledOriginal = Get-ADSyncRule |
+                Where-Object Identifier -eq $sourceRule.Identifier |
+                Select-Object -First 1
+            if (-not $disabledOriginal -or -not [bool]$disabledOriginal.Disabled) {
+                throw "Microsoft standard rule '$($sourceRule.Identifier)' was not disabled after clone verification."
+            }
         }
-        catch {
-            Remove-ADSyncRule -Identifier $clone.Identifier -ErrorAction SilentlyContinue | Out-Null
-            throw
-        }
-    }
-    else {
-        Remove-ADSyncRule -Identifier $sourceRule.Identifier -ErrorAction Stop | Out-Null
-        try {
+        else {
+            $mutationMayHaveStarted = $true
+            Remove-ADSyncRule -Identifier $sourceRule.Identifier -ErrorAction Stop | Out-Null
+            $removedSource = Get-ADSyncRule |
+                Where-Object Identifier -eq $sourceRule.Identifier |
+                Select-Object -First 1
+            if ($removedSource) {
+                throw "Custom rule '$($sourceRule.Identifier)' still exists after removal."
+            }
             Add-ADSyncRule -SynchronizationRule $clone -ErrorAction Stop | Out-Null
             $createdRule = Get-ADSyncRule | Where-Object Identifier -eq $clone.Identifier | Select-Object -First 1
             if (-not $createdRule) {
@@ -662,33 +698,35 @@ function Move-ADSyncRuleOrderLiveRuleRelative {
                 throw "Replacement verification failed: $($differences -join ', ')."
             }
         }
-        catch {
-            Add-ADSyncRule -SynchronizationRule $sourceRule -ErrorAction Stop | Out-Null
+
+        $liveRules = @(Get-ADSyncRule | Sort-Object Precedence, Identifier)
+        $liveIdentifiers = @($liveRules | ForEach-Object { $_.Identifier.ToString() })
+        $cloneIndex = [array]::IndexOf($liveIdentifiers, $clone.Identifier.ToString())
+        $anchorIndex = [array]::IndexOf($liveIdentifiers, $anchorRule.Identifier.ToString())
+        $relativeOrderIsValid = if ($Placement -eq 'Before') {
+            $cloneIndex + 1 -eq $anchorIndex
+        }
+        else {
+            $cloneIndex -eq $anchorIndex + 1
+        }
+        if ($cloneIndex -lt 0 -or $anchorIndex -lt 0 -or -not $relativeOrderIsValid) {
+            throw "Exact relative-order verification failed for '$($sourceRule.Name)'."
+        }
+
+        return $operation
+    }
+    catch {
+        $moveError = $_
+        if (-not $mutationMayHaveStarted) {
             throw
         }
-    }
-
-    $liveRules = @(Get-ADSyncRule | Sort-Object Precedence)
-    $liveIdentifiers = @($liveRules | ForEach-Object { $_.Identifier.ToString() })
-    $cloneIndex = [array]::IndexOf($liveIdentifiers, $clone.Identifier.ToString())
-    $anchorIndex = [array]::IndexOf($liveIdentifiers, $anchorRule.Identifier.ToString())
-    $relativeOrderIsValid = if ($Placement -eq 'Before') {
-        $cloneIndex -lt $anchorIndex
-    }
-    else {
-        $cloneIndex -gt $anchorIndex
-    }
-    if ($cloneIndex -lt 0 -or $anchorIndex -lt 0 -or -not $relativeOrderIsValid) {
-        throw "Relative-order verification failed for '$($sourceRule.Name)'."
-    }
-
-    return [pscustomobject]@{
-        SourceRule        = $sourceRule
-        ReplacementId     = $clone.Identifier.ToString()
-        OriginalId        = $Identifier.ToString()
-        SourceWasStandard = $sourceWasStandard
-        OriginalDisabled  = $originalDisabled
-        RuleName          = [string]$sourceRule.Name
+        try {
+            Undo-ADSyncRuleOrderLiveMove -Operation $operation
+        }
+        catch {
+            throw "Rule move failed: $($moveError.Exception.Message) Local rollback also failed: $($_.Exception.Message)"
+        }
+        throw "Rule move failed and was rolled back: $($moveError.Exception.Message)"
     }
 }
 
@@ -698,23 +736,38 @@ function Undo-ADSyncRuleOrderLiveMove {
         [Parameter(Mandatory)]$Operation
     )
 
-    Remove-ADSyncRule -Identifier ([guid]$Operation.ReplacementId) -ErrorAction Stop | Out-Null
-    $replacementStillExists = Get-ADSyncRule |
+    $replacement = Get-ADSyncRule |
         Where-Object Identifier -eq ([guid]$Operation.ReplacementId) |
         Select-Object -First 1
-    if ($replacementStillExists) {
-        throw "Replacement '$($Operation.ReplacementId)' still exists after rollback removal."
+    if ($replacement) {
+        Remove-ADSyncRule -Identifier ([guid]$Operation.ReplacementId) -ErrorAction Stop | Out-Null
+        $replacementStillExists = Get-ADSyncRule |
+            Where-Object Identifier -eq ([guid]$Operation.ReplacementId) |
+            Select-Object -First 1
+        if ($replacementStillExists) {
+            throw "Replacement '$($Operation.ReplacementId)' still exists after rollback removal."
+        }
     }
     if ($Operation.SourceWasStandard) {
         $original = Get-ADSyncRule | Where-Object Identifier -eq ([guid]$Operation.OriginalId) | Select-Object -First 1
         if (-not $original) {
-            throw "Standard rule '$($Operation.OriginalId)' is unavailable for rollback."
+            $original = $Operation.SourceRule
         }
         $original.Disabled = [bool]$Operation.OriginalDisabled
         Add-ADSyncRule -SynchronizationRule $original -ErrorAction Stop | Out-Null
     }
     else {
-        Add-ADSyncRule -SynchronizationRule $Operation.SourceRule -ErrorAction Stop | Out-Null
+        $original = Get-ADSyncRule | Where-Object Identifier -eq ([guid]$Operation.OriginalId) | Select-Object -First 1
+        if (-not $original) {
+            Add-ADSyncRule -SynchronizationRule $Operation.SourceRule -ErrorAction Stop | Out-Null
+        }
+    }
+    $restoredOriginal = Get-ADSyncRule |
+        Where-Object Identifier -eq ([guid]$Operation.OriginalId) |
+        Select-Object -First 1
+    if (-not $restoredOriginal -or
+        [bool]$restoredOriginal.Disabled -ne [bool]$Operation.OriginalDisabled) {
+        throw "Original rule '$($Operation.OriginalId)' was not restored to its previous state."
     }
 }
 
@@ -771,9 +824,18 @@ function Invoke-ADSyncRuleOrderMovePlan {
     $identifierMap = @{}
 
     if (-not $PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Apply $($MovePlan.Count) relative ADSync rule move(s)")) {
-        return [pscustomobject]@{ Backup = $backup; Operations = @(); Applied = $false }
+        return [pscustomobject]@{
+            Backup               = $backup
+            Operations           = @()
+            Applied              = $false
+            SchedulerRestored    = $true
+            SchedulerRestoreError = $null
+        }
     }
 
+    $applyResult = $null
+    $applyFailureMessage = $null
+    $schedulerRestoreError = $null
     try {
         if ($schedulerWasEnabled) {
             Set-ADSyncScheduler -SyncCycleEnabled $false -ErrorAction Stop | Out-Null
@@ -785,6 +847,24 @@ function Invoke-ADSyncRuleOrderMovePlan {
         $preMutationFingerprint = Get-ADSyncRuleOrderFingerprint
         if ($preMutationFingerprint -cne $ExpectedFingerprint) {
             throw 'The live ADSync rule set changed during backup or safety checks. Apply was cancelled.'
+        }
+
+        $expectedLogicalOrder = [System.Collections.Generic.List[string]]::new()
+        foreach ($rule in @(Get-ADSyncRule | Sort-Object Precedence, Identifier)) {
+            $expectedLogicalOrder.Add($rule.Identifier.ToString())
+        }
+        foreach ($move in $MovePlan) {
+            $sourceIndex = $expectedLogicalOrder.IndexOf([string]$move.Identifier)
+            if ($sourceIndex -lt 0) {
+                throw "Rule '$($move.Identifier)' is unavailable while preparing final-order verification."
+            }
+            $expectedLogicalOrder.RemoveAt($sourceIndex)
+            $anchorIndex = $expectedLogicalOrder.IndexOf([string]$move.AnchorIdentifier)
+            if ($anchorIndex -lt 0) {
+                throw "Anchor rule '$($move.AnchorIdentifier)' is unavailable while preparing final-order verification."
+            }
+            $targetIndex = if ($move.Placement -eq 'Before') { $anchorIndex } else { $anchorIndex + 1 }
+            $expectedLogicalOrder.Insert($targetIndex, [string]$move.Identifier)
         }
 
         foreach ($move in $MovePlan) {
@@ -809,10 +889,40 @@ function Invoke-ADSyncRuleOrderMovePlan {
             $identifierMap[[string]$move.Identifier] = $operation.ReplacementId
         }
 
-        return [pscustomobject]@{
-            Backup          = $backup
-            Operations      = @($operations)
-            Applied         = $true
+        $replacementToOriginal = @{}
+        $retainedStandardOriginals = @{}
+        foreach ($operation in $operations) {
+            $replacementToOriginal[[string]$operation.ReplacementId] = [string]$operation.OriginalId
+            if ($operation.SourceWasStandard) {
+                $retainedStandardOriginals[[string]$operation.OriginalId] = $true
+            }
+        }
+        $actualLogicalOrder = [System.Collections.Generic.List[string]]::new()
+        foreach ($rule in @(Get-ADSyncRule | Sort-Object Precedence, Identifier)) {
+            $liveIdentifier = $rule.Identifier.ToString()
+            if ($retainedStandardOriginals.ContainsKey($liveIdentifier)) {
+                continue
+            }
+            if ($replacementToOriginal.ContainsKey($liveIdentifier)) {
+                $actualLogicalOrder.Add($replacementToOriginal[$liveIdentifier])
+            }
+            else {
+                $actualLogicalOrder.Add($liveIdentifier)
+            }
+        }
+        if ($actualLogicalOrder.Count -ne $expectedLogicalOrder.Count) {
+            throw "Final logical rule count verification failed. Expected $($expectedLogicalOrder.Count); found $($actualLogicalOrder.Count)."
+        }
+        for ($index = 0; $index -lt $expectedLogicalOrder.Count; $index++) {
+            if ($actualLogicalOrder[$index] -cne $expectedLogicalOrder[$index]) {
+                throw "Final logical rule order verification failed at position $($index + 1)."
+            }
+        }
+
+        $applyResult = [pscustomobject]@{
+            Backup           = $backup
+            Operations       = @($operations)
+            Applied          = $true
             FinalFingerprint = Get-ADSyncRuleOrderFingerprint
         }
     }
@@ -824,19 +934,51 @@ function Invoke-ADSyncRuleOrderMovePlan {
                 Undo-ADSyncRuleOrderLiveMove -Operation $operations[$index]
             }
             catch {
-                $rollbackErrors += $_.Exception.Message
+                $rollbackErrors += "Operation $($index + 1) '$($operations[$index].RuleName)': $($_.Exception.Message)"
             }
         }
-        if ($rollbackErrors.Count -gt 0) {
-            throw "Apply failed: $($applyError.Exception.Message) Rollback also failed: $($rollbackErrors -join ' | ') Backup: $($backup.Path)"
+        try {
+            $rollbackFingerprint = Get-ADSyncRuleOrderFingerprint
+            if ($rollbackFingerprint -cne $ExpectedFingerprint) {
+                $rollbackErrors += 'The live rule fingerprint does not match the pre-Apply state after rollback.'
+            }
         }
-        throw "Apply failed and was rolled back: $($applyError.Exception.Message) Backup: $($backup.Path)"
+        catch {
+            $rollbackErrors += "Post-rollback fingerprint verification failed: $($_.Exception.Message)"
+        }
+        if ($rollbackErrors.Count -gt 0) {
+            $applyFailureMessage = "Apply failed: $($applyError.Exception.Message) Rollback also failed: $($rollbackErrors -join ' | ') Backup: $($backup.Path)"
+        }
+        else {
+            $applyFailureMessage = "Apply failed and was rolled back: $($applyError.Exception.Message) Backup: $($backup.Path)"
+        }
     }
     finally {
         if ($schedulerWasEnabled) {
-            Set-ADSyncScheduler -SyncCycleEnabled $true -ErrorAction Stop | Out-Null
+            try {
+                Set-ADSyncScheduler -SyncCycleEnabled $true -ErrorAction Stop | Out-Null
+                $restoredScheduler = Get-ADSyncScheduler
+                if (-not [bool]$restoredScheduler.SyncCycleEnabled) {
+                    throw 'The scheduler still reports SyncCycleEnabled=False.'
+                }
+            }
+            catch {
+                $schedulerRestoreError = $_.Exception.Message
+            }
         }
     }
+
+    if ($null -ne $applyFailureMessage) {
+        if ($null -ne $schedulerRestoreError) {
+            $applyFailureMessage += " Scheduler restoration also failed: $schedulerRestoreError"
+        }
+        throw $applyFailureMessage
+    }
+    $applyResult | Add-Member -MemberType NoteProperty -Name SchedulerRestored `
+        -Value ($null -eq $schedulerRestoreError)
+    $applyResult | Add-Member -MemberType NoteProperty -Name SchedulerRestoreError `
+        -Value $schedulerRestoreError
+    return $applyResult
 }
 
 Export-ModuleMember -Function @(

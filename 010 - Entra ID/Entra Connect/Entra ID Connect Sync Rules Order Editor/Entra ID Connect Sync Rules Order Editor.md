@@ -54,8 +54,9 @@ The tool manages **rule order**. It is not Synchronization Rules Editor wearing 
 
 - [`EntraIDConnectSyncRulesOrderEditor.ps1`](./EntraIDConnectSyncRulesOrderEditor.ps1): WPF interface and workflow.
 - [`EntraIDConnectSyncRulesOrder.Engine.psm1`](./EntraIDConnectSyncRulesOrder.Engine.psm1): snapshots, planning, Apply, verification, and rollback logic.
+- [`Tests/EntraIDConnectSyncRulesOrder.Engine.Tests.ps1`](./Tests/EntraIDConnectSyncRulesOrder.Engine.Tests.ps1): offline Pester coverage for Microsoft-preserving plans, transactional rollback, and scheduler restoration reporting.
 
-Keep both files in the same directory.
+Keep the launcher and engine files in the same directory. The `Tests` folder is optional on the Entra ID Connect server.
 
 ## Requirements
 
@@ -159,9 +160,13 @@ The Apply workflow performs these checks and actions:
 6. pauses the scheduler if it was enabled;
 7. rechecks the scheduler and fingerprint immediately before mutation;
 8. performs and verifies each relative move;
-9. attempts reverse-order rollback if an operation fails;
-10. restores the scheduler to its previous enabled state;
-11. reloads the live rules and creates a `PostApply` safety snapshot after success.
+9. verifies that the complete final logical order matches the requested plan;
+10. attempts local and reverse-order rollback if an operation fails;
+11. verifies the pre-Apply fingerprint after rollback;
+12. restores the scheduler to its previous enabled state;
+13. reloads the live rules and creates a `PostApply` safety snapshot after success.
+
+If the rule operations succeed but the scheduler cannot be re-enabled, the tool reports the rules as applied and displays a separate scheduler warning with the underlying error. It does not misreport the rule changes as rolled back.
 
 The confirmation window requires an explicit click on **Apply on STAGING** or **Apply on ACTIVE**. No server name needs to be typed. If Microsoft standard rules are operation sources, the window displays a red warning, the exact clone count, and a scrollable list containing each rule name, connector, placement, and anchor rule. Otherwise it confirms that no Microsoft rule will be cloned.
 

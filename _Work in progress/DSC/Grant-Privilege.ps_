@@ -1,0 +1,165 @@
+<#
+.SYNOPSIS
+Grant-Privilege.ps1 - grant priviledges in production forest to eligible admin T0, T1 or T2 account
+
+.DESCRIPTION
+This script displays the list of shadow groups which belong to a shadow principal providing privileges its members. It then allows selecting one of them and adds an eligible admin account to it
+Entering "0" in the selection of privileges allows adding the eligible admin user account to all of them
+
+.PARAMETER eligibleAccount
+SamAccountName of the eligible account to grant priviledge 
+
+.PARAMETER TTL
+Amount of time for the membership in hours between 1 and 8.
+ 
+.EXAMPLE
+.\Grant-Privilege.ps1 -EligibleAccount t0-demouser1 -TTL 4
+Allows selecting a T0 shawdow group and adds eligible account T0-demouser1 as a member of it for 4 hours. Selecting "0" allows adding it to all T0 shadow groups
+
+.EXAMPLE
+.\Grant-Privilege.ps1 -EligibleAccount t1-demouser1 -TTL 4
+Allows selecting a T1 shawdow group and adds eligible account T1-demouser1 as a member of it for 4 hours. Selecting "0" allows adding it to all T1 shadow groups
+
+.EXAMPLE
+.\Grant-Privilege.ps1 -EligibleAccount t2-demouser1 -TTL 4
+Allows selecting a T2 shawdow group and adds eligible account T2-demouser1 as a member of it for 4 hours. Selecting "0" allows adding it to all T2 shadow groups
+
+.OUTPUTS
+ 
+.NOTES
+Version 1.00
+Author: Didier Gautier - didgau@microsoft.com
+This sample script is not supported under any Microsoft standard support program or service. The sample script is provided AS IS without warranty of any kind. Microsoft further disclaims 
+all implied warranties including, without limitation, any implied warranties of merchantability or of fitness for a particular purpose. The entire risk arising out of the use or performance of the sample scripts and documentation remains with you. In no event shall Microsoft, its authors, or anyone else involved in the creation, production, or delivery of the scripts be liable for any damages whatsoever (including, without limitation, damages for loss of business profits, business 
+interruption, loss of business information, or other pecuniary loss) arising out of the use of or inability to use the sample scripts or documentation, even if Microsoft has been advised of the possibility of such damages
+
+ 
+#>
+
+[cmdletBinding()]
+param (
+        [Parameter(mandatory = $true)]$EligibleAccount,
+        [Parameter()][ValidateRange(1,8)][INT]$TTL = 4
+     )
+
+
+$T0ShadowGroups =  @{
+"0. All" = "" 
+"1. Enterprise Admin of forest megapoc.com" = "T0-MegaPOCEnterpriseAdmins","T0-MegaPOCDomainAdmins"
+"2. Enterprise Admin of forest mpf.local" = "T0-MPFEnterpriseAdmins","T0-MPFDomainAdmins" 
+"3. Schema Admin of forest megapoc.com" = "T0-MegapocSchemaAdmins","T0-MegaPOCDomainAdmins" 
+"4. Schema Admin of forest mpf.local" = "T0-MPFSchemaAdmins","T0-MPFDomainAdmins" 
+"5. Domain Admin of domain megapoc.com" = "T0-MegaPOCDomainAdmins",""
+"6. Domain Admin of domain mpc.megapoc.com" = "T0-MPCDomainAdmins",""
+"7. Domain Admin of domain mpt.local" = "T0-MPTDomainAdmins",""
+"8. Domain Admin of domain mpf.local" = "T0-MPFDomainAdmins",""
+}
+
+$T1ShadowGroups = @{
+"0. All" = "" 
+"1. T1 Admin of domain megapoc.com" = "T1-MegapocAdmins",""
+"2. Exchange Admin of domain megapoc.com" = "T1-Megapoc-ExchangeAdmins",""
+"3. T1 Admin of domain mpc.megapoc.com" = "T1-MPCAdmins","" 
+"4. T1 Admin of domain mpt.local" = "T1-MPTAdmins","" 
+"5. T1 Admin of domain mpf.local" = "T1-MPFAdmins","" 
+}
+
+$T2ShadowGroups = @{
+"0. All" = "" 
+"1. T2 Admin of domain megapoc.com" = "T2-MegapocAdmins",""
+"2. T2 Admin of domain mpc.megapoc.com" = "T2-MPCAdmins",""
+"3. T2 Admin of domain mpt.local" = "T2-MPTAdmins",""
+"4. T2 Admin of domain mpf.local" = "T2-MPFAdmins",""
+}
+
+$TTLinSeconds = New-TimeSpan -Hours $TTL
+
+try 
+{ 
+    $EligibleAccountDN = (Get-ADUser -Identity  $EligibleAccount).DistinguishedName
+}
+catch
+{ 
+   write-host "Exception met when getting Distingushed Name of user $EligibleAccount`: " -NoNewline
+   write-host "$($_.exception.message)" -ForegroundColor Red
+   exit
+}
+
+# Set the list of allowed groups according to the tier of the eligible user
+switch -Regex ($EligibleAccount)
+{
+    "^T0"    {$ShadowGroups = $T0ShadowGroups}
+    "^T1"    {$ShadowGroups = $T1ShadowGroups}
+    "^T2"    {$ShadowGroups = $T2ShadowGroups}
+    default  {write-host "Eligible account name passed must start with `"T0`", `"T1`" or `"T0`"" -ForegroundColor red;exit}
+}
+$GroupsOfTier = $ShadowGroups.GetEnumerator().name | sort
+
+# Build a list of shadow groups according to the tier of the eligible account and select one
+do 
+{
+    cls
+    $i = 1
+    write-host "`nGroup Selection: `n"
+    foreach ($GroupOfTier in $GroupsOfTier)
+    {
+        write-host "`t$GroupOfTier"
+        $i++
+    }
+    [int]$GroupIndex = read-host "`nEnter the group providing the privileges you want to grant to $EligibleAccount (enter 99 to exit)"
+    
+    if ($GroupIndex -eq 99)
+    {
+        exit
+    }
+
+}
+while ($GroupIndex -gt $i-2 -or $GroupIndex -lt 0)
+
+
+# Add the account to the shadow group(s)
+if ($GroupIndex -eq 0)
+{
+    # Add the eligible account to all the shadow groups of its tier
+    foreach ($Group in $GroupsOfTier)
+    {
+        if ($group -eq "0. All")
+        {
+            continue
+        }
+        else 
+        {
+            try 
+            { 
+                Add-ADGroupMember -Identity $ShadowGroups[$Group][0] -Members $EligibleAccount -MemberTimeToLive $TTLinSeconds
+                Write-Host "$EligibleAccount successfully added to group $($ShadowGroups[$Group][0]) for $TTL hour(s)" -ForegroundColor Green
+            }
+            catch
+            { 
+                write-host "Exception met when adding $EligibleAccount to group $($ShadowGroups[$Group][0])`: " -NoNewline
+                write-host "$($_.exception.message)" -ForegroundColor Red
+            }
+        }
+    }
+}
+else
+{
+    try 
+    { 
+        foreach ($group in $ShadowGroups[$GroupsOfTier[$GroupIndex]])
+        {
+            if ($group)
+            {
+                Add-ADGroupMember -Identity $group -Members $EligibleAccount -MemberTimeToLive $TTLinSeconds
+                Write-Host "$EligibleAccount successfully added to group $group for $TTL hour(s)" -ForegroundColor Green
+            }
+        }
+    }
+    catch
+    { 
+        write-host "Exception met when adding $EligibleAccount to group $group`:" -NoNewline
+        write-host "$($_.exception.message)" -ForegroundColor Red
+        exit
+    }
+}
+
