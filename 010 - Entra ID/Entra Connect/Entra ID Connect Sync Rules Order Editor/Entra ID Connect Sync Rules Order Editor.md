@@ -96,6 +96,8 @@ At startup, the editor:
 
 Nothing is changed in ADSync during this phase.
 
+![](<./assets/Entra ID Connect Sync Rules Order Editor/2026-09-07-11-08-05.png>)
+
 ## Reading the interface
 
 The top status bar shows:
