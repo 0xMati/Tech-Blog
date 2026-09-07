@@ -278,7 +278,13 @@ Describe 'Get-ADSyncRuleOrderMovePlan' {
     }
 
     function script:New-ADSyncRuleOrderBackup {
-        param([string]$BackupRoot, [string]$Label)
+        param(
+            [string]$BackupRoot,
+            [string]$Label,
+            [scriptblock]$ProgressCallback,
+            [int]$ProgressStart,
+            [int]$ProgressEnd
+        )
         return [pscustomobject]@{
             Path = Join-Path $BackupRoot $Label
         }
@@ -307,6 +313,14 @@ Describe 'Get-ADSyncRuleOrderMovePlan' {
         $script:CorruptNextReplacement = $false
         $script:MockSchedulerEnabled = $true
         $script:MockFailSchedulerEnable = $true
+        $script:MockProgressUpdates = [System.Collections.Generic.List[object]]::new()
+        $progressCallback = {
+            param([int]$Percent, [string]$Activity)
+            $script:MockProgressUpdates.Add([pscustomobject]@{
+                Percent  = $Percent
+                Activity = $Activity
+            })
+        }
 
         $plan = @(Get-ADSyncRuleOrderMovePlan `
                 -OriginalRules @($customRule, $standardRuleA, $standardRuleB) `
@@ -317,6 +331,7 @@ Describe 'Get-ADSyncRuleOrderMovePlan' {
             -ExpectedFingerprint $fingerprint `
             -BackupRoot $env:TEMP `
             -ConfirmationToken "APPLY $($env:COMPUTERNAME)" `
+            -ProgressCallback $progressCallback `
             -Confirm:$false
 
         return [pscustomobject]@{
@@ -325,6 +340,11 @@ Describe 'Get-ADSyncRuleOrderMovePlan' {
             SchedulerRestored     = [bool]$result.SchedulerRestored
             SchedulerRestoreError = [string]$result.SchedulerRestoreError
             SchedulerEnabled      = [bool]$script:MockSchedulerEnabled
+            FirstProgress         = $script:MockProgressUpdates[0].Percent
+            LastProgress          = $script:MockProgressUpdates[$script:MockProgressUpdates.Count - 1].Percent
+            HasMoveProgress       = @($script:MockProgressUpdates | Where-Object {
+                    $_.Activity -like 'Applying move *'
+                }).Count -gt 0
         }
     }
 }
@@ -360,6 +380,9 @@ Describe 'Invoke-ADSyncRuleOrderMovePlan scheduler restoration' {
         $result.SchedulerRestored | Should Be $false
         $result.SchedulerRestoreError | Should Match 'Mock scheduler enable failure'
         $result.SchedulerEnabled | Should Be $false
+        $result.FirstProgress | Should Be 0
+        $result.LastProgress | Should Be 100
+        $result.HasMoveProgress | Should Be $true
     }
 }
 

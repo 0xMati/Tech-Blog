@@ -1,5 +1,28 @@
 Set-StrictMode -Version 2.0
 
+function Invoke-ADSyncRuleOrderProgress {
+    param(
+        [scriptblock]$ProgressCallback,
+        [ValidateRange(0, 100)][int]$Percent,
+        [string]$Activity,
+        [ValidateRange(0, 100)][int]$ProgressStart = 0,
+        [ValidateRange(0, 100)][int]$ProgressEnd = 100
+    )
+
+    if ($null -eq $ProgressCallback) {
+        return
+    }
+    $mappedPercent = $ProgressStart + [int][Math]::Round(
+        (($ProgressEnd - $ProgressStart) * $Percent) / 100
+    )
+    try {
+        & $ProgressCallback $mappedPercent $Activity
+    }
+    catch {
+        Write-Verbose "Progress callback failed: $($_.Exception.Message)"
+    }
+}
+
 function Move-ADSyncRuleOrderItem {
     [CmdletBinding()]
     param(
@@ -149,10 +172,20 @@ function New-ADSyncRuleOrderBackup {
         [ValidateNotNullOrEmpty()]
         [string]$BackupRoot,
 
-        [string]$Label = 'LiveSnapshot'
+        [string]$Label = 'LiveSnapshot',
+
+        [scriptblock]$ProgressCallback,
+
+        [ValidateRange(0, 100)]
+        [int]$ProgressStart = 0,
+
+        [ValidateRange(0, 100)]
+        [int]$ProgressEnd = 100
     )
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 0 'Checking ADSync commands...' $ProgressStart $ProgressEnd
     Assert-ADSyncRuleOrderAvailable
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 5 'Preparing the safety snapshot folder...' $ProgressStart $ProgressEnd
     if (-not (Test-Path -LiteralPath $BackupRoot -PathType Container)) {
         New-Item -Path $BackupRoot -ItemType Directory -Force | Out-Null
     }
@@ -166,22 +199,28 @@ function New-ADSyncRuleOrderBackup {
     $configurationPath = Join-Path $backupPath 'ServerConfiguration'
     New-Item -Path $configurationPath -ItemType Directory -ErrorAction Stop | Out-Null
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 12 'Reading live rules, connectors, and scheduler state...' $ProgressStart $ProgressEnd
     $rules = @(Get-ADSyncRule)
     $connectors = @(Get-ADSyncConnector)
     $scheduler = Get-ADSyncScheduler
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 28 'Serializing live ADSync objects...' $ProgressStart $ProgressEnd
     $rules | Export-Clixml -LiteralPath (Join-Path $backupPath 'Rules.clixml') -Depth 20
     $connectors | Export-Clixml -LiteralPath (Join-Path $backupPath 'Connectors.clixml') -Depth 20
     $scheduler | Export-Clixml -LiteralPath (Join-Path $backupPath 'Scheduler.clixml') -Depth 10
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 42 'Exporting the documentary rule inventory...' $ProgressStart $ProgressEnd
     Get-ADSyncRuleOrderSnapshot |
         Select-Object Identifier, Name, Connector, ConnectorId, Disabled, IsStandardRule, RuleType,
             OldPrecedence, SourceObjectType, TargetObjectType, LinkType, Direction |
         Export-Csv -LiteralPath (Join-Path $backupPath 'Rules.csv') -Delimiter ';' -NoTypeInformation -Encoding UTF8
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 55 'Exporting the Entra Connect server configuration...' $ProgressStart $ProgressEnd
     Get-ADSyncServerConfiguration -Path $configurationPath -ErrorAction Stop | Out-Null
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 78 'Verifying the server configuration export...' $ProgressStart $ProgressEnd
     $configurationFiles = @(Get-ChildItem -LiteralPath $configurationPath -File -Recurse)
     if ($configurationFiles.Count -eq 0) {
         throw "Get-ADSyncServerConfiguration did not create any file in '$configurationPath'."
     }
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 86 'Calculating snapshot integrity hashes...' $ProgressStart $ProgressEnd
     $files = @(Get-ChildItem -LiteralPath $backupPath -File -Recurse)
     $manifest = @(
         $files | Get-FileHash -Algorithm SHA256 | Select-Object `
@@ -191,12 +230,15 @@ function New-ADSyncRuleOrderBackup {
     $manifestPath = Join-Path $backupPath 'SHA256-manifest.csv'
     $manifest | Export-Csv -LiteralPath $manifestPath -Delimiter ';' -NoTypeInformation -Encoding UTF8
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 96 'Calculating the live rule fingerprint...' $ProgressStart $ProgressEnd
+    $fingerprint = Get-ADSyncRuleOrderFingerprint
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 100 'Safety snapshot complete.' $ProgressStart $ProgressEnd
     return [pscustomobject]@{
         Path         = $backupPath
         RuleCount    = $rules.Count
         ManifestPath = $manifestPath
         ManifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
-        Fingerprint  = Get-ADSyncRuleOrderFingerprint
+        Fingerprint  = $fingerprint
     }
 }
 
@@ -208,9 +250,12 @@ function Get-ADSyncRuleOrderBackupSequence {
         [string]$BackupPath,
 
         [Parameter(Mandatory)]
-        [object[]]$CurrentRules
+        [object[]]$CurrentRules,
+
+        [scriptblock]$ProgressCallback
     )
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 0 'Locating the selected safety snapshot...'
     $resolvedBackupPath = (Resolve-Path -LiteralPath $BackupPath -ErrorAction Stop).Path.TrimEnd('\')
     $manifestPath = Join-Path $resolvedBackupPath 'SHA256-manifest.csv'
     $rulesPath = Join-Path $resolvedBackupPath 'Rules.csv'
@@ -220,6 +265,7 @@ function Get-ADSyncRuleOrderBackupSequence {
         }
     }
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 8 'Reading the snapshot integrity manifest...'
     $manifest = @(Import-Csv -LiteralPath $manifestPath -Delimiter ';')
     if ($manifest.Count -eq 0) {
         throw "The backup manifest is empty: $manifestPath"
@@ -232,7 +278,13 @@ function Get-ADSyncRuleOrderBackupSequence {
         throw 'The backup manifest must contain exactly one Rules.csv entry.'
     }
     $backupPrefix = $resolvedBackupPath + [IO.Path]::DirectorySeparatorChar
-    foreach ($entry in $manifest) {
+    for ($entryIndex = 0; $entryIndex -lt $manifest.Count; $entryIndex++) {
+        $entry = $manifest[$entryIndex]
+        $hashPercent = 15 + [int][Math]::Round((50 * $entryIndex) / [Math]::Max(1, $manifest.Count))
+        Invoke-ADSyncRuleOrderProgress `
+            $ProgressCallback `
+            $hashPercent `
+            "Verifying snapshot file $($entryIndex + 1) of $($manifest.Count): $($entry.RelativePath)"
         if ([string]::IsNullOrWhiteSpace([string]$entry.RelativePath) -or
             [string]::IsNullOrWhiteSpace([string]$entry.Hash)) {
             throw 'The backup manifest contains an incomplete entry.'
@@ -250,6 +302,7 @@ function Get-ADSyncRuleOrderBackupSequence {
         }
     }
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 68 'Reading the saved rule inventory...'
     $backupRules = @(Import-Csv -LiteralPath $rulesPath -Delimiter ';')
     if ($backupRules.Count -ne $CurrentRules.Count) {
         throw "Rule inventory changed. Backup: $($backupRules.Count); live: $($CurrentRules.Count). Order restore was cancelled."
@@ -260,7 +313,14 @@ function Get-ADSyncRuleOrderBackupSequence {
         $remainingRules.Add($rule)
     }
     $desiredRules = [System.Collections.Generic.List[object]]::new()
-    foreach ($backupRule in @($backupRules | Sort-Object {[int]$_.OldPrecedence}, Identifier)) {
+    $orderedBackupRules = @($backupRules | Sort-Object {[int]$_.OldPrecedence}, Identifier)
+    for ($ruleIndex = 0; $ruleIndex -lt $orderedBackupRules.Count; $ruleIndex++) {
+        $backupRule = $orderedBackupRules[$ruleIndex]
+        $mappingPercent = 72 + [int][Math]::Round((26 * $ruleIndex) / [Math]::Max(1, $orderedBackupRules.Count))
+        Invoke-ADSyncRuleOrderProgress `
+            $ProgressCallback `
+            $mappingPercent `
+            "Mapping saved rule $($ruleIndex + 1) of $($orderedBackupRules.Count): $($backupRule.Name)"
         $matchingRules = @($remainingRules | Where-Object {
                 [string]$_.Identifier -eq [string]$backupRule.Identifier
             })
@@ -286,6 +346,7 @@ function Get-ADSyncRuleOrderBackupSequence {
         throw "$($remainingRules.Count) live rule(s) are not represented in the backup. Order restore was cancelled."
     }
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 100 'Snapshot validation and rule mapping complete.'
     return @($desiredRules)
 }
 
@@ -789,9 +850,12 @@ function Invoke-ADSyncRuleOrderMovePlan {
         [ValidateNotNullOrEmpty()]
         [string]$ConfirmationToken,
 
-        [switch]$AllowActiveServer
+        [switch]$AllowActiveServer,
+
+        [scriptblock]$ProgressCallback
     )
 
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 0 'Validating the Apply request...'
     Assert-ADSyncRuleOrderAvailable
     if ($MovePlan.Count -eq 0) {
         throw 'The move plan is empty.'
@@ -818,7 +882,13 @@ function Invoke-ADSyncRuleOrderMovePlan {
         throw 'The live ADSync rule set changed after it was loaded. Refresh the editor and review the new order.'
     }
 
-    $backup = New-ADSyncRuleOrderBackup -BackupRoot $BackupRoot -Label 'PreApply'
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 5 'Creating the pre-Apply safety snapshot...'
+    $backup = New-ADSyncRuleOrderBackup `
+        -BackupRoot $BackupRoot `
+        -Label 'PreApply' `
+        -ProgressCallback $ProgressCallback `
+        -ProgressStart 5 `
+        -ProgressEnd 30
     $schedulerWasEnabled = [bool]$scheduler.SyncCycleEnabled
     $operations = [System.Collections.Generic.List[object]]::new()
     $identifierMap = @{}
@@ -837,6 +907,7 @@ function Invoke-ADSyncRuleOrderMovePlan {
     $applyFailureMessage = $null
     $schedulerRestoreError = $null
     try {
+        Invoke-ADSyncRuleOrderProgress $ProgressCallback 32 'Pausing and verifying the scheduler...'
         if ($schedulerWasEnabled) {
             Set-ADSyncScheduler -SyncCycleEnabled $false -ErrorAction Stop | Out-Null
         }
@@ -849,6 +920,7 @@ function Invoke-ADSyncRuleOrderMovePlan {
             throw 'The live ADSync rule set changed during backup or safety checks. Apply was cancelled.'
         }
 
+        Invoke-ADSyncRuleOrderProgress $ProgressCallback 38 'Preparing final-order verification...'
         $expectedLogicalOrder = [System.Collections.Generic.List[string]]::new()
         foreach ($rule in @(Get-ADSyncRule | Sort-Object Precedence, Identifier)) {
             $expectedLogicalOrder.Add($rule.Identifier.ToString())
@@ -867,7 +939,13 @@ function Invoke-ADSyncRuleOrderMovePlan {
             $expectedLogicalOrder.Insert($targetIndex, [string]$move.Identifier)
         }
 
-        foreach ($move in $MovePlan) {
+        for ($moveIndex = 0; $moveIndex -lt $MovePlan.Count; $moveIndex++) {
+            $move = $MovePlan[$moveIndex]
+            $movePercent = 42 + [int][Math]::Round((43 * $moveIndex) / $MovePlan.Count)
+            Invoke-ADSyncRuleOrderProgress `
+                $ProgressCallback `
+                $movePercent `
+                "Applying move $($moveIndex + 1) of $($MovePlan.Count): $($move.RuleName)"
             $sourceIdentifier = if ($identifierMap.ContainsKey([string]$move.Identifier)) {
                 $identifierMap[[string]$move.Identifier]
             }
@@ -889,6 +967,7 @@ function Invoke-ADSyncRuleOrderMovePlan {
             $identifierMap[[string]$move.Identifier] = $operation.ReplacementId
         }
 
+        Invoke-ADSyncRuleOrderProgress $ProgressCallback 87 'Verifying the complete live rule order...'
         $replacementToOriginal = @{}
         $retainedStandardOriginals = @{}
         foreach ($operation in $operations) {
@@ -919,6 +998,7 @@ function Invoke-ADSyncRuleOrderMovePlan {
             }
         }
 
+        Invoke-ADSyncRuleOrderProgress $ProgressCallback 92 'Calculating the final rule fingerprint...'
         $applyResult = [pscustomobject]@{
             Backup           = $backup
             Operations       = @($operations)
@@ -929,7 +1009,13 @@ function Invoke-ADSyncRuleOrderMovePlan {
     catch {
         $applyError = $_
         $rollbackErrors = @()
+        Invoke-ADSyncRuleOrderProgress $ProgressCallback 88 'Apply failed. Rolling back completed operations...'
         for ($index = $operations.Count - 1; $index -ge 0; $index--) {
+            $rollbackNumber = $operations.Count - $index
+            Invoke-ADSyncRuleOrderProgress `
+                $ProgressCallback `
+                (88 + [int][Math]::Round((7 * $rollbackNumber) / [Math]::Max(1, $operations.Count))) `
+                "Rolling back operation $rollbackNumber of $($operations.Count): $($operations[$index].RuleName)"
             try {
                 Undo-ADSyncRuleOrderLiveMove -Operation $operations[$index]
             }
@@ -955,6 +1041,7 @@ function Invoke-ADSyncRuleOrderMovePlan {
     }
     finally {
         if ($schedulerWasEnabled) {
+            Invoke-ADSyncRuleOrderProgress $ProgressCallback 96 'Restoring the scheduler state...'
             try {
                 Set-ADSyncScheduler -SyncCycleEnabled $true -ErrorAction Stop | Out-Null
                 $restoredScheduler = Get-ADSyncScheduler
@@ -978,6 +1065,13 @@ function Invoke-ADSyncRuleOrderMovePlan {
         -Value ($null -eq $schedulerRestoreError)
     $applyResult | Add-Member -MemberType NoteProperty -Name SchedulerRestoreError `
         -Value $schedulerRestoreError
+    $completionActivity = if ($null -eq $schedulerRestoreError) {
+        'Apply complete. Scheduler state restored.'
+    }
+    else {
+        'Apply complete. Scheduler restoration requires attention.'
+    }
+    Invoke-ADSyncRuleOrderProgress $ProgressCallback 100 $completionActivity
     return $applyResult
 }
 

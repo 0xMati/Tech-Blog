@@ -37,6 +37,7 @@ Changing random precedence numbers is also a good way to turn a five-minute task
 - Blocks Apply while an ADSync cycle is running.
 - Temporarily pauses an enabled scheduler during Apply and restores its previous state afterward.
 - Attempts rollback in reverse order if an Apply operation fails.
+- Reports phase-based progress for live loads, safety snapshots, order restoration, Apply operations, verification, and rollback.
 - Never starts an Import, Synchronization, or Export run profile.
 
 ## What the tool does not do
@@ -105,6 +106,8 @@ The top status bar shows:
 - the latest safety-snapshot path.
 
 The scheduler status is red while a cycle is running and green while idle. The displayed state is an observation, not a force field: the engine checks it again immediately before Apply.
+
+The bottom status band contains an activity label, a progress bar, and a percentage. Progress is based on known phases and item counts, such as snapshot files, saved rules, or Apply operations. It is not an estimated completion time because ADSync does not expose incremental progress for every native command.
 
 The main grid separates:
 
@@ -263,9 +266,9 @@ Another process or administrator changed ADSync after the editor loaded it. Relo
 
 ### The window temporarily shows Not Responding
 
-Snapshot creation, live reload, and Apply currently run synchronously on the WPF thread. Windows may temporarily mark the window as unresponsive while the operation completes.
+The progress bar is refreshed between known phases and between individual rule operations. However, snapshot creation, live reload, and Apply still call ADSync synchronously on the WPF thread. A single long-running ADSync command, especially `Get-ADSyncServerConfiguration`, can temporarily prevent additional UI updates and Windows may briefly mark the window as unresponsive.
 
-Do not terminate the process while the status says that an Apply is running. For a large configuration, allow the snapshot or reload to finish.
+Use the last visible activity label to identify the current phase. Do not terminate the process while the status says that an Apply is running. For a large configuration, allow the native ADSync call to finish.
 
 ### Restore rule order is rejected
 

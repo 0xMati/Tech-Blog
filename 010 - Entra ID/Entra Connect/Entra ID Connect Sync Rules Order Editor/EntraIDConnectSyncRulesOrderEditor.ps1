@@ -267,16 +267,36 @@ if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
 
         <Border Grid.Row="4" Background="#122A38" CornerRadius="4" Padding="10" Margin="0,12,0,0">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="StatusText" Foreground="White" VerticalAlignment="Center"
-                           Text="Connecting to the local ADSync engine..." />
-                <Button x:Name="ExportPlanButton" Grid.Column="1" Content="Export plan..." />
-                <Button x:Name="ApplyButton" Grid.Column="2" Content="Apply live..."
-                    Background="#B3261E" Foreground="White" BorderBrush="#B3261E" Margin="0" />
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="StatusText" Foreground="White" VerticalAlignment="Center"
+                               Text="Connecting to the local ADSync engine..." />
+                    <Button x:Name="ExportPlanButton" Grid.Column="1" Content="Export plan..." />
+                    <Button x:Name="ApplyButton" Grid.Column="2" Content="Apply live..."
+                        Background="#B3261E" Foreground="White" BorderBrush="#B3261E" Margin="0" />
+                </Grid>
+                <Grid Grid.Row="1" Margin="0,9,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="280" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="48" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ProgressActivityText" Grid.Column="0" Text="Ready"
+                               Foreground="#C8D1D8" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                    <ProgressBar x:Name="OperationProgressBar" Grid.Column="1" Height="10" Minimum="0" Maximum="100"
+                                 Value="0" Margin="10,0" Foreground="#35B89A" Background="#36505E" />
+                    <TextBlock x:Name="ProgressPercentText" Grid.Column="2" Text="0%" Foreground="White"
+                               FontWeight="SemiBold" TextAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
             </Grid>
         </Border>
     </Grid>
@@ -289,7 +309,8 @@ $controlNames = @(
     'AppIcon', 'BackupButton', 'RestoreOrderButton', 'RefreshButton', 'ServerText', 'ModeText', 'SchedulerText', 'BackupText',
     'SearchBox', 'FindNextButton', 'PlanText', 'ResetButton', 'RuleGrid', 'MoveTopButton',
     'MoveUp10Button', 'MoveUpButton', 'MoveDownButton', 'MoveDown10Button', 'MoveBottomButton',
-    'TargetPositionBox', 'MoveToPositionButton', 'StatusText', 'ExportPlanButton', 'ApplyButton'
+    'TargetPositionBox', 'MoveToPositionButton', 'StatusText', 'ExportPlanButton', 'ApplyButton',
+    'ProgressActivityText', 'OperationProgressBar', 'ProgressPercentText'
 )
 foreach ($controlName in $controlNames) {
     Set-Variable -Name $controlName -Value $window.FindName($controlName)
@@ -335,6 +356,35 @@ function Set-EditorStatus {
         'Error' { '#FF9C9C' }
         default { 'White' }
     }
+}
+
+function Set-EditorProgress {
+    param(
+        [ValidateRange(0, 100)][int]$Percent,
+        [string]$Activity,
+        [ValidateSet('Normal', 'Warning', 'Error')][string]$Level = 'Normal'
+    )
+
+    $OperationProgressBar.Value = $Percent
+    $ProgressPercentText.Text = "$Percent%"
+    $ProgressActivityText.Text = $Activity
+    $ProgressActivityText.ToolTip = $Activity
+    $OperationProgressBar.Foreground = switch ($Level) {
+        'Warning' { '#F2B84B' }
+        'Error' { '#E56565' }
+        default { '#35B89A' }
+    }
+    $ProgressActivityText.Foreground = switch ($Level) {
+        'Warning' { '#FFD166' }
+        'Error' { '#FF9C9C' }
+        default { '#C8D1D8' }
+    }
+    $window.Dispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
+}
+
+$script:EditorProgressCallback = {
+    param([int]$Percent, [string]$Activity)
+    Set-EditorProgress -Percent $Percent -Activity $Activity
 }
 
 function Get-DesiredRules {
@@ -460,28 +510,41 @@ function Update-LiveRules {
     param([switch]$CreateBackup, [string]$BackupLabel = 'InitialLoad')
     Set-EditorEnabled -Enabled $false
     Set-EditorStatus 'Loading rules from the local ADSync engine...'
+    Set-EditorProgress -Percent 0 -Activity 'Checking the local ADSync engine...'
     try {
         Assert-ADSyncRuleOrderAvailable
+        Set-EditorProgress -Percent 4 -Activity 'Reading server and scheduler state...'
         Update-ServerState
         if ($CreateBackup) {
             Set-EditorStatus 'Creating a safety snapshot for audit and rollback evidence...'
             $script:InitialBackup = New-ADSyncRuleOrderBackup `
                 -BackupRoot $BackupRoot `
-                -Label $BackupLabel
+                -Label $BackupLabel `
+                -ProgressCallback $script:EditorProgressCallback `
+                -ProgressStart 7 `
+                -ProgressEnd 72
             $BackupText.Text = "Snapshot: $($script:InitialBackup.Path)"
             $BackupText.ToolTip = $script:InitialBackup.Path
         }
+        Set-EditorProgress -Percent 78 -Activity 'Loading the live rule order...'
         $rules = @(Get-ADSyncRuleOrderSnapshot)
         $script:OriginalRules = @($rules)
+        Set-EditorProgress -Percent 90 -Activity 'Calculating the live rule fingerprint...'
         $script:LiveFingerprint = Get-ADSyncRuleOrderFingerprint
         $script:LastSearchIndex = -1
+        Set-EditorProgress -Percent 96 -Activity 'Populating the rule grid...'
         Set-RuleCollection -Rules $rules
         Set-EditorStatus "Live load complete: $($rules.Count) rules. Grid changes are not applied yet."
         Set-EditorEnabled -Enabled $true
         Update-PlanPreview
+        Set-EditorProgress -Percent 100 -Activity "Live load complete: $($rules.Count) rules."
     }
     catch {
         Set-EditorStatus $_.Exception.Message -Level Error
+        Set-EditorProgress `
+            -Percent ([int]$OperationProgressBar.Value) `
+            -Activity "Load failed: $($_.Exception.Message)" `
+            -Level Error
         [System.Windows.MessageBox]::Show(
             $window, $_.Exception.Message, 'Unable to load ADSync rules',
             [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error
@@ -734,13 +797,22 @@ $RefreshButton.Add_Click({
 $BackupButton.Add_Click({
         try {
             Set-EditorEnabled -Enabled $false
-            $backup = New-ADSyncRuleOrderBackup -BackupRoot $BackupRoot -Label 'ManualBackup'
+            Set-EditorProgress -Percent 0 -Activity 'Starting the manual safety snapshot...'
+            $backup = New-ADSyncRuleOrderBackup `
+                -BackupRoot $BackupRoot `
+                -Label 'ManualBackup' `
+                -ProgressCallback $script:EditorProgressCallback
             $BackupText.Text = "Snapshot: $($backup.Path)"
             $BackupText.ToolTip = $backup.Path
             Set-EditorStatus "Safety snapshot complete: $($backup.Path). This is not an Entra Connect recovery backup."
+            Set-EditorProgress -Percent 100 -Activity 'Manual safety snapshot complete.'
         }
         catch {
             Set-EditorStatus $_.Exception.Message -Level Error
+            Set-EditorProgress `
+                -Percent ([int]$OperationProgressBar.Value) `
+                -Activity "Safety snapshot failed: $($_.Exception.Message)" `
+                -Level Error
         }
         finally {
             Set-EditorEnabled -Enabled $true
@@ -771,12 +843,14 @@ $RestoreOrderButton.Add_Click({
 
             Set-EditorEnabled -Enabled $false
             Set-EditorStatus 'Validating the safety snapshot and preparing its saved rule order...'
-            $window.Dispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
+                Set-EditorProgress -Percent 0 -Activity 'Starting snapshot validation...'
             $backupSequence = @(
                 Get-ADSyncRuleOrderBackupSequence `
                     -BackupPath $dialog.SelectedPath `
-                    -CurrentRules $script:OriginalRules
+                    -CurrentRules $script:OriginalRules `
+                    -ProgressCallback $script:EditorProgressCallback
             )
+                Set-EditorProgress -Percent 98 -Activity 'Loading the restored order as a plan...'
             Set-RuleCollection -Rules $backupSequence
             $restoreMoves = @(Get-ADSyncRuleOrderMovePlan -OriginalRules $script:OriginalRules -DesiredRules (Get-DesiredRules))
             if ($restoreMoves.Count -eq 0) {
@@ -785,9 +859,14 @@ $RestoreOrderButton.Add_Click({
             else {
                 Set-EditorStatus "ORDER RESTORE PLAN ONLY: $($restoreMoves.Count) move(s) loaded. Rule definitions and states are unchanged. Review before Apply." -Level Warning
             }
+            Set-EditorProgress -Percent 100 -Activity 'Saved rule order loaded as a plan.'
         }
         catch {
             Set-EditorStatus $_.Exception.Message -Level Error
+            Set-EditorProgress `
+                -Percent ([int]$OperationProgressBar.Value) `
+                -Activity "Order restore failed: $($_.Exception.Message)" `
+                -Level Error
             [System.Windows.MessageBox]::Show(
                 $window,
                 $_.Exception.Message,
@@ -838,7 +917,7 @@ $ApplyButton.Add_Click({
             Set-EditorEnabled -Enabled $false
             $script:IsApplying = $true
             Set-EditorStatus "Applying $($moves.Count) live move(s)..." -Level Warning
-            $window.Dispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
+            Set-EditorProgress -Percent 0 -Activity "Starting Apply for $($moves.Count) relative move(s)..."
             $confirmationToken = if ($scheduler.StagingModeEnabled) {
                 "APPLY $($env:COMPUTERNAME)"
             }
@@ -851,6 +930,7 @@ $ApplyButton.Add_Click({
                 -BackupRoot $BackupRoot `
                 -ConfirmationToken $confirmationToken `
                 -AllowActiveServer:(!$scheduler.StagingModeEnabled) `
+                -ProgressCallback $script:EditorProgressCallback `
                 -Confirm:$false
             $completionMessage = "Apply completed.`nOperations: $($result.Operations.Count)`nPre-Apply safety snapshot: $($result.Backup.Path)`n`nNo synchronization profile was started.`nEntra Connect configuration recovery is outside this tool."
             $completionTitle = 'Entra ID Connect sync rules order applied'
@@ -871,6 +951,10 @@ $ApplyButton.Add_Click({
         }
         catch {
             Set-EditorStatus $_.Exception.Message -Level Error
+            Set-EditorProgress `
+                -Percent ([int]$OperationProgressBar.Value) `
+                -Activity "Apply failed: $($_.Exception.Message)" `
+                -Level Error
             [System.Windows.MessageBox]::Show(
                 $window, $_.Exception.Message, 'Apply failed',
                 [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error
