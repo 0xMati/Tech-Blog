@@ -48,7 +48,7 @@ For each DC, on each of the three firewall profiles (**Domain / Private / Public
 
 ### Required firewall rule groups checked on the Domain profile
 
-For each DC, the script verifies that each of the following built-in groups (queried via `Get-NetFirewallRule -DisplayGroup`) has at least one **inbound** rule with `Enabled=True` whose profile includes `Domain` (or `Any`):
+For each DC, the script verifies that each of the following built-in groups (queried from the effective policy via `Get-NetFirewallRule -PolicyStore ActiveStore -DisplayGroup`) has at least one **inbound** rule with `Enabled=True` whose profile includes `Domain` (or `Any`):
 
 | `DisplayGroup` | Why a DC needs it |
 |---|---|
@@ -72,6 +72,8 @@ The list is overridable via the `-RequiredRuleGroups` parameter (see [Audit usag
 - **`MISSING`** — no rule at all is registered for the group on the host (typical of a DC where the AD-DS rule set was never installed, or where someone deleted the rules).
 - **`DISABLED`** — rules exist but none is `Enabled=True` and inbound on the Domain profile (often the result of a hardening GPO that disabled them by mistake).
 - **`OK`** — at least one matching rule is active.
+
+These verdicts use the effective `ActiveStore`, which merges local rules and applied policy rules. Therefore, disabled local copies do not cause a false `DISABLED` when an applied GPO provides enabled inbound rules for the Domain profile.
 
 The script then issues a verdict per DC:
 

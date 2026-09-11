@@ -442,7 +442,8 @@ $scriptBlock = {
     $groupsDetail = New-Object System.Collections.Generic.List[psobject]
     try {
         foreach ($group in $RequiredRuleGroups) {
-            $rules = Get-NetFirewallRule -DisplayGroup $group `
+            $rules = Get-NetFirewallRule -PolicyStore ActiveStore `
+                        -DisplayGroup $group `
                         -ErrorAction SilentlyContinue
             $detail = [pscustomobject]@{
                 Group       = $group
