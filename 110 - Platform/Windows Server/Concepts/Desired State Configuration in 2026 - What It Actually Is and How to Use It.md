@@ -164,55 +164,439 @@ It covers Windows Server 2012–2025, Windows 10/11, and a long list of Linux di
 
 ---
 
-## Hands-On Lab: DSC v3 in ~10 Minutes
+## Hands-On Labs: Start Small
 
-We'll install DSC v3, poke at a couple of resources, then author a real configuration document and watch it detect and fix drift. Everything here is **local and reversible** — the only thing we touch is a throwaway registry key under `HKCU`.
+Each lab adds one concept. **Start with Lab 1; nothing from the later labs is needed to complete it.**
 
-The selected lab uses **Windows Server 2025 on both machines**:
-
-| Machine | Operating system | Purpose |
+| Machine | Operating system | Role in the labs |
 | --- | --- | --- |
-| `MM-DSC1` | Windows Server 2025 | Prepare configurations and installation packages, then trigger preparation and DSC runs on the target. |
-| `MM-SRV01` | Windows Server 2025 | Run DSC and the resources that manage its local configuration. |
+| `MM-SRV01` | Windows Server 2025 | The disposable target we configure. Used from Lab 1 onward. |
+| `MM-DSC1` | Windows Server 2025 | The administration server. Used from Lab 2 onward. |
 
-Use a disposable target for the demonstrations. DSC v3 also runs on other supported platforms, but the Windows Server role example discussed below requires a server OS. Step 1 offers a package archive alternative when WinGet or its configured source is unavailable.
-
-The walkthrough has two phases. **Steps 1 to 6 are a local validation on `MM-SRV01`**, using an interactive PowerShell session on that server. This checks the engine, resources, and configuration before adding remoting and its authentication requirements. `MM-DSC1` is not used in this first phase.
-
-**The following two-server extension moves authoring and triggering to `MM-DSC1`; DSC still executes on `MM-SRV01`.** That is the administration model for the full lab. Keep the same execution account throughout the local validation: `HKCU` refers to that account's registry, not a machine-wide location.
-
-### Before You Start: Prerequisites
-
-Installing the engine and installing the resources are separate operations. **`dsc` executes resources; naming a resource in YAML does not install it.** `PSDscResources` is a PowerShell module containing resources, not another DSC engine and not a mandatory dependency of every DSC v3 configuration.
-
-**A prerequisite is something that must be available, not necessarily something you must install.** Windows Server 2025 already provides Windows PowerShell 5.1, WinRM, and the `ServerManager` and `Dism` modules. We check that they are usable; we do not install all of them again. In particular, WinRM being present does not prove that a connection from the administration server is authorized or allowed through the firewall.
-
-For the registry and IIS scenarios discussed here, the additions are the **complete DSC v3 package**, including its bundled resources and adapters, and **`PSDscResources` if using `WindowsFeature`**. There is no separate adapter installation for this example. Other configurations may need other resource modules, but we only prepare the ones the configuration actually uses.
-
-| Component | Where? | Why and when is it required? |
+| Lab | What you learn | What you add |
 | --- | --- | --- |
-| DSC v3 engine and its bundled resources | `MM-SRV01` | Required for the local execution in this walkthrough. Install it in step 1. The registry and OS information resources used below are included in the Windows DSC distribution. |
-| Windows PowerShell 5.1 | `MM-SRV01` | Already present in a standard Windows Server 2025 installation. Required by the `Microsoft.Windows/WindowsPowerShell` adapter, which uses the built-in `PSDesiredStateConfiguration` module. PowerShell 7 (`pwsh`) is a different runtime, not an extra requirement for this adapter. |
-| `PSDscResources` module | `MM-SRV01`, in a Windows PowerShell module directory | An additional prerequisite for a Windows Server role/feature example using `PSDscResources/WindowsFeature`. It is not required for the registry-only configuration currently shown below. |
-| `ServerManager` and `Dism` modules | `MM-SRV01` | Windows Server 2025 provides these role/feature management tools. Verify their availability for `WindowsFeature`; they are not separate DSC products to install. |
-| Appropriate execution permissions | `MM-SRV01` | The current registry example writes to the execution account's `HKCU`. Installing modules for all users or installing/removing server roles requires administrator permissions. |
-| PowerShell, an editor, and authorized WinRM access to the target | `MM-DSC1` | Windows PowerShell and WinRM are already provided by Windows Server 2025. Secure connectivity and endpoint permissions must still be checked. DSC v3 and `PSDscResources` do not need to be installed here merely to author and send the document. |
+| 1. Registry | Declare a value, detect a change, restore it | DSC v3 on `MM-SRV01`. The registry resource comes with it. |
+| 2. Remote execution | Run the same configuration from `MM-DSC1` | Working, authorized PowerShell Remoting. No new DSC module. |
+| 3. Windows Server role | Manage IIS with a PowerShell resource | The `PSDscResources` module on `MM-SRV01`. |
 
-Prepare installation packages from trusted sources. Online module installation requires access to the PowerShell repository and may prompt to install a package provider or confirm repository trust. In an isolated lab, stage the reviewed module and its dependencies offline instead. Installing a module only on `MM-DSC1` does not make it available to DSC on `MM-SRV01`.
+**A prerequisite means "must be available", not "must be installed again".** Windows Server 2025 already includes Windows PowerShell 5.1. DSC v3 is a separate package we install below.
 
-#### Can We Start with Freshly Installed Servers?
+---
 
-**Yes, without manually visiting every target, but not by sending YAML to a machine that has no DSC v3 engine.** Windows PowerShell's built-in classic DSC is not the separate `dsc` v3 executable. There are two distinct operations:
+## Lab 1: Manage One Registry Value
 
-1. **Initial preparation, often called bootstrapping:** make the engine and the required resources available on the target. Check what is already installed; add only missing components or deliberately update their versions.
-2. **Configuration with DSC:** use those resources to inspect and enforce the declared settings. Repeat these runs to detect or correct drift without reinstalling the tooling every time.
+**Goal:** make `Owner = LabUser` exist under `HKCU\Software\TechBlogLab`, then prove that DSC can restore it after a change.
 
-A script running on **MM-DSC1** can coordinate both operations. It starts on the administration server, but the commands it sends through WinRM execute on **MM-SRV01**. The expected workflow is:
+### What You Need
 
-1. **Connect to `MM-SRV01` through WinRM.** Confirm network connectivity, name resolution, authentication, and the account's permissions. This is what gives the administration script a way to prepare the target before DSC v3 is installed there.
-2. **Check the engine and required resources on `MM-SRV01`.** If an approved component is missing, transfer and install it; if the expected version is already available to the execution account, reuse it. Check versions and resource discovery after any installation. This conditional preparation is the bootstrap part of the script, not work performed automatically by `dsc config set`.
-3. **Supply the configuration and invoke DSC on `MM-SRV01`.** For the content-through-WinRM option described later, `MM-DSC1` reads its local document and sends the text through the session. The target's engine then runs `test` to check compliance or `set` to apply the declared state. Copying the document or reading it through UNC are alternative delivery options.
-4. **Collect the results on `MM-DSC1`.** Record which target and configuration were used, the command's exit code, and the per-resource results and errors. Verify the actual target state as well; a successful connection is not proof of a successful configuration.
+- **Machine:** `MM-SRV01` only. Open Windows PowerShell as administrator for the setup and keep the same account throughout this lab.
+- **Install:** the complete DSC v3 Windows package, in step 1.
+- **Already included:** the registry resource in that package; Windows PowerShell in Windows Server.
+- **Not needed yet:** extra resource modules, PowerShell 7, IIS, WinRM, a share, or a scheduled task. Leave `MM-DSC1` aside.
+
+`HKCU` means **the current user's registry**. The example changes a lab-only key, not a machine-wide Windows setting. Use a new `TechBlogLab` key so cleanup cannot remove existing data.
+
+### 1. Install DSC
+
+**On `MM-SRV01`.** We install the engine here because this is where the configuration will run.
+
+Download the **stable Windows x64 ZIP** from the [official DSC releases](https://github.com/PowerShell/DSC/releases/latest). For the commands below, place the archive at `C:\Temp\dsc-windows.zip`. Extract the whole package into a new directory, not just the executable:
+
+```powershell
+Expand-Archive -LiteralPath 'C:\Temp\dsc-windows.zip' -DestinationPath 'C:\Tools\DSC'
+$env:PATH = "C:\Tools\DSC;$env:PATH"
+dsc --version
+```
+
+**Expected:** a DSC version starting with `3.`. Stop here if the command is not found or fails.
+
+The `PATH` line makes the engine and bundled tools discoverable in this PowerShell session. Repeat that line when opening another session. If DSC v3 is already installed elsewhere, use its actual directory instead; do not install another copy unnecessarily.
+
+### 2. Discover a Resource and Read State
+
+**On `MM-SRV01`.** A resource is the component that implements an operation. Listing resources only discovers what is available; it does not install anything.
+
+```powershell
+dsc resource list Microsoft.Windows/Registry
+dsc resource get --resource Microsoft/OSInfo --output-format yaml
+```
+
+**Expected:** the first command finds the registry resource. The second describes the operating system of **this server**. It does not change anything.
+
+This is **Get**: asking a resource to report actual state.
+
+### 3. Describe the Desired Value
+
+**On `MM-SRV01`.** Create a working directory for the configuration:
+
+```powershell
+New-Item -ItemType Directory -Path 'C:\DSC' -Force | Out-Null
+```
+
+Create `C:\DSC\lab.dsc.config.yaml` with the following content. This file describes the result you want; it does not contain registry-editing commands.
+
+```yaml
+$schema: https://aka.ms/dsc/schemas/v3/bundled/config/document.json
+resources:
+  - name: Lab owner
+    type: Microsoft.Windows/Registry
+    properties:
+      keyPath: HKCU\Software\TechBlogLab
+      valueName: Owner
+      valueData:
+        String: LabUser
+      _exist: true
+```
+
+Read it as: **"Use the Registry resource to ensure that Owner exists and contains the string LabUser."**
+
+- `name` is your label for this instance in the results.
+- `type` identifies the installed resource DSC must call.
+- `properties` describes the key, value name, data type and desired value.
+- `_exist: true` means the declared item must exist.
+- `$schema` identifies the document format for validation.
+
+### 4. Check, Preview, Then Apply
+
+**On `MM-SRV01`, under the same account.** Check whether the requested value already exists:
+
+```powershell
+dsc config test --file 'C:\DSC\lab.dsc.config.yaml'
+```
+
+**Expected on a fresh lab:** the `Lab owner` instance reports `inDesiredState: false`. This means "not configured as requested", not "DSC is broken". A resource-discovery or syntax error is different: resolve it before continuing.
+
+Preview the proposed change, then apply it:
+
+```powershell
+dsc config set --file 'C:\DSC\lab.dsc.config.yaml' --what-if
+```
+
+`--what-if` previews; it does not create our registry value. After reviewing the output:
+
+```powershell
+dsc config set --file 'C:\DSC\lab.dsc.config.yaml'
+dsc config test --file 'C:\DSC\lab.dsc.config.yaml'
+Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\TechBlogLab' -Name Owner
+```
+
+**Expected:** `inDesiredState: true` for the instance and `LabUser` from the registry read. Applying the same document again should leave the value unchanged. That is idempotence.
+
+### 5. Change the Value and Let DSC Restore It
+
+**On `MM-SRV01`.** Simulate someone changing the setting outside DSC:
+
+```powershell
+Set-ItemProperty -LiteralPath 'HKCU:\Software\TechBlogLab' -Name Owner -Value 'ChangedOutsideDSC'
+dsc config test --file 'C:\DSC\lab.dsc.config.yaml'
+```
+
+**Expected:** the instance is no longer in the desired state. DSC detected the difference when you ran `test`; it was not monitoring in the background.
+
+```powershell
+dsc config set --file 'C:\DSC\lab.dsc.config.yaml'
+dsc config test --file 'C:\DSC\lab.dsc.config.yaml'
+Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\TechBlogLab' -Name Owner
+```
+
+**Expected:** the value is back to `LabUser`, and the test reports compliance.
+
+### 6. Clean Up
+
+**On `MM-SRV01`, under the same account.** Remove only the disposable key created for this exercise:
+
+```powershell
+Remove-Item -LiteralPath 'HKCU:\Software\TechBlogLab' -Recurse -Force
+Test-Path -LiteralPath 'HKCU:\Software\TechBlogLab'
+```
+
+**Expected:** `False`. Keep DSC installed and keep the YAML document for Lab 2.
+
+**You have now completed a full DSC cycle:** describe, test, apply, introduce drift, and restore. No extra PowerShell resource module was needed.
+
+---
+
+## Lab 2: Run the Same Configuration Remotely
+
+**Goal:** keep the YAML document on `MM-DSC1`, but execute DSC on `MM-SRV01`.
+
+### What You Need
+
+- **Reuse:** DSC and its registry resource on `MM-SRV01`, prepared in Lab 1.
+- **New requirement:** network access, name resolution, and an account authorized to open a PowerShell Remoting session on the target.
+- **No new DSC installation:** `MM-DSC1` needs PowerShell to send the command, not a local DSC engine.
+
+WinRM is Windows' remote management mechanism. Windows Server already provides it, but firewall rules, authentication, and endpoint permissions must allow your connection. The examples use your current account; a domain lab normally uses Kerberos. Resolve remoting errors before continuing, without weakening authentication to bypass them.
+
+### 1. Check the Remote Execution Context
+
+**Run on `MM-DSC1`.** `Invoke-Command` runs the code inside its script block on `MM-SRV01`:
+
+```powershell
+Invoke-Command -ComputerName 'MM-SRV01' -ErrorAction Stop -ScriptBlock {
+  $env:PATH = "C:\Tools\DSC;$env:PATH"
+  $env:COMPUTERNAME
+  [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+  dsc --version
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC version check failed with exit code $LASTEXITCODE."
+  }
+  dsc resource list Microsoft.Windows/Registry
+}
+```
+
+**Expected:** `MM-SRV01`, the remote execution account, a DSC 3.x version, and the registry resource. If DSC was installed in another directory, adjust the `PATH` line in these examples.
+
+Notice the distinction: **you start the command on the administration server; DSC runs on the target.** A `dsc config set` run directly on `MM-DSC1` would configure the administration server instead.
+
+### 2. Prepare the Document on the Administration Server
+
+**On `MM-DSC1`.** Create `C:\DSC` and place the unchanged YAML from Lab 1 at `C:\DSC\lab.dsc.config.yaml`.
+
+We will send its **contents** through WinRM. There is no SMB share to create and no configuration file to write on the target for this method.
+
+### 3. Preview, Then Apply on the Target
+
+**Run on `MM-DSC1`:**
+
+```powershell
+$configurationText = Get-Content -LiteralPath 'C:\DSC\lab.dsc.config.yaml' -Raw -Encoding UTF8 -ErrorAction Stop
+
+Invoke-Command -ComputerName 'MM-SRV01' -ArgumentList $configurationText -ErrorAction Stop -ScriptBlock {
+  param([string]$ConfigurationText)
+
+  $env:PATH = "C:\Tools\DSC;$env:PATH"
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $ConfigurationText | dsc config set --file - --what-if
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC operation failed with exit code $LASTEXITCODE."
+  }
+}
+```
+
+`--file -` tells DSC to read the document from **standard input**, the text passed through the pipeline. `$OutputEncoding` keeps that text in UTF-8. The resources themselves must still be installed on the target.
+
+**Expected:** a preview returned from `MM-SRV01`. Review it, then run the same block **without `--what-if`** to apply. Leaving that option in place never corrects drift.
+
+### 4. Verify and Clean Up in the Same Context
+
+**Run on `MM-DSC1`, using the same account and `$configurationText`:**
+
+```powershell
+Invoke-Command -ComputerName 'MM-SRV01' -ArgumentList $configurationText -ErrorAction Stop -ScriptBlock {
+  param([string]$ConfigurationText)
+
+  $env:PATH = "C:\Tools\DSC;$env:PATH"
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $ConfigurationText | dsc config test --file -
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC test failed with exit code $LASTEXITCODE."
+  }
+  Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\TechBlogLab' -Name Owner -ErrorAction Stop
+}
+```
+
+**Expected:** a compliant resource instance and `LabUser`. Check both: a successful command exit alone is not proof of compliance.
+
+`HKCU` belongs to the **account running DSC on the target**. It may not be the account used for the local lab or an RDP session. That is why verification also runs remotely under the same identity.
+
+When finished, remove the lab-only key through that same connection:
+
+```powershell
+Invoke-Command -ComputerName 'MM-SRV01' -ErrorAction Stop -ScriptBlock {
+  Remove-Item -LiteralPath 'HKCU:\Software\TechBlogLab' -Recurse -Force -ErrorAction Stop
+  Test-Path -LiteralPath 'HKCU:\Software\TechBlogLab'
+}
+```
+
+**Expected:** `False` from the target. Keep the document and tooling for later runs.
+
+### Optional: Two Other Ways to Supply the Document
+
+The main path above is enough for this lab. These alternatives change **where DSC reads the document**, not which machine it configures. Choose one method per run.
+
+#### Alternative A: Copy the File
+
+**Run on `MM-DSC1`.** Transfer the file through WinRM and run DSC against the target's local copy:
+
+```powershell
+$session = New-PSSession -ComputerName 'MM-SRV01' -ErrorAction Stop
+try {
+  Invoke-Command -Session $session -ErrorAction Stop -ScriptBlock {
+    New-Item -ItemType Directory -Path 'C:\DSC' -Force -ErrorAction Stop | Out-Null
+  }
+  Copy-Item -LiteralPath 'C:\DSC\lab.dsc.config.yaml' -Destination 'C:\DSC\lab.dsc.config.yaml' -ToSession $session -ErrorAction Stop
+  Invoke-Command -Session $session -ErrorAction Stop -ScriptBlock {
+    $env:PATH = "C:\Tools\DSC;$env:PATH"
+    dsc config set --file 'C:\DSC\lab.dsc.config.yaml' --what-if
+    if ($LASTEXITCODE -ne 0) {
+      throw "DSC preview failed with exit code $LASTEXITCODE."
+    }
+  }
+}
+finally {
+  Remove-PSSession -Session $session
+}
+```
+
+**Trade-off:** the target can reuse the local copy, but you must update it when the configuration changes. No separate SMB share is needed. This example creates a directory and transfers a file even though the DSC operation itself is only a preview.
+
+#### Alternative B: Read a UNC Share
+
+**Run on `MM-SRV01`,** using an account that can read the existing `DSC` share on `MM-DSC1`:
+
+```powershell
+$env:PATH = "C:\Tools\DSC;$env:PATH"
+dsc config set --file '\\MM-DSC1\DSC\lab.dsc.config.yaml' --what-if
+if ($LASTEXITCODE -ne 0) {
+  throw "DSC preview failed with exit code $LASTEXITCODE."
+}
+```
+
+**Trade-off:** the document is centralized, but each read needs SMB connectivity and both share and NTFS read permissions.
+
+If you wrap this command in a WinRM call from the administration server, the target must authenticate again to the share. The first connection's credentials are not automatically forwarded: this is the [second-hop problem](https://learn.microsoft.com/en-us/powershell/scripting/security/remoting/ps-remoting-second-hop). Avoid that complication in the first remote test by sending the contents or using a local copy.
+
+Sending only the main document does not supply included files or fix network access needed by a resource. Stage those dependencies separately; paths on `MM-DSC1` are not automatically paths on `MM-SRV01`.
+
+### Optional: Schedule a Working Script
+
+Get the manual run working first. Scheduling repeats your script; it does not add a monitoring service to DSC v3.
+
+| Task location | What it does | Availability requirement |
+| --- | --- | --- |
+| `MM-DSC1` | Runs a script that connects to `MM-SRV01` and invokes DSC there | The administration server, network, target, and remoting authentication must be available at each run. |
+| `MM-SRV01` | Invokes its local DSC engine against a local document or accessible UNC path | A local copy can be used independently of `MM-DSC1`; a UNC document still requires the share. |
+
+For our centralized lab, use a task on **MM-DSC1** with the content-through-WinRM method. Decide whether it should audit with `test` or enforce with `set`; do not schedule the cleanup commands.
+
+Test under the task's actual account. It needs document access and remote authentication; a task without network credentials may fail remotely. Keep credentials out of scripts and YAML, restrict modification of configurations and resources, prevent overlapping runs, and record the results. Remember that changing the account also changes which `HKCU` you manage.
+
+---
+
+## Lab 3: Add a Resource for a Windows Server Role
+
+**Goal:** use DSC to ensure IIS is installed on `MM-SRV01`. Unlike Lab 1, this needs an additional resource module.
+
+### What You Need
+
+| Component on `MM-SRV01` | Action |
+| --- | --- |
+| DSC v3 | Reuse the installation from Lab 1. |
+| Windows PowerShell 5.1, `ServerManager`, `Dism` | Already provided by Windows Server 2025. Check they are available. |
+| `Microsoft.Windows/WindowsPowerShell` adapter | Included in the complete DSC Windows package. No separate installation. |
+| `PSDscResources` | Install this additional module for its `WindowsFeature` resource. |
+| An administrative execution account | Required to install modules for all users and manage server roles. |
+
+The **adapter** is the bridge from the DSC v3 engine to an existing Windows PowerShell resource. `PSDscResources` supplies that resource. Neither is the IIS role itself.
+
+### 1. Install and Find WindowsFeature
+
+**On `MM-SRV01`, in Windows PowerShell 5.1 opened as administrator.** Keep the DSC tools on the current session's `PATH`:
+
+```powershell
+$env:PATH = "C:\Tools\DSC;$env:PATH"
+$PSVersionTable.PSVersion
+Install-Module -Name PSDscResources -Repository PSGallery -Scope AllUsers
+Get-DscResource -Name WindowsFeature -Module PSDscResources
+dsc resource list --adapter Microsoft.Windows/WindowsPowerShell PSDscResources/WindowsFeature
+```
+
+**Expected:** PowerShell version 5.1 and discovery of `PSDscResources/WindowsFeature`. The `--adapter` option includes resources exposed through the adapter; listing resources without it does not enumerate those adapted resources.
+
+The installation requires repository access and may prompt for a package provider or repository confirmation. In an isolated lab, stage the reviewed module and dependencies offline instead. Record the module version used. Installing it only on `MM-DSC1` would not make it available on the target.
+
+**Installing the resource module does not install IIS.** It supplies the code that DSC will call when a configuration requests a role. See the [WindowsFeature reference](https://learn.microsoft.com/en-us/powershell/dsc/reference/psdscresources/resources/windowsfeature/windowsfeature?view=dsc-2.0) and [adapter reference](https://learn.microsoft.com/en-us/powershell/dsc/reference/resources/microsoft/windows/windowspowershell?view=dsc-3.0).
+
+### 2. Check the Starting State
+
+**On `MM-SRV01`, in the same elevated Windows PowerShell session:**
+
+```powershell
+Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallState
+```
+
+**Expected for this exercise:** `Installed` is `False`. If this is an existing IIS server, use another disposable VM; do not remove an existing role to make the demo fit.
+
+`Web-Server` is the feature's technical name, not its display label. Windows must have access to the role installation files in its component store or an approved source.
+
+### 3. Declare That IIS Must Be Present
+
+**On `MM-SRV01`.** Create `C:\DSC\iis.dsc.config.yaml`, separate from the registry document:
+
+```yaml
+$schema: https://aka.ms/dsc/schemas/v3/bundled/config/document.json
+resources:
+  - name: Windows roles
+    type: Microsoft.Windows/WindowsPowerShell
+    properties:
+      resources:
+        - name: IIS web server
+          type: PSDscResources/WindowsFeature
+          properties:
+            Name: Web-Server
+            Ensure: Present
+```
+
+The outer resource is the **adapter**. It invokes the nested `WindowsFeature` resource in Windows PowerShell 5.1. `Ensure: Present` requests installation if the role is missing.
+
+We still use the **DSC v3 engine and YAML**. Reusing a PowerShell resource does not turn this into an LCM-managed configuration.
+
+### 4. Apply and Verify
+
+**On `MM-SRV01`.** First check the current state and preview the change:
+
+```powershell
+dsc config test --file 'C:\DSC\iis.dsc.config.yaml'
+dsc config set --file 'C:\DSC\iis.dsc.config.yaml' --what-if
+```
+
+**Expected:** the IIS instance is not compliant yet. Review the preview before applying:
+
+```powershell
+dsc config set --file 'C:\DSC\iis.dsc.config.yaml'
+dsc config test --file 'C:\DSC\iis.dsc.config.yaml'
+Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallState
+```
+
+**Expected:** the nested IIS resource reports compliance and `Installed` is `True`. If installation requires a restart, complete it in the lab's maintenance window and rerun the checks. DSC v3 does not provide an automatic reboot-and-resume service.
+
+This manages **role installation**, not your application's website, bindings, certificate, or firewall policy. Those are separate desired states.
+
+### 5. Optional Cleanup
+
+**On `MM-SRV01`, only if IIS was absent before this lab.** Change `Ensure: Present` to `Ensure: Absent` in the IIS document, then preview:
+
+```powershell
+dsc config set --file 'C:\DSC\iis.dsc.config.yaml' --what-if
+```
+
+Uninstalling the role also removes its subfeatures. Use this only on the disposable target. After checking the preview, apply and verify:
+
+```powershell
+dsc config set --file 'C:\DSC\iis.dsc.config.yaml'
+dsc config test --file 'C:\DSC\iis.dsc.config.yaml'
+Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallState
+```
+
+**Expected:** `Installed` is `False`, and DSC is compliant with the new desired state, **Absent**. Removing the role from the YAML instead would stop managing it, not uninstall it.
+
+You can later send this IIS document using the Lab 2 workflow. The execution account on `MM-SRV01` must then have permission to manage roles; successfully setting a user's registry value alone does not establish that permission.
+
+---
+
+## Later: Automate the Initial Preparation
+
+This is **not a prerequisite for Lab 1**. It explains how to repeat the setup on freshly installed servers without logging on to each one.
+
+**Bootstrap** means preparing the engine and required resources before the first DSC run. Windows Server already provides PowerShell and WinRM; the missing DSC components can be deployed through an authorized remote session.
+
+From `MM-DSC1`, a preparation script would:
+
+1. Connect to `MM-SRV01` over WinRM.
+2. Check the engine and resource versions; install only missing components or approved updates.
+3. Supply the document and run DSC on the target.
+4. Collect the results and errors on the administration server.
 
 ```mermaid
 flowchart TB
@@ -230,303 +614,13 @@ flowchart TB
   Execute --> Report
 ```
 
-If connection, installation, or readiness checks fail, the script must stop and report the failure before attempting to apply the configuration. It must not silently continue with missing resources or an unintended version.
+**First run:** prepare missing tooling, then apply the configuration. **Later runs:** reuse the tooling. A new resource or a planned version update can require additional preparation; reinstalling everything on every run is unnecessary.
 
-**First run on a fresh target:** prepare the missing tooling, then execute DSC. **Subsequent runs:** reuse that tooling and check or apply the current configuration. Do not reinstall the engine and modules on every scheduled run. A later configuration that introduces a new resource, or a planned version update, can require additional preparation.
+You can also include the approved package and modules in a VM template, or transfer staged packages from `MM-DSC1` to avoid downloads from the target.
 
-The target does not need direct access to the PowerShell Gallery if the administration server stages the packages and transfers them through the session. Another option is to include the approved DSC runtime and resources in the VM template; version and maintain those components as part of that image.
+**The limit:** an authorized management connection must already work. DSC cannot configure a target where its engine is missing or bypass failed network access, authentication, or permissions. Stop on preparation errors before applying the document.
 
-**The limit to understand:** DSC v3 alone cannot interpret the document on a target where its engine is not yet available. PowerShell Remoting can run the preparation commands first because it is a separate management mechanism already provided by Windows. This is why bootstrapping can be automated without already having DSC v3 installed.
-
-**The starting requirement is a secure way to administer the target.** [PowerShell remoting is enabled by default on modern Windows Server](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_remote_requirements?view=powershell-5.1#how-to-configure-your-computer-for-remoting), but network profiles, firewall rules, endpoint permissions, and policies can change whether a connection succeeds. A domain lab can use Kerberos; do not assume that a fresh OS installation alone establishes authentication and authorization between the machines. If that initial administration access is not working, fix it before attempting a remote bootstrap; DSC cannot bypass it.
-
-The manual commands below expose these mechanisms for learning. They are not a requirement to log on interactively to every server in an automated deployment. The bootstrap sequence above describes the approach; a bootstrap script is not yet provided or tested in this walkthrough.
-
-### 1. Install the `dsc` engine
-
-**Machine:** `MM-SRV01`, in its local PowerShell session.
-
-**Why:** this is the server whose configuration DSC will manage. Install DSC v3 here so its engine can execute on the target. Installing it only on `MM-DSC1` would not make it available on `MM-SRV01`.
-
-```powershell
-# Find the published package in the Microsoft Store source
-winget search DesiredStateConfiguration --source msstore
-
-# Install the latest stable DSC v3
-winget install --id 9NVTPZWRC6KQ --source msstore
-
-# Sanity check
-dsc --version
-```
-
-No `winget`? Grab the Windows archive from the [DSC releases page](https://github.com/PowerShell/DSC/releases/latest), extract the complete package, and add its directory to your `PATH`. Keep the bundled resources and adapters alongside the engine; copying only `dsc.exe` is not equivalent to installing the full package. Check visibility under the account that will run DSC, including remote or scheduled runs.
-
-#### Additional Setup for Windows Server Roles
-
-**Machine:** `MM-SRV01`, in an elevated **Windows PowerShell 5.1** session. This setup is for the role/feature extension; skip it if you are only running the registry example below.
-
-**Why:** the [WindowsFeature resource](https://learn.microsoft.com/en-us/powershell/dsc/reference/psdscresources/resources/windowsfeature/windowsfeature?view=dsc-2.0) comes from the `PSDscResources` module. The [Windows PowerShell adapter](https://learn.microsoft.com/en-us/powershell/dsc/reference/resources/microsoft/windows/windowspowershell?view=dsc-3.0), supplied with DSC v3 on Windows, lets the v3 engine invoke that resource. The module itself must be installed separately:
-
-```powershell
-$PSVersionTable.PSVersion
-Install-Module -Name PSDscResources -Repository PSGallery -Scope AllUsers
-Get-Module -ListAvailable -Name PSDscResources | Select-Object Name, Version, ModuleBase
-Get-DscResource -Name WindowsFeature -Module PSDscResources
-```
-
-`Install-Module` is a PowerShell command, not a DSC command. Running it in Windows PowerShell 5.1 with `-Scope AllUsers` places the module in the Windows PowerShell module location for all users, rather than only the interactive user's profile. The first command should report version 5.1. The last command should identify `WindowsFeature` from `PSDscResources`; stop and resolve any installation or discovery error before using it in YAML. Record the module version used for a repeatable lab.
-
-**Installing the resource module does not install IIS.** It makes the code that knows how to manage Windows roles available. A later configuration must declare which role is wanted, and a DSC `set` operation must apply it. Plan for any restart reported by a role installation; the v3 engine is not a background reboot-and-resume service.
-
-### 2. See what resources DSC can find
-
-**Machine:** `MM-SRV01`, in its local PowerShell session.
-
-**Why:** resource discovery reflects the environment where DSC runs. We need to confirm that the target can find the registry and OS information resources; a resource installed only on the administration server would not be available here. Listing resources does not install missing ones.
-
-```powershell
-# Every resource DSC currently discovers
-dsc resource list
-
-# Filter to the two we'll use
-dsc resource list | Select-String -Pattern 'Registry|OSInfo'
-```
-
-For the Windows Server role extension, also run this on **MM-SRV01** after installing `PSDscResources`:
-
-```powershell
-dsc resource list --adapter Microsoft.Windows/WindowsPowerShell PSDscResources/WindowsFeature
-```
-
-**Expected result:** an entry for `PSDscResources/WindowsFeature`. The `--adapter` option asks DSC to enumerate the resources exposed through that adapter; a plain `dsc resource list` does not enumerate those adapted resources. This check confirms discovery, not permission to install a role or successful role installation.
-
-### 3. Read state with a single resource (Get)
-
-**Machine:** `MM-SRV01`, in its local PowerShell session.
-
-**Why:** these resources read the operating system and registry of the machine executing DSC. Running the same commands on `MM-DSC1` would inspect the administration server instead. This step only reads state; it does not apply a configuration.
-
-Some resources are **Get/Test-only** — they report reality but there's nothing to "enforce". `Microsoft/OSInfo` is the classic example, and it needs no input:
-
-```powershell
-dsc resource get --resource Microsoft/OSInfo --output-format yaml
-```
-
-```yaml
-actualState:
-  family: Windows
-  version: 10.0.22631
-  edition: Windows 11 Enterprise
-  bitness: '64'
-```
-
-Resources that identify a specific instance need input. Here's a read-only peek at a registry value:
-
-```powershell
-dsc resource get --resource Microsoft.Windows/Registry --input '{
-  "keyPath": "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion",
-  "valueName": "SystemRoot"
-}'
-```
-
-### 4. Author a configuration document
-
-**Machine:** `MM-SRV01` for this initial local validation, using a text editor on that server.
-
-**Why:** keeping this first document beside the local test session lets us learn DSC without introducing file transfer yet. This is a teaching choice, not a DSC requirement. In the two-server extension, you will author and keep the document on `MM-DSC1` instead; writing YAML does not require the DSC engine.
-
-This is where DSC v3 stops looking like classic DSC. No `Configuration` keyword, no MOF — just a YAML document. Save this as `lab.dsc.config.yaml`:
-
-Use a working folder on `MM-SRV01` and set that same folder as the current location of your PowerShell session. Step 5 uses `./lab.dsc.config.yaml`, which resolves relative to that session's current directory, not to a folder on `MM-DSC1`.
-
-```yaml
-# lab.dsc.config.yaml
-$schema: https://aka.ms/dsc/schemas/v3/bundled/config/document.json
-resources:
-  # Guard clause: only proceed if we're actually on Windows
-  - name: Windows only
-    type: Microsoft.DSC/Assertion
-    properties:
-      $schema: https://aka.ms/dsc/schemas/v3/bundled/config/document.json
-      resources:
-        - name: os
-          type: Microsoft/OSInfo
-          properties:
-            family: Windows
-
-  # The state we actually want to enforce
-  - name: Tech-Blog lab marker
-    type: Microsoft.Windows/Registry
-    properties:
-      keyPath: HKCU\Software\TechBlogLab
-      valueName: Owner
-      valueData:
-        String: LabUser
-      _exist: true
-    dependsOn:
-      - "[resourceId('Microsoft.DSC/Assertion', 'Windows only')]"
-```
-
-Two ideas worth noticing:
-
-- **`Microsoft.DSC/Assertion`** wraps a Get/Test-only resource (`OSInfo`) into a **guard** — if the assertion fails, the dependent resource never runs. This is how you say *"only do this on Windows"* without a single `if`.
-- **`dependsOn`** uses an ARM-style `resourceId()` expression to order things. Same mental model as an ARM/Bicep template, on purpose.
-
-### 5. Get → Test → Set → prove drift is fixed
-
-**Machine:** `MM-SRV01`, in the same PowerShell session and working folder as step 4.
-
-**Why:** DSC must inspect and modify the target's state, using the document we just created. All commands below, including the deliberate deletion and the final registry check, belong on `MM-SRV01` under the same account. Running them directly on `MM-DSC1` would inspect or change the wrong server.
-
-```powershell
-# What does the machine look like right now? (the key doesn't exist yet)
-dsc config get --file ./lab.dsc.config.yaml
-
-# Are we already in the desired state? Expect: no.
-dsc config test --file ./lab.dsc.config.yaml
-
-# Preview the change without touching anything (ExecutionType = WhatIf)
-dsc config set --file ./lab.dsc.config.yaml --what-if
-
-# Enforce it. This creates the key and the value.
-dsc config set --file ./lab.dsc.config.yaml
-
-# Test again. Expect: in the desired state.
-dsc config test --file ./lab.dsc.config.yaml
-```
-
-Now the fun part — break it on purpose and watch DSC converge it back:
-
-```powershell
-# Introduce drift
-Remove-Item 'HKCU:\Software\TechBlogLab' -Recurse -Force
-
-# DSC notices immediately
-dsc config test --file ./lab.dsc.config.yaml
-
-# DSC fixes only what drifted
-dsc config set --file ./lab.dsc.config.yaml
-```
-
-That last loop — *test says no, set makes it yes, and a second set does nothing* — is idempotency and convergence in three commands. That's the entire point of DSC, minus 900 pages of theory.
-
-> **Verify:** run `dsc config test` and read the **per-instance** result — the registry instance should report it is in the desired state. Then confirm reality with `Get-ItemProperty 'HKCU:\Software\TechBlogLab'` and check `Owner = LabUser` actually exists. A green test with no registry key means you tested the wrong thing.
-
-### 6. Clean up
-
-**Machine:** `MM-SRV01`, under the same account that applied the configuration.
-
-**Why:** the test key was created in that account's `HKCU` on the target. Cleaning up on `MM-DSC1`, or as another user on `MM-SRV01`, would not remove the marker created by this test. This removes only the registry marker; keep the document for the next phase.
-
-```powershell
-Remove-Item 'HKCU:\Software\TechBlogLab' -Recurse -Force -ErrorAction SilentlyContinue
-```
-
----
-
-## Extend the Lab: Administration Server and Target
-
-**Preparation machine: `MM-DSC1`.** The local validation on `MM-SRV01` is complete. Now create a working folder `C:\DSC` on `MM-DSC1` and place the YAML document from step 4 there as `lab.dsc.config.yaml`. This becomes the document you maintain for the centralized workflow. Leave DSC v3 and its resources installed on `MM-SRV01`.
-
-**Why switch machines?** The administration server now owns the document and triggers runs; the target remains the execution location. The original local test copy is not required by every delivery option: option 1 writes a target copy, option 2 reads a share, and option 3 sends the document's contents without creating a target file.
-
-The location of the configuration document and the location of DSC execution are two separate choices:
-
-| Server | Responsibility | Requirements |
-| --- | --- | --- |
-| `MM-DSC1` | Author and store the configuration, then trigger remote runs | PowerShell and permission to connect to the target. DSC v3 is optional for simply editing and sending the document. |
-| `MM-SRV01` | Execute DSC against its own registry and other local settings | DSC v3, the resources referenced by the document, and their dependencies, available to the execution account. |
-
-**DSC runs on the target in all three options below.** Running `dsc config set` directly on `MM-DSC1` with our registry resource would configure `MM-DSC1`, even if the document were stored on another server. A remote file path does not select the machine to configure. Windows PowerShell 5.1's built-in DSC is not the DSC v3 engine used here.
-
-The remote examples assume PowerShell Remoting/WinRM is already configured securely, preferably using Kerberos in a domain lab. The account must be authorized to use the remote endpoint and perform the requested operations. Check that `dsc` and its resources are discoverable in that remote account's environment, not just in an interactive administrator session. None of these examples configures remoting or relaxes authentication settings.
-
-| Delivery option | How the target receives the document | Main trade-off |
-| --- | --- | --- |
-| Local copy | `MM-DSC1` transfers a file into `MM-SRV01` | Simple and reusable offline, but copies must be updated when the desired state changes. |
-| UNC share | `MM-SRV01` opens a file such as `\\MM-DSC1\DSC\lab.dsc.config.yaml` | Central storage, but each run depends on SMB access and authentication. |
-| Content through WinRM | `MM-DSC1` reads the file and sends its text to the remote process | No configuration file needs to be created on the target, and no separate SMB read is needed for that document. |
-
-The examples preview with `--what-if`; they do not apply the declared registry settings. Option 1 still creates a directory and transfers a file. After reviewing the preview, remove `--what-if` to apply, or use `dsc config test` to check compliance without applying changes.
-
-### Option 1: Copy the Document to the Target
-
-Run this on **MM-DSC1**, where the document from the local lab is stored at `C:\DSC\lab.dsc.config.yaml`:
-
-```powershell
-$session = New-PSSession -ComputerName 'MM-SRV01' -ErrorAction Stop
-try {
-  Invoke-Command -Session $session -ErrorAction Stop -ScriptBlock {
-    New-Item -ItemType Directory -Path 'C:\DSC' -Force -ErrorAction Stop | Out-Null
-  }
-  Copy-Item -LiteralPath 'C:\DSC\lab.dsc.config.yaml' -Destination 'C:\DSC\lab.dsc.config.yaml' -ToSession $session -ErrorAction Stop
-  Invoke-Command -Session $session -ErrorAction Stop -ScriptBlock {
-    dsc config set --file 'C:\DSC\lab.dsc.config.yaml' --what-if
-    if ($LASTEXITCODE -ne 0) {
-      throw "DSC preview failed with exit code $LASTEXITCODE."
-    }
-  }
-}
-finally {
-  Remove-PSSession -Session $session
-}
-```
-
-`Copy-Item -ToSession` transfers the file through the existing remoting session; it does not require a separate SMB share. The target reads its local copy. A local task on `MM-SRV01` can reuse that copy when `MM-DSC1` is unavailable, provided the resources do not need other network services.
-
-### Option 2: Read the Document from a UNC Share
-
-Assume the document is published on a share named `DSC` on `MM-DSC1`. The following command runs on **MM-SRV01**, under an identity that can read that share:
-
-```powershell
-dsc config set --file '\\MM-DSC1\DSC\lab.dsc.config.yaml' --what-if
-if ($LASTEXITCODE -ne 0) {
-  throw "DSC preview failed with exit code $LASTEXITCODE."
-}
-```
-
-The target needs SMB connectivity and the execution identity needs both share and NTFS read permissions. The document stays centrally stored, but the target cannot read it when the share is unavailable.
-
-**Watch the authentication path.** If `MM-DSC1` starts a WinRM session on `MM-SRV01`, and that session then reads the share on `MM-DSC1` or another file server, this introduces a second network access. Credentials used for the first connection are not automatically forwarded for the second. This is the [PowerShell Remoting second-hop problem](https://learn.microsoft.com/en-us/powershell/scripting/security/remoting/ps-remoting-second-hop). A command that works in an interactive target session can therefore fail in a remotely triggered run. Use an explicitly designed execution identity and authentication setup, or avoid that second access with option 1 or 3; do not enable credential delegation just to make this lab example work.
-
-### Option 3: Send the Content Through WinRM
-
-Run this on **MM-DSC1**. It reads the document locally, passes its text into the remote session, and feeds that text to DSC's standard input on **MM-SRV01**:
-
-```powershell
-$configurationText = Get-Content -LiteralPath 'C:\DSC\lab.dsc.config.yaml' -Raw -Encoding UTF8 -ErrorAction Stop
-
-Invoke-Command -ComputerName 'MM-SRV01' -ArgumentList $configurationText -ErrorAction Stop -ScriptBlock {
-  param([string]$ConfigurationText)
-
-  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-  $ConfigurationText | dsc config set --file - --what-if
-  if ($LASTEXITCODE -ne 0) {
-    throw "DSC preview failed with exit code $LASTEXITCODE."
-  }
-}
-```
-
-`--file -` means "read the configuration from standard input", not "open a file named `-`". The text is still transferred over the network, but this method does not create a configuration file on the target. UTF-8 output encoding preserves non-ASCII configuration values when PowerShell pipes text to the native `dsc` executable.
-
-This avoids the separate SMB access for the configuration document. It does **not** send resources, included documents, or other referenced files automatically: those must still be available where DSC runs. Resource operations that access network shares can have their own authentication requirements. Do not assume relative paths from `MM-DSC1` will resolve the same way on `MM-SRV01`.
-
-**For this two-server lab, start with option 3:** keep the document on `MM-DSC1`, send its contents through WinRM, and execute DSC on `MM-SRV01`. No configuration share is required.
-
-### Where Should the Scheduled Task Run?
-
-Both locations are valid. The task schedules your script; DSC v3 does not add its own background monitoring service.
-
-| Task location | What it does | Availability requirement |
-| --- | --- | --- |
-| `MM-DSC1` | Runs a script that connects to `MM-SRV01` and invokes DSC there | The administration server, network, target, and remoting authentication must be available at each run. |
-| `MM-SRV01` | Invokes its local DSC engine against a local document or accessible UNC path | A local copy can be used independently of `MM-DSC1`; a UNC document still requires the share. |
-
-For our lab, a task on **MM-DSC1** can run the option 3 script. Validate it manually first, then under the task's actual execution account. The task identity must be able to read the document and authenticate to the remote endpoint; a task configured without network credentials may work locally but fail when connecting to the target. Keep credentials out of the configuration and script, use only the permissions required, and restrict who can modify the configuration and resources.
-
-Decide explicitly whether the recurring job should **audit** with `dsc config test` or **apply** with `dsc config set`. A task that retains `--what-if` only previews; it never corrects drift. Record the target, configuration version, command exit code, and DSC per-resource results, and prevent overlapping runs. A successful command exit does not by itself prove every resource is compliant: inspect the test results.
-
-> **Verify the execution identity:** the lab uses `HKCU`, so the marker belongs to the account running DSC on `MM-SRV01`, not necessarily your RDP user. Read it back and clean it up on the target under that same identity. For machine-wide settings, use an appropriate machine-scoped resource and the required permissions instead.
+This describes the workflow, not an implemented bootstrap script. It remains separate from the manual labs above.
 
 ---
 
