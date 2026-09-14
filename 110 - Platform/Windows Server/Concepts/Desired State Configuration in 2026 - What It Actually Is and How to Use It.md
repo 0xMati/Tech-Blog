@@ -170,6 +170,8 @@ We'll install DSC v3, poke at a couple of resources, then author a real configur
 
 > This lab runs on a Windows 10/11 or Windows Server box with `winget` available. DSC v3 also runs on Linux/macOS; the registry resource is the only Windows-specific bit.
 
+For the two-server setup described after this exercise, run these initial steps locally on `CIBLE01`. The extension then shows how to prepare the document on `ADMIN01` and trigger DSC on `CIBLE01` remotely.
+
 ### 1. Install the `dsc` engine
 
 ```powershell
@@ -298,6 +300,108 @@ That last loop — *test says no, set makes it yes, and a second set does nothin
 ```powershell
 Remove-Item 'HKCU:\Software\TechBlogLab' -Recurse -Force -ErrorAction SilentlyContinue
 ```
+
+---
+
+## Extend the Lab: Administration Server and Target
+
+The location of the configuration document and the location of DSC execution are two separate choices. For this lab, use two servers:
+
+| Server | Responsibility | Requirements |
+| --- | --- | --- |
+| `ADMIN01` | Author and store the configuration, then trigger remote runs | PowerShell and permission to connect to the target. DSC v3 is optional for simply editing and sending the document. |
+| `CIBLE01` | Execute DSC against its own registry and other local settings | DSC v3, the resources referenced by the document, and their dependencies, available to the execution account. |
+
+**DSC runs on the target in all three options below.** Running `dsc config set` directly on `ADMIN01` with our registry resource would configure `ADMIN01`, even if the document were stored on another server. A remote file path does not select the machine to configure. Windows PowerShell 5.1's built-in DSC is not the DSC v3 engine used here.
+
+The remote examples assume PowerShell Remoting/WinRM is already configured securely, preferably using Kerberos in a domain lab. The account must be authorized to use the remote endpoint and perform the requested operations. Check that `dsc` and its resources are discoverable in that remote account's environment, not just in an interactive administrator session. None of these examples configures remoting or relaxes authentication settings.
+
+| Delivery option | How the target receives the document | Main trade-off |
+| --- | --- | --- |
+| Local copy | `ADMIN01` transfers a file into `CIBLE01` | Simple and reusable offline, but copies must be updated when the desired state changes. |
+| UNC share | `CIBLE01` opens a file such as `\\ADMIN01\DSC\lab.dsc.config.yaml` | Central storage, but each run depends on SMB access and authentication. |
+| Content through WinRM | `ADMIN01` reads the file and sends its text to the remote process | No configuration file needs to be created on the target, and no separate SMB read is needed for that document. |
+
+The examples preview with `--what-if`; they do not apply the declared registry settings. Option 1 still creates a directory and transfers a file. After reviewing the preview, remove `--what-if` to apply, or use `dsc config test` to check compliance without applying changes.
+
+### Option 1: Copy the Document to the Target
+
+Run this on **ADMIN01**, where the document from the local lab is stored at `C:\DSC\lab.dsc.config.yaml`:
+
+```powershell
+$session = New-PSSession -ComputerName 'CIBLE01' -ErrorAction Stop
+try {
+  Invoke-Command -Session $session -ErrorAction Stop -ScriptBlock {
+    New-Item -ItemType Directory -Path 'C:\DSC' -Force -ErrorAction Stop | Out-Null
+  }
+  Copy-Item -LiteralPath 'C:\DSC\lab.dsc.config.yaml' -Destination 'C:\DSC\lab.dsc.config.yaml' -ToSession $session -ErrorAction Stop
+  Invoke-Command -Session $session -ErrorAction Stop -ScriptBlock {
+    dsc config set --file 'C:\DSC\lab.dsc.config.yaml' --what-if
+    if ($LASTEXITCODE -ne 0) {
+      throw "DSC preview failed with exit code $LASTEXITCODE."
+    }
+  }
+}
+finally {
+  Remove-PSSession -Session $session
+}
+```
+
+`Copy-Item -ToSession` transfers the file through the existing remoting session; it does not require a separate SMB share. The target reads its local copy. A local task on `CIBLE01` can reuse that copy when `ADMIN01` is unavailable, provided the resources do not need other network services.
+
+### Option 2: Read the Document from a UNC Share
+
+Assume the document is published on a share named `DSC` on `ADMIN01`. The following command runs on **CIBLE01**, under an identity that can read that share:
+
+```powershell
+dsc config set --file '\\ADMIN01\DSC\lab.dsc.config.yaml' --what-if
+if ($LASTEXITCODE -ne 0) {
+  throw "DSC preview failed with exit code $LASTEXITCODE."
+}
+```
+
+The target needs SMB connectivity and the execution identity needs both share and NTFS read permissions. The document stays centrally stored, but the target cannot read it when the share is unavailable.
+
+**Watch the authentication path.** If `ADMIN01` starts a WinRM session on `CIBLE01`, and that session then reads the share on `ADMIN01` or another file server, this introduces a second network access. Credentials used for the first connection are not automatically forwarded for the second. This is the [PowerShell Remoting second-hop problem](https://learn.microsoft.com/en-us/powershell/scripting/security/remoting/ps-remoting-second-hop). A command that works in an interactive target session can therefore fail in a remotely triggered run. Use an explicitly designed execution identity and authentication setup, or avoid that second access with option 1 or 3; do not enable credential delegation just to make this lab example work.
+
+### Option 3: Send the Content Through WinRM
+
+Run this on **ADMIN01**. It reads the document locally, passes its text into the remote session, and feeds that text to DSC's standard input on **CIBLE01**:
+
+```powershell
+$configurationText = Get-Content -LiteralPath 'C:\DSC\lab.dsc.config.yaml' -Raw -Encoding UTF8 -ErrorAction Stop
+
+Invoke-Command -ComputerName 'CIBLE01' -ArgumentList $configurationText -ErrorAction Stop -ScriptBlock {
+  param([string]$ConfigurationText)
+
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $ConfigurationText | dsc config set --file - --what-if
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC preview failed with exit code $LASTEXITCODE."
+  }
+}
+```
+
+`--file -` means "read the configuration from standard input", not "open a file named `-`". The text is still transferred over the network, but this method does not create a configuration file on the target. UTF-8 output encoding preserves non-ASCII configuration values when PowerShell pipes text to the native `dsc` executable.
+
+This avoids the separate SMB access for the configuration document. It does **not** send resources, included documents, or other referenced files automatically: those must still be available where DSC runs. Resource operations that access network shares can have their own authentication requirements. Do not assume relative paths from `ADMIN01` will resolve the same way on `CIBLE01`.
+
+**For this two-server lab, start with option 3:** keep the document on `ADMIN01`, send its contents through WinRM, and execute DSC on `CIBLE01`. No configuration share is required.
+
+### Where Should the Scheduled Task Run?
+
+Both locations are valid. The task schedules your script; DSC v3 does not add its own background monitoring service.
+
+| Task location | What it does | Availability requirement |
+| --- | --- | --- |
+| `ADMIN01` | Runs a script that connects to `CIBLE01` and invokes DSC there | The administration server, network, target, and remoting authentication must be available at each run. |
+| `CIBLE01` | Invokes its local DSC engine against a local document or accessible UNC path | A local copy can be used independently of `ADMIN01`; a UNC document still requires the share. |
+
+For our lab, a task on **ADMIN01** can run the option 3 script. Validate it manually first, then under the task's actual execution account. The task identity must be able to read the document and authenticate to the remote endpoint; a task configured without network credentials may work locally but fail when connecting to the target. Keep credentials out of the configuration and script, use only the permissions required, and restrict who can modify the configuration and resources.
+
+Decide explicitly whether the recurring job should **audit** with `dsc config test` or **apply** with `dsc config set`. A task that retains `--what-if` only previews; it never corrects drift. Record the target, configuration version, command exit code, and DSC per-resource results, and prevent overlapping runs. A successful command exit does not by itself prove every resource is compliant: inspect the test results.
+
+> **Verify the execution identity:** the lab uses `HKCU`, so the marker belongs to the account running DSC on `CIBLE01`, not necessarily your RDP user. Read it back and clean it up on the target under that same identity. For machine-wide settings, use an appropriate machine-scoped resource and the required permissions instead.
 
 ---
 
