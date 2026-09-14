@@ -42,7 +42,7 @@ You are no longer describing **what you want**. You are hand-coding **how to get
 DSC flips it around. You declare the **desired state** and let a **resource** own the messy reconciliation logic:
 
 - **Declarative** — you state the target, not the procedure.
-- **Idempotent** — a fancy word for *safe to run twice at 3 a.m.* Applying an already-correct config changes nothing.
+- **Idempotent** — applying the same configuration repeatedly has the same effect as applying it once. For example, ensuring a folder exists creates it if missing and leaves it alone if already present.
 - **Convergent** — every run drags the machine back toward the declared state.
 
 That's the whole pitch: describe the destination once, stop babysitting the journey.
@@ -107,27 +107,32 @@ It still works on every Windows Server. But it is **Windows-only, tied to WMF 5.
 
 DSC v3 is a rewrite, not a facelift. It ships as a single command-line tool, **`dsc`**:
 
-- **Cross-platform** (Windows, Linux, macOS) and **does not depend on PowerShell** at all. Resources can be written in bash, Python, C#, Rust — anything that can speak JSON.
+- **Cross-platform** (Windows, Linux, macOS). The DSC engine itself does not require PowerShell. Resources can be written in **PowerShell**, Bash, Python, C#, Rust, or other languages that implement DSC's resource interface. Each resource may have its own dependencies: a PowerShell resource still needs PowerShell installed.
 - **No MOF.** Configuration documents are **YAML or JSON**, with an ARM-template-like feature set (parameters, variables, expression functions).
 - **No LCM.** `dsc` is *a command you run*, not a service that runs in the background judging your machine every 15 minutes. If you want it on a schedule, something else has to invoke it (more on that below).
 - Same **Get / Test / Set** model.
 - **Backward compatible** with classic resources through *adapter* resources (`Microsoft.DSC/PowerShell`, `Microsoft.Windows/WindowsPowerShell`), so your existing PSDSC class resources aren't landfill.
 
-It's the engine higher-order tools now build on — **WinGet**, **Microsoft Dev Box**, and **Azure Machine Configuration**.
+To understand the diagram, start with a local run. Three parts have distinct responsibilities:
+
+1. **The document describes what you want.** You write YAML or JSON that names the resources to use and supplies their desired properties. For example: the registry value `Owner`, under `HKCU\Software\TechBlogLab`, should contain `mamotron`. The document does not contain the code that edits the registry.
+2. **The engine coordinates execution.** The `dsc` command reads the document, finds the required resources, and uses them to read state (**Get**), check compliance (**Test**), or enforce the declared state (**Set**, where supported). The engine does not need to know how every registry setting, service, or application works.
+3. **The resources know how to manage each setting.** In this example, `Microsoft.Windows/Registry` knows how to read and update the registry. You normally use existing resources; you do not have to write them yourself. Their implementation language is separate from the YAML or JSON configuration document.
 
 ```mermaid
 flowchart TB
-    subgraph Author
-      Y[YAML / JSON<br/>config document]
-      R[Resources<br/>any language]
-    end
-    Y --> DSC[dsc CLI engine]
-    R --> DSC
-    DSC -->|Get / Test / Set| M[Managed machine]
-    DSC -. orchestrated by .-> O1[WinGet]
-    DSC -. orchestrated by .-> O2[Microsoft Dev Box]
-    DSC -. orchestrated by .-> O3[Azure Machine Configuration]
+    Author["You"] -->|Write| Config["YAML / JSON document<br/>Desired state"]
+    Config --> Engine["dsc CLI engine"]
+    Trigger["Manual run<br/>or external automation"] -->|Starts| Engine
+    Engine -->|"Get / Test / Set"| Resources["DSC resources<br/>Know how to manage settings"]
+    Resources -->|"Read or change"| State["Machine state<br/>Registry, files, services..."]
 ```
+
+**What starts the engine?** In this lab, you run `dsc config get`, `dsc config test`, or `dsc config set` yourself. DSC v3 does not keep monitoring or reapplying the configuration after the command exits. A scheduled task or another automation system must invoke it again for recurring checks or enforcement.
+
+**WinGet**, **Microsoft Dev Box**, and **Azure Machine Configuration** illustrate the higher-level orchestration layer discussed in the [DSC integration overview](https://learn.microsoft.com/en-us/powershell/dsc/overview?view=dsc-3.0#integrating-with-dsc). They are not three consecutive steps or prerequisites for this local lab; their integration details depend on the product and version. The `dsc` CLI itself is not a remote deployment service.
+
+**Remember: the document defines what you want, the resource implements how to manage it, the engine coordinates execution, and external automation decides when to run it.**
 
 ### 3. Azure Machine Configuration — DSC at fleet scale
 
