@@ -115,7 +115,7 @@ DSC v3 is a rewrite, not a facelift. It ships as a single command-line tool, **`
 
 To understand the diagram, start with a local run. Three parts have distinct responsibilities:
 
-1. **The document describes what you want.** You write YAML or JSON that names the resources to use and supplies their desired properties. For example: the registry value `Owner`, under `HKCU\Software\TechBlogLab`, should contain `mamotron`. The document does not contain the code that edits the registry.
+1. **The document describes what you want.** You write YAML or JSON that names the resources to use and supplies their desired properties. For example: the registry value `Owner`, under `HKCU\Software\TechBlogLab`, should contain `LabUser`. The document does not contain the code that edits the registry.
 2. **The engine coordinates execution.** The `dsc` command reads the document, finds the required resources, and uses them to read state (**Get**), check compliance (**Test**), or enforce the declared state (**Set**, where supported). The engine does not need to know how every registry setting, service, or application works.
 3. **The resources know how to manage each setting.** In this example, `Microsoft.Windows/Registry` knows how to read and update the registry. You normally use existing resources; you do not have to write them yourself. Their implementation language is separate from the YAML or JSON configuration document.
 
@@ -246,7 +246,7 @@ resources:
       keyPath: HKCU\Software\TechBlogLab
       valueName: Owner
       valueData:
-        String: mamotron
+        String: LabUser
       _exist: true
     dependsOn:
       - "[resourceId('Microsoft.DSC/Assertion', 'Windows only')]"
@@ -291,7 +291,7 @@ dsc config set --file ./lab.dsc.config.yaml
 
 That last loop — *test says no, set makes it yes, and a second set does nothing* — is idempotency and convergence in three commands. That's the entire point of DSC, minus 900 pages of theory.
 
-> **Verify:** run `dsc config test` and read the **per-instance** result — the registry instance should report it is in the desired state. Then confirm reality with `Get-ItemProperty 'HKCU:\Software\TechBlogLab'` and check `Owner = mamotron` actually exists. A green test with no registry key means you tested the wrong thing.
+> **Verify:** run `dsc config test` and read the **per-instance** result — the registry instance should report it is in the desired state. Then confirm reality with `Get-ItemProperty 'HKCU:\Software\TechBlogLab'` and check `Owner = LabUser` actually exists. A green test with no registry key means you tested the wrong thing.
 
 ### 6. Clean up
 
