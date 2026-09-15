@@ -200,6 +200,42 @@ Each lab adds one concept. **Start with Lab 1; nothing from the later labs is ne
 
 **On `MM-SRV01`.** We install the engine here because this is where the configuration will run.
 
+**Choose one installation method, not both.** Use WinGet when it is available and its Microsoft Store source is accessible. Otherwise, use the ZIP package.
+
+#### Option A: Install Directly with WinGet
+
+WinGet downloads and installs the package for you. First check that the command is available:
+
+```powershell
+winget --version
+```
+
+**Expected:** a WinGet version number. If the command works, install the stable DSC package:
+
+```powershell
+winget install --id 9NVTPZWRC6KQ --source msstore
+```
+
+`9NVTPZWRC6KQ` identifies the stable DSC package in the Microsoft Store source. The server needs access to that source, and local policies must allow the installation. Review any source or package agreement prompts before accepting them.
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-10-33-06.png>)
+
+After installation succeeds, check the engine:
+
+```powershell
+dsc --version
+```
+
+**Expected:** a DSC version starting with `3.`. If `dsc` is not recognized, close and reopen PowerShell under the same account, then try again.
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-10-34-10.png>)
+
+**You can now continue to step 2.** No manual download, extraction, or additional PowerShell resource module is required for this registry lab. This is an [official DSC installation method](https://learn.microsoft.com/en-us/powershell/dsc/install?view=dsc-3.0#install-dsc-using-winget).
+
+#### Option B: Use the ZIP Package
+
+Use this alternative if WinGet is unavailable or its package source is blocked. For an isolated server, transfer the reviewed archive from a machine that can download it.
+
 Download the **stable Windows x64 ZIP** from the [official DSC releases](https://github.com/PowerShell/DSC/releases/latest). For the commands below, place the archive at `C:\Temp\dsc-windows.zip`. Extract the whole package into a new directory, not just the executable:
 
 ```powershell
@@ -210,7 +246,9 @@ dsc --version
 
 **Expected:** a DSC version starting with `3.`. Stop here if the command is not found or fails.
 
-The `PATH` line makes the engine and bundled tools discoverable in this PowerShell session. Repeat that line when opening another session. If DSC v3 is already installed elsewhere, use its actual directory instead; do not install another copy unnecessarily.
+For the ZIP method, the `PATH` line makes the engine and bundled tools discoverable in this PowerShell session. Repeat it when opening another session, adjusting the directory if necessary. If DSC v3 is already installed, reuse it rather than installing another copy.
+
+**For the later labs:** lines that add `C:\Tools\DSC` to `PATH` apply to the ZIP method. With WinGet, omit those lines if `dsc` is already discoverable. Always verify the engine and resource discovery under the account that actually runs DSC; an interactive installation does not prove availability to a different remote or scheduled-task account.
 
 ### 2. Discover a Resource and Read State
 
@@ -220,6 +258,10 @@ The `PATH` line makes the engine and bundled tools discoverable in this PowerShe
 dsc resource list Microsoft.Windows/Registry
 dsc resource get --resource Microsoft/OSInfo --output-format yaml
 ```
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-10-35-40.png>)
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-10-36-28.png>)
 
 **Expected:** the first command finds the registry resource. The second describes the operating system of **this server**. It does not change anything.
 
@@ -264,6 +306,8 @@ Read it as: **"Use the Registry resource to ensure that Owner exists and contain
 dsc config test --file 'C:\DSC\lab.dsc.config.yaml'
 ```
 
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-10-57-45.png>)
+
 **Expected on a fresh lab:** the `Lab owner` instance reports `inDesiredState: false`. This means "not configured as requested", not "DSC is broken". A resource-discovery or syntax error is different: resolve it before continuing.
 
 Preview the proposed change, then apply it:
@@ -271,6 +315,7 @@ Preview the proposed change, then apply it:
 ```powershell
 dsc config set --file 'C:\DSC\lab.dsc.config.yaml' --what-if
 ```
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-10-59-09.png>)
 
 `--what-if` previews; it does not create our registry value. After reviewing the output:
 
@@ -279,6 +324,12 @@ dsc config set --file 'C:\DSC\lab.dsc.config.yaml'
 dsc config test --file 'C:\DSC\lab.dsc.config.yaml'
 Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\TechBlogLab' -Name Owner
 ```
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-02-14.png>)
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-02-51.png>)
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-03-19.png>)
 
 **Expected:** `inDesiredState: true` for the instance and `LabUser` from the registry read. Applying the same document again should leave the value unchanged. That is idempotence.
 
@@ -291,6 +342,8 @@ Set-ItemProperty -LiteralPath 'HKCU:\Software\TechBlogLab' -Name Owner -Value 'C
 dsc config test --file 'C:\DSC\lab.dsc.config.yaml'
 ```
 
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-04-21.png>)
+
 **Expected:** the instance is no longer in the desired state. DSC detected the difference when you ran `test`; it was not monitoring in the background.
 
 ```powershell
@@ -298,6 +351,7 @@ dsc config set --file 'C:\DSC\lab.dsc.config.yaml'
 dsc config test --file 'C:\DSC\lab.dsc.config.yaml'
 Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\TechBlogLab' -Name Owner
 ```
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-05-28.png>)
 
 **Expected:** the value is back to `LabUser`, and the test reports compliance.
 
@@ -335,17 +389,27 @@ WinRM is Windows' remote management mechanism. Windows Server already provides i
 ```powershell
 Invoke-Command -ComputerName 'MM-SRV01' -ErrorAction Stop -ScriptBlock {
   $env:PATH = "C:\Tools\DSC;$env:PATH"
-  $env:COMPUTERNAME
-  [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-  dsc --version
+  Write-Output "Server      : $env:COMPUTERNAME"
+  Write-Output "Account     : $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)"
+
+  $dscVersion = dsc --version
   if ($LASTEXITCODE -ne 0) {
     throw "DSC version check failed with exit code $LASTEXITCODE."
   }
-  dsc resource list Microsoft.Windows/Registry
+  Write-Output "DSC version : $dscVersion"
+  Write-Output ''
+  Write-Output 'Registry resource:'
+
+  dsc resource list Microsoft.Windows/Registry --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC resource discovery failed with exit code $LASTEXITCODE."
+  }
 }
 ```
 
-**Expected:** `MM-SRV01`, the remote execution account, a DSC 3.x version, and the registry resource. If DSC was installed in another directory, adjust the `PATH` line in these examples.
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-21-16.png>)
+
+**Expected:** labeled lines for the server (`MM-SRV01`), execution account, and DSC 3.x version, followed by the registry resource details. `--output-format yaml` displays those details on indented lines instead of compact JSON. The screenshot above shows the earlier, unformatted output; the checks are the same. If DSC was installed in another directory, adjust the `PATH` line in these examples.
 
 Notice the distinction: **you start the command on the administration server; DSC runs on the target.** A `dsc config set` run directly on `MM-DSC1` would configure the administration server instead.
 
@@ -357,6 +421,8 @@ We will send its **contents** through WinRM. There is no SMB share to create and
 
 ### 3. Preview, Then Apply on the Target
 
+#### A. Preview: No Changes Applied
+
 **Run on `MM-DSC1`:**
 
 ```powershell
@@ -367,16 +433,49 @@ Invoke-Command -ComputerName 'MM-SRV01' -ArgumentList $configurationText -ErrorA
 
   $env:PATH = "C:\Tools\DSC;$env:PATH"
   $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-  $ConfigurationText | dsc config set --file - --what-if
+  $ConfigurationText | dsc config set --file - --what-if --output-format yaml
   if ($LASTEXITCODE -ne 0) {
     throw "DSC operation failed with exit code $LASTEXITCODE."
   }
 }
 ```
 
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-30-56.png>)
+
 `--file -` tells DSC to read the document from **standard input**, the text passed through the pipeline. `$OutputEncoding` keeps that text in UTF-8. The resources themselves must still be installed on the target.
 
-**Expected:** a preview returned from `MM-SRV01`. Review it, then run the same block **without `--what-if`** to apply. Leaving that option in place never corrects drift.
+**Readable output:** DSC defaults to compact JSON when its output is captured, as in this remote session. `--output-format yaml` keeps the response on multiple indented lines. Use `--output-format pretty-json` instead if you prefer indented JSON. Neither option changes what DSC does.
+
+**Expected:** a preview returned from `MM-SRV01`. Because this command includes `--what-if`, it has not applied any changes. Review the result before continuing to part B.
+
+To read the preview, look for:
+
+- `hadErrors: false`: DSC reported no operation errors.
+- `beforeState` and `afterState`: the current state and the projected state for each resource. With `--what-if`, the projected state has not been applied.
+- `changedProperties: []`: no property changes are proposed. For example, `Owner` may already contain `LabUser` from an earlier run.
+
+#### B. Apply: Enforce the Configuration
+
+**Run on `MM-DSC1`, in the same PowerShell session and under the same account.** Reuse `$configurationText` from the preview so you apply the document you just reviewed. If you reopened PowerShell or changed the document, repeat part A first.
+
+The command below deliberately omits **`--what-if`**. DSC can now create or update the registry value on **MM-SRV01**:
+
+```powershell
+Invoke-Command -ComputerName 'MM-SRV01' -ArgumentList $configurationText -ErrorAction Stop -ScriptBlock {
+  param([string]$ConfigurationText)
+
+  $env:PATH = "C:\Tools\DSC;$env:PATH"
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $ConfigurationText | dsc config set --file - --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC apply failed with exit code $LASTEXITCODE."
+  }
+}
+```
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-34-28.png>)
+
+**Expected:** no reported errors and `Owner = LabUser` in the resource's `afterState`. If the value was already correct, this real run can still report `changedProperties: []`: there was nothing to change. Continue to step 4 to confirm compliance and read the registry value back.
 
 ### 4. Verify and Clean Up in the Same Context
 
@@ -388,13 +487,14 @@ Invoke-Command -ComputerName 'MM-SRV01' -ArgumentList $configurationText -ErrorA
 
   $env:PATH = "C:\Tools\DSC;$env:PATH"
   $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-  $ConfigurationText | dsc config test --file -
+  $ConfigurationText | dsc config test --file - --output-format yaml
   if ($LASTEXITCODE -ne 0) {
     throw "DSC test failed with exit code $LASTEXITCODE."
   }
   Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\TechBlogLab' -Name Owner -ErrorAction Stop
 }
 ```
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-11-38-12.png>)
 
 **Expected:** a compliant resource instance and `LabUser`. Check both: a successful command exit alone is not proof of compliance.
 
