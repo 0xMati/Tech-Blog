@@ -1,6 +1,0 @@
-{
-  "Domains": ["mathiasmotron.com"],
-  "IncludeReadOnlyDCs": false,
-  "ExcludedDCs": [],
-  "RemediationAllowedDCs": []
-}

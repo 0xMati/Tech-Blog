@@ -11,13 +11,14 @@ The [first DSC article](<./Desired State Configuration in 2026 - What It Actuall
 
 > **TL;DR**
 >
-> - `MM-DSC1` discovers the DCs in `mathiasmotron.com` and coordinates the work.
-> - A configuration file defines the discovery scope, exclusions, and a separate machine allowlist for future remediation.
+> - A discovery script on `MM-DSC1` writes the DCs from `mathiasmotron.com` to `inventory.json`.
+> - A separate compliance parameter file defines the checks, expected values, configuration owners, and audit or enforcement modes.
+> - The orchestrator on MM-DSC1 will read both files: the inventory tells it which machines exist; the parameters tell it what to check.
 > - DSC tests the effective configuration on each target. PowerShell provides the orchestration and reporting around it.
 > - Settings owned by Group Policy are audited, not repeatedly overwritten locally by DSC.
 > - Remediation is a separate, explicitly triggered operation against a smaller configuration document. It is disabled by default.
 
-**Current hands-on coverage:** this version implements the inventory step. The five control families, compliance report, and remediation workflow below define the intended design; the DSC compliance runner, HTML report, and remediation runner are not implemented yet. An inventory result is not a security assessment.
+**Current hands-on coverage:** discovery and automatic JSON export are implemented. The compliance parameter file, DSC orchestrator, and compliance reporting are the next steps. The five control families and their audit/remediation design are described below; an inventory is not a security assessment.
 
 ---
 
@@ -42,7 +43,7 @@ The [first DSC article](<./Desired State Configuration in 2026 - What It Actuall
 | --- | --- | --- |
 | `MM-DSC1` | Administration and orchestration server | Windows Server 2025; RSAT AD DS tools are already available |
 | `mathiasmotron.com` | AD domain to enumerate | Explicitly configured; we do not automatically expand to the entire forest |
-| Domain controllers | Future audit targets | Names, OS versions, sites, and roles are discovered from AD |
+| Domain controllers | Future audit targets | Names, OS versions, sites, and read-only status are discovered from AD |
 
 `MM-DSC1` remains the administration server. Nothing in this article promotes it, or the previous article's `MM-SRV01`, to a domain controller.
 
@@ -58,22 +59,28 @@ The later DSC step also requires a working WinRM endpoint, an account with the p
 
 A **baseline** is a versioned set of requirements that defines the expected configuration. For example, a baseline might require a particular service to be stopped, or a particular audit subcategory to be enabled.
 
-The inventory settings and the baseline serve different purposes:
+The workflow separates the machines from the rules:
 
-- **Inventory settings:** which domains to query, which discovered DCs are included, and which machines are on the remediation allowlist.
-- **DSC configuration documents:** which resource instances to test, and which values are expected.
-- **Orchestration scripts:** when to run, how to contact targets, how to handle failures, and where to store results.
+| Component | Produced or maintained by | Purpose |
+| --- | --- | --- |
+| `inventory.json` | The discovery script | DC hostnames and directory metadata, with the discovery time |
+| `compliance.settings.json` (next step) | You | Control definitions, desired values, configuration owners, and `Audit` or `Enforce` mode |
+| Orchestration script on MM-DSC1 (next step) | Runs against both files | Reads targets from the inventory, builds the DSC configuration documents from the parameters, invokes DSC remotely, and collects results |
+
+Changing a desired value does not require rediscovering the DCs. Rediscovering the DCs does not overwrite the compliance parameters.
+
+For each control, `Audit` means test and report without correction. `Enforce` makes a DSC-owned control eligible for correction when the remediation operation is explicitly started. A normal audit still uses `Test` for both modes. These modes and ownership rules belong to our orchestrator, not to the native DSC resource properties.
 
 The intended workflow is:
 
 ```mermaid
 flowchart LR
-    Settings["Inventory settings"] --> Inventory["MM-DSC1: discover DCs"]
+    Domain["DomainName parameter"] --> Inventory["MM-DSC1: discover DCs"]
     AD["Active Directory"] --> Inventory
-    Inventory --> Snapshot["Inventory snapshot"]
-    Snapshot -.-> Audit["MM-DSC1: start remote audits"]
-    Baseline["Versioned DSC baseline"] -.-> Audit
-    Audit -.-> Target["DSC Test on each target DC"]
+    Inventory --> Snapshot["inventory.json: DCs"]
+    Snapshot -.-> Audit["MM-DSC1: orchestrator"]
+    Baseline["compliance.settings.json: rules and modes"] -.-> Audit
+    Audit -.-> Target["DSC on each target DC: Test / explicit Set"]
     Target -.-> Results["Results returned to MM-DSC1"]
     Results -.-> Report["JSON evidence and HTML report"]
 ```
@@ -120,13 +127,13 @@ This is configuration compliance, not a complete AD health assessment. Replicati
 
 An absent or incomplete GPO result does not identify the setting's owner. Ownership is declared per setting so that DSC and Group Policy do not keep overwriting one another.
 
-Audit and remediation will use **separate configuration documents**. The audit document can describe all supported checks. The remediation document contains only DSC-owned settings enabled for correction. Running `dsc config set` against the full audit document can attempt changes to settings intended for audit only.
+You maintain one compliance parameter file. The orchestrator will build **separate DSC configuration documents** from it: an audit document for all applicable checks, and a remediation document containing only DSC-owned controls in `Enforce` mode. Running `dsc config set` against the full audit document could otherwise change settings intended for audit only.
 
 ---
 
 ## Step 1: Build the DC Inventory
 
-**Run this step on MM-DSC1.** The result is a list of discovered DCs, their scope decisions, and a JSON snapshot. No DC setting is changed.
+**Run this step on MM-DSC1.** The discovery script creates the JSON inventory directly. No DC setting is changed.
 
 ### 1. Verify the execution context
 
@@ -148,83 +155,29 @@ Get-Command -Name Get-ADDomainController |
 
 The account displayed here is the account used for directory discovery from this filesystem session. Read access to directory metadata does not grant the permissions needed for later remote compliance checks or remediation.
 
-### 2. Review the supporting files and the scope
+### 2. Prepare the discovery script
 
-The two supporting files are:
+This step uses one supporting file: [Get-DCInventory.ps1](<./DomainControllersDCS/Get-DCInventory.ps1>). The following command expects it at `C:\DSC\DomainControllersDCS\Get-DCInventory.ps1` on MM-DSC1.
 
-- [Get-DCInventory.ps1](<./DomainControllersDCS/Get-DCInventory.ps1>): validates the settings, queries AD, and returns PowerShell objects. It does not call DSC, open WinRM sessions, or write to the DCs.
-- [inventory.settings.json](<./DomainControllersDCS/inventory.settings.json>): the initial inventory scope.
+There is no discovery settings file to fill in. The script takes the domain as `-DomainName`, queries AD, and writes `inventory.json` next to the script. It also returns the DC objects for immediate display.
 
-The commands below expect both supporting files directly under `C:\DSC\DomainControllersDCS` on **MM-DSC1**.
+The output contains every discovered DC, including RODCs with `IsReadOnly = true`. Inventory describes what exists; it does not decide which controls to run or authorize corrections. The first compliance checks will target writable DCs, with any exclusions handled by the orchestrator rather than by deleting entries from this generated file.
 
-Check their presence and display the configuration:
+### 3. Discover the DCs and write the JSON
 
-```powershell
-$workingDirectory = 'C:\DSC\DomainControllersDCS'
-
-foreach ($fileName in @('Get-DCInventory.ps1', 'inventory.settings.json')) {
-    $filePath = Join-Path -Path $workingDirectory -ChildPath $fileName
-    if (-not (Test-Path -LiteralPath $filePath -PathType Leaf)) {
-        throw "Required file is missing on this machine: $filePath"
-    }
-}
-
-Get-Content -LiteralPath 'C:\DSC\DomainControllersDCS\inventory.settings.json' -Raw -Encoding UTF8
-```
-
-The initial settings are:
-
-```json
-{
-  "Domains": ["mathiasmotron.com"],
-  "IncludeReadOnlyDCs": false,
-  "ExcludedDCs": [],
-  "RemediationAllowedDCs": []
-}
-```
-
-| Property | Meaning |
-| --- | --- |
-| `Domains` | An explicit list of domains to enumerate. We start with `mathiasmotron.com` only. |
-| `IncludeReadOnlyDCs` | Whether read-only domain controllers are included in the future audit scope. Initially `false`. |
-| `ExcludedDCs` | Exact DC FQDNs deliberately outside the audit scope. Empty initially. |
-| `RemediationAllowedDCs` | Exact DC FQDNs on the machine allowlist for a future remediation workflow. Empty means none. |
-
-These are **our script's settings**, not native DSC configuration properties. They contain no credentials or security baseline values.
-
-The brackets `[]` denote a JSON array. An empty array means no entries. The Boolean `false` is not the string `"false"`. The script rejects malformed types, unknown properties, empty domain lists, and non-FQDN entries. Host matching is case-insensitive, with no wildcards.
-
-An inventory exclusion removes a machine from the audit scope; it does not establish compliance. This file does not track security-exception owners, justifications, or expiry dates.
-
-### 3. Discover the DCs
-
-Run:
+On MM-DSC1, run:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$inventory = @()
-$auditTargets = @()
 
-$inventory = @(
-    & 'C:\DSC\DomainControllersDCS\Get-DCInventory.ps1' `
-        -SettingsPath 'C:\DSC\DomainControllersDCS\inventory.settings.json' `
-        -ErrorAction Stop
-)
-
-$inventory |
-    Format-Table HostName, AuditScope, RemediationAllowlisted, ComplianceStatus -AutoSize -Wrap
+& 'C:\DSC\DomainControllersDCS\Get-DCInventory.ps1' `
+    -DomainName 'mathiasmotron.com' |
+    Format-Table HostName, OperatingSystem, IsReadOnly -AutoSize -Wrap
 ```
 
-The initial assignments clear any results left from an earlier run. The `@(...)` captures the output as an array, including when the domain has only one DC. The `&` invokes the script at the quoted path.
+**Expected:** an `Inventory saved to:` message with `C:\DSC\DomainControllersDCS\inventory.json`, followed by one row per discovered DC. The JSON is already on disk when the command finishes; there is no separate export block to run.
 
-**Expected with the supplied settings:**
-
-- Writable DCs have `AuditScope = Included`.
-- RODCs remain visible, with `AuditScope = Excluded`.
-- Every row has `RemediationAllowlisted = False`.
-- Every row has `ComplianceStatus = NotEvaluated`.
-
-The names and number of machines come from the actual directory. No sample DC hostname is treated as a real target.
+The `&` invokes the script. `Format-Table` displays the returned objects without changing the JSON. The default output location is based on the script's directory, not the current console directory. The optional `-OutputPath` parameter selects another JSON destination.
 
 The core query inside the script is:
 
@@ -234,84 +187,34 @@ Get-ADDomainController -Filter * -Server 'mathiasmotron.com' -ErrorAction Stop
 
 `-Filter *` enumerates the DCs in the specified domain. Do not substitute `-Discover`: that parameter locates a DC meeting discovery criteria, rather than enumerating the domain's DC inventory. `-Server` accepts the domain name here; it does not mean that DSC is executing on that name.
 
-If a configured domain cannot be queried, discovery returns no DCs, a DC has no host name, or the returned identity is inconsistent, the script stops. It buffers the rows until discovery completes, so a later domain failure cannot publish the earlier domains as a complete inventory.
+Each successful discovery replaces the destination JSON with the current inventory. The script writes a temporary file first, then publishes it after discovery and serialization succeed. If AD discovery fails, returns no DCs, or returns inconsistent identities, the previous inventory remains unchanged. Its `DiscoveredAtUtc` value still identifies the earlier run, not the failed one.
 
-Do not catch such an error and continue using an old inventory as though the current discovery succeeded. Do not prefilter machines with a ping test: lack of an ICMP response is not proof that a future audit cannot run.
+This command does not test WinRM connectivity or filter machines by ping response. A discovered DC that cannot later be contacted must remain visible in the audit results.
 
-### 4. Inspect the metadata and the scope decisions
+### 4. Read the generated inventory
 
-The compact table answers who is included. Use a list for the longer properties:
-
-```powershell
-$inventory |
-    Format-List HostName, Domain, Forest, Site, OperatingSystem, IsReadOnly, OperationMasterRoles, ScopeReason
-
-$auditTargets = @($inventory | Where-Object AuditScope -eq 'Included')
-
-[pscustomobject]@{
-    DiscoveredDCs = $inventory.Count
-    IncludedDCs = $auditTargets.Count
-    ExcludedDCs = @($inventory | Where-Object AuditScope -eq 'Excluded').Count
-    RemediationAllowlistedDCs = @($inventory | Where-Object RemediationAllowlisted).Count
-} | Format-List
-```
-
-**Expected:** discovered count equals included count plus excluded count. The remediation count is zero with the supplied settings. An included count of zero means there is no audit target; it does not mean the domain is compliant.
-
-`OperationMasterRoles` lists the FSMO roles reported by AD. The OS information is directory metadata, not a live remote OS probe. Confirm target versions during the remote-execution preflight rather than treating this metadata as an attestation.
-
-An explicitly excluded DC remains excluded even if its hostname also appears in `RemediationAllowedDCs`. The allowlist never overrides the audit scope. Unknown hostnames in either list produce warnings so that typos or retired entries are not silently ignored.
-
-Keep `$inventory` as objects. `Format-Table` and `Format-List` are for console display, not for the data that we will export or process.
-
-### 5. Record the inventory snapshot
-
-This step writes files **only on MM-DSC1**. It records inventory, not the results of the five control families.
-
-Run after a successful discovery in the same PowerShell session:
+This works in the same console or a new PowerShell session, because it reads the saved file rather than a variable from the discovery command:
 
 ```powershell
-if ($inventory.Count -eq 0) {
-    throw 'There is no successful inventory to record. Run discovery before exporting.'
-}
-
-$reportDirectory = 'C:\DSC\DomainControllersDCS\Reports'
-$null = New-Item -Path $reportDirectory -ItemType Directory -Force -ErrorAction Stop
-$runId = [guid]::NewGuid().ToString('N')
-
-$inventoryReport = [pscustomobject][ordered]@{
-    ReportType = 'DCInventory'
-    InventorySchemaVersion = 1
-    RunId = $runId
-    SavedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-    SourceComputer = $env:COMPUTERNAME
-    ComplianceStatus = 'NotEvaluated'
-    DiscoveredCount = $inventory.Count
-    IncludedCount = @($inventory | Where-Object AuditScope -eq 'Included').Count
-    ExcludedCount = @($inventory | Where-Object AuditScope -eq 'Excluded').Count
-    DomainControllers = @($inventory)
-}
-
-$reportPath = Join-Path -Path $reportDirectory -ChildPath "inventory-$runId.json"
-$inventoryReport | ConvertTo-Json -Depth 8 |
-    Set-Content -LiteralPath $reportPath -Encoding UTF8 -ErrorAction Stop
-
-Get-Item -LiteralPath $reportPath | Format-List FullName, Length
-```
-
-**Expected:** a new JSON file under `C:\DSC\DomainControllersDCS\Reports`, with a unique run identifier, the time the snapshot was saved, all discovered DCs, and their scope decisions. Earlier snapshots are not deliberately reused or overwritten.
-
-Verify the saved data:
-
-```powershell
-$savedReport = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 -ErrorAction Stop |
+$inventoryPath = 'C:\DSC\DomainControllersDCS\inventory.json'
+$inventoryDocument = Get-Content -LiteralPath $inventoryPath -Raw -Encoding UTF8 -ErrorAction Stop |
     ConvertFrom-Json -ErrorAction Stop
 
-$savedReport |
-    Format-List ReportType, RunId, SavedAtUtc, DiscoveredCount, IncludedCount, ExcludedCount, ComplianceStatus
+$inventoryDocument |
+    Format-List Domain, DiscoveredAtUtc, SourceComputer
+
+$domainControllers = @($inventoryDocument.DomainControllers)
+$domainControllers |
+    Format-Table HostName, Site, OperatingSystem, IsReadOnly -AutoSize -Wrap
+
+Write-Output "Discovered DCs: $($domainControllers.Count)"
 ```
 
-The status must still be `NotEvaluated`. Preserve this distinction when the HTML report is added: collecting an inventory must never produce a green compliance score.
+**Expected:** the discovery domain and timestamp, the source computer, and the same DCs that the discovery command displayed. Each DC entry contains `HostName`, `Domain`, `Site`, `OperatingSystem`, and `IsReadOnly`. The `DomainControllers` property is always an array, even for a single DC.
+
+The OS information is directory metadata, not a live remote OS probe. The inventory contains no compliance verdict and no audit or enforcement settings.
+
+The future orchestrator will load this file the same way, then load the separate compliance parameter file. It will use each target's `HostName` for WinRM and the common control definitions to build the DSC tests. It does not need to run discovery again inside every check.
 
 ---
 
@@ -336,7 +239,7 @@ Scope exclusions remain separate from these control results and visible in the r
 
 `hadErrors: false` means the DSC operation did not report an error. It does **not** mean every resource is in the desired state. The reporting code must also inspect each test result, including `inDesiredState` and the differing properties.
 
-Keep the inventory fixed for the duration of an audit run. A DC that becomes unreachable still belongs to that run's expected coverage. A later run can discover a new inventory, but it must not silently discard failed machines from the current one.
+The orchestrator will validate the inventory structure and discovery timestamp, then load it once for the audit run. An unreadable, empty, or outdated inventory is not a successful assessment. A DC that becomes unreachable still belongs to that run's expected coverage, even if a later discovery updates the file on disk.
 
 ---
 
@@ -346,14 +249,14 @@ The first remediation example targets the Print Spooler on one DC, with DSC decl
 
 The future runner must require all of the following:
 
-1. The DC is in the configured audit scope and explicitly present in `RemediationAllowedDCs`.
-2. The specific setting is declared DSC-owned and enabled for remediation.
+1. The DC is present in the loaded inventory and explicitly selected for the remediation run.
+2. The specific control is declared DSC-owned and set to `Enforce` in the compliance parameters.
 3. Current state and relevant preconditions are checked again before a change.
 4. An operator explicitly approves the bounded operation using the appropriate execution identity.
 5. A dedicated remediation document contains only those DSC-owned settings.
 6. A fresh audit confirms the resulting state and records the outcome.
 
-The inventory script implements only the scope and machine-allowlist calculation. It does not grant permissions, collect approval, or execute remediation. Adding a hostname to the JSON file cannot stop a service.
+The discovery script only produces inventory. It does not read the compliance parameters, grant permissions, or execute remediation. Discovering a new DC never triggers `Set` by itself.
 
 Do not assume that every resource supports `--what-if`. Use the resource's supported read-only test operation and validate its actual capabilities before building a preview workflow. A compliance test is not a simulation of every consequence of a future change.
 
@@ -366,19 +269,19 @@ For GPO-owned settings, the action in the report should lead to the owning GPO a
 - **Privilege boundary.** A server that can administer DCs is part of the privileged AD administration boundary. Using the same privileged identity on application servers exposes those credentials to a wider set of machines.
 - **Permissions.** Directory discovery, remote auditing, and remediation have different permission requirements. The execution account determines which checks and changes can succeed.
 - **Dependencies.** Resource behavior and supported OS versions determine which checks are reliable. Recording tested package versions makes later results comparable.
-- **File access.** Write access to scripts, baselines, or target allowlists can change what a privileged runner executes. These files are security-sensitive even without embedded passwords.
+- **File access.** Write access to scripts, the inventory, or compliance parameters can change what a privileged runner executes and which machines it contacts. These files are security-sensitive even without embedded passwords.
 - **Report contents.** Inventory and compliance reports expose hostnames, topology, and configuration weaknesses. Their access controls and retention determine who can see that information and for how long.
 - **Scheduling.** A scheduled task may use a different account and environment from an interactive session. Module discovery, DSC paths, permissions, and failure reporting need to work in that context.
 
-Only inventory is implemented at this stage. Compliance evaluation and remediation are not yet available.
+Discovery and JSON export are implemented at this stage. Compliance evaluation and remediation are not yet available.
 
 ---
 
 ## Next Checkpoint
 
-The inventory identifies the DCs, their reported OS versions, and whether they are writable. One included DC will serve as the pilot for the first DSC check.
+The JSON inventory identifies the DCs, their reported OS versions, and whether they are writable. One writable DC from this file will serve as the pilot for the first DSC check.
 
-The next step adds the prerequisites for the Print Spooler audit on that DC, runs a read-only DSC test from MM-DSC1, and produces the first actual compliance result. Multiple DCs, the other control families, HTML reporting, and explicitly triggered remediation then build on that check.
+The next step will define the Print Spooler requirement in the compliance parameter file, add its DSC prerequisites on the target, and introduce the orchestrator that reads both files on MM-DSC1. Multiple DCs, the other control families, HTML reporting, and explicitly triggered remediation then build on that first test.
 
 ---
 
