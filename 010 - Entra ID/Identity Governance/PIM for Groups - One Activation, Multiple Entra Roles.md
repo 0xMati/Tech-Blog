@@ -83,15 +83,9 @@ Both role assignments use **directory scope**: their permissions extend beyond t
 | **Setup administrator** | A separate account with **Privileged Role Administrator active** to create the role-assignable group and assign the roles. This account also approves the lab activation. |
 | **Darth.Vader** | A cloud test account that will become an **eligible member**, with no other assignments granting the permissions being tested. |
 | **Licensing** | Role-assignable groups require Entra ID P1 or P2. Cover **every eligible user and every activation-request approver** with **Entra ID P2 or Microsoft Entra ID Governance** licensing. In this lab, that includes `Darth.Vader` and the setup administrator acting as approver. P1 alone does not provide PIM. |
-| **Validation target** | A separate, cloud-managed, non-admin test user named `LabTarget`, created beforehand by a User Administrator. We will change and restore its Job title. |
+| **Validation target** | A separate, cloud-managed, non-admin test user named `Cristiano.Ronaldo`, created beforehand by a User Administrator. We will change and restore its Job title. |
 | **Browser sessions** | Separate browser profiles for the setup administrator and `Darth.Vader`, both using the intended tenant. |
 | **Tools** | The [Microsoft Entra admin center](https://entra.microsoft.com). No PowerShell module or Azure subscription is needed for this portal walkthrough. |
-
-To create the test accounts, use **Entra ID > Users > New user > Create new user** with a **User Administrator** account. `Darth.Vader` needs the PIM license listed above; `LabTarget` needs no license for this test.
-
-As the setup administrator, record `LabTarget`'s original **Job title** for restoration later. Both test accounts start without administrator roles.
-
-An Azure subscription **Owner** assignment is not an Entra directory administrator assignment. Same browser, different permission system.
 
 We will configure activation controls **before** making `Darth.Vader` eligible. The sequence is: create the empty group, assign its roles, configure PIM, then grant eligibility.
 
@@ -107,7 +101,7 @@ Configure these values:
 
 | Setting | Value |
 | --- | --- |
-| **Group type** | **Security** |
+| **Group type** | **Security** or **Microsoft 365** |
 | **Group name** | `PIM-Identity-Admins` |
 | **Description** | `Temporary user and group administration through PIM membership.` |
 | **Microsoft Entra roles can be assigned to the group** | **Yes** |
@@ -117,11 +111,13 @@ Configure these values:
 
 Select **Create** and confirm the warning about the role-assignment capability.
 
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-25-07.png>)
+
 **Expected:** the group exists, is role-assignable, and has no active member named `Darth.Vader`. Record the group's **Object ID** so later checks do not depend only on its display name.
 
 > **This switch is immutable.** You cannot convert an existing ordinary group by enabling it later. Create a new group with the capability from the start. Microsoft documents this in [Create a role-assignable group](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/groups-create-eligible).
 
-**Why not Owner?** Ownership manages the group; membership is what provides the role access in this design. Owners can also manage membership outside the PIM activation workflow. Owner is not Member with a nicer badge.
+**Why isn't Darth.Vader an owner?** The setup administrator manages the group; `Darth.Vader` activates membership to receive its Entra roles. Making `Darth.Vader` an owner would not grant those roles directly, but would let him add himself as an active member outside the PIM activation workflow.
 
 ### 2. Give the Group Its Two Active Roles
 
@@ -135,6 +131,10 @@ Select **Create** and confirm the warning about the role-assignment capability.
 6. Make the assignment **permanent** if the role's assignment policy permits it, then select **Assign**.
 7. Repeat the process for **Groups Administrator**.
 
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-30-44.png>)
+
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-31-48.png>)
+
 If the role policy requires an end date, use **time-bound active** assignments that cover setup, activation, and verification after deactivation. The mechanism needs the group-to-role assignments to be **active**, not permanent. If one expires first, membership no longer supplies that role, even if the membership itself is still active.
 
 **Verify:** open each role's active assignments and confirm these two records:
@@ -143,6 +143,8 @@ If the role policy requires an end date, use **time-bound active** assignments t
 | --- | --- | --- | --- |
 | `PIM-Identity-Admins` | User Administrator | Active | Directory |
 | `PIM-Identity-Admins` | Groups Administrator | Active | Directory |
+
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-40-43.png>)
 
 If these records are **Eligible**, fix this step before continuing. Also confirm that `Darth.Vader` has not accidentally received a direct active role assignment.
 
@@ -214,9 +216,9 @@ There are different clocks here:
 
 **Switch to the `Darth.Vader` browser profile.** Confirm the account and tenant before doing anything else.
 
-First, establish the negative test: under **Entra ID > Users > All users**, open `LabTarget` and try to edit its **Job title** in **Properties**. The edit should be unavailable or fail authorization. Do not substitute `Darth.Vader`'s own profile: users can update some of their own attributes without an admin role.
+First, establish the negative test: under **Entra ID > Users > All users**, open `Cristiano.Ronaldo` and try to edit its **Job title** in **Properties**. The edit should be unavailable or fail authorization. Do not substitute `Darth.Vader`'s own profile: users can update some of their own attributes without an admin role.
 
-**Expected before activation:** `Darth.Vader` cannot save this change to `LabTarget`. If it succeeds, another permission path is already active, so the test cannot attribute access to this PIM activation. Restore the original value with a User Administrator account and identify that path before continuing.
+**Expected before activation:** `Darth.Vader` cannot save this change to `Cristiano.Ronaldo`. If it succeeds, another permission path is already active, so the test cannot attribute access to this PIM activation. Restore the original value with a User Administrator account and identify that path before continuing.
 
 Now request the membership:
 
@@ -241,11 +243,11 @@ Check configuration and behavior separately:
 | PIM group **Assignments > Active assignments** | Setup administrator | `Darth.Vader` is an active **Member**, with the activation's end time. |
 | Group's **Members** in Entra ID | Setup administrator | `Darth.Vader` is currently a member. |
 | Each Entra role's active assignments | Setup administrator | The group still has both active role assignments at the intended scope. |
-| Edit `LabTarget`'s Job title | `Darth.Vader` | The previously unauthorized operation now succeeds. |
+| Edit `Cristiano.Ronaldo`'s Job title | `Darth.Vader` | The previously unauthorized operation now succeeds. |
 
 For the operational test, refresh the Entra admin center in the `Darth.Vader` profile. If it still reflects the old access state, sign out and back in **as the same user**, then retry after the membership change has propagated.
 
-Open **Entra ID > Users > All users > LabTarget > Properties**. Set **Job title** to `PIM lab validation`, save, and reload the profile to confirm the value persisted. Then restore the original value **before ending the activation**.
+Open **Entra ID > Users > All users > Cristiano.Ronaldo > Properties**. Set **Job title** to `PIM lab validation`, save, and reload the profile to confirm the value persisted. Then restore the original value **before ending the activation**.
 
 **Expected:** the previously denied edit now succeeds, and the original value is restored while the required access is still active.
 
@@ -264,7 +266,7 @@ This operation proves a useful User Administrator permission. It does **not** in
 3. The group's two role assignments are still active, provided their own assignment windows have not ended.
 4. `Darth.Vader` remains **eligible** until the seven-day eligibility window ends, unless that eligibility was separately removed.
 
-**As `Darth.Vader`**, use a newly authenticated browser session and repeat the `LabTarget` edit check after deactivation has propagated.
+**As `Darth.Vader`**, use a newly authenticated browser session and repeat the `Cristiano.Ronaldo` edit check after deactivation has propagated.
 
 **Expected:** the operation is denied again when this group was the only relevant access path. If the edit still succeeds, restore the original value with a User Administrator account, then check the remaining access paths and session state.
 
@@ -307,7 +309,7 @@ Role-assignable groups require cloud groups with **Assigned** membership. Synchr
 
 ## Clean Up the Lab
 
-**As the setup administrator**, first confirm that `LabTarget`'s original profile value has been restored and the temporary membership has ended.
+**As the setup administrator**, first confirm that `Cristiano.Ronaldo`'s original profile value has been restored and the temporary membership has ended.
 
 1. In the group's PIM **Assignments**, remove `Darth.Vader`'s **eligible Member** assignment. Deactivation and removal of eligibility are different operations.
 2. Under each Entra role's assignments, remove the active assignment granted to the lab group.
