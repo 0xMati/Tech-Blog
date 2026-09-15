@@ -46,11 +46,11 @@ Here is the configuration we want:
 | --- | --- |
 | `PIM-Identity-Admins` receives **User Administrator** | **Active** |
 | `PIM-Identity-Admins` receives **Groups Administrator** | **Active** |
-| `LabUser` belongs to `PIM-Identity-Admins` | **Eligible**, until activated |
+| `Darth.Vader` belongs to `PIM-Identity-Admins` | **Eligible**, until activated |
 
 ```mermaid
 flowchart LR
-    User["LabUser<br/>Eligible member"] -->|"Activate membership<br/>Authentication + approval + duration"| Group["PIM-Identity-Admins<br/>Role-assignable group"]
+    User["Darth.Vader<br/>Eligible member"] -->|"Activate membership<br/>Authentication + approval + duration"| Group["PIM-Identity-Admins<br/>Role-assignable group"]
     Group -->|"Active role assignment"| Users["User Administrator"]
     Group -->|"Active role assignment"| Groups["Groups Administrator"]
 ```
@@ -81,19 +81,19 @@ Use an isolated test tenant or a scope approved for this exercise. The example g
 | Item | What you need |
 | --- | --- |
 | **Setup administrator** | A separate account with **Privileged Role Administrator active** to create the role-assignable group and assign the roles. This account also approves the lab activation. |
-| **LabUser** | A cloud test account that will become an **eligible member**, with no other assignments granting the permissions being tested. |
-| **Licensing** | Role-assignable groups require Entra ID P1 or P2. Cover **every eligible user and every activation-request approver** with **Entra ID P2 or Microsoft Entra ID Governance** licensing. In this lab, that includes `LabUser` and the setup administrator acting as approver. P1 alone does not provide PIM. |
+| **Darth.Vader** | A cloud test account that will become an **eligible member**, with no other assignments granting the permissions being tested. |
+| **Licensing** | Role-assignable groups require Entra ID P1 or P2. Cover **every eligible user and every activation-request approver** with **Entra ID P2 or Microsoft Entra ID Governance** licensing. In this lab, that includes `Darth.Vader` and the setup administrator acting as approver. P1 alone does not provide PIM. |
 | **Validation target** | A separate, cloud-managed, non-admin test user named `LabTarget`, prepared beforehand by an authorized User Administrator. We will change and restore one harmless profile field. |
-| **Browser sessions** | Separate browser profiles for the setup administrator and `LabUser`, both using the intended tenant. |
+| **Browser sessions** | Separate browser profiles for the setup administrator and `Darth.Vader`, both using the intended tenant. |
 | **Tools** | The [Microsoft Entra admin center](https://entra.microsoft.com). No PowerShell module or Azure subscription is needed for this portal walkthrough. |
 
-If the test users do not exist, an authorized User Administrator can create them through **Entra ID > Users > New user > Create new user**. Use fictional lab data and leave `LabTarget` unlicensed unless your lab has another reason to license it. `LabUser` still needs the PIM license listed above. Never perform the validation against a real employee's account.
+If the test users do not exist, an authorized User Administrator can create them through **Entra ID > Users > New user > Create new user**. Use fictional lab data and leave `LabTarget` unlicensed unless your lab has another reason to license it. `Darth.Vader` still needs the PIM license listed above. Never perform the validation against a real employee's account.
 
-The setup administrator should record `LabTarget`'s original **Job title** for restoration later. Neither `LabUser` nor `LabTarget` should receive extra administrator roles just to make the lab work.
+The setup administrator should record `LabTarget`'s original **Job title** for restoration later. Neither `Darth.Vader` nor `LabTarget` should receive extra administrator roles just to make the lab work.
 
 An Azure subscription **Owner** assignment is not an Entra directory administrator assignment. Same browser, different permission system.
 
-We will configure activation controls **before** making `LabUser` eligible. The sequence is: create the empty group, assign its roles, configure PIM, then grant eligibility.
+We will configure activation controls **before** making `Darth.Vader` eligible. The sequence is: create the empty group, assign its roles, configure PIM, then grant eligibility.
 
 ---
 
@@ -112,12 +112,12 @@ Configure these values:
 | **Description** | `Temporary user and group administration through PIM membership.` |
 | **Microsoft Entra roles can be assigned to the group** | **Yes** |
 | **Membership type** | **Assigned**, not Dynamic |
-| **Members** | Leave empty. In particular, do not add `LabUser` here. |
-| **Owners** | Only a trusted administrative account, such as the separate setup administrator. Do not make `LabUser` an owner. |
+| **Members** | Leave empty. In particular, do not add `Darth.Vader` here. |
+| **Owners** | Only a trusted administrative account, such as the separate setup administrator. Do not make `Darth.Vader` an owner. |
 
 Select **Create** and confirm the warning about the role-assignment capability.
 
-**Expected:** the group exists, is role-assignable, and has no active member named `LabUser`. Record the group's **Object ID** so later checks do not depend only on its display name.
+**Expected:** the group exists, is role-assignable, and has no active member named `Darth.Vader`. Record the group's **Object ID** so later checks do not depend only on its display name.
 
 > **This switch is immutable.** You cannot convert an existing ordinary group by enabling it later. Create a new group with the capability from the start. Microsoft documents this in [Create a role-assignable group](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/groups-create-eligible).
 
@@ -129,7 +129,7 @@ Select **Create** and confirm the warning about the role-assignment capability.
 
 1. Select **Add assignments**.
 2. Choose **User Administrator**.
-3. Select `PIM-Identity-Admins` as the member receiving the role. Select the **group**, not `LabUser`.
+3. Select `PIM-Identity-Admins` as the member receiving the role. Select the **group**, not `Darth.Vader`.
 4. Use **directory scope** for this isolated lab, then select **Next**.
 5. Set **Assignment type** to **Active**.
 6. Make the assignment **permanent** if the role's assignment policy permits it, then select **Assign**.
@@ -144,7 +144,7 @@ If policy forbids permanent active assignments, use approved **time-bound active
 | `PIM-Identity-Admins` | User Administrator | Active | Directory |
 | `PIM-Identity-Admins` | Groups Administrator | Active | Directory |
 
-If these records are **Eligible**, fix this step before continuing. Also confirm that `LabUser` has not accidentally received a direct active role assignment.
+If these records are **Eligible**, fix this step before continuing. Also confirm that `Darth.Vader` has not accidentally received a direct active role assignment.
 
 **Permanent roles on the group do not mean permanent roles for every eligible user.** The user's temporary membership is the gate. Any permanent active member, however, would have standing access through that group.
 
@@ -187,17 +187,17 @@ Microsoft [recommends approval](https://learn.microsoft.com/en-us/entra/id-gover
 
 **MFA required does not necessarily mean a new MFA prompt every time.** An existing session may already satisfy the requirement. If fresh authentication or a particular authentication strength is required, use a properly configured **Conditional Access authentication context** in the group policy. That is a separate policy design, not an extra checkbox we silently assume exists. See [PIM for Groups settings](https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/groups-role-settings).
 
-### 5. Make LabUser an Eligible Member
+### 5. Make Darth.Vader an Eligible Member
 
 **As the setup administrator**, stay on the group in PIM and open **Assignments > Add assignments**.
 
 1. Under **Select role**, choose **Member**.
-2. Select `LabUser`, then select **Next**.
+2. Select `Darth.Vader`, then select **Next**.
 3. Set **Assignment type** to **Eligible**.
 4. Set the eligibility window to start now and end in **seven days**, within the saved policy limits.
 5. Select **Assign**.
 
-**Expected:** `LabUser` appears under **Eligible assignments** as **Member**. The user must not appear as an active member before activation.
+**Expected:** `Darth.Vader` appears under **Eligible assignments** as **Member**. The user must not appear as an active member before activation.
 
 There are different clocks here:
 
@@ -212,11 +212,11 @@ There are different clocks here:
 
 ### 6. Establish the Baseline, Then Activate Once
 
-**Switch to the `LabUser` browser profile.** Confirm the account and tenant before doing anything else.
+**Switch to the `Darth.Vader` browser profile.** Confirm the account and tenant before doing anything else.
 
-First, establish the negative test: under **Entra ID > Users > All users**, open `LabTarget` and try to edit its **Job title** in **Properties**. The edit should be unavailable or fail authorization. Do not substitute `LabUser`'s own profile: users can update some of their own attributes without an admin role.
+First, establish the negative test: under **Entra ID > Users > All users**, open `LabTarget` and try to edit its **Job title** in **Properties**. The edit should be unavailable or fail authorization. Do not substitute `Darth.Vader`'s own profile: users can update some of their own attributes without an admin role.
 
-**Expected before activation:** `LabUser` cannot save this change to `LabTarget`. If it succeeds, stop and identify the existing permission path. A user who already has the permission cannot prove that this PIM activation supplied it. Restore any accidental change through an authorized account.
+**Expected before activation:** `Darth.Vader` cannot save this change to `LabTarget`. If it succeeds, stop and identify the existing permission path. A user who already has the permission cannot prove that this PIM activation supplied it. Restore any accidental change through an authorized account.
 
 Now request the membership:
 
@@ -226,7 +226,7 @@ Now request the membership:
 4. Request **30 minutes**, starting now, and enter a reason such as `Validate the user and group administration lab`.
 5. Complete the authentication checks presented by the configured policy, then submit with **Activate**.
 6. In the **setup administrator's** browser profile, open **PIM > Approve requests > Groups**. Review the user, group, justification, and duration. Select the request, choose **Approve**, enter the approval justification, then select **Confirm**. Approvers cannot approve their own requests.
-7. Back as `LabUser`, check **My requests > Groups** and the group's active assignment under **My roles > Groups**.
+7. Back as `Darth.Vader`, check **My requests > Groups** and the group's active assignment under **My roles > Groups**.
 
 **Expected:** the membership becomes **Active** with an end time. A request marked **Pending approval** has not yet supplied the membership.
 
@@ -238,12 +238,12 @@ Check configuration and behavior separately:
 
 | Check | Who checks it | Expected result |
 | --- | --- | --- |
-| PIM group **Assignments > Active assignments** | Setup administrator | `LabUser` is an active **Member**, with the activation's end time. |
-| Group's **Members** in Entra ID | Setup administrator | `LabUser` is currently a member. |
+| PIM group **Assignments > Active assignments** | Setup administrator | `Darth.Vader` is an active **Member**, with the activation's end time. |
+| Group's **Members** in Entra ID | Setup administrator | `Darth.Vader` is currently a member. |
 | Each Entra role's active assignments | Setup administrator | The group still has both active role assignments at the intended scope. |
-| Edit `LabTarget`'s Job title | `LabUser` | The previously unauthorized operation now succeeds. |
+| Edit `LabTarget`'s Job title | `Darth.Vader` | The previously unauthorized operation now succeeds. |
 
-For the operational test, refresh the Entra admin center in the `LabUser` profile. If it still reflects the old access state, sign out and back in **as the same user**, then retry after the membership change has propagated.
+For the operational test, refresh the Entra admin center in the `Darth.Vader` profile. If it still reflects the old access state, sign out and back in **as the same user**, then retry after the membership change has propagated.
 
 Open **Entra ID > Users > All users > LabTarget > Properties**. Set **Job title** to `PIM lab validation`, save, and reload the profile to confirm the value persisted. Then restore the original value **before ending the activation**.
 
@@ -255,16 +255,16 @@ This operation proves a useful User Administrator permission. It does **not** in
 
 ### 8. End the Activation and Verify Again
 
-**As `LabUser`**, open **PIM > My roles > Groups > Active assignments** and select **Deactivate** for the membership, or let the activation reach its end time. To test scheduled expiration specifically, let the timer run out.
+**As `Darth.Vader`**, open **PIM > My roles > Groups > Active assignments** and select **Deactivate** for the membership, or let the activation reach its end time. To test scheduled expiration specifically, let the timer run out.
 
 **As the setup administrator**, verify:
 
 1. The temporary active Member assignment is no longer active in PIM.
-2. `LabUser` is no longer in the group's current **Members** list.
+2. `Darth.Vader` is no longer in the group's current **Members** list.
 3. The group's two role assignments are still active, provided their own assignment windows have not ended.
-4. `LabUser` remains **eligible** until the seven-day eligibility window ends, unless that eligibility was separately removed.
+4. `Darth.Vader` remains **eligible** until the seven-day eligibility window ends, unless that eligibility was separately removed.
 
-**As `LabUser`**, use a newly authenticated browser session and repeat the `LabTarget` edit check after deactivation has propagated.
+**As `Darth.Vader`**, use a newly authenticated browser session and repeat the `LabTarget` edit check after deactivation has propagated.
 
 **Expected:** the operation is denied again when this group was the only relevant access path. If an unexpected edit succeeds, have an authorized account restore the original value and investigate before calling the lab complete.
 
@@ -297,7 +297,7 @@ Role-assignable groups require **Assigned** membership. Do not use a synchronize
 | --- | --- |
 | The group cannot be selected for an Entra role | Was it created with `isAssignableToRole = true`? An ordinary group cannot be converted later. |
 | The group is missing from PIM | Was it brought under management through **Discover groups**, and are you in the correct tenant? |
-| `LabUser` cannot request membership | Check **Member** eligibility, its start/end dates, and the account used to sign in. |
+| `Darth.Vader` cannot request membership | Check **Member** eligibility, its start/end dates, and the account used to sign in. |
 | The request stays pending | Check the configured approvers and **My requests > Groups**. Pending is not active. |
 | Membership is active, but the expected roles are not usable | Check that the group's role assignments are **Active**, their scope and dates, and application/session propagation. |
 | The user activated Owner but received no role access | Ownership alone is not the membership grant used in this design. |
@@ -309,7 +309,7 @@ Role-assignable groups require **Assigned** membership. Do not use a synchronize
 
 **As the setup administrator**, first confirm that `LabTarget`'s original profile value has been restored and the temporary membership has ended.
 
-1. In the group's PIM **Assignments**, remove `LabUser`'s **eligible Member** assignment. Deactivation and removal of eligibility are different operations.
+1. In the group's PIM **Assignments**, remove `Darth.Vader`'s **eligible Member** assignment. Deactivation and removal of eligibility are different operations.
 2. Under each Entra role's assignments, remove the active assignment granted to the lab group.
 3. Verify the group no longer carries either role and has no unexpected members.
 4. Delete the dedicated lab group if it has no other use. There is no separate supported "disable PIM for this group" rollback.
