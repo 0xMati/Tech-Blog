@@ -584,13 +584,17 @@ Test under the task's actual account. It needs document access and remote authen
 | --- | --- |
 | DSC v3 | Reuse the installation from Lab 1. |
 | Windows PowerShell 5.1, `ServerManager`, `Dism` | Already provided by Windows Server 2025. Check they are available. |
-| `Microsoft.Windows/WindowsPowerShell` adapter | Included in the complete DSC Windows package. No separate installation. |
+| `Microsoft.Adapter/WindowsPowerShell` adapter | Included in the DSC 3.2.3 Windows package. No separate installation. |
 | `PSDscResources` | Install this additional module for its `WindowsFeature` resource. |
 | An administrative execution account | Required to install modules for all users and manage server roles. |
 
 The **adapter** is the bridge from the DSC v3 engine to an existing Windows PowerShell resource. `PSDscResources` supplies that resource. Neither is the IIS role itself.
 
 ### 1. Install and Find WindowsFeature
+
+**Choose one option.** Both install the resource module on `MM-SRV01`; only the place where you start the commands changes.
+
+#### Option A: Install Locally on MM-SRV01
 
 **On `MM-SRV01`, in Windows PowerShell 5.1 opened as administrator.** Keep the DSC tools on the current session's `PATH`:
 
@@ -599,18 +603,61 @@ $env:PATH = "C:\Tools\DSC;$env:PATH"
 $PSVersionTable.PSVersion
 Install-Module -Name PSDscResources -Repository PSGallery -Scope AllUsers
 Get-DscResource -Name WindowsFeature -Module PSDscResources
-dsc resource list --adapter Microsoft.Windows/WindowsPowerShell PSDscResources/WindowsFeature
+dsc resource list --adapter Microsoft.Adapter/WindowsPowerShell PSDscResources/WindowsFeature
 ```
 
-**Expected:** PowerShell version 5.1 and discovery of `PSDscResources/WindowsFeature`. The `--adapter` option includes resources exposed through the adapter; listing resources without it does not enumerate those adapted resources.
+**Expected:** PowerShell version 5.1 and discovery of `PSDscResources/WindowsFeature`, with `requireAdapter` set to `Microsoft.Adapter/WindowsPowerShell`. The `--adapter` option includes resources exposed through the adapter; listing resources without it does not enumerate those adapted resources. Confirm this discovery before continuing.
 
 The installation requires repository access and may prompt for a package provider or repository confirmation. In an isolated lab, stage the reviewed module and dependencies offline instead. Record the module version used. Installing it only on `MM-DSC1` would not make it available on the target.
 
-**Installing the resource module does not install IIS.** It supplies the code that DSC will call when a configuration requests a role. See the [WindowsFeature reference](https://learn.microsoft.com/en-us/powershell/dsc/reference/psdscresources/resources/windowsfeature/windowsfeature?view=dsc-2.0) and [adapter reference](https://learn.microsoft.com/en-us/powershell/dsc/reference/resources/microsoft/windows/windowspowershell?view=dsc-3.0).
+#### Option B: Install Remotely from MM-DSC1
+
+**Run on `MM-DSC1`, with an account authorized for WinRM and administrator on `MM-SRV01`.** The session executes the installation on the target, not on the administration server.
+
+This method requires **repository access from `MM-SRV01`**. It also assumes that `dsc` is already discoverable in the remote session, as checked in Lab 2. For a ZIP installation, add the `PATH` line from option A inside the script block if needed.
+
+```powershell
+Invoke-Command -ComputerName 'MM-SRV01' -ConfigurationName 'Microsoft.PowerShell' -ErrorAction Stop -ScriptBlock {
+  $ErrorActionPreference = 'Stop'
+
+  Write-Output "Server: $env:COMPUTERNAME"
+  $PSVersionTable.PSVersion
+
+  $nugetProvider = Get-PackageProvider -ListAvailable |
+    Where-Object {
+      $_.Name -eq 'NuGet' -and $_.Version -ge [version]'2.8.5.201'
+    }
+
+  if (-not $nugetProvider) {
+    Install-PackageProvider -Name NuGet -MinimumVersion '2.8.5.201' -Scope AllUsers -Force | Out-Null
+  }
+
+  Install-Module -Name PSDscResources -Repository PSGallery -Scope AllUsers -Force
+
+  Get-DscResource -Name WindowsFeature -Module PSDscResources
+
+  dsc resource list --adapter Microsoft.Adapter/WindowsPowerShell PSDscResources/WindowsFeature --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC resource discovery failed with exit code $LASTEXITCODE."
+  }
+}
+```
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-12-13-32.png>)
+
+**Expected:** `Server: MM-SRV01`, PowerShell version 5.1, and discovery of `PSDscResources/WindowsFeature`, with `requireAdapter: Microsoft.Adapter/WindowsPowerShell` in the YAML details. Confirm this discovery before continuing.
+
+- `-ConfigurationName 'Microsoft.PowerShell'` selects the target's Windows PowerShell 5.1 endpoint.
+- NuGet is a package provider used for downloads. The block installs it only if a sufficient version is missing, avoiding its first-use confirmation prompt.
+- `-Scope AllUsers` makes the module available to all users of the target. `-Force` avoids common installation confirmations and can overwrite an existing matching module version. Use reviewed packages; this is a real installation, not a preview.
+
+If the target cannot reach the repository, download the reviewed module and dependencies on `MM-DSC1` and transfer them through WinRM instead. Running `Install-Module` remotely does not make the download originate from the administration server.
+
+**Installing the resource module does not install IIS.** It supplies the code that DSC will call when a configuration requests a role. See the [WindowsFeature reference](https://learn.microsoft.com/en-us/powershell/dsc/reference/psdscresources/resources/windowsfeature/windowsfeature?view=dsc-2.0) and [DSC resource adapter overview](https://learn.microsoft.com/en-us/powershell/dsc/overview?view=dsc-3.0#differences-from-powershell-dsc).
 
 ### 2. Check the Starting State
 
-**On `MM-SRV01`, in the same elevated Windows PowerShell session:**
+**On `MM-SRV01`, in Windows PowerShell 5.1 opened as administrator.** After either installation option, continue with this local check:
 
 ```powershell
 Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallState
@@ -622,36 +669,46 @@ Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallStat
 
 ### 3. Declare That IIS Must Be Present
 
-**On `MM-SRV01`.** Create `C:\DSC\iis.dsc.config.yaml`, separate from the registry document:
+**Choose where to prepare the document.** Both workflows use the same YAML and configure the same target:
+
+| Workflow | Create the document on | Continue with |
+| --- | --- | --- |
+| Local | `MM-SRV01` | Step 4, option A: run DSC locally. |
+| Remote | `MM-DSC1` | Step 4, option B: send the contents through WinRM. |
+
+On the chosen machine, create `C:\DSC\iis.dsc.config.yaml`, separate from the registry document. Creating this file does not install IIS:
 
 ```yaml
 $schema: https://aka.ms/dsc/schemas/v3/bundled/config/document.json
 resources:
-  - name: Windows roles
-    type: Microsoft.Windows/WindowsPowerShell
+  - name: IIS web server
+    type: PSDscResources/WindowsFeature
     properties:
-      resources:
-        - name: IIS web server
-          type: PSDscResources/WindowsFeature
-          properties:
-            Name: Web-Server
-            Ensure: Present
+      Name: Web-Server
+      Ensure: Present
 ```
 
-The outer resource is the **adapter**. It invokes the nested `WindowsFeature` resource in Windows PowerShell 5.1. `Ensure: Present` requests installation if the role is missing.
+Declare the **resource itself** in `type`. DSC discovers its required adapter, `Microsoft.Adapter/WindowsPowerShell`, and uses it to invoke `WindowsFeature` in Windows PowerShell 5.1. Do not add a separate adapter wrapper to this document. `Ensure: Present` requests installation if the role is missing.
 
 We still use the **DSC v3 engine and YAML**. Reusing a PowerShell resource does not turn this into an LCM-managed configuration.
 
+**For the remote workflow:** the file stays on `MM-DSC1`. You do not need another copy on `MM-SRV01` or a shared folder. The next step sends the YAML text to the target, where DSC and `PSDscResources` must already be available.
+
 ### 4. Apply and Verify
 
-**On `MM-SRV01`.** First check the current state and preview the change:
+Use the option matching the document location chosen in step 3. There is no need to run both.
+
+**For this resource, use `test` before `set`.** The Windows PowerShell adapter used here does not support `set --what-if`. A test compares the actual and desired state without installing or removing IIS; it is not a simulation of the installation. The registry resource in Labs 1 and 2 supports preview, but not every resource or adapter does.
+
+#### Option A: Run Locally on MM-SRV01
+
+**On `MM-SRV01`.** First check whether IIS is already installed as requested:
 
 ```powershell
-dsc config test --file 'C:\DSC\iis.dsc.config.yaml'
-dsc config set --file 'C:\DSC\iis.dsc.config.yaml' --what-if
+dsc config test --file 'C:\DSC\iis.dsc.config.yaml' --output-format yaml
 ```
 
-**Expected:** the IIS instance is not compliant yet. Review the preview before applying:
+**Expected if IIS is absent:** `inDesiredState: false` for the IIS instance, without operation errors. Nothing has been installed by this check. When you are ready to install the role, apply and verify:
 
 ```powershell
 dsc config set --file 'C:\DSC\iis.dsc.config.yaml'
@@ -659,29 +716,137 @@ dsc config test --file 'C:\DSC\iis.dsc.config.yaml'
 Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallState
 ```
 
-**Expected:** the nested IIS resource reports compliance and `Installed` is `True`. If installation requires a restart, complete it in the lab's maintenance window and rerun the checks. DSC v3 does not provide an automatic reboot-and-resume service.
+**Expected:** the IIS resource reports compliance and `Installed` is `True`. If installation requires a restart, complete it in the lab's maintenance window and rerun the checks. DSC v3 does not provide an automatic reboot-and-resume service.
+
+#### Option B: Run Remotely from MM-DSC1
+
+**Run on `MM-DSC1`, with an account authorized for WinRM and administrator on `MM-SRV01`.** As in Lab 2, `dsc` must be discoverable in the remote session. For the ZIP installation, add its `PATH` line inside the script blocks if needed.
+
+**First, check without changing anything.** Read the IIS document on the administration server and send its contents to the target for a compliance test:
+
+```powershell
+$iisConfigurationText = Get-Content -LiteralPath 'C:\DSC\iis.dsc.config.yaml' -Raw -Encoding UTF8 -ErrorAction Stop
+
+Invoke-Command -ComputerName 'MM-SRV01' -ConfigurationName 'Microsoft.PowerShell' -ArgumentList $iisConfigurationText -ErrorAction Stop -ScriptBlock {
+  param([string]$IisConfigurationText)
+
+  $ErrorActionPreference = 'Stop'
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $IisConfigurationText | dsc config test --file - --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC test failed with exit code $LASTEXITCODE."
+  }
+}
+```
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-18-03-49.png>)
+
+**Expected if IIS is absent:** the IIS instance reports `inDesiredState: false`. `--file -` reads the transmitted text, and `test` checks compliance without applying changes. A noncompliant result is normal here; an operation error must be resolved before continuing.
+
+**Then, apply and verify.** After reviewing the test result and deciding to install IIS, run this on `MM-DSC1` in the same session and under the same account. Reuse `$iisConfigurationText` so you apply the checked document. If you reopened PowerShell or changed the document, repeat the check first.
+
+```powershell
+Invoke-Command -ComputerName 'MM-SRV01' -ConfigurationName 'Microsoft.PowerShell' -ArgumentList $iisConfigurationText -ErrorAction Stop -ScriptBlock {
+  param([string]$IisConfigurationText)
+
+  $ErrorActionPreference = 'Stop'
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $IisConfigurationText | dsc config set --file - --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC apply failed with exit code $LASTEXITCODE."
+  }
+
+  $IisConfigurationText | dsc config test --file - --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC test failed with exit code $LASTEXITCODE."
+  }
+  Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallState
+}
+```
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-18-43-19.png>)
+
+**Expected:** the IIS resource is compliant and `Installed` is `True` on **MM-SRV01**. This block runs `set`, so it can install IIS. `MM-DSC1` only initiates the commands and receives their results; it is not configured by this operation. Handle any required restart on the target before considering the checks complete.
 
 This manages **role installation**, not your application's website, bindings, certificate, or firewall policy. Those are separate desired states.
 
 ### 5. Optional Cleanup
 
-**On `MM-SRV01`, only if IIS was absent before this lab.** Change `Ensure: Present` to `Ensure: Absent` in the IIS document, then preview:
+**Skip this step if you want to keep IIS.** Only remove it if it was absent before this lab. Removing the role also removes its subfeatures, so use these commands only on the disposable target.
+
+**Choose one option.** Both remove IIS from `MM-SRV01`; the difference is where you keep the document and start the commands.
+
+#### Option A: Clean Up Locally on MM-SRV01
+
+**On `MM-SRV01`, in Windows PowerShell 5.1 opened as administrator.** In `C:\DSC\iis.dsc.config.yaml`, change `Ensure: Present` to `Ensure: Absent` and save the file.
+
+![](<./assets/Desired State Configuration in 2026 - What It Actually Is and How to Use It/2026-09-15-18-44-21.png>)
+
+**First, check without removing anything:**
 
 ```powershell
-dsc config set --file 'C:\DSC\iis.dsc.config.yaml' --what-if
+dsc config test --file 'C:\DSC\iis.dsc.config.yaml' --output-format yaml
 ```
 
-Uninstalling the role also removes its subfeatures. Use this only on the disposable target. After checking the preview, apply and verify:
+**Expected while IIS is installed:** `inDesiredState: false`, because the desired state is now `Absent`. Resolve any operation errors before continuing.
+
+**Then, remove and verify.** Run this only when you are ready to uninstall IIS:
 
 ```powershell
-dsc config set --file 'C:\DSC\iis.dsc.config.yaml'
-dsc config test --file 'C:\DSC\iis.dsc.config.yaml'
-Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallState
+dsc config set --file 'C:\DSC\iis.dsc.config.yaml' --output-format yaml
+dsc config test --file 'C:\DSC\iis.dsc.config.yaml' --output-format yaml
+Get-WindowsFeature -Name Web-Server -ErrorAction Stop | Select-Object Name, Installed, InstallState
 ```
 
-**Expected:** `Installed` is `False`, and DSC is compliant with the new desired state, **Absent**. Removing the role from the YAML instead would stop managing it, not uninstall it.
+**Expected:** `Installed` is `False`, and the IIS instance reports compliance with `Absent`.
 
-You can later send this IIS document using the Lab 2 workflow. The execution account on `MM-SRV01` must then have permission to manage roles; successfully setting a user's registry value alone does not establish that permission.
+#### Option B: Clean Up Remotely from MM-DSC1
+
+**On `MM-DSC1`, using an account authorized for WinRM and administrator on `MM-SRV01`.** In `C:\DSC\iis.dsc.config.yaml` on the administration server, change `Ensure: Present` to `Ensure: Absent` and save the file.
+
+**First, load the edited document and check without removing anything:**
+
+```powershell
+$iisCleanupText = Get-Content -LiteralPath 'C:\DSC\iis.dsc.config.yaml' -Raw -Encoding UTF8 -ErrorAction Stop
+
+Invoke-Command -ComputerName 'MM-SRV01' -ConfigurationName 'Microsoft.PowerShell' -ArgumentList $iisCleanupText -ErrorAction Stop -ScriptBlock {
+  param([string]$IisCleanupText)
+
+  $ErrorActionPreference = 'Stop'
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $IisCleanupText | dsc config test --file - --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC cleanup check failed with exit code $LASTEXITCODE."
+  }
+}
+```
+
+**Expected while IIS is installed:** `inDesiredState: false` for the IIS instance, with no operation errors. The file stays on `MM-DSC1`; only its contents are sent to `MM-SRV01`. As in step 4, `dsc` must be available in the remote session; add the ZIP installation's `PATH` line inside the script blocks if needed.
+
+**Then, remove and verify.** After checking the result and confirming removal, run this from the same session on `MM-DSC1`, under the same account. Reuse `$iisCleanupText`, not the installation text from step 4. If the session or document changed, repeat the check above first.
+
+```powershell
+Invoke-Command -ComputerName 'MM-SRV01' -ConfigurationName 'Microsoft.PowerShell' -ArgumentList $iisCleanupText -ErrorAction Stop -ScriptBlock {
+  param([string]$IisCleanupText)
+
+  $ErrorActionPreference = 'Stop'
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $IisCleanupText | dsc config set --file - --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC cleanup failed with exit code $LASTEXITCODE."
+  }
+
+  $IisCleanupText | dsc config test --file - --output-format yaml
+  if ($LASTEXITCODE -ne 0) {
+    throw "DSC cleanup verification failed with exit code $LASTEXITCODE."
+  }
+  Get-WindowsFeature -Name Web-Server | Select-Object Name, Installed, InstallState
+}
+```
+
+**Expected:** `Installed` is `False` on **MM-SRV01**, and DSC reports compliance with `Absent`. This second block performs the actual removal; the administration server is not changed.
+
+For either option, handle any requested restart on the target and rerun the checks before considering cleanup complete. Keep DSC and the resource module installed for other exercises. Removing the role from the YAML instead of declaring `Absent` would stop managing it, not uninstall it.
 
 ---
 
@@ -742,7 +907,7 @@ This describes the workflow, not an implemented bootstrap script. It remains sep
 - **DSC v3 has no LCM.** This surprises everyone. There's no background agent re-applying every 15 minutes — `dsc` runs when *something* runs it. On a fleet, that "something" is Azure Machine Configuration; locally it's you, a scheduled task, or a CI pipeline. It's a command, not a daemon.
 - **MOF is gone in v3.** Documents are YAML/JSON. If a tutorial tells you to `notepad localhost.mof`, it's teaching the legacy engine.
 - **Your old resources aren't wasted.** PSDSC class-based resources still work in v3 through `Microsoft.DSC/PowerShell` and `Microsoft.Windows/WindowsPowerShell` adapters.
-- **Test before you Set.** `dsc config set --what-if` previews changes without making them. Use it before you enforce anything you'd regret.
+- **Test before you Set.** `dsc config test` checks compliance without applying changes. Use `dsc config set --what-if` for a preview only when the resource or adapter supports it; it is not available for every configuration.
 - **Get/Test-only resources are features, not bugs.** Things like `OSInfo` exist to be *asserted on* (guards, prerequisites), not enforced.
 
 ---
