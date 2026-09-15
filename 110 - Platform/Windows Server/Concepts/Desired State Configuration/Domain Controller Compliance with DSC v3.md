@@ -152,15 +152,15 @@ The account displayed here is the account used for directory discovery from this
 
 The two supporting files are:
 
-- [Get-DCInventory.ps1](<./Domain Controller Compliance with DSC v3 - Files/Get-DCInventory.ps1>): validates the settings, queries AD, and returns PowerShell objects. It does not call DSC, open WinRM sessions, or write to the DCs.
-- [inventory.settings.json](<./Domain Controller Compliance with DSC v3 - Files/inventory.settings.json>): the initial inventory scope.
+- [Get-DCInventory.ps1](<./DomainControllersDCS/Get-DCInventory.ps1>): validates the settings, queries AD, and returns PowerShell objects. It does not call DSC, open WinRM sessions, or write to the DCs.
+- [inventory.settings.json](<./DomainControllersDCS/inventory.settings.json>): the initial inventory scope.
 
-The commands below expect both supporting files directly under `C:\DSC\Domain Controller Compliance with DSC v3 - Files` on **MM-DSC1**.
+The commands below expect both supporting files directly under `C:\DSC\DomainControllersDCS` on **MM-DSC1**.
 
 Check their presence and display the configuration:
 
 ```powershell
-$workingDirectory = 'C:\DSC\Domain Controller Compliance with DSC v3 - Files'
+$workingDirectory = 'C:\DSC\DomainControllersDCS'
 
 foreach ($fileName in @('Get-DCInventory.ps1', 'inventory.settings.json')) {
     $filePath = Join-Path -Path $workingDirectory -ChildPath $fileName
@@ -169,7 +169,7 @@ foreach ($fileName in @('Get-DCInventory.ps1', 'inventory.settings.json')) {
     }
 }
 
-Get-Content -LiteralPath 'C:\DSC\Domain Controller Compliance with DSC v3 - Files\inventory.settings.json' -Raw -Encoding UTF8
+Get-Content -LiteralPath 'C:\DSC\DomainControllersDCS\inventory.settings.json' -Raw -Encoding UTF8
 ```
 
 The initial settings are:
@@ -206,8 +206,8 @@ $inventory = @()
 $auditTargets = @()
 
 $inventory = @(
-    & 'C:\DSC\Domain Controller Compliance with DSC v3 - Files\Get-DCInventory.ps1' `
-        -SettingsPath 'C:\DSC\Domain Controller Compliance with DSC v3 - Files\inventory.settings.json' `
+    & 'C:\DSC\DomainControllersDCS\Get-DCInventory.ps1' `
+        -SettingsPath 'C:\DSC\DomainControllersDCS\inventory.settings.json' `
         -ErrorAction Stop
 )
 
@@ -275,7 +275,7 @@ if ($inventory.Count -eq 0) {
     throw 'There is no successful inventory to record. Run discovery before exporting.'
 }
 
-$reportDirectory = 'C:\DSC\Domain Controller Compliance with DSC v3 - Files\Reports'
+$reportDirectory = 'C:\DSC\DomainControllersDCS\Reports'
 $null = New-Item -Path $reportDirectory -ItemType Directory -Force -ErrorAction Stop
 $runId = [guid]::NewGuid().ToString('N')
 
@@ -299,7 +299,7 @@ $inventoryReport | ConvertTo-Json -Depth 8 |
 Get-Item -LiteralPath $reportPath | Format-List FullName, Length
 ```
 
-**Expected:** a new JSON file under `C:\DSC\Domain Controller Compliance with DSC v3 - Files\Reports`, with a unique run identifier, the time the snapshot was saved, all discovered DCs, and their scope decisions. Earlier snapshots are not deliberately reused or overwritten.
+**Expected:** a new JSON file under `C:\DSC\DomainControllersDCS\Reports`, with a unique run identifier, the time the snapshot was saved, all discovered DCs, and their scope decisions. Earlier snapshots are not deliberately reused or overwritten.
 
 Verify the saved data:
 
