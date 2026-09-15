@@ -57,7 +57,7 @@ flowchart LR
 
 The group keeps its role assignments before, during, and after the user's activation. **PIM changes the user's membership, not the state of those two role assignments.**
 
-While the membership is active, the user benefits from both roles at their assigned scopes. When the temporary membership ends, that access path is removed. Other assignments and application caches still matter; we will verify the result instead of assuming every open session updates instantly.
+While the membership is active, the user benefits from both roles at their assigned scopes. When the temporary membership ends, that access path is removed. Other assignments and application caches can still affect access after membership ends.
 
 ### Two Similar-Looking Configurations, Different Results
 
@@ -74,24 +74,22 @@ Microsoft documents these [two ways to make users eligible for Entra roles](http
 
 ---
 
-## Before the Lab
+## Prerequisites
 
-Both role assignments use **directory scope**: their permissions extend beyond the two test accounts below.
+Both role assignments use **directory scope** in this example.
 
 | Item | What you need |
 | --- | --- |
-| **Setup administrator** | A separate account with **Privileged Role Administrator active** to create the role-assignable group and assign the roles. This account also approves the lab activation. |
-| **Darth.Vader** | A cloud test account that will become an **eligible member**, with no other assignments granting the permissions being tested. |
-| **Licensing** | Role-assignable groups require Entra ID P1 or P2. Cover **every eligible user and every activation-request approver** with **Entra ID P2 or Microsoft Entra ID Governance** licensing. In this lab, that includes `Darth.Vader` and the setup administrator acting as approver. P1 alone does not provide PIM. |
-| **Validation target** | A separate, cloud-managed, non-admin test user named `Cristiano.Ronaldo`, created beforehand by a User Administrator. We will change and restore its Job title. |
-| **Browser sessions** | Separate browser profiles for the setup administrator and `Darth.Vader`, both using the intended tenant. |
+| **Setup administrator** | A separate account with **Privileged Role Administrator active** to create the role-assignable group and assign the roles. This account is also configured as the activation approver. |
+| **Darth.Vader** | The cloud user who will become an **eligible member** of the group. |
+| **Licensing** | Role-assignable groups require Entra ID P1 or P2. Cover **every eligible user and every activation-request approver** with **Entra ID P2 or Microsoft Entra ID Governance** licensing. In this example, that includes `Darth.Vader` and the setup administrator acting as approver. P1 alone does not provide PIM. |
 | **Tools** | The [Microsoft Entra admin center](https://entra.microsoft.com). No PowerShell module or Azure subscription is needed for this portal walkthrough. |
 
 We will configure activation controls **before** making `Darth.Vader` eligible. The sequence is: create the empty group, assign its roles, configure PIM, then grant eligibility.
 
 ---
 
-## Lab: Build and Test the Single-Activation Path
+## Configure the Single-Activation Path
 
 ### 1. Create an Empty Role-Assignable Group
 
@@ -135,7 +133,7 @@ Select **Create** and confirm the warning about the role-assignment capability.
 
 ![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-31-48.png>)
 
-If the role policy requires an end date, use **time-bound active** assignments that cover setup, activation, and verification after deactivation. The mechanism needs the group-to-role assignments to be **active**, not permanent. If one expires first, membership no longer supplies that role, even if the membership itself is still active.
+If the role policy requires an end date, use **time-bound active** assignments covering the period during which the group should provide those roles. The mechanism needs the group-to-role assignments to be **active**, not permanent. If one expires first, membership no longer supplies that role, even if the membership itself is still active.
 
 **Verify:** open each role's active assignments and confirm these two records:
 
@@ -163,23 +161,30 @@ If these records are **Eligible**, fix this step before continuing. Also confirm
 
 The group being role-assignable and the group being managed by PIM are **two separate properties**. One allows it to receive Entra roles; the other allows PIM to manage temporary membership or ownership.
 
-> **Onboarding is not an on/off test switch.** Once a group is brought under PIM management, Microsoft does not support taking that same group back out of management. Use a dedicated lab group. See [Bring groups into PIM](https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/groups-discover-groups).
+> **PIM onboarding cannot be reversed.** Microsoft does not support taking a group back out of PIM management once it has been onboarded. See [Bring groups into PIM](https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/groups-discover-groups).
 
 ### 4. Configure the Member Activation Policy
 
 **As the setup administrator**, open the group's **Settings > Member > Edit**.
 
-Use these lab settings:
+Use these settings:
 
-| Setting | Lab value |
+| Setting | Example value |
 | --- | --- |
 | **Activation maximum duration** | **1 hour** |
 | **Require multifactor authentication on activation** | **Yes** |
 | **Require justification on activation** | **Yes** |
 | **Require approval to activate** | **Yes** |
 | **Approver** | The separate setup administrator. In production, select at least two available approvers for redundancy. |
-| **Eligible assignment duration** | Allow the **seven-day** eligibility window used in the next step. |
-| **Permanent active member assignments** | Do not allow them for this lab. |
+| **Eligible assignment duration** | Allow the eligibility window used in the next step. |
+| **Permanent active member assignments** | **Not allowed** |
+
+
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-45-13.png>)
+
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-46-50.png>)
+
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-47-10.png>)
 
 Review the notification recipients and save with **Update**. Configure **Member**, not **Owner**: they have independent policies.
 
@@ -199,6 +204,12 @@ Microsoft [recommends approval](https://learn.microsoft.com/en-us/entra/id-gover
 4. Set the eligibility window to start now and end in **seven days**, within the saved policy limits.
 5. Select **Assign**.
 
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-42-45.png>)
+
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-43-10.png>)
+
+![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-43-51.png>)
+
 **Expected:** `Darth.Vader` appears under **Eligible assignments** as **Member**. The user must not appear as an active member before activation.
 
 There are different clocks here:
@@ -208,69 +219,9 @@ There are different clocks here:
 | **Group's role assignment lifetime** | Permanent, or the configured active period | How long the group carries each role. |
 | **User's eligibility window** | Seven days | How long the user is allowed to request activation. |
 | **Maximum activation duration** | One hour | The limit imposed by the Member policy. |
-| **Requested activation duration** | Thirty minutes | How long this particular activation is requested to last. |
+| **Requested activation duration** | Up to one hour | Duration chosen by the user when requesting activation, within the Member policy limit. |
 
 **Eligible for a week does not mean administrator for a week.** It means the user can request time-limited membership during that week.
-
-### 6. Establish the Baseline, Then Activate Once
-
-**Switch to the `Darth.Vader` browser profile.** Confirm the account and tenant before doing anything else.
-
-First, establish the negative test: under **Entra ID > Users > All users**, open `Cristiano.Ronaldo` and try to edit its **Job title** in **Properties**. The edit should be unavailable or fail authorization. Do not substitute `Darth.Vader`'s own profile: users can update some of their own attributes without an admin role.
-
-**Expected before activation:** `Darth.Vader` cannot save this change to `Cristiano.Ronaldo`. If it succeeds, another permission path is already active, so the test cannot attribute access to this PIM activation. Restore the original value with a User Administrator account and identify that path before continuing.
-
-Now request the membership:
-
-1. Open **ID Governance > Privileged Identity Management > My roles > Groups**.
-2. Under **Eligible assignments**, find `PIM-Identity-Admins` with the role **Member**.
-3. Select **Activate**.
-4. Request **30 minutes**, starting now, and enter a reason such as `Validate the user and group administration lab`.
-5. Complete the authentication checks presented by the configured policy, then submit with **Activate**.
-6. In the **setup administrator's** browser profile, open **PIM > Approve requests > Groups**. Review the user, group, justification, and duration. Select the request, choose **Approve**, enter the approval justification, then select **Confirm**. Approvers cannot approve their own requests.
-7. Back as `Darth.Vader`, check **My requests > Groups** and the group's active assignment under **My roles > Groups**.
-
-**Expected:** the membership becomes **Active** with an end time. A request marked **Pending approval** has not yet supplied the membership.
-
-You activated one **Member** assignment. Do not now activate User Administrator and Groups Administrator individually; that would introduce a second access path and invalidate this demonstration.
-
-### 7. Verify the Access Path and a Real Operation
-
-Check configuration and behavior separately:
-
-| Check | Who checks it | Expected result |
-| --- | --- | --- |
-| PIM group **Assignments > Active assignments** | Setup administrator | `Darth.Vader` is an active **Member**, with the activation's end time. |
-| Group's **Members** in Entra ID | Setup administrator | `Darth.Vader` is currently a member. |
-| Each Entra role's active assignments | Setup administrator | The group still has both active role assignments at the intended scope. |
-| Edit `Cristiano.Ronaldo`'s Job title | `Darth.Vader` | The previously unauthorized operation now succeeds. |
-
-For the operational test, refresh the Entra admin center in the `Darth.Vader` profile. If it still reflects the old access state, sign out and back in **as the same user**, then retry after the membership change has propagated.
-
-Open **Entra ID > Users > All users > Cristiano.Ronaldo > Properties**. Set **Job title** to `PIM lab validation`, save, and reload the profile to confirm the value persisted. Then restore the original value **before ending the activation**.
-
-**Expected:** the previously denied edit now succeeds, and the original value is restored while the required access is still active.
-
-This operation proves a useful User Administrator permission. It does **not** independently prove Groups Administrator: the two roles overlap. Creating an ordinary group is an especially weak test because tenant settings may allow non-admin users to do that already. To establish the two-role grant, verify **both active role assignments to the group plus the user's active membership**, as shown above.
-
-> **Membership and application authorization are different checks.** Microsoft documents rapid membership changes, but an application may cache membership or permissions. A successful PIM request is not proof that every application has refreshed its authorization state. See [Activate group membership](https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/groups-activate-roles).
-
-### 8. End the Activation and Verify Again
-
-**As `Darth.Vader`**, open **PIM > My roles > Groups > Active assignments** and select **Deactivate** for the membership, or let the activation reach its end time. To test scheduled expiration specifically, let the timer run out.
-
-**As the setup administrator**, verify:
-
-1. The temporary active Member assignment is no longer active in PIM.
-2. `Darth.Vader` is no longer in the group's current **Members** list.
-3. The group's two role assignments are still active, provided their own assignment windows have not ended.
-4. `Darth.Vader` remains **eligible** until the seven-day eligibility window ends, unless that eligibility was separately removed.
-
-**As `Darth.Vader`**, use a newly authenticated browser session and repeat the `Cristiano.Ronaldo` edit check after deactivation has propagated.
-
-**Expected:** the operation is denied again when this group was the only relevant access path. If the edit still succeeds, restore the original value with a User Administrator account, then check the remaining access paths and session state.
-
-Revocation is not necessarily immediate in an already-open application. Issued tokens, cached permissions, and other direct or group-based assignments can affect what the user can still do. Check actual membership removal first, then the application's access state. A stale browser tab is not an audit report.
 
 ---
 
@@ -307,23 +258,9 @@ Role-assignable groups require cloud groups with **Assigned** membership. Synchr
 
 ---
 
-## Clean Up the Lab
-
-**As the setup administrator**, first confirm that `Cristiano.Ronaldo`'s original profile value has been restored and the temporary membership has ended.
-
-1. In the group's PIM **Assignments**, remove `Darth.Vader`'s **eligible Member** assignment. Deactivation and removal of eligibility are different operations.
-2. Under each Entra role's assignments, remove the active assignment granted to the lab group.
-3. Verify the group no longer carries either role and has no unexpected members.
-4. Delete the dedicated lab group if it has no other use. There is no separate supported "disable PIM for this group" rollback.
-5. Have a User Administrator delete any test accounts created specifically for this lab.
-
-PIM enforces a minimum five-minute interval before a newly created assignment can be removed. A removal attempted earlier can fail; retry after the interval. A deleted group can also remain visible in the PIM list for up to 24 hours.
-
----
-
 ## The Takeaway
 
-For one activation to provide several Entra roles, put **active role assignments on the group** and **eligible membership on the user**. Apply the activation controls to **Member**, protect the people who can change the group, and test both entry and exit.
+For one activation to provide several Entra roles, put **active role assignments on the group** and **eligible membership on the user**. Configure the group's **Member** policy for duration, authentication, justification, and approval.
 
 One activation, several roles, one membership timer.
 
