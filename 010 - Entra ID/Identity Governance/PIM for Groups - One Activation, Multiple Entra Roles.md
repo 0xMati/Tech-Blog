@@ -17,6 +17,26 @@ date: 2026-09-15
 
 ---
 
+## Contents
+
+- [The Problem: One Job, Several Roles](#the-problem-one-job-several-roles)
+- [The Mental Model: Put Eligibility on Membership](#the-mental-model-put-eligibility-on-membership)
+    - [Two Similar-Looking Configurations, Different Results](#two-similar-looking-configurations-different-results)
+- [Prerequisites](#prerequisites)
+- [Configure the Single-Activation Path](#configure-the-single-activation-path)
+    - [1. Create an Empty Role-Assignable Group](#1-create-an-empty-role-assignable-group)
+    - [2. Give the Group Its Two Active Roles](#2-give-the-group-its-two-active-roles)
+    - [3. Bring the Group Under PIM Management](#3-bring-the-group-under-pim-management)
+    - [4. Configure the Member Activation Policy](#4-configure-the-member-activation-policy)
+    - [5. Make Darth.Vader an Eligible Member](#5-make-darthvader-an-eligible-member)
+- [Operational Details That Matter](#operational-details-that-matter)
+- [When the Result Does Not Match the Diagram](#when-the-result-does-not-match-the-diagram)
+- [The Takeaway](#the-takeaway)
+- [My Go-To JIT Admin Groups](#my-go-to-jit-admin-groups)
+- [Sources](#sources)
+
+---
+
 ## The Problem: One Job, Several Roles
 
 Suppose an administrator is eligible for **User Administrator** and **Groups Administrator**. With separate eligible role assignments, the administrator activates each role before using it.
@@ -263,6 +283,26 @@ Role-assignable groups require cloud groups with **Assigned** membership. Synchr
 For one activation to provide several Entra roles, put **active role assignments on the group** and **eligible membership on the user**. Configure the group's **Member** policy for duration, authentication, justification, and approval.
 
 One activation, several roles, one membership timer.
+
+---
+
+## My Go-To JIT Admin Groups
+
+These are the groups I'd start with: one per administration domain, broad enough for a complete work session. Each uses the same pattern: **active Entra role assignments on the group, eligible membership for its administrators**, with the workload-specific exception noted below.
+
+| Group | Entra roles | What it covers |
+| --- | --- | --- |
+| `PIM-Identity-Admins` | **User Administrator** + **Groups Administrator** + **Authentication Administrator** | Users, licenses, groups, and authentication methods for accounts these roles can manage. |
+| `PIM-Apps-Admins` | **Application Administrator** + **Cloud Application Administrator** | App registrations, Enterprise Apps, SSO, provisioning, and Application Proxy. |
+| `PIM-Access-Admins` | **Conditional Access Administrator** + **Authentication Policy Administrator** | Conditional Access, named locations, authentication methods policies, MFA settings, and password protection. |
+| `PIM-Governance-Admins` | **Identity Governance Administrator** + **Lifecycle Workflows Administrator** | Access packages, catalogs, access reviews, and joiner, mover, and leaver workflows. |
+| `PIM-Devices-Admins` | **Intune Administrator** + **Cloud Device Administrator** | Intune management, Entra device objects, and device registration policies. |
+| `PIM-Hybrid-Admins` | **Hybrid Identity Administrator** + **Domain Name Administrator** | Entra-side Connect and Cloud Sync configuration, hybrid authentication, federation, and domain management. |
+| `PIM-Security-Admins` | **Security Administrator** + **Security Operator** | Security configuration and incident response, including account blocking and session revocation. |
+
+**App role overlap:** [Application Administrator](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/permissions-reference#application-administrator) already includes Cloud Application Administrator's capabilities and adds Application Proxy. Assigning both at the same scope does not grant additional permissions beyond Application Administrator.
+
+**Security scope:** Security Administrator also manages Conditional Access and federation settings. When this group is used to administer Purview, the [workload-specific recommendation above](#operational-details-that-matter) applies: active membership and eligible roles through PIM for Entra roles.
 
 ---
 
