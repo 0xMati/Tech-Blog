@@ -299,7 +299,7 @@ These are the groups I'd start with: one per administration domain, broad enough
 | `PIM-Devices-Admins` | **Intune Administrator** + **Cloud Device Administrator** | Intune management, Entra device objects, and device registration policies. |
 | `PIM-Hybrid-Admins` | **Hybrid Identity Administrator** + **Domain Name Administrator** | Entra-side Connect and Cloud Sync configuration, hybrid authentication, federation, and domain management. |
 | `PIM-Security-Admins` | **Security Administrator** + **Security Operator** | Security configuration and incident response, including account blocking and session revocation. |
-| `PIM-SecurityReader-Admins` | **Security Reader** | Read-only access to security information, Identity Protection data, Entra sign-in reports, and audit logs. No security configuration changes or remediation actions. |
+| `PIM-SecurityReader-Admins` | **Security Reader** + **Global Reader** | Read-only access to security reports, Identity Protection data, Entra sign-in and audit logs, and tenant configuration across supported Entra and Microsoft 365 services. No security configuration changes or remediation actions. |
 
 **App role overlap:** [Application Administrator](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/permissions-reference#application-administrator) already includes Cloud Application Administrator's capabilities and adds Application Proxy. Assigning both at the same scope does not grant additional permissions beyond Application Administrator.
 
