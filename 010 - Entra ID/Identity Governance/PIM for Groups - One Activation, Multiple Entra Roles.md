@@ -25,7 +25,7 @@ PIM for Groups gives us another arrangement: keep those role assignments active 
 
 Our example uses a group named `PIM-Identity-Admins`. Its name is just a naming convention; the `PIM-` prefix does not configure anything. Entra does not execute group names.
 
-**Check whether you actually need both roles.** User Administrator already includes many group-management permissions. We use this pair to demonstrate the mechanism, not to claim that both are always necessary. Review the [built-in role permissions](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/permissions-reference#user-administrator) before building a production bundle.
+**These two roles overlap.** User Administrator already includes many group-management permissions. This pair demonstrates the activation mechanism; a particular task may need only one of them. See the [built-in role permissions](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/permissions-reference#user-administrator) for the exact permissions.
 
 ---
 
@@ -76,20 +76,20 @@ Microsoft documents these [two ways to make users eligible for Entra roles](http
 
 ## Before the Lab
 
-Use an isolated test tenant or a scope approved for this exercise. The example grants the roles at **directory scope** for clarity. That is a lab choice, not a recommendation to expand an existing production delegation.
+Both role assignments use **directory scope**: their permissions extend beyond the two test accounts below.
 
 | Item | What you need |
 | --- | --- |
 | **Setup administrator** | A separate account with **Privileged Role Administrator active** to create the role-assignable group and assign the roles. This account also approves the lab activation. |
 | **Darth.Vader** | A cloud test account that will become an **eligible member**, with no other assignments granting the permissions being tested. |
 | **Licensing** | Role-assignable groups require Entra ID P1 or P2. Cover **every eligible user and every activation-request approver** with **Entra ID P2 or Microsoft Entra ID Governance** licensing. In this lab, that includes `Darth.Vader` and the setup administrator acting as approver. P1 alone does not provide PIM. |
-| **Validation target** | A separate, cloud-managed, non-admin test user named `LabTarget`, prepared beforehand by an authorized User Administrator. We will change and restore one harmless profile field. |
+| **Validation target** | A separate, cloud-managed, non-admin test user named `LabTarget`, created beforehand by a User Administrator. We will change and restore its Job title. |
 | **Browser sessions** | Separate browser profiles for the setup administrator and `Darth.Vader`, both using the intended tenant. |
 | **Tools** | The [Microsoft Entra admin center](https://entra.microsoft.com). No PowerShell module or Azure subscription is needed for this portal walkthrough. |
 
-If the test users do not exist, an authorized User Administrator can create them through **Entra ID > Users > New user > Create new user**. Use fictional lab data and leave `LabTarget` unlicensed unless your lab has another reason to license it. `Darth.Vader` still needs the PIM license listed above. Never perform the validation against a real employee's account.
+To create the test accounts, use **Entra ID > Users > New user > Create new user** with a **User Administrator** account. `Darth.Vader` needs the PIM license listed above; `LabTarget` needs no license for this test.
 
-The setup administrator should record `LabTarget`'s original **Job title** for restoration later. Neither `Darth.Vader` nor `LabTarget` should receive extra administrator roles just to make the lab work.
+As the setup administrator, record `LabTarget`'s original **Job title** for restoration later. Both test accounts start without administrator roles.
 
 An Azure subscription **Owner** assignment is not an Entra directory administrator assignment. Same browser, different permission system.
 
@@ -113,7 +113,7 @@ Configure these values:
 | **Microsoft Entra roles can be assigned to the group** | **Yes** |
 | **Membership type** | **Assigned**, not Dynamic |
 | **Members** | Leave empty. In particular, do not add `Darth.Vader` here. |
-| **Owners** | Only a trusted administrative account, such as the separate setup administrator. Do not make `Darth.Vader` an owner. |
+| **Owners** | The separate setup administrator, not `Darth.Vader`. |
 
 Select **Create** and confirm the warning about the role-assignment capability.
 
@@ -130,12 +130,12 @@ Select **Create** and confirm the warning about the role-assignment capability.
 1. Select **Add assignments**.
 2. Choose **User Administrator**.
 3. Select `PIM-Identity-Admins` as the member receiving the role. Select the **group**, not `Darth.Vader`.
-4. Use **directory scope** for this isolated lab, then select **Next**.
+4. Use **directory scope**, then select **Next**.
 5. Set **Assignment type** to **Active**.
 6. Make the assignment **permanent** if the role's assignment policy permits it, then select **Assign**.
 7. Repeat the process for **Groups Administrator**.
 
-If policy forbids permanent active assignments, use approved **time-bound active** assignments whose end times cover setup, activation, and verification after deactivation. Do not relax a tenant-wide role policy just to match a screenshot. The mechanism needs the group-to-role assignments to be **active**, not permanent. If one expires first, membership no longer supplies that role, even if the membership itself is still active.
+If the role policy requires an end date, use **time-bound active** assignments that cover setup, activation, and verification after deactivation. The mechanism needs the group-to-role assignments to be **active**, not permanent. If one expires first, membership no longer supplies that role, even if the membership itself is still active.
 
 **Verify:** open each role's active assignments and confirm these two records:
 
@@ -203,7 +203,7 @@ There are different clocks here:
 
 | Clock | Example | What it means |
 | --- | --- | --- |
-| **Group's role assignment lifetime** | Permanent, or the approved active lab window | How long the group carries each role. |
+| **Group's role assignment lifetime** | Permanent, or the configured active period | How long the group carries each role. |
 | **User's eligibility window** | Seven days | How long the user is allowed to request activation. |
 | **Maximum activation duration** | One hour | The limit imposed by the Member policy. |
 | **Requested activation duration** | Thirty minutes | How long this particular activation is requested to last. |
@@ -216,7 +216,7 @@ There are different clocks here:
 
 First, establish the negative test: under **Entra ID > Users > All users**, open `LabTarget` and try to edit its **Job title** in **Properties**. The edit should be unavailable or fail authorization. Do not substitute `Darth.Vader`'s own profile: users can update some of their own attributes without an admin role.
 
-**Expected before activation:** `Darth.Vader` cannot save this change to `LabTarget`. If it succeeds, stop and identify the existing permission path. A user who already has the permission cannot prove that this PIM activation supplied it. Restore any accidental change through an authorized account.
+**Expected before activation:** `Darth.Vader` cannot save this change to `LabTarget`. If it succeeds, another permission path is already active, so the test cannot attribute access to this PIM activation. Restore the original value with a User Administrator account and identify that path before continuing.
 
 Now request the membership:
 
@@ -247,7 +247,7 @@ For the operational test, refresh the Entra admin center in the `Darth.Vader` pr
 
 Open **Entra ID > Users > All users > LabTarget > Properties**. Set **Job title** to `PIM lab validation`, save, and reload the profile to confirm the value persisted. Then restore the original value **before ending the activation**.
 
-**Expected:** the edit succeeds only after activation in this isolated test, and the original value is restored while the required access is still active.
+**Expected:** the previously denied edit now succeeds, and the original value is restored while the required access is still active.
 
 This operation proves a useful User Administrator permission. It does **not** independently prove Groups Administrator: the two roles overlap. Creating an ordinary group is an especially weak test because tenant settings may allow non-admin users to do that already. To establish the two-role grant, verify **both active role assignments to the group plus the user's active membership**, as shown above.
 
@@ -266,28 +266,28 @@ This operation proves a useful User Administrator permission. It does **not** in
 
 **As `Darth.Vader`**, use a newly authenticated browser session and repeat the `LabTarget` edit check after deactivation has propagated.
 
-**Expected:** the operation is denied again when this group was the only relevant access path. If an unexpected edit succeeds, have an authorized account restore the original value and investigate before calling the lab complete.
+**Expected:** the operation is denied again when this group was the only relevant access path. If the edit still succeeds, restore the original value with a User Administrator account, then check the remaining access paths and session state.
 
-Do not promise instant revocation in every already-open application. Issued tokens, cached permissions, and other direct or group-based assignments can affect what the user can still do. Check actual membership removal first, then the application's access state. A stale browser tab is not an audit report.
+Revocation is not necessarily immediate in an already-open application. Issued tokens, cached permissions, and other direct or group-based assignments can affect what the user can still do. Check actual membership removal first, then the application's access state. A stale browser tab is not an audit report.
 
 ---
 
-## Guardrails Before Reusing This in Production
+## Operational Details That Matter
 
 | Decision | Why it matters |
 | --- | --- |
-| **Bundle by task, not by job title alone** | Every activation grants every role assigned to the group. A user needing one small task should not automatically acquire unrelated privileged roles. |
+| **Bundle by task, not by job title alone** | Every activation grants every role assigned to the group. Separate bundles let users activate just the roles needed for a particular task. |
 | **Keep scopes narrow** | Grouping does not require tenant-wide grants. Use supported administrative-unit scopes when appropriate, and verify each role assignment's scope. |
 | **Protect owners and membership administrators** | Authorized administrators and owners can change membership outside PIM. Turning off permanent active membership in the PIM policy does not remove those separate management permissions. |
-| **Review all access paths** | Existing direct roles or membership in another privileged group can leave access in place after this activation expires. Do not remove existing assignments until the replacement is approved and tested. |
+| **Review all access paths** | Existing direct roles or membership in another privileged group can leave access in place after this activation expires. |
 | **Control changes to the bundle** | Adding another active role to the group expands what its members receive. Treat that as a permission change, not group housekeeping. |
 | **Retain approval and audit evidence** | Review group membership activations and group-to-role assignment changes, not just individual role activations. |
 | **Keep emergency access separate** | An emergency access account should not depend on this normal activation workflow. |
-| **Keep PIM licensing active** | Finish lab cleanup before a trial expires. License expiry is not a supported substitute for revoking privileged assignments; review the [documented expiry behavior](https://learn.microsoft.com/en-us/entra/id-governance/licensing-fundamentals#what-happens-to-pim-when-a-license-expires). |
+| **License expiry** | Losing the PIM license does not simply revoke privileged access. Existing assignments follow the [documented expiry behavior](https://learn.microsoft.com/en-us/entra/id-governance/licensing-fundamentals#what-happens-to-pim-when-a-license-expires). |
 
-Role-assignable groups require **Assigned** membership. Do not use a synchronized or dynamic group for this walkthrough, and do not try to implement the bundle by adding other groups as active members. Active group nesting is not supported for role-assignable groups. See [role-assignable group restrictions](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/groups-concept#restrictions-for-role-assignable-groups).
+Role-assignable groups require cloud groups with **Assigned** membership. Synchronized groups, dynamic membership, and active group nesting are not supported. See [role-assignable group restrictions](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/groups-concept#restrictions-for-role-assignable-groups).
 
-**Do not assume all Microsoft 365 roles have the same activation behavior.** For just-in-time roles used in SharePoint, Exchange, or Microsoft Purview, Microsoft recommends **active group membership plus an eligible role assignment**, using PIM for Entra roles, to avoid significant permission-propagation delays. That is the other model from our comparison table. Check the [workload-specific guidance](https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/concept-pim-for-groups#make-a-group-of-users-eligible-for-a-microsoft-entra-role) before expanding this example.
+**Microsoft 365 workloads can behave differently.** For just-in-time roles used in SharePoint, Exchange, or Microsoft Purview, Microsoft recommends **active group membership plus an eligible role assignment**, using PIM for Entra roles, to avoid significant permission-propagation delays. That is the other model from our comparison table. See the [workload-specific guidance](https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/concept-pim-for-groups#make-a-group-of-users-eligible-for-a-microsoft-entra-role).
 
 ---
 
@@ -313,9 +313,9 @@ Role-assignable groups require **Assigned** membership. Do not use a synchronize
 2. Under each Entra role's assignments, remove the active assignment granted to the lab group.
 3. Verify the group no longer carries either role and has no unexpected members.
 4. Delete the dedicated lab group if it has no other use. There is no separate supported "disable PIM for this group" rollback.
-5. Have an authorized User Administrator delete the disposable test accounts only if they were created exclusively for this lab.
+5. Have a User Administrator delete any test accounts created specifically for this lab.
 
-PIM enforces a minimum five-minute interval before a newly created assignment can be removed. If cleanup is rejected immediately after setup, respect that interval and retry; do not work around it by changing unrelated policies. A deleted group can also remain visible in the PIM list for up to 24 hours.
+PIM enforces a minimum five-minute interval before a newly created assignment can be removed. A removal attempted earlier can fail; retry after the interval. A deleted group can also remain visible in the PIM list for up to 24 hours.
 
 ---
 
@@ -323,7 +323,7 @@ PIM enforces a minimum five-minute interval before a newly created assignment ca
 
 For one activation to provide several Entra roles, put **active role assignments on the group** and **eligible membership on the user**. Apply the activation controls to **Member**, protect the people who can change the group, and test both entry and exit.
 
-One activation, several roles, still a defined scope and an expiry time. Less clicking is useful. Less control is not part of the deal.
+One activation, several roles, one membership timer.
 
 ---
 
