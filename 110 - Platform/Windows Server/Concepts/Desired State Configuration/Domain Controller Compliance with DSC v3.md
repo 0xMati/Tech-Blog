@@ -155,27 +155,7 @@ You maintain one compliance parameter file. The orchestrator builds **separate D
 
 **Run this step on MM-DSC1.** The discovery script creates the JSON inventory directly. No DC setting is changed.
 
-### 1. Verify the execution context
-
-Open Windows PowerShell 5.1 on MM-DSC1 and run:
-
-```powershell
-$ErrorActionPreference = 'Stop'
-
-Write-Output "Server: $env:COMPUTERNAME"
-Write-Output "Account: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)"
-$PSVersionTable.PSVersion
-
-Import-Module ActiveDirectory -ErrorAction Stop
-Get-Command -Name Get-ADDomainController |
-    Select-Object Name, ModuleName
-```
-
-**Expected:** the server is `MM-DSC1`, the PowerShell version is `5.1`, and `Get-ADDomainController` comes from the `ActiveDirectory` module. RSAT is already present on MM-DSC1; there is no installation command to run again.
-
-The account displayed here is the account used for directory discovery from this filesystem session. Read access to directory metadata does not grant the permissions needed for later remote compliance checks or remediation.
-
-### 2. Prepare the discovery script
+### 1. Prepare the discovery script
 
 This step uses one supporting file: [Get-DCInventory.ps1](<./DomainControllersDCS/Get-DCInventory.ps1>). The following command expects it at `C:\DSC\DomainControllersDCS\Get-DCInventory.ps1` on MM-DSC1.
 
@@ -183,7 +163,7 @@ There is no discovery settings file to fill in. The script takes the domain as `
 
 The output contains every discovered DC, including RODCs with `IsReadOnly = true`. Inventory describes what exists; it does not decide which controls to run or authorize corrections. The compliance checks target writable DCs, with exclusions handled by the orchestrator rather than by deleting entries from this generated file.
 
-### 3. Discover the DCs and write the JSON
+### 2. Discover the DCs and write the JSON
 
 On MM-DSC1, run:
 
@@ -194,6 +174,8 @@ $ErrorActionPreference = 'Stop'
     -DomainName 'mathiasmotron.com' |
     Format-Table HostName, OperatingSystem, IsReadOnly -AutoSize -Wrap
 ```
+
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-09-43-10.png>)
 
 **Expected:** an `Inventory saved to:` message with `C:\DSC\DomainControllersDCS\inventory.json`, followed by one row per discovered DC. The JSON is already on disk when the command finishes; there is no separate export block to run.
 
@@ -211,7 +193,7 @@ Each successful discovery replaces the destination JSON with the current invento
 
 This command does not test WinRM connectivity or filter machines by ping response. A discovered DC that cannot later be contacted must remain visible in the audit results.
 
-### 4. Read the generated inventory
+### 3. Read the generated inventory
 
 This works in the same console or a new PowerShell session, because it reads the saved file rather than a variable from the discovery command:
 
