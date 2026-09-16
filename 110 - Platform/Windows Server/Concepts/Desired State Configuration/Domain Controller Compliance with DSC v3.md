@@ -87,7 +87,7 @@ Run these commands from **MM-DSC1**:
 | [Invoke-ScheduledDCAudit.ps1](./DomainControllersDCS/Invoke-ScheduledDCAudit.ps1) | Refreshes inventory, runs an audit, and records an execution transcript. Stops if discovery fails. | Optional entry point for Task Scheduler on MM-DSC1. It does not create the task or perform remediation. |
 | [Test-DCCompliance.ps1](./DomainControllersDCS/Test-DCCompliance.ps1) | Tests the scripts using simulated AD, WinRM, and DSC responses. | Optional offline code validation, not an audit of the real DCs. It is not required to run a normal audit. |
 
-The generated `inventory.json` is an additional output file, not a supplied configuration file. It describes **which machines exist**; the compliance parameters describe **what to check**. Neither the test suite nor the scheduled entry point is needed for a manual audit. Target preparation can also be performed locally using the alternative in Step 3.
+The generated `inventory.json` is an additional output file, not a supplied configuration file. It describes **which machines exist**; the compliance parameters describe **what to check**. Neither the test suite nor the scheduled entry point is needed for a manual audit.
 
 Changing a desired value does not require rediscovering the DCs. Rediscovering the DCs does not overwrite the compliance parameters.
 
@@ -279,7 +279,7 @@ DSC receives the resource configuration and executes Test or Set as requested by
 | `SchemaVersion` | `1`: structure understood by the scripts |
 | `BaselineVersion` | `1.0.0`: your version of the expected values; increase it when the baseline changes |
 | `MaximumInventoryAgeHours` | `24`: inventory older than this is rejected |
-| `DscExecutable` | `C:\Tools\DSC\dsc.exe` on each target |
+| `DscExecutable` | Path to DSC on each DC: `C:\Tools\DSC\dsc.exe`. The preparation script in Step 3 installs it there. |
 | `DscVersion` | `3.2.3`: the version expected by preflight |
 | `ModuleVersions` | PSDscResources `2.12.0.0`, ComputerManagementDsc `10.0.0`, AuditPolicyDsc `1.4.0.0` |
 | `ExcludedDCs` | Empty initially; add exact inventory FQDNs to exclude machines without deleting their inventory entries |
@@ -309,9 +309,17 @@ Invoke-Command -ComputerName 'MM-DC1.mathiasmotron.com' `
 
 ### 2. Install the runtime and modules from MM-DSC1
 
-The preparation script downloads the complete DSC 3.2.3 Windows x64 ZIP from the official release and verifies its fixed SHA256. It uses `Save-Module` to stage the three pinned resource modules on MM-DSC1, then transfers the packages over WinRM. The DC does not need direct access to GitHub or PowerShell Gallery for this route.
+**We use the ZIP package, not a remote WinGet installation.** WinGet/MS Store was convenient for the first article's interactive installation. Here, the ZIP gives every DC the same DSC version and installation path, without relying on a Store command alias associated with a user account.
 
-Windows PowerShell's PowerShellGet may need its NuGet provider on **MM-DSC1**:
+The preparation script handles three steps:
+
+1. **On MM-DSC1:** download the official DSC 3.2.3 Windows x64 ZIP, verify its SHA256, and download the three resource modules with `Save-Module`.
+2. **Over WinRM:** transfer those packages to the selected DCs.
+3. **On each DC:** extract the complete DSC package, including its adapters, to `C:\Tools\DSC`, and install the resource modules under `%ProgramFiles%\WindowsPowerShell\Modules` (AllUsers).
+
+Only MM-DSC1 needs access to GitHub and PowerShell Gallery. The DCs receive the files from MM-DSC1. The folder `C:\Tools\DSC` is our choice for this example, not a DSC requirement or a WinGet default; `DscExecutable` tells the audit script to use the program installed there.
+
+The module download requires the NuGet provider. On **MM-DSC1**, install it only if it is missing:
 
 ```powershell
 $nugetProvider = Get-PackageProvider -ListAvailable |
@@ -336,32 +344,9 @@ Preview the preparation, then run it:
 
 The second command asks for confirmation. **Expected:** a `Prepared` result naming MM-DC1, the DSC executable path, and the Windows PowerShell module directory.
 
-This installs tools, not the security baseline. It does not stop Spooler, change LDAP, or alter audit policy. The modules must be in `%ProgramFiles%\WindowsPowerShell\Modules`: PSDSC 1.1 cannot invoke these resources from an arbitrary user module folder. The script leaves existing versions in place; a conflicting runtime or ambiguous resource version is reported rather than silently removed. Preflight verifies the actual resource discovery, not just folder existence.
+This installs tools, not the security baseline: no Spooler, LDAP, or audit-policy settings are changed. The AllUsers module location is required by the Windows PowerShell DSC adapter. Existing versions are not silently removed or replaced; the audit preflight checks which resource versions are actually available.
 
-The package cache remains under `C:\DSC\DomainControllersDCS\Packages` on MM-DSC1. It can be populated ahead of time with the matching ZIP and complete versioned module directories for a disconnected environment. A failed ZIP hash check stops preparation.
-
-### 3. Local preparation alternative
-
-The same prerequisites can be installed directly **on a DC** instead. Use elevated Windows PowerShell 5.1. Extract the complete, hash-verified DSC 3.2.3 Windows x64 ZIP to `C:\Tools\DSC`, then install the pinned modules:
-
-```powershell
-$versions = @{
-    PSDscResources = '2.12.0.0'
-    ComputerManagementDsc = '10.0.0'
-    AuditPolicyDsc = '1.4.0.0'
-}
-
-foreach ($moduleName in $versions.Keys) {
-    Install-Module -Name $moduleName -RequiredVersion $versions[$moduleName] `
-        -Repository PSGallery -Scope AllUsers -Force
-}
-
-& 'C:\Tools\DSC\dsc.exe' --version
-& 'C:\Tools\DSC\dsc.exe' resource list --adapter Microsoft.Adapter/WindowsPowerShell `
-    PSDscResources/Service --output-format yaml
-```
-
-This alternative requires repository access and the NuGet provider on the DC. The expected runtime is `dsc 3.2.3`; service discovery must show `requireAdapter: Microsoft.Adapter/WindowsPowerShell`. The adapter name is singular `Adapter`. DSC does not install modules merely because they appear in the configuration.
+Downloads are cached under `C:\DSC\DomainControllersDCS\Packages` on MM-DSC1 for reuse. For disconnected preparation, this cache can be populated beforehand with the matching ZIP and complete versioned modules. A failed ZIP hash check stops preparation.
 
 ---
 
