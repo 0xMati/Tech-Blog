@@ -28,13 +28,14 @@ The accompanying scripts implement discovery, eleven checks across five control 
 - [Who Does What](#who-does-what)
 - [The Five Control Families](#the-five-control-families)
 - [One Setting, One Configuration Owner](#one-setting-one-configuration-owner)
-- [Step 1: Build the DC Inventory](#step-1-build-the-dc-inventory)
-- [Step 2: Define the Compliance Parameters](#step-2-define-the-compliance-parameters)
-- [Step 3: Prepare the Target DCs](#step-3-prepare-the-target-dcs)
-- [Step 4: Run the Compliance Audit](#step-4-run-the-compliance-audit)
-- [Step 5: Read the Reports](#step-5-read-the-reports)
-- [Step 6: Correct Selected Settings](#step-6-correct-selected-settings)
-- [Step 7: Schedule the Audit](#step-7-schedule-the-audit)
+- [Step 1: Download and Prepare the Files](#step-1-download-and-prepare-the-files)
+- [Step 2: Build the DC Inventory](#step-2-build-the-dc-inventory)
+- [Step 3: Define the Compliance Parameters](#step-3-define-the-compliance-parameters)
+- [Step 4: Prepare the Target DCs](#step-4-prepare-the-target-dcs)
+- [Step 5: Run the Compliance Audit](#step-5-run-the-compliance-audit)
+- [Step 6: Read the Reports](#step-6-read-the-reports)
+- [Step 7: Correct Selected Settings](#step-7-correct-selected-settings)
+- [Step 8: Schedule the Audit](#step-8-schedule-the-audit)
 - [Operational Constraints](#operational-constraints)
 - [Verification](#verification)
 - [Sources](#sources)
@@ -123,7 +124,7 @@ These five **families** cover settings expected to be configured identically acr
 | DSC-04 | Event logs | Security, System, and Directory Service: 1 GiB each, Circular | Audit; optional DSC Set for DSC-owned settings. |
 | DSC-05 | LDAP security | Explicit registry policy values for LDAP signing and channel binding | Audit only; compatibility assessment before a policy change |
 
-Step 2 defines the exact values used by these checks. The LDAP rows deliberately test **explicit policy configuration**, not effective protocol enforcement inferred from OS defaults.
+Step 3 defines the exact values used by these checks. The LDAP rows deliberately test **explicit policy configuration**, not effective protocol enforcement inferred from OS defaults.
 
 Two examples explain why this preparation matters:
 
@@ -151,7 +152,27 @@ You maintain one compliance parameter file. The orchestrator builds **separate D
 
 ---
 
-## Step 1: Build the DC Inventory
+## Step 1: Download and Prepare the Files
+
+**Machine: MM-DSC1.** Prepare the files once before running the commands below:
+
+1. [Download the complete scripts folder as a ZIP](https://download-directory.github.io/?url=https%3A%2F%2Fgithub.com%2F0xMati%2FTech-Blog%2Ftree%2Fmain%2F110%2520-%2520Platform%2FWindows%2520Server%2FConcepts%2FDesired%2520State%2520Configuration%2FDomainControllersDCS).
+2. Extract the ZIP so that the eight files listed in [Who Does What](#who-does-what) are directly under `C:\DSC\DomainControllersDCS`, not inside an extra nested folder.
+3. After extraction, unblock the PowerShell files on MM-DSC1:
+
+```powershell
+Get-ChildItem -LiteralPath 'C:\DSC\DomainControllersDCS' -File -ErrorAction Stop |
+    Where-Object { $_.Extension -in @('.ps1', '.psm1') } |
+    Unblock-File -ErrorAction Stop
+```
+
+This removes the Internet download mark from the extracted scripts and module. It does not run them, change the execution policy, or process subfolders. A policy requiring signed scripts still applies.
+
+When downloading an updated copy later, keep your customized `compliance.settings.json` and repeat the unblock command for the new scripts.
+
+---
+
+## Step 2: Build the DC Inventory
 
 **Run this step on MM-DSC1.** The discovery script creates the JSON inventory directly. No DC setting is changed.
 
@@ -195,7 +216,7 @@ This command does not test WinRM connectivity or filter machines by ping respons
 
 ---
 
-## Step 2: Define the Compliance Parameters
+## Step 3: Define the Compliance Parameters
 
 **Machine: MM-DSC1.** With the files listed in [Who Does What](#who-does-what) together under `C:\DSC\DomainControllersDCS`, open the compliance parameter file to define the expected values and modes. The inventory remains a generated list of DCs; this step changes the rules, not the machine list.
 
@@ -279,7 +300,7 @@ DSC receives the resource configuration and executes Test or Set as requested by
 | `SchemaVersion` | `1`: structure understood by the scripts |
 | `BaselineVersion` | `1.0.0`: your version of the expected values; increase it when the baseline changes |
 | `MaximumInventoryAgeHours` | `24`: inventory older than this is rejected |
-| `DscExecutable` | Path to DSC on each DC: `C:\Tools\DSC\dsc.exe`. The preparation script in Step 3 installs it there. |
+| `DscExecutable` | Path to DSC on each DC: `C:\Tools\DSC\dsc.exe`. The preparation script in Step 4 installs it there. |
 | `DscVersion` | `3.2.3`: the version expected by preflight |
 | `ModuleVersions` | PSDscResources `2.12.0.0`, ComputerManagementDsc `10.0.0`, AuditPolicyDsc `1.4.0.0` |
 | `ExcludedDCs` | Empty initially; add exact inventory FQDNs to exclude machines without deleting their inventory entries |
@@ -288,7 +309,7 @@ An unknown target, duplicate control ID, invalid property, or GPO-owned control 
 
 ---
 
-## Step 3: Prepare the Target DCs
+## Step 4: Prepare the Target DCs
 
 **Run this step from MM-DSC1.** Check remoting, then prepare the writable DCs listed in the inventory.
 
@@ -404,7 +425,7 @@ Downloads are cached under `C:\DSC\DomainControllersDCS\Packages` on MM-DSC1 for
 
 ---
 
-## Step 4: Run the Compliance Audit
+## Step 5: Run the Compliance Audit
 
 **Machine: MM-DSC1.** The orchestrator reads `inventory.json` and `compliance.settings.json` from its own directory by default. An explicit `-InventoryPath` or `-SettingsPath` overrides those locations.
 
@@ -440,7 +461,7 @@ $run | Format-List
 
 ### 3. Extend to the inventory
 
-The DCs were prepared in Step 3. Omit the target and control selections to audit all included DCs:
+The DCs were prepared in Step 4. Omit the target and control selections to audit all included DCs:
 
 ```powershell
 $run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1'
@@ -463,7 +484,7 @@ These codes belong to the orchestrator. A successful DSC process exit does not, 
 
 ---
 
-## Step 5: Read the Reports
+## Step 6: Read the Reports
 
 Each run creates a new directory under `C:\DSC\DomainControllersDCS\Reports`:
 
@@ -525,7 +546,7 @@ The inventory is loaded once per run and rejected if it is empty, inconsistent, 
 
 ---
 
-## Step 6: Correct Selected Settings
+## Step 7: Correct Selected Settings
 
 The correction path has two independent selections: **a control must be DSC-owned and in Enforce mode**, and **the command must explicitly name the DC and control to remediate**. An audit command never performs Set, even when some controls use Enforce.
 
@@ -593,7 +614,7 @@ To disable future Spooler corrections, change its mode back to `Audit`. That doe
 
 ---
 
-## Step 7: Schedule the Audit
+## Step 8: Schedule the Audit
 
 **Machine: MM-DSC1.** The scheduled entry point always performs discovery first, then calls `Invoke-DCCompliance.ps1 -Operation Audit`. It never starts remediation. Discovery errors stop the run; the previous JSON may still exist, but it is not reused by a failed scheduled run.
 
@@ -671,7 +692,7 @@ The companion suite exercises file validation, target selection, generated DSC d
 & 'C:\DSC\DomainControllersDCS\Test-DCCompliance.ps1'
 ```
 
-The integration tests have been run under Windows PowerShell 5.1. Resource contracts and version pins were checked against their published schemas and source. These tests do not execute DSC on the real DCs or prove their installed resources work in that environment; Step 4's pilot audit supplies that evidence. The generated HTML was also checked with fictitious results.
+The integration tests have been run under Windows PowerShell 5.1. Resource contracts and version pins were checked against their published schemas and source. These tests do not execute DSC on the real DCs or prove their installed resources work in that environment; Step 5's pilot audit supplies that evidence. The generated HTML was also checked with fictitious results.
 
 ---
 
