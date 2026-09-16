@@ -290,7 +290,7 @@ An unknown target, duplicate control ID, invalid property, or GPO-owned control 
 
 ## Step 3: Prepare the Target DCs
 
-**Run this step from MM-DSC1.** Check remoting on all DCs in the inventory, then start installation on `MM-DC1.mathiasmotron.com`.
+**Run this step from MM-DSC1.** Check remoting, then prepare the writable DCs listed in the inventory.
 
 ### 1. Check remoting on all DCs
 
@@ -343,6 +343,8 @@ $remotingResults | Where-Object Status -eq 'Failed' |
     Format-List HostName, Error
 ```
 
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-11-15-57.png>)
+
 **Expected:** one row per DC in the inventory. `OK` means the remote command completed and returned the PowerShell version and OS details. `Failed` keeps the DC visible with its error below the table; it does not stop the checks on the other DCs.
 
 This tests remoting for every inventory entry, including RODCs or DCs excluded from the later compliance audit. It does not install DSC or change the audit scope. If WinRM is not configured, `Enable-PSRemoting -Force` in an elevated Windows PowerShell console **on the affected DC** enables the endpoint and its firewall rules. The full audit preflight also verifies elevation and the live DC identity.
@@ -351,7 +353,9 @@ This tests remoting for every inventory entry, including RODCs or DCs excluded f
 
 **We use the ZIP package, not a remote WinGet installation.** WinGet/MS Store was convenient for the first article's interactive installation. Here, the ZIP gives every DC the same DSC version and installation path, without relying on a Store command alias associated with a user account.
 
-The preparation script handles three steps:
+[Initialize-DCCompliance.ps1](./DomainControllersDCS/Initialize-DCCompliance.ps1) reads `inventory.json` and `compliance.settings.json` from its own folder. By default, it selects every writable DC in the inventory except those listed in `ExcludedDCs`. There is no list of server names to repeat in the command.
+
+For those DCs, the script handles three steps:
 
 1. **On MM-DSC1:** download the official DSC 3.2.3 Windows x64 ZIP, verify its SHA256, and download the three resource modules with `Save-Module`.
 2. **Over WinRM:** transfer those packages to the selected DCs.
@@ -370,19 +374,21 @@ if (-not $nugetProvider) {
 }
 ```
 
-Preview the preparation, then run it:
+Preview the targets without downloading, copying, or installing anything:
 
 ```powershell
-& 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1' `
-    -ComputerName 'MM-DC1.mathiasmotron.com' -WhatIf
+& 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1' -WhatIf
 ```
+
+Then run the preparation against the same inventory:
 
 ```powershell
-& 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1' `
-    -ComputerName 'MM-DC1.mathiasmotron.com'
+& 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1'
 ```
 
-The second command asks for confirmation. **Expected:** a `Prepared` result naming MM-DC1, the DSC executable path, and the Windows PowerShell module directory.
+The script asks for confirmation for the selected DCs, then prepares them one at a time. **Expected:** a `Prepared` row per completed DC, with its name, DSC executable path, and module directory. With three writable DCs and no exclusions, this prepares MM-DC1, MM-DC2, and MM-DC3.
+
+The optional `-ComputerName` parameter still limits preparation to specific inventory FQDNs. An installation error stops the script; resolve it before continuing with the audit. It does not silently skip a DC because the earlier remoting check failed.
 
 This installs tools, not the security baseline: no Spooler, LDAP, or audit-policy settings are changed. The AllUsers module location is required by the Windows PowerShell DSC adapter. Existing versions are not silently removed or replaced; the audit preflight checks which resource versions are actually available.
 
@@ -426,14 +432,7 @@ $run | Format-List
 
 ### 3. Extend to the inventory
 
-Prepare MM-DC2 and MM-DC3 with the same modules:
-
-```powershell
-& 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1' `
-    -ComputerName 'MM-DC2.mathiasmotron.com', 'MM-DC3.mathiasmotron.com'
-```
-
-Then omit the target and control selections:
+The DCs were prepared in Step 3. Omit the target and control selections to audit all included DCs:
 
 ```powershell
 $run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1'

@@ -4,7 +4,7 @@
 param(
     [string]$InventoryPath = (Join-Path $PSScriptRoot 'inventory.json'),
     [string]$SettingsPath = (Join-Path $PSScriptRoot 'compliance.settings.json'),
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string[]]$ComputerName,
+    [ValidateNotNullOrEmpty()][string[]]$ComputerName = @(),
     [string]$PackageDirectory = (Join-Path $PSScriptRoot 'Packages'),
     [pscredential]$Credential
 )
@@ -16,14 +16,25 @@ $inputs = Read-DCComplianceInput -InventoryPath $InventoryPath -SettingsPath $Se
 if ($inputs.Settings.DscVersion -cne '3.2.3' -or $inputs.Settings.DscExecutable -ine 'C:\Tools\DSC\dsc.exe') {
     throw 'This preparation script stages DSC 3.2.3 at C:\Tools\DSC. Use manual preparation for another path/version.'
 }
-foreach ($name in $ComputerName) {
+$targetNames = @($ComputerName)
+if (-not $PSBoundParameters.ContainsKey('ComputerName')) {
+    $targetNames = @(
+        $inputs.Inventory.DomainControllers |
+            Where-Object { -not $_.IsReadOnly -and $inputs.Settings.ExcludedDCs -notcontains $_.HostName } |
+            Select-Object -ExpandProperty HostName
+    )
+}
+if ($targetNames.Count -eq 0) {
+    throw 'No writable DCs are included for preparation. Check the inventory and ExcludedDCs.'
+}
+foreach ($name in $targetNames) {
     $target = @($inputs.Inventory.DomainControllers | Where-Object HostName -eq $name)
     if ($target.Count -ne 1 -or $target[0].IsReadOnly -or $inputs.Settings.ExcludedDCs -contains $name) {
         throw "'$name' must be an included writable DC from the inventory."
     }
 }
 $selectedTargets = @(
-    foreach ($name in ($ComputerName | Sort-Object -Unique)) {
+    foreach ($name in ($targetNames | Sort-Object -Unique)) {
         if ($PSCmdlet.ShouldProcess($name, 'Install DSC 3.2.3 and the three pinned resource modules')) { $name }
     }
 )

@@ -118,6 +118,67 @@ function Enable-SpoolerEnforcement {
     Write-Fixture -Path $settingsPath -Value $settings
 }
 
+function Invoke-PreparationFixture {
+    param([hashtable]$Parameters = @{})
+    $effects = [System.Collections.Generic.List[string]]::new()
+    $packageDirectory = Join-Path $temporaryRoot 'PreparationPackages'
+    function Invoke-WebRequest {
+        [CmdletBinding()]param($Uri, $OutFile, [switch]$UseBasicParsing)
+        $effects.Add('DownloadZIP')
+    }
+    function Save-Module {
+        [CmdletBinding()]param($Name, $RequiredVersion, $Repository, $Path, [switch]$Force)
+        $effects.Add("SaveModule:$Name")
+    }
+    function Get-FileHash {
+        [CmdletBinding()]param($LiteralPath, $Algorithm)
+        if ($LiteralPath -like '*.zip') {
+            [pscustomobject]@{ Hash = 'E1E48218014C166BBBE0EE6364D1E9C2AB20AB5515CEDA4EABD529A4BFD49881' }
+        }
+        else { Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $LiteralPath -Algorithm $Algorithm }
+    }
+    function Test-ModuleManifest {
+        [CmdletBinding()]param($Path)
+        [pscustomobject]@{ Version = [version](Split-Path (Split-Path $Path -Parent) -Leaf) }
+    }
+    function New-PSSession {
+        [CmdletBinding()]param($ComputerName, $ConfigurationName, $Authentication, $Credential)
+        if ($ConfigurationName -ne 'Microsoft.PowerShell' -or $Authentication -ne 'Kerberos') { throw 'Unexpected preparation endpoint.' }
+        $effects.Add("Connect:$ComputerName")
+        [pscustomobject]@{ ComputerName = $ComputerName }
+    }
+    function Copy-Item {
+        [CmdletBinding()]param($LiteralPath, $Destination, [switch]$Recurse, $ToSession)
+        $effects.Add("Copy:$($ToSession.ComputerName)")
+    }
+    function Invoke-Command {
+        [CmdletBinding()]param($Session, $ArgumentList, [scriptblock]$ScriptBlock)
+        $parameterNames = @($ScriptBlock.Ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+        if ($parameterNames[0] -eq 'ExpectedDomain') {
+            return 'C:\ProgramData\DCCompliance-TestStage'
+        }
+        if ($parameterNames.Count -eq 3) {
+            $effects.Add("Install:$($Session.ComputerName)")
+            return [pscustomobject]@{ ComputerName = $Session.ComputerName; Result = 'Prepared' }
+        }
+        $effects.Add("Cleanup:$($Session.ComputerName)")
+    }
+    function Remove-PSSession {
+        [CmdletBinding()]param($Session)
+        $effects.Add("Disconnect:$($Session.ComputerName)")
+    }
+    $rows = @()
+    $failure = $null
+    try {
+        $rows = @(
+            & (Join-Path $root 'Initialize-DCCompliance.ps1') -InventoryPath $inventoryPath `
+                -SettingsPath $settingsPath -PackageDirectory $packageDirectory -Confirm:$false @Parameters
+        )
+    }
+    catch { $failure = $_.Exception.Message }
+    [pscustomobject]@{ Rows = $rows; Effects = @($effects.ToArray()); Error = $failure; PackageDirectory = $packageDirectory }
+}
+
 try {
     foreach ($file in (Get-ChildItem -LiteralPath $root -File | Where-Object Extension -in @('.ps1', '.psm1'))) {
         $tokens = $null
@@ -221,6 +282,38 @@ try {
     Reset-Fixtures
     $run = Invoke-FixtureRun @{ ComputerName = @('unknown.inventory.test') }
     Assert-Test ($run.ExitCode -eq 2 -and $calls.Count -eq 0) 'Unknown targets are rejected before connecting'
+
+    Reset-Fixtures
+    $preparation = Invoke-PreparationFixture @{ WhatIf = $true }
+    Assert-Test ($null -eq $preparation.Error -and $preparation.Rows.Count -eq 0 -and $preparation.Effects.Count -eq 0 -and
+        -not (Test-Path -LiteralPath $preparation.PackageDirectory)) 'Inventory-based preparation WhatIf performs no download, staging, or connection'
+
+    $preparation = Invoke-PreparationFixture
+    Assert-Test ($null -eq $preparation.Error -and ($preparation.Rows.ComputerName -join ',') -eq 'dc-a.inventory.test,dc-b.inventory.test' -and
+        @($preparation.Effects | Where-Object { $_ -like 'Install:*' }).Count -eq 2) 'Preparation defaults to all writable inventory DCs, not RODCs'
+
+    $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $settings.ExcludedDCs = @('dc-b.inventory.test')
+    Write-Fixture $settingsPath $settings
+    $preparation = Invoke-PreparationFixture
+    Assert-Test ($null -eq $preparation.Error -and $preparation.Rows.Count -eq 1 -and $preparation.Rows[0].ComputerName -eq 'dc-a.inventory.test') 'Preparation respects ExcludedDCs'
+
+    foreach ($name in @('dc-b.inventory.test', 'rodc.inventory.test', 'unknown.inventory.test')) {
+        $preparation = Invoke-PreparationFixture @{ ComputerName = @($name) }
+        Assert-Test ($preparation.Error -like '*must be an included writable DC*' -and $preparation.Effects.Count -eq 0) "Preparation rejects invalid explicit target: $name"
+    }
+
+    Reset-Fixtures
+    $preparation = Invoke-PreparationFixture @{ ComputerName = @('dc-b.inventory.test') }
+    Assert-Test ($null -eq $preparation.Error -and $preparation.Rows.Count -eq 1 -and $preparation.Rows[0].ComputerName -eq 'dc-b.inventory.test') 'ComputerName still restricts preparation to one DC'
+    $preparation = Invoke-PreparationFixture @{ ComputerName = @() }
+    Assert-Test ($null -ne $preparation.Error -and $preparation.Effects.Count -eq 0) 'An explicitly empty target list cannot fall back to preparing every DC'
+
+    $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $settings.ExcludedDCs = @('dc-a.inventory.test', 'dc-b.inventory.test')
+    Write-Fixture $settingsPath $settings
+    $preparation = Invoke-PreparationFixture
+    Assert-Test ($preparation.Error -like 'No writable DCs are included for preparation*' -and $preparation.Effects.Count -eq 0) 'Preparation rejects an inventory with no eligible DCs'
 
     Write-Output "VALIDATION OK: $($passed.Count) assertions under PowerShell $($PSVersionTable.PSVersion). All AD/WinRM/DSC operations mocked; temporary report files removed."
 }
