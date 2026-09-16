@@ -261,6 +261,8 @@ $settings.Controls |
     Format-Table Id, Owner, Mode, ResourceType -AutoSize -Wrap
 ```
 
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-10-51-00.png>)
+
 **Expected:** eleven controls, all with `Mode = Audit`. Spooler and event logs initially declare `Owner = DSC`; the other controls declare `Owner = GPO`.
 
 **`Owner` and `Mode` are rules we added to our PowerShell scripts, not native DSC settings.** You choose their values:
