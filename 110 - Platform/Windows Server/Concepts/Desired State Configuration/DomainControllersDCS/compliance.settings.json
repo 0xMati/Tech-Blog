@@ -12,7 +12,7 @@
   "ExcludedDCs": [],
   "Controls": [
     {
-      "Id": "DC-01-Spooler",
+      "Id": "DSC-01-Spooler",
       "Name": "Print Spooler stopped and disabled",
       "Owner": "DSC",
       "Mode": "Audit",
@@ -25,7 +25,7 @@
       }
     },
     {
-      "Id": "DC-02-SMB1",
+      "Id": "DSC-02-SMB1",
       "Name": "SMB server protocol version 1 disabled",
       "Owner": "GPO",
       "Mode": "Audit",
@@ -36,7 +36,7 @@
       }
     },
     {
-      "Id": "DC-02-Signing",
+      "Id": "DSC-02-Signing",
       "Name": "SMB server signing required",
       "Owner": "GPO",
       "Mode": "Audit",
@@ -47,7 +47,7 @@
       }
     },
     {
-      "Id": "DC-03-Logon",
+      "Id": "DSC-03-Logon",
       "Name": "Logon audit: success and failure",
       "Owner": "GPO",
       "Mode": "Audit",
@@ -59,7 +59,7 @@
       }
     },
     {
-      "Id": "DC-03-Accounts",
+      "Id": "DSC-03-Accounts",
       "Name": "User account management audit: success and failure",
       "Owner": "GPO",
       "Mode": "Audit",
@@ -71,7 +71,7 @@
       }
     },
     {
-      "Id": "DC-03-DirectoryChanges",
+      "Id": "DSC-03-DirectoryChanges",
       "Name": "Directory service changes audit: success",
       "Owner": "GPO",
       "Mode": "Audit",
@@ -83,7 +83,7 @@
       }
     },
     {
-      "Id": "DC-04-Security",
+      "Id": "DSC-04-Security",
       "Name": "Security log: 1 GiB, overwrite oldest events",
       "Owner": "DSC",
       "Mode": "Audit",
@@ -95,7 +95,7 @@
       }
     },
     {
-      "Id": "DC-04-System",
+      "Id": "DSC-04-System",
       "Name": "System log: 64 MiB, overwrite oldest events",
       "Owner": "DSC",
       "Mode": "Audit",
@@ -107,7 +107,7 @@
       }
     },
     {
-      "Id": "DC-04-Directory",
+      "Id": "DSC-04-Directory",
       "Name": "Directory Service log: 128 MiB, overwrite oldest events",
       "Owner": "DSC",
       "Mode": "Audit",
@@ -119,7 +119,7 @@
       }
     },
     {
-      "Id": "DC-05-Signing",
+      "Id": "DSC-05-Signing",
       "Name": "Explicit LDAP signing policy: Require signing",
       "Owner": "GPO",
       "Mode": "Audit",
@@ -133,7 +133,7 @@
       }
     },
     {
-      "Id": "DC-05-ChannelBinding",
+      "Id": "DSC-05-ChannelBinding",
       "Name": "Explicit LDAP channel binding policy: Always",
       "Owner": "GPO",
       "Mode": "Audit",

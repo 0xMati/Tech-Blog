@@ -117,11 +117,11 @@ These five **families** cover settings expected to be configured identically acr
 
 | ID | Control family | What we intend to check | Initial correction policy |
 | --- | --- | --- | --- |
-| DC-01 | Print Spooler | Service stopped and startup type disabled | Audit; optional DSC Set for DSC-owned settings. |
-| DC-02 | SMB | SMB server protocol version 1 disabled; server signing required | Audit only; correct the owning GPO or configuration tool |
-| DC-03 | Security auditing | Required advanced audit subcategories are effectively enabled | Audit only; correct the audit policy in its owning GPO |
-| DC-04 | Event logs | Required maximum sizes and retention behavior | Audit; optional DSC Set for DSC-owned settings. |
-| DC-05 | LDAP security | Explicit registry policy values for LDAP signing and channel binding | Audit only; compatibility assessment before a policy change |
+| DSC-01 | Print Spooler | Service stopped and startup type disabled | Audit; optional DSC Set for DSC-owned settings. |
+| DSC-02 | SMB | SMB server protocol version 1 disabled; server signing required | Audit only; correct the owning GPO or configuration tool |
+| DSC-03 | Security auditing | Required advanced audit subcategories are effectively enabled | Audit only; correct the audit policy in its owning GPO |
+| DSC-04 | Event logs | Required maximum sizes and retention behavior | Audit; optional DSC Set for DSC-owned settings. |
+| DSC-05 | LDAP security | Explicit registry policy values for LDAP signing and channel binding | Audit only; compatibility assessment before a policy change |
 
 Step 2 defines the exact values used by these checks. The LDAP rows deliberately test **explicit policy configuration**, not effective protocol enforcement inferred from OS defaults.
 
@@ -248,7 +248,7 @@ This is the Spooler entry from the parameters file:
 
 ```json
 {
-  "Id": "DC-01-Spooler",
+    "Id": "DSC-01-Spooler",
   "Name": "Print Spooler stopped and disabled",
   "Owner": "DSC",
   "Mode": "Audit",
@@ -270,17 +270,17 @@ The supplied values are:
 
 | Control ID | Expected state |
 | --- | --- |
-| `DC-01-Spooler` | Spooler present, stopped, and disabled |
-| `DC-02-SMB1` | SMB **server** `EnableSMB1Protocol = false` |
-| `DC-02-Signing` | SMB **server** `RequireSecuritySignature = true` |
-| `DC-03-Logon` | Logon audit: Success And Failure |
-| `DC-03-Accounts` | User Account Management audit: Success And Failure |
-| `DC-03-DirectoryChanges` | Directory Service Changes audit: Success |
-| `DC-04-Security` | Security log: 1 GiB, Circular |
-| `DC-04-System` | System log: 64 MiB, Circular |
-| `DC-04-Directory` | Directory Service log: 128 MiB, Circular |
-| `DC-05-Signing` | Explicit `LDAPServerIntegrity` DWORD value `2` |
-| `DC-05-ChannelBinding` | Explicit `LdapEnforceChannelBinding` DWORD value `2` |
+| `DSC-01-Spooler` | Spooler present, stopped, and disabled |
+| `DSC-02-SMB1` | SMB **server** `EnableSMB1Protocol = false` |
+| `DSC-02-Signing` | SMB **server** `RequireSecuritySignature = true` |
+| `DSC-03-Logon` | Logon audit: Success And Failure |
+| `DSC-03-Accounts` | User Account Management audit: Success And Failure |
+| `DSC-03-DirectoryChanges` | Directory Service Changes audit: Success |
+| `DSC-04-Security` | Security log: 1 GiB, Circular |
+| `DSC-04-System` | System log: 64 MiB, Circular |
+| `DSC-04-Directory` | Directory Service log: 128 MiB, Circular |
+| `DSC-05-Signing` | Explicit `LDAPServerIntegrity` DWORD value `2` |
+| `DSC-05-ChannelBinding` | Explicit `LdapEnforceChannelBinding` DWORD value `2` |
 
 The log sizes are example operational choices, not universal requirements. `Circular` overwrites the oldest events when the log fills; it does not guarantee a retention duration. `Retain` and `AutoBackup` have different behavior. The resource checks exact configuration values, not an abstract security score.
 
@@ -404,7 +404,7 @@ This alternative requires repository access and the NuGet provider on the DC. Th
 ```powershell
 $run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1' `
     -ComputerName 'MM-DC1.mathiasmotron.com' `
-    -ControlId 'DC-01-Spooler'
+    -ControlId 'DSC-01-Spooler'
 $auditExitCode = $LASTEXITCODE
 
 $run | Format-List
@@ -536,7 +536,7 @@ On MM-DSC1:
 ```powershell
 $settingsPath = 'C:\DSC\DomainControllersDCS\compliance.settings.json'
 $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$spooler = $settings.Controls | Where-Object Id -eq 'DC-01-Spooler'
+$spooler = $settings.Controls | Where-Object Id -eq 'DSC-01-Spooler'
 if ($spooler.Owner -ne 'DSC') { throw 'This control is not declared DSC-owned.' }
 $spooler.Mode = 'Enforce'
 $settings.BaselineVersion = '1.0.1'
@@ -552,7 +552,7 @@ The parameters file is reread on every invocation. Changing `Mode` does not itse
 $preview = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1' `
     -Operation Remediate `
     -ComputerName 'MM-DC1.mathiasmotron.com' `
-    -ControlId 'DC-01-Spooler' `
+    -ControlId 'DSC-01-Spooler' `
     -WhatIf
 
 $preview | Format-List
@@ -566,7 +566,7 @@ This is **our PowerShell runner's WhatIf**, not `dsc config set --what-if`. The 
 $remediation = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1' `
     -Operation Remediate `
     -ComputerName 'MM-DC1.mathiasmotron.com' `
-    -ControlId 'DC-01-Spooler'
+    -ControlId 'DSC-01-Spooler'
 $remediationExitCode = $LASTEXITCODE
 
 $remediation | Format-List

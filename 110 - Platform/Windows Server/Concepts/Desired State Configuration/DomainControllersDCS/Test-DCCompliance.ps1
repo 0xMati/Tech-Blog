@@ -87,10 +87,10 @@ function Invoke-Command {
         $fixtureState.Changed = $true
         return [pscustomobject]@{ ExitCode = 0; StdOut = '{"hadErrors":false,"results":[]}'; StdErr = ''; TimedOut = $false }
     }
-    if ($fixtureState.Scenario -eq 'ResourceError' -and $request.Control.Id -eq 'DC-03-Logon') {
+    if ($fixtureState.Scenario -eq 'ResourceError' -and $request.Control.Id -eq 'DSC-03-Logon') {
         return [pscustomobject]@{ ExitCode = 1; StdOut = '{"hadErrors":true}'; StdErr = 'Simulated resource failure'; TimedOut = $false }
     }
-    $noncompliant = $request.Control.Id -eq 'DC-01-Spooler' -and $fixtureState.Scenario -in @('Drift', 'SetFailure') -and -not $fixtureState.Changed
+    $noncompliant = $request.Control.Id -eq 'DSC-01-Spooler' -and $fixtureState.Scenario -in @('Drift', 'SetFailure') -and -not $fixtureState.Changed
     $actual = $request.Control.Properties | ConvertTo-Json -Depth 10 | ConvertFrom-Json
     if ($noncompliant) { $actual.State = 'Running'; $actual.StartupType = 'Automatic' }
     $state = [ordered]@{
@@ -100,7 +100,7 @@ function Invoke-Command {
         differingProperties = @()
     }
     if ($noncompliant) { $state.differingProperties = @('State', 'StartupType') }
-    if ($fixtureState.Scenario -eq 'Malformed' -and $request.Control.Id -eq 'DC-03-Logon') { $state.inDesiredState = 'true' }
+    if ($fixtureState.Scenario -eq 'Malformed' -and $request.Control.Id -eq 'DSC-03-Logon') { $state.inDesiredState = 'true' }
     $output = @{ hadErrors = $false; results = @(@{ name = $request.Control.Id; type = $request.Control.ResourceType; result = $state }) }
     [pscustomobject]@{ ExitCode = 0; StdOut = (ConvertTo-Json -InputObject $output -Depth 15); StdErr = ''; TimedOut = $false }
 }
@@ -114,7 +114,7 @@ function Invoke-FixtureRun {
 
 function Enable-SpoolerEnforcement {
     $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    ($settings.Controls | Where-Object Id -eq 'DC-01-Spooler').Mode = 'Enforce'
+    ($settings.Controls | Where-Object Id -eq 'DSC-01-Spooler').Mode = 'Enforce'
     Write-Fixture -Path $settingsPath -Value $settings
 }
 
@@ -166,7 +166,7 @@ try {
     Assert-Test ($run.ExitCode -eq 2 -and $run.Summary.Errors -eq 2) 'Invalid DSC Boolean values are errors, not compliance'
 
     Reset-Fixtures
-    $run = Invoke-FixtureRun @{ ComputerName = @('dc-a.inventory.test'); ControlId = @('DC-01-Spooler') }
+    $run = Invoke-FixtureRun @{ ComputerName = @('dc-a.inventory.test'); ControlId = @('DSC-01-Spooler') }
     Assert-Test ($run.ExitCode -eq 0 -and $run.Summary.Compliant -eq 1) 'Pilot selection uses one DC and one control'
 
     Reset-Fixtures
@@ -185,19 +185,19 @@ try {
     Reset-Fixtures
     Enable-SpoolerEnforcement
     $fixtureState.Scenario = 'Drift'
-    $run = Invoke-FixtureRun @{ Operation = 'Remediate'; ComputerName = @('dc-a.inventory.test'); ControlId = @('DC-01-Spooler'); Confirm = $false }
+    $run = Invoke-FixtureRun @{ Operation = 'Remediate'; ComputerName = @('dc-a.inventory.test'); ControlId = @('DSC-01-Spooler'); Confirm = $false }
     Assert-Test ($run.ExitCode -eq 0 -and ($calls.Operation -join ',') -eq 'Preflight,Test,Set,Test') 'Explicit remediation executes Test, Set, and a fresh Test'
 
     Reset-Fixtures
     Enable-SpoolerEnforcement
     $fixtureState.Scenario = 'Drift'
-    $run = Invoke-FixtureRun @{ Operation = 'Remediate'; ComputerName = @('dc-a.inventory.test'); ControlId = @('DC-01-Spooler'); WhatIf = $true }
+    $run = Invoke-FixtureRun @{ Operation = 'Remediate'; ComputerName = @('dc-a.inventory.test'); ControlId = @('DSC-01-Spooler'); WhatIf = $true }
     Assert-Test ($run.ExitCode -eq 1 -and @($calls | Where-Object Operation -eq 'Set').Count -eq 0) 'Runner WhatIf tests state but never invokes Set'
 
     Reset-Fixtures
     Enable-SpoolerEnforcement
     $fixtureState.Scenario = 'SetFailure'
-    $run = Invoke-FixtureRun @{ Operation = 'Remediate'; ComputerName = @('dc-a.inventory.test'); ControlId = @('DC-01-Spooler'); Confirm = $false }
+    $run = Invoke-FixtureRun @{ Operation = 'Remediate'; ComputerName = @('dc-a.inventory.test'); ControlId = @('DSC-01-Spooler'); Confirm = $false }
     Assert-Test ($run.ExitCode -eq 2 -and ($calls.Operation -join ',') -eq 'Preflight,Test,Set,Test') 'Set failures remain errors and still trigger a post-test'
 
     Reset-Fixtures
