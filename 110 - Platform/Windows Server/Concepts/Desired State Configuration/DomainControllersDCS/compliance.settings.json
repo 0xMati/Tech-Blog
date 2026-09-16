@@ -96,25 +96,25 @@
     },
     {
       "Id": "DSC-04-System",
-      "Name": "System log: 64 MiB, overwrite oldest events",
+      "Name": "System log: 1 GiB, overwrite oldest events",
       "Owner": "DSC",
       "Mode": "Audit",
       "ResourceType": "ComputerManagementDsc/WindowsEventLog",
       "Properties": {
         "LogName": "System",
-        "MaximumSizeInBytes": 67108864,
+        "MaximumSizeInBytes": 1073741824,
         "LogMode": "Circular"
       }
     },
     {
       "Id": "DSC-04-Directory",
-      "Name": "Directory Service log: 128 MiB, overwrite oldest events",
+      "Name": "Directory Service log: 1 GiB, overwrite oldest events",
       "Owner": "DSC",
       "Mode": "Audit",
       "ResourceType": "ComputerManagementDsc/WindowsEventLog",
       "Properties": {
         "LogName": "Directory Service",
-        "MaximumSizeInBytes": 134217728,
+        "MaximumSizeInBytes": 1073741824,
         "LogMode": "Circular"
       }
     },

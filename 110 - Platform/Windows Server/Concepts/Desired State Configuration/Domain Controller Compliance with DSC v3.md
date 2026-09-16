@@ -234,8 +234,8 @@ The supplied values are:
 | `DSC-03-Accounts` | User Account Management audit: Success And Failure |
 | `DSC-03-DirectoryChanges` | Directory Service Changes audit: Success |
 | `DSC-04-Security` | Security log: 1 GiB, Circular |
-| `DSC-04-System` | System log: 64 MiB, Circular |
-| `DSC-04-Directory` | Directory Service log: 128 MiB, Circular |
+| `DSC-04-System` | System log: 1 GiB, Circular |
+| `DSC-04-Directory` | Directory Service log: 1 GiB, Circular |
 | `DSC-05-Signing` | Explicit `LDAPServerIntegrity` DWORD value `2` |
 | `DSC-05-ChannelBinding` | Explicit `LdapEnforceChannelBinding` DWORD value `2` |
 
