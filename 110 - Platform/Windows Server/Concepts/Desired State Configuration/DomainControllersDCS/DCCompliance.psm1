@@ -277,26 +277,128 @@ function Write-DCComplianceReport {
     )
     $csvRows | Export-Csv -LiteralPath $csvPath -NoTypeInformation -Encoding UTF8 -WhatIf:$false -Confirm:$false -ErrorAction Stop
     function ConvertTo-DCHtml { param($Value) [System.Net.WebUtility]::HtmlEncode([string]$Value) }
-    $targetRows = foreach ($target in $Report.Targets) {
-        '<tr><td>{0}</td><td>{1}</td><td>{2}</td></tr>' -f (ConvertTo-DCHtml $target.HostName), (ConvertTo-DCHtml $target.Scope), (ConvertTo-DCHtml $target.Reason)
-    }
-    $resultRows = foreach ($result in $Report.Results) {
-        $statusClass = switch ($result.Status) {
-            'Compliant' { 'pass' }
-            'NonCompliant' { 'fail' }
-            'Error' { 'error' }
-            'Unreachable' { 'error' }
-            default { 'neutral' }
+    function Get-DCHtmlStatus {
+        param([string]$Status)
+        switch ($Status) {
+            'Compliant' { @{ Class = 'pass'; Label = 'Compliant'; Short = 'Pass'; Rank = 4 } }
+            'NonCompliant' { @{ Class = 'fail'; Label = 'Noncompliant'; Short = 'Drift'; Rank = 2 } }
+            'Error' { @{ Class = 'error'; Label = 'Error'; Short = 'Error'; Rank = 0 } }
+            'Unreachable' { @{ Class = 'error'; Label = 'Unreachable'; Short = 'Offline'; Rank = 1 } }
+            'Incomplete' { @{ Class = 'error'; Label = 'Incomplete'; Short = 'Incomplete'; Rank = 0 } }
+            'Excluded' { @{ Class = 'neutral'; Label = 'Excluded'; Short = 'Excluded'; Rank = 6 } }
+            'NotSelected' { @{ Class = 'neutral'; Label = 'Not selected'; Short = 'Not selected'; Rank = 6 } }
+            'NotApplicable' { @{ Class = 'neutral'; Label = 'Not applicable'; Short = 'N/A'; Rank = 5 } }
+            default { @{ Class = 'pending'; Label = 'Not evaluated'; Short = 'Pending'; Rank = 3 } }
         }
-        $desired = ConvertTo-Json -InputObject $result.DesiredState -Depth 10
-        $actual = ConvertTo-Json -InputObject $result.ActualState -Depth 10
-        '<tr><td>{0}</td><td><strong>{1}</strong><br>{2}<br><small>{3} / {4}</small></td><td class="{5}">{6}<br><small>{7}</small></td><td><pre>{8}</pre></td><td><pre>{9}</pre></td><td>{10}<br><small>{11}</small></td></tr>' -f
-            (ConvertTo-DCHtml $result.HostName), (ConvertTo-DCHtml $result.ControlId),
-            (ConvertTo-DCHtml $result.ControlName), (ConvertTo-DCHtml $result.Owner), (ConvertTo-DCHtml $result.Mode),
-            $statusClass, (ConvertTo-DCHtml $result.Status), (ConvertTo-DCHtml $result.Action),
-            (ConvertTo-DCHtml $desired), (ConvertTo-DCHtml $actual), (ConvertTo-DCHtml $result.Message),
-            (ConvertTo-DCHtml ($result.DifferingProperties -join ', '))
     }
+    function ConvertTo-DCValueHtml {
+        param($Value)
+        if ($null -eq $Value) { return '<span class="muted">Not returned</span>' }
+        $valueText = if ($Value -is [string]) { $Value } else { ConvertTo-Json -InputObject $Value -Depth 10 -Compress }
+        ConvertTo-DCHtml $valueText
+    }
+    $controlIndex = [ordered]@{}
+    $resultIndex = @{}
+    $resultEntries = @(
+        foreach ($result in $Report.Results) {
+            if (-not $controlIndex.Contains($result.ControlId)) { $controlIndex[$result.ControlId] = $result }
+            $entry = [pscustomobject]@{
+                Result = $result
+                Anchor = 'result-' + $resultIndex.Count
+                StatusInfo = Get-DCHtmlStatus $result.Status
+            }
+            $resultIndex['{0}|{1}' -f $result.HostName, $result.ControlId] = $entry
+            $entry
+        }
+    )
+    $matrixHeaders = foreach ($control in $controlIndex.Values) {
+        $parts = $control.ControlId -split '-', 3
+        $prefix = if ($parts.Count -eq 3) { $parts[0..1] -join '-' } else { $control.ControlId }
+        $label = if ($parts.Count -eq 3) { $parts[2] } else { $control.ControlName }
+        $label = [regex]::Replace($label, '([a-z])([A-Z])', '$1 $2')
+        '<th scope="col" title="{0}"><span class="control-prefix">{1}</span><span class="control-name">{2}</span><span class="control-owner">{3}</span></th>' -f
+            (ConvertTo-DCHtml ('{0}: {1} | Owner: {2} | Mode: {3}' -f $control.ControlId, $control.ControlName, $control.Owner, $control.Mode)),
+            (ConvertTo-DCHtml $prefix), (ConvertTo-DCHtml $label), (ConvertTo-DCHtml $control.Owner)
+    }
+    $matrixRows = foreach ($target in $Report.Targets) {
+        $scopeLabel = if ($target.Scope -eq 'NotSelected') { 'Not selected' } else { $target.Scope }
+        $cells = foreach ($control in $controlIndex.Values) {
+            $entry = $resultIndex['{0}|{1}' -f $target.HostName, $control.ControlId]
+            if ($target.Scope -ne 'Included') {
+                $status = Get-DCHtmlStatus $target.Scope
+                '<td class="matrix-status neutral" data-status="{0}"><span title="{1}">{2}</span></td>' -f
+                    (ConvertTo-DCHtml $target.Scope), (ConvertTo-DCHtml $target.Reason), (ConvertTo-DCHtml $status.Short)
+            }
+            elseif ($null -ne $entry) {
+                '<td class="matrix-status {0}" data-status="{1}"><a href="#{2}" data-result-id="{2}" title="{3}" aria-label="{3}">{4}</a></td>' -f
+                    $entry.StatusInfo.Class, (ConvertTo-DCHtml $entry.Result.Status), $entry.Anchor,
+                    (ConvertTo-DCHtml ('{0} | {1} | {2}' -f $target.HostName, $control.ControlId, $entry.StatusInfo.Label)),
+                    (ConvertTo-DCHtml $entry.StatusInfo.Short)
+            }
+            else {
+                '<td class="matrix-status pending" data-status="NotEvaluated"><span title="No result was returned for this DC and control">Pending</span></td>'
+            }
+        }
+        if ($controlIndex.Count -eq 0) { $cells = @('<td class="matrix-status pending">No control results</td>') }
+        '<tr data-host="{0}"><th scope="row" class="dc-column"><span class="dc-name">{0}</span><span class="scope-label">{1}</span><span class="scope-reason">{2}</span></th>{3}</tr>' -f
+            (ConvertTo-DCHtml $target.HostName), (ConvertTo-DCHtml $scopeLabel), (ConvertTo-DCHtml $target.Reason), ($cells -join '')
+    }
+    if ($controlIndex.Count -eq 0) { $matrixHeaders = @('<th scope="col">Results</th>') }
+    $targetOptions = foreach ($target in $Report.Targets) {
+        '<option value="{0}">{0}</option>' -f (ConvertTo-DCHtml $target.HostName)
+    }
+    $resultRows = foreach ($entry in ($resultEntries | Sort-Object { $_.StatusInfo.Rank }, { $_.Result.HostName }, { $_.Result.ControlId })) {
+        $result = $entry.Result
+        $propertyNames = [System.Collections.Generic.List[string]]::new()
+        foreach ($state in @($result.DesiredState, $result.ActualState)) {
+            if ($null -eq $state) { continue }
+            $names = if ($state -is [System.Collections.IDictionary]) { @($state.Keys) } else { @($state.PSObject.Properties.Name) }
+            foreach ($name in $names) {
+                if (-not $propertyNames.Contains([string]$name)) { $propertyNames.Add([string]$name) }
+            }
+        }
+        $propertyRows = foreach ($propertyName in $propertyNames) {
+            $values = @(
+                foreach ($state in @($result.DesiredState, $result.ActualState)) {
+                    $value = $null
+                    if ($state -is [System.Collections.IDictionary]) { $value = $state[$propertyName] }
+                    elseif ($null -ne $state -and $null -ne $state.PSObject.Properties[$propertyName]) { $value = $state.$propertyName }
+                    ConvertTo-DCValueHtml $value
+                }
+            )
+            $differenceClass = if ($result.DifferingProperties -contains $propertyName) { ' class="different"' } else { '' }
+            '<tr{0}><th scope="row">{1}</th><td>{2}</td><td>{3}</td></tr>' -f
+                $differenceClass, (ConvertTo-DCHtml $propertyName), $values[0], $values[1]
+        }
+        $differenceCount = @($result.DifferingProperties | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+        $detailLabel = if ($result.Status -in @('Error', 'Unreachable')) { 'Error details' }
+            elseif ($differenceCount -eq 1) { '1 difference' }
+            elseif ($differenceCount -gt 1) { "$differenceCount differences" }
+            else { 'View state' }
+        $message = if ([string]::IsNullOrWhiteSpace($result.Message)) { '' } else { '<p class="diagnostic">{0}</p>' -f (ConvertTo-DCHtml $result.Message) }
+        $evaluationTime = if ($result.EvaluatedAtUtc) { [string]$result.EvaluatedAtUtc } else { 'Not evaluated' }
+        $comparison = if ($propertyNames.Count -gt 0) {
+            '<table class="comparison"><thead><tr><th scope="col">Property</th><th scope="col">Expected</th><th scope="col">Observed</th></tr></thead><tbody>{0}</tbody></table>' -f ($propertyRows -join '')
+        }
+        else { '<p class="muted">No state data returned.</p>' }
+        $searchText = '{0} {1} {2} {3} {4} {5}' -f $result.HostName, $result.ControlId, $result.ControlName, $result.Owner, $result.Message, ($result.DifferingProperties -join ' ')
+        '<tr id="{0}" data-result="true" data-host="{1}" data-status="{2}" data-search="{3}"><td class="result-host">{1}</td><th scope="row"><code>{4}</code><span class="result-name">{5}</span></th><td class="owner">{6}</td><td>{7}</td><td><span class="status {8}">{9}</span></td><td class="action">{10}</td><td><details class="state-details"><summary>{11}</summary><div class="state-content">{12}{13}<p class="evaluation-time">{14}</p></div></details></td></tr>' -f
+            $entry.Anchor, (ConvertTo-DCHtml $result.HostName), (ConvertTo-DCHtml $result.Status), (ConvertTo-DCHtml $searchText),
+            (ConvertTo-DCHtml $result.ControlId), (ConvertTo-DCHtml $result.ControlName), (ConvertTo-DCHtml $result.Owner), (ConvertTo-DCHtml $result.Mode),
+            $entry.StatusInfo.Class, (ConvertTo-DCHtml $entry.StatusInfo.Label), (ConvertTo-DCHtml $result.Action),
+            (ConvertTo-DCHtml $detailLabel), $comparison, $message, (ConvertTo-DCHtml $evaluationTime)
+    }
+    if ($resultEntries.Count -eq 0) {
+        $resultRows = @('<tr><td colspan="7" class="empty-state">No control results were returned.</td></tr>')
+    }
+    $overallInfo = Get-DCHtmlStatus $overall
+    $completedTime = [string]$Report.CompletedAtUtc
+    try { $completedTime = ([datetimeoffset]$Report.CompletedAtUtc).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + ' UTC' }
+    catch { }
+    $includedCount = @($Report.Targets | Where-Object Scope -eq 'Included').Count
+    $totalTargets = @($Report.Targets).Count
+    $matrixWidth = 248 + 96 * [Math]::Max(1, $controlIndex.Count)
+    $matrixColumns = '<col class="target-track">' + ('<col>' * [Math]::Max(1, $controlIndex.Count))
     $template = @'
 <!doctype html>
 <html lang="en">
@@ -305,61 +407,194 @@ function Write-DCComplianceReport {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Domain Controller Compliance</title>
 <style>
-:root { color-scheme: light; --ink: #222829; --muted: #596367; --line: #d8dfe1; --paper: #fff; }
-* { box-sizing: border-box; }
-body { margin: 0; color: var(--ink); background: #f4f6f6; font: 14px "Aptos", "Trebuchet MS", sans-serif; letter-spacing: 0; }
-main { max-width: 1540px; margin: 0 auto; padding: 24px; background: var(--paper); min-height: 100vh; }
-header { border-top: 5px solid #236b5b; padding-top: 18px; }
-h1 { font-size: 26px; margin: 0 0 10px; overflow-wrap: anywhere; }
-h2 { font-size: 18px; margin: 28px 0 10px; }
-p { line-height: 1.5; overflow-wrap: anywhere; }
-.metadata, small { color: var(--muted); }
-.summary { display: flex; flex-wrap: wrap; gap: 16px 30px; border-block: 1px solid var(--line); padding: 14px 0; margin-top: 20px; }
-.summary div { min-width: 100px; }
-.summary strong { font-size: 22px; display: block; }
-.scroll { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; text-align: left; }
-.results { min-width: 1060px; table-layout: fixed; }
-.results th:nth-child(1) { width: 14%; } .results th:nth-child(2) { width: 20%; }
-.results th:nth-child(3) { width: 12%; } .results th:nth-child(4), .results th:nth-child(5) { width: 18%; }
-.results th:nth-child(6) { width: 18%; }
-th, td { border-bottom: 1px solid var(--line); padding: 10px; vertical-align: top; overflow-wrap: anywhere; }
-th { background: #edf2f0; font-weight: 600; }
-tbody tr:nth-child(even) { background: #fafbfb; }
-pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px Consolas, monospace; }
-.pass { color: #14623d; } .fail { color: #a42534; } .error { color: #875600; } .neutral { color: #596367; }
-footer { margin-top: 24px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
-@media (max-width: 600px) { main { padding: 16px; } h1 { font-size: 23px; } }
-@media print { main { max-width: none; padding: 0; } .scroll { overflow: visible; } .results { min-width: 0; } th { background: #eee; } }
+:root { color-scheme: light; --ink: #24312e; --muted: #5d6965; --line: #d9e2dd; --accent: #1b6251; --paper: #fff; --wash: #f5f8f6; --pass: #186541; --fail: #a52d42; --error: #855209; }
+* { box-sizing: border-box; letter-spacing: 0; }
+body { margin: 0; color: var(--ink); background: #edf2ef; font: 14px/1.45 "Trebuchet MS", "Liberation Sans", sans-serif; }
+main { max-width: 1720px; margin: 0 auto; padding: 28px 32px; background: var(--paper); min-height: 100vh; border-top: 5px solid var(--accent); }
+h1, h2 { font-family: "Bahnschrift", "Trebuchet MS", sans-serif; font-weight: 600; }
+h1 { font-size: 27px; line-height: 1.2; margin: 0 0 10px; overflow-wrap: anywhere; }
+h2 { font-size: 19px; margin: 0; }
+p { margin: 8px 0; overflow-wrap: anywhere; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, .scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.report-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.run-meta { color: var(--muted); display: flex; flex-wrap: wrap; gap: 5px 18px; font-size: 13px; }
+.header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.export { font-size: 12px; font-weight: 700; }
+.run-id { margin-top: 8px; color: var(--muted); font: 11px Consolas, monospace; overflow-wrap: anywhere; }
+.summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; border-block: 1px solid var(--line); padding: 18px 0; margin-top: 24px; background: linear-gradient(90deg, #f7faf8, #fff); }
+.summary div { padding-left: 16px; border-left: 2px solid var(--line); min-width: 0; }
+.summary strong { font: 600 26px/1.2 "Bahnschrift", "Trebuchet MS", sans-serif; display: block; }
+.summary span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.pass { color: var(--pass); } .fail { color: var(--fail); } .error { color: var(--error); } .neutral, .pending, .muted { color: var(--muted); }
+.section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 28px 0 12px; }
+.section-heading > span { color: var(--muted); font-size: 12px; }
+.scroll { width: 100%; overflow: auto; border: 1px solid var(--line); border-radius: 4px; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; text-align: left; }
+th, td { border-bottom: 1px solid var(--line); padding: 11px 12px; vertical-align: top; overflow-wrap: anywhere; }
+thead th { background: var(--wash); font-size: 12px; color: var(--muted); font-weight: 600; }
+tbody tr:last-child > th, tbody tr:last-child > td { border-bottom: 0; }
+.matrix { table-layout: fixed; }
+.target-track { width: 248px; }
+.matrix thead th { vertical-align: bottom; text-align: center; border-right: 1px solid var(--line); padding: 12px 7px; }
+.matrix thead th:first-child { text-align: left; padding-left: 14px; }
+.matrix .dc-column { position: sticky; left: 0; z-index: 1; background: #fff; border-right: 1px solid var(--line); font-weight: 400; padding: 12px 14px; }
+.matrix thead .dc-column { background: var(--wash); z-index: 2; }
+.dc-name { display: block; font-size: 13px; font-weight: 700; }
+.scope-label { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: var(--muted); }
+.scope-reason { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+.control-prefix { display: block; font: 11px Consolas, monospace; }
+.control-name { display: block; color: var(--ink); font-size: 12px; margin: 4px 0; overflow-wrap: anywhere; }
+.control-owner { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
+.matrix-status { padding: 0; text-align: center; vertical-align: middle; border-right: 1px solid var(--line); }
+.matrix-status a, .matrix-status > span { display: flex; min-height: 72px; height: 100%; align-items: center; justify-content: center; padding: 10px 5px; font-size: 12px; font-weight: 700; color: inherit; }
+.matrix-status a { text-decoration: none; }
+.matrix-status a:hover { box-shadow: inset 0 0 0 2px currentColor; text-decoration: underline; }
+.matrix-status.pass { background: #edf7f1; } .matrix-status.fail { background: #fff0f1; } .matrix-status.error { background: #fff5e6; }
+.matrix-status.neutral { background: #f3f5f4; font-weight: 400; } .matrix-status.pending { background: #f4f1e7; }
+.legend { display: flex; flex-wrap: wrap; gap: 7px 18px; margin: 10px 0; font-size: 11px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
+.status { display: inline-block; padding: 3px 7px; border-radius: 3px; font-size: 11px; font-weight: 700; line-height: 1.4; }
+.status.pass { background: #edf7f1; } .status.fail { background: #fff0f1; } .status.error { background: #fff5e6; } .status.neutral, .status.pending { background: #f0f3f1; }
+.filters { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding: 12px 0; }
+.filters label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+.filters input, .filters select { font: 13px "Trebuchet MS", sans-serif; color: var(--ink); background: #fff; min-height: 34px; border: 1px solid #b9c7bf; border-radius: 3px; padding: 6px 9px; max-width: 100%; }
+.filters .search-field { flex: 1 1 220px; }
+.filters label:not(.search-field) { flex: 0 1 240px; min-width: 160px; }
+.results { min-width: 1150px; table-layout: fixed; }
+.results > colgroup > col:nth-child(1) { width: 17%; } .results > colgroup > col:nth-child(2) { width: 23%; }
+.results > colgroup > col:nth-child(3), .results > colgroup > col:nth-child(4) { width: 7%; }
+.results > colgroup > col:nth-child(5) { width: 11%; } .results > colgroup > col:nth-child(6) { width: 10%; }
+.results > colgroup > col:nth-child(7) { width: 25%; }
+.results > tbody > tr:nth-child(even) { background: #fafcfb; }
+.results > tbody > tr:hover { background: #f3f7f4; }
+.results > tbody > tr:target { background: #f0f5e9; }
+.results > tbody > tr { scroll-margin-top: 16px; }
+.results > tbody > tr > th { font-weight: 400; }
+.result-host { font-size: 12px; } .owner { font-weight: 700; font-size: 12px; } .action { font-size: 12px; }
+code { font: 12px Consolas, monospace; overflow-wrap: anywhere; }
+.result-name { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+summary { cursor: pointer; color: var(--accent); font-size: 12px; padding: 2px 0; }
+.state-content { padding-top: 10px; }
+.comparison { table-layout: fixed; font-size: 11px; }
+.comparison th, .comparison td { padding: 6px; vertical-align: top; border-bottom: 1px solid var(--line); }
+.comparison th { font-weight: 400; }
+.comparison thead th { font-size: 10px; background: #eef3ef; }
+.comparison .different { background: #fff0f1; }
+.comparison .different > th { color: var(--fail); font-weight: 700; }
+.diagnostic { font-size: 12px; border-left: 2px solid #c59445; padding-left: 8px; white-space: pre-wrap; }
+.evaluation-time { font: 10px Consolas, monospace; color: var(--muted); }
+.empty-state { padding: 22px; color: var(--muted); text-align: center; }
+[hidden] { display: none !important; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+footer { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+@media (max-width: 700px) {
+    main { padding: 20px 14px; }
+    h1 { font-size: 23px; }
+    .report-header { display: block; }
+    .header-actions { justify-content: flex-start; margin-top: 14px; }
+    .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .filters label:not(.search-field) { flex: 1 1 150px; min-width: 0; }
+    .target-track { width: 184px; }
+    .matrix .dc-column { padding: 10px; }
+}
+@media print {
+    @page { size: landscape; margin: 12mm; }
+    main { max-width: none; padding: 0; }
+    .filters, .export { display: none; }
+    .scroll { overflow: visible; border-radius: 0; }
+    .matrix, .results { min-width: 0 !important; font-size: 10px; }
+    .matrix .dc-column { position: static; }
+    .target-track { width: 160px; }
+    .matrix th, .matrix td { padding: 5px; }
+    .matrix-status a, .matrix-status > span { min-height: 40px; font-size: 10px; }
+    tr { break-inside: avoid; }
+}
 </style>
 </head>
 <body><main>
-<header><h1>Domain Controller Compliance</h1>
-<p class="metadata">{{DOMAIN}} | {{OPERATION}} | Baseline {{BASELINE}}<br>{{TIME}} | Run {{RUN}}</p>
-<p><strong>Overall: {{OVERALL}}</strong></p></header>
-<section class="summary" aria-label="Control results">
-<div><strong class="pass">{{PASS}}</strong>Compliant</div>
-<div><strong class="fail">{{FAIL}}</strong>Noncompliant</div>
-<div><strong class="error">{{ERROR}}</strong>Errors / unreachable</div>
-<div><strong>{{SKIP}}</strong>Not evaluated</div>
+<header class="report-header"><div><h1>Domain Controller Compliance</h1>
+<div class="run-meta"><span>{{DOMAIN}}</span><span>{{OPERATION}}</span><span>Baseline {{BASELINE}}</span><span>{{TIME}}</span></div>
+<p class="run-id">Run {{RUN}}</p></div>
+<div class="header-actions"><span class="status {{OVERALLCLASS}}">{{OVERALL}}</span><a class="export" href="report.json" download>JSON</a><a class="export" href="report.csv" download>CSV</a></div></header>
+<section class="summary" aria-label="Run summary">
+<div><strong>{{INCLUDED}} / {{TARGETCOUNT}}</strong><span>DCs selected</span></div>
+<div><strong class="pass">{{PASS}}</strong><span>Compliant</span></div>
+<div><strong class="fail">{{FAIL}}</strong><span>Noncompliant</span></div>
+<div><strong class="error">{{ERROR}}</strong><span>Errors / unreachable</span></div>
+<div><strong>{{SKIP}}</strong><span>Not evaluated</span></div>
 </section>
-<h2>Target Coverage</h2><div class="scroll"><table><thead><tr><th>DC</th><th>Scope</th><th>Reason</th></tr></thead><tbody>{{TARGETS}}</tbody></table></div>
-<h2>Control Results</h2><div class="scroll"><table class="results"><thead><tr><th>DC</th><th>Control</th><th>Result / Action</th><th>Expected</th><th>Observed</th><th>Details</th></tr></thead><tbody>{{RESULTS}}</tbody></table></div>
-<footer>Configuration assessment at the recorded time, not a complete AD health or security assessment. LDAP rows check explicit policy values, not implicit OS defaults. Full results and execution metadata are in report.json; raw DSC output is in Evidence.</footer>
-</main></body></html>
+<section aria-labelledby="matrix-title"><div class="section-heading"><h2 id="matrix-title">DC / Control Matrix</h2><span>{{CONTROLCOUNT}} controls | {{TARGETCOUNT}} DCs</span></div>
+<div class="scroll" tabindex="0" role="region" aria-label="DC and control results"><table id="dc-matrix" class="matrix" style="min-width: {{MATRIXWIDTH}}px"><caption class="visually-hidden">Results by domain controller and selected control</caption><colgroup>{{MATRIXCOLUMNS}}</colgroup><thead><tr><th scope="col" class="dc-column">Domain controller</th>{{MATRIXHEADERS}}</tr></thead><tbody>{{MATRIXROWS}}</tbody></table></div>
+<div class="legend" aria-label="Result legend"><span><i class="swatch pass"></i>Pass: compliant</span><span><i class="swatch fail"></i>Drift: noncompliant</span><span><i class="swatch error"></i>Error / Offline</span><span><i class="swatch neutral"></i>Excluded / Not selected</span><span>Pending: not evaluated</span></div></section>
+<section aria-labelledby="results-title"><div class="section-heading"><h2 id="results-title">Control Details</h2><span id="visible-count" aria-live="polite">{{RESULTCOUNT}} results</span></div>
+<div class="filters" id="result-filters" hidden>
+<label>Domain controller<select id="dc-filter"><option value="">All DCs</option>{{TARGETOPTIONS}}</select></label>
+<label>Result<select id="status-filter"><option value="">All results</option><option value="NonCompliant">Noncompliant</option><option value="Error">Error</option><option value="Unreachable">Unreachable</option><option value="Compliant">Compliant</option><option value="NotEvaluated">Not evaluated</option><option value="NotApplicable">Not applicable</option></select></label>
+<label class="search-field">Control / keyword<input id="result-search" type="search" autocomplete="off"></label>
+</div>
+<div class="scroll" tabindex="0" role="region" aria-label="Detailed control results"><table id="control-results" class="results"><caption class="visually-hidden">Control ownership, mode, outcome, and state differences</caption><colgroup><col><col><col><col><col><col><col></colgroup><thead><tr><th scope="col">DC</th><th scope="col">Control</th><th scope="col">Owner</th><th scope="col">Mode</th><th scope="col">Result</th><th scope="col">Action</th><th scope="col">Expected / Observed</th></tr></thead><tbody>{{RESULTS}}<tr id="no-matches" hidden><td colspan="7" class="empty-state">No matching results.</td></tr></tbody></table></div></section>
+<footer>Selected scope only. LDAP controls check explicit policy values, not implicit OS defaults. Execution metadata is in report.json; raw DSC output and before/after responses are in Evidence.</footer>
+</main>
+<script>
+(() => {
+    const rows = Array.from(document.querySelectorAll('#control-results tr[data-result]'));
+    const host = document.getElementById('dc-filter');
+    const status = document.getElementById('status-filter');
+    const search = document.getElementById('result-search');
+    const count = document.getElementById('visible-count');
+    const empty = document.getElementById('no-matches');
+    if (rows.length) document.getElementById('result-filters').hidden = false;
+    function filterResults() {
+        const query = search.value.trim().toLowerCase();
+        let visible = 0;
+        rows.forEach(row => {
+            const matches = (!host.value || row.dataset.host === host.value) &&
+                (!status.value || row.dataset.status === status.value) &&
+                (!query || row.dataset.search.toLowerCase().includes(query));
+            row.hidden = !matches;
+            if (matches) visible++;
+        });
+        count.textContent = visible + ' / ' + rows.length + ' results';
+        empty.hidden = visible !== 0 || rows.length === 0;
+    }
+    host.addEventListener('change', filterResults);
+    status.addEventListener('change', filterResults);
+    search.addEventListener('input', filterResults);
+    document.querySelectorAll('#dc-matrix a[data-result-id]').forEach(link => {
+        link.addEventListener('click', () => {
+            host.value = ''; status.value = ''; search.value = '';
+            filterResults();
+            const row = document.getElementById(link.dataset.resultId);
+            if (row) row.querySelector('details').open = true;
+        });
+    });
+})();
+</script>
+</body></html>
 '@
     $replacements = @{
         DOMAIN = ConvertTo-DCHtml $Report.Domain
         OPERATION = ConvertTo-DCHtml $Report.Operation
         BASELINE = ConvertTo-DCHtml $Report.BaselineVersion
-        TIME = ConvertTo-DCHtml $Report.CompletedAtUtc
+        TIME = ConvertTo-DCHtml $completedTime
         RUN = ConvertTo-DCHtml $Report.RunId
-        OVERALL = ConvertTo-DCHtml $overall
+        OVERALL = ConvertTo-DCHtml $overallInfo.Label
+        OVERALLCLASS = $overallInfo.Class
+        INCLUDED = [string]$includedCount
+        TARGETCOUNT = [string]$totalTargets
+        CONTROLCOUNT = [string]$controlIndex.Count
+        RESULTCOUNT = [string]$resultEntries.Count
         PASS = [string]$counts.Compliant
         FAIL = [string]$counts.NonCompliant
         ERROR = [string]$counts.Errors
         SKIP = [string]$counts.NotEvaluated
-        TARGETS = $targetRows -join "`n"
+        MATRIXWIDTH = [string]$matrixWidth
+        MATRIXCOLUMNS = $matrixColumns
+        MATRIXHEADERS = $matrixHeaders -join "`n"
+        MATRIXROWS = $matrixRows -join "`n"
+        TARGETOPTIONS = $targetOptions -join "`n"
         RESULTS = $resultRows -join "`n"
     }
     $html = [regex]::Replace($template, '\{\{([A-Z]+)\}\}', {

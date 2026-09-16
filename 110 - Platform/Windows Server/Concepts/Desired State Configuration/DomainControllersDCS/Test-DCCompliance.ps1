@@ -200,26 +200,82 @@ try {
     $report = Get-Content -LiteralPath $run.Summary.JsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
     Assert-Test (@($report.Targets | Where-Object Scope -eq 'Excluded').Count -eq 1) 'RODC remains visible as excluded'
     Assert-Test (@(Get-ChildItem -LiteralPath (Join-Path $run.Summary.RunDirectory 'Evidence') -File).Count -eq 22) 'Each checked control has raw evidence'
+    $html = Get-Content -LiteralPath $run.Summary.HtmlPath -Raw -Encoding UTF8
+    $matrix = [regex]::Match($html, '(?s)<table id="dc-matrix".*?</table>').Value
+    Assert-Test ([regex]::Matches($matrix, '<tr data-host=').Count -eq 3 -and
+        [regex]::Matches($matrix, '<th scope="col"').Count -eq 12) 'HTML matrix has one row per inventory DC and one column per selected control'
+    Assert-Test ([regex]::Matches($matrix, 'data-status="Compliant"').Count -eq 22 -and
+        [regex]::Matches($matrix, 'data-status="Excluded"').Count -eq 11) 'HTML matrix separates compliance from excluded target coverage'
+    Assert-Test ($html.Contains('<th scope="col">Owner</th>') -and $html.Contains('<th scope="col">Mode</th>') -and
+        [regex]::Matches($html, 'data-result="true"').Count -eq 22) 'HTML control details expose Owner and Mode as separate columns'
+    $detailLinks = @([regex]::Matches($matrix, 'href="#(result-\d+)"'))
+    $brokenLinks = @($detailLinks | Where-Object { -not $html.Contains(('id="{0}" data-result="true"' -f $_.Groups[1].Value)) })
+    Assert-Test ($detailLinks.Count -eq 22 -and $brokenLinks.Count -eq 0) 'Every evaluated matrix cell links to its matching detail row'
+    $csvResults = @(Import-Csv -LiteralPath $run.Summary.CsvPath)
+    Assert-Test ($csvResults.Count -eq 22 -and $csvResults[0].Owner -eq $report.Results[0].Owner -and
+        ($csvResults[0].DesiredState | ConvertFrom-Json).State -eq 'Stopped') 'Tabular redesign preserves CSV ownership and structured state fields'
 
     Reset-Fixtures
     $fixtureState.Scenario = 'Drift'
     $run = Invoke-FixtureRun
     Assert-Test ($run.ExitCode -eq 1 -and $run.Summary.NonCompliant -eq 2) 'Real drift produces exit code 1'
+    $html = Get-Content -LiteralPath $run.Summary.HtmlPath -Raw -Encoding UTF8
+    $matrix = [regex]::Match($html, '(?s)<table id="dc-matrix".*?</table>').Value
+    Assert-Test ([regex]::Matches($matrix, 'data-status="NonCompliant"').Count -eq 2 -and
+        [regex]::Matches($matrix, 'data-status="Compliant"').Count -eq 20) 'HTML matrix maps drift to the correct number of DC/control cells'
+    Assert-Test ($html.Contains('<tr class="different"><th scope="row">State</th><td>Stopped</td><td>Running</td></tr>') -and
+        [regex]::Matches($html, '<details class="state-details">').Count -eq 22 -and -not $html.Contains('<pre>')) 'HTML compares changed properties without repeated raw JSON blocks'
+    Assert-Test ([regex]::Match($html, '<tr id="result-\d+" data-result="true"[^>]+data-status="([^"]+)"').Groups[1].Value -eq 'NonCompliant') 'HTML details place drift before compliant results'
     if ($PreviewDirectory) {
         $preview = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($PreviewDirectory)
         $null = New-Item -Path $preview -ItemType Directory -Force
-        Copy-Item -LiteralPath $run.Summary.HtmlPath -Destination (Join-Path $preview 'report.html') -Force
+        Copy-Item -LiteralPath $run.Summary.HtmlPath, $run.Summary.JsonPath, $run.Summary.CsvPath -Destination $preview -Force
     }
+
+    Import-Module (Join-Path $root 'DCCompliance.psm1') -Force
+    $layoutReport = Get-Content -LiteralPath $run.Summary.JsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $layoutReport.Results = @($layoutReport.Results | Where-Object { -not ($_.HostName -eq 'dc-b.inventory.test' -and $_.ControlId -eq 'DSC-02-SMB1') })
+    $layoutReport.Results[0].ControlName = 'Control <script>alert("x")</script> & {{PASS}}'
+    $layoutReport.Results[0].Message = '=SUM(1,1) <img src=x onerror=alert(1)>'
+    $layoutReport.Results[0].ActualState = $null
+    $layoutReport.Results[0].Status = 'NotEvaluated'
+    $layoutReport.Results[0].DifferingProperties = @()
+    $layoutSummary = Write-DCComplianceReport -Report $layoutReport -RunDirectory (Join-Path $temporaryRoot 'renderer-edge')
+    $html = Get-Content -LiteralPath $layoutSummary.HtmlPath -Raw -Encoding UTF8
+    $matrix = [regex]::Match($html, '(?s)<table id="dc-matrix".*?</table>').Value
+    Assert-Test ([regex]::Matches($matrix, 'data-status="NotEvaluated"').Count -eq 2 -and
+        $html.Contains('Not returned')) 'Missing and explicitly unevaluated results are never rendered as passing'
+    Assert-Test ($html.Contains('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; {{PASS}}') -and
+        $html.Contains('&lt;img src=x onerror=alert(1)&gt;') -and -not $html.Contains('<script>alert') -and
+        -not $html.Contains('<img src=x')) 'HTML encodes control names and diagnostics without expanding embedded template tokens'
+    $layoutJson = Get-Content -LiteralPath $layoutSummary.JsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $layoutCsv = @(Import-Csv -LiteralPath $layoutSummary.CsvPath)
+    Assert-Test ($layoutJson.Results.Count -eq 21 -and $layoutJson.Results[0].Message -eq $layoutReport.Results[0].Message -and
+        $layoutCsv[0].Message -eq ("'" + $layoutReport.Results[0].Message) -and
+        $layoutSummary.Compliant -eq 19 -and $layoutSummary.NonCompliant -eq 1 -and $layoutSummary.NotEvaluated -eq 1) 'HTML edge cases preserve JSON data, CSV formula protection, and report totals'
+    $layoutReport.Results = @()
+    $layoutSummary = Write-DCComplianceReport -Report $layoutReport -RunDirectory (Join-Path $temporaryRoot 'renderer-empty')
+    $html = Get-Content -LiteralPath $layoutSummary.HtmlPath -Raw -Encoding UTF8
+    Assert-Test ($layoutSummary.OverallStatus -eq 'NotEvaluated' -and $html.Contains('No control results were returned.') -and
+        [regex]::Matches($html, '<tr data-host=').Count -eq 3 -and -not $html.Contains('data-status="Compliant"')) 'An empty report keeps target coverage and an explicit unevaluated state'
 
     Reset-Fixtures
     $fixtureState.Scenario = 'Unreachable'
     $run = Invoke-FixtureRun
     Assert-Test ($run.ExitCode -eq 2 -and $run.Summary.Errors -eq 11 -and $run.Summary.Compliant -eq 11) 'Unreachable DC produces eleven failures without hiding the reachable DC'
+    $html = Get-Content -LiteralPath $run.Summary.HtmlPath -Raw -Encoding UTF8
+    $matrix = [regex]::Match($html, '(?s)<table id="dc-matrix".*?</table>').Value
+    Assert-Test ([regex]::Matches($matrix, 'data-status="Unreachable"').Count -eq 11 -and
+        [regex]::Matches($matrix, 'data-status="Compliant"').Count -eq 11 -and $html.Contains('Error details')) 'An unreachable DC remains visible with error details across all controls'
 
     Reset-Fixtures
     $fixtureState.Scenario = 'ResourceError'
     $run = Invoke-FixtureRun
     Assert-Test ($run.ExitCode -eq 2 -and $run.Summary.Errors -eq 2 -and $run.Summary.Compliant -eq 20) 'A resource failure does not suppress other controls'
+    $html = Get-Content -LiteralPath $run.Summary.HtmlPath -Raw -Encoding UTF8
+    $matrix = [regex]::Match($html, '(?s)<table id="dc-matrix".*?</table>').Value
+    Assert-Test ([regex]::Matches($matrix, 'data-status="Error"').Count -eq 2 -and
+        [regex]::Matches($matrix, 'data-status="Compliant"').Count -eq 20) 'Resource errors do not turn neighboring matrix cells into failures'
 
     Reset-Fixtures
     $fixtureState.Scenario = 'Malformed'
@@ -229,6 +285,11 @@ try {
     Reset-Fixtures
     $run = Invoke-FixtureRun @{ ComputerName = @('dc-a.inventory.test'); ControlId = @('DSC-01-Spooler') }
     Assert-Test ($run.ExitCode -eq 0 -and $run.Summary.Compliant -eq 1) 'Pilot selection uses one DC and one control'
+    $html = Get-Content -LiteralPath $run.Summary.HtmlPath -Raw -Encoding UTF8
+    $matrix = [regex]::Match($html, '(?s)<table id="dc-matrix".*?</table>').Value
+    Assert-Test ([regex]::Matches($matrix, '<th scope="col"').Count -eq 2 -and
+        [regex]::Matches($matrix, 'data-status="NotSelected"').Count -eq 1 -and
+        [regex]::Matches($matrix, 'data-status="Excluded"').Count -eq 1 -and $html.Contains('Selected scope only.')) 'A pilot report shows only selected controls and distinguishes unselected DCs from excluded ones'
 
     Reset-Fixtures
     $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json

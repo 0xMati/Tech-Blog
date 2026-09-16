@@ -462,6 +462,8 @@ $auditExitCode = $LASTEXITCODE
 $run | Format-List
 ```
 
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-12-30-07.png>)
+
 **Expected:** eleven results for MM-DC1. A failed resource produces an error for that control while the remaining tests continue. A failed preflight gives every selected control an error or unreachable result; it cannot produce a green report by skipping the DC.
 
 ### 3. Extend to the inventory
@@ -510,21 +512,25 @@ Open the report from the previous command on **MM-DSC1**:
 Invoke-Item -LiteralPath $run.HtmlPath
 ```
 
-The HTML file is self-contained: no web server, external script, or CDN is needed. It shows the selected targets, counts, expected and observed values, and any errors. Wide control tables scroll horizontally on smaller screens. CSV is suitable for filtering or importing into another reporting tool; JSON retains the structured data.
+The HTML report opens with a **DC / Control Matrix**: one row per DC, one column per selected control, and a result in each cell. The DC column stays visible when scrolling horizontally on smaller screens.
+
+Click a result to open its **Control Details** row. **Owner** and **Mode** have separate columns; expected and observed values are compared property by property, with differences highlighted. Errors and deviations appear first. Filters narrow the details by DC, result, or keyword.
+
+The report is self-contained: no web server, external script, or CDN is needed. CSV retains one row per DC/control for analysis; JSON retains the structured data.
 
 Example report generated with fictitious targets and results:
 
-![Illustrative compliance report with two Spooler deviations and an excluded RODC](<./assets/Domain Controller Compliance with DSC v3/report-example.png>)
+![DC and control matrix with two Spooler deviations, an excluded RODC, and control ownership](<./assets/Domain Controller Compliance with DSC v3/report-example.png>)
 
-| Result | Meaning |
-| --- | --- |
-| `Compliant` | Test completed and the requested state matches |
-| `NonCompliant` | Test completed and found a difference |
-| `Error` | The result could not be established, for example an invalid resource result, permission problem, or version mismatch |
-| `Unreachable` | A target session could not be established; the connection diagnostic is retained |
-| `NotEvaluated` | No valid test result was obtained |
+| Result | Matrix Label | Meaning |
+| --- | --- | --- |
+| `Compliant` | Pass | Test completed and the requested state matches |
+| `NonCompliant` | Drift | Test completed and found a difference |
+| `Error` | Error | The result could not be established, for example an invalid resource result, permission problem, or version mismatch |
+| `Unreachable` | Offline | A target session could not be established; the connection diagnostic is retained |
+| `NotEvaluated` | Pending | No valid test result was obtained |
 
-The overall result is `Incomplete` when any control is in error or a DC is unreachable. Otherwise it reports noncompliance or compliance within the **selected** scope. A report for one DC and one control does not attest to the other DCs or controls. Excluded and unselected machines are listed separately.
+The overall result is `Incomplete` when any control is in error or a DC is unreachable. Otherwise it reports noncompliance or compliance within the **selected** scope. A report for one DC and one control does not attest to the other DCs or controls. Excluded and unselected machines remain visible in the matrix with their scope and reason, not a compliance verdict.
 
 For example, a Spooler row can contain:
 
@@ -541,7 +547,7 @@ Inspect the results without HTML:
 ```powershell
 $report = Get-Content -LiteralPath $run.JsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $report.Results |
-    Select-Object HostName, ControlId, Status, Action, Message |
+    Select-Object HostName, ControlId, Owner, Mode, Status, Action, Message |
     Format-Table -AutoSize -Wrap
 ```
 
@@ -697,7 +703,7 @@ The companion suite exercises file validation, target selection, generated DSC d
 & 'C:\DSC\DomainControllersDCS\Test-DCCompliance.ps1'
 ```
 
-The integration tests have been run under Windows PowerShell 5.1. Resource contracts and version pins were checked against their published schemas and source. These tests do not execute DSC on the real DCs or prove their installed resources work in that environment; Step 5's pilot audit supplies that evidence. The generated HTML was also checked with fictitious results.
+The integration tests have been run under Windows PowerShell 5.1. Resource contracts and version pins were checked against their published schemas and source. These tests do not execute DSC on the real DCs or prove their installed resources work in that environment; Step 5's pilot audit supplies that evidence. HTML tests cover matrix coverage, ownership columns, missing results, encoding, and export preservation. Filters, detail navigation, and desktop/mobile layouts were checked with fictitious results.
 
 ---
 
