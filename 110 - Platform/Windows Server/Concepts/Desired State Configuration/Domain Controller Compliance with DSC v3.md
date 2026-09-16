@@ -290,22 +290,62 @@ An unknown target, duplicate control ID, invalid property, or GPO-owned control 
 
 ## Step 3: Prepare the Target DCs
 
-**Start from MM-DSC1.** The first target is `MM-DC1.mathiasmotron.com`, one of the discovered DCs.
+**Run this step from MM-DSC1.** Check remoting on all DCs in the inventory, then start installation on `MM-DC1.mathiasmotron.com`.
 
-### 1. Check the remoting endpoint
+### 1. Check remoting on all DCs
 
 ```powershell
-Invoke-Command -ComputerName 'MM-DC1.mathiasmotron.com' `
-    -ConfigurationName 'Microsoft.PowerShell' -Authentication Kerberos `
-    -ErrorAction Stop -ScriptBlock {
-        Write-Output "Server: $env:COMPUTERNAME"
-        $PSVersionTable.PSVersion
-        Get-CimInstance Win32_OperatingSystem |
-            Select-Object Caption, BuildNumber
+$inventory = Get-Content -LiteralPath 'C:\DSC\DomainControllersDCS\inventory.json' -Raw -Encoding UTF8 -ErrorAction Stop |
+    ConvertFrom-Json -ErrorAction Stop
+
+if (-not $inventory -or $inventory.DomainControllers -isnot [array] -or $inventory.DomainControllers.Count -eq 0) {
+    throw 'The inventory must contain a non-empty DomainControllers array. Run discovery again.'
+}
+
+$sessionOptions = New-PSSessionOption -OpenTimeout 15000 -OperationTimeout 30000
+$remotingResults = @(
+    foreach ($domainController in $inventory.DomainControllers) {
+        $result = [pscustomobject]@{
+            HostName = $domainController.HostName
+            Status = 'Failed'
+            PowerShellVersion = $null
+            OperatingSystem = $null
+            BuildNumber = $null
+            Error = $null
+        }
+        try {
+            $remoteInfo = Invoke-Command -ComputerName $domainController.HostName `
+                -ConfigurationName 'Microsoft.PowerShell' -Authentication Kerberos `
+                -SessionOption $sessionOptions -ErrorAction Stop -ScriptBlock {
+                    $operatingSystem = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+                    [pscustomobject]@{
+                        PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+                        OperatingSystem = $operatingSystem.Caption
+                        BuildNumber = $operatingSystem.BuildNumber
+                    }
+                }
+            $result.Status = 'OK'
+            $result.PowerShellVersion = $remoteInfo.PowerShellVersion
+            $result.OperatingSystem = $remoteInfo.OperatingSystem
+            $result.BuildNumber = $remoteInfo.BuildNumber
+        }
+        catch {
+            $result.Error = $_.Exception.Message
+        }
+        $result
     }
+)
+
+$remotingResults |
+    Format-Table HostName, Status, PowerShellVersion, OperatingSystem, BuildNumber -AutoSize -Wrap
+
+$remotingResults | Where-Object Status -eq 'Failed' |
+    Format-List HostName, Error
 ```
 
-**Expected:** MM-DC1, Windows PowerShell 5.1, and the target's OS details. This establishes a working authenticated session. If WinRM is not configured, `Enable-PSRemoting -Force` in an elevated Windows PowerShell console **on that DC** enables the endpoint and its firewall rules. The full audit preflight also verifies elevation and the live DC identity.
+**Expected:** one row per DC in the inventory. `OK` means the remote command completed and returned the PowerShell version and OS details. `Failed` keeps the DC visible with its error below the table; it does not stop the checks on the other DCs.
+
+This tests remoting for every inventory entry, including RODCs or DCs excluded from the later compliance audit. It does not install DSC or change the audit scope. If WinRM is not configured, `Enable-PSRemoting -Force` in an elevated Windows PowerShell console **on the affected DC** enables the endpoint and its firewall rules. The full audit preflight also verifies elevation and the live DC identity.
 
 ### 2. Install the runtime and modules from MM-DSC1
 
