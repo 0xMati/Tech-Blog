@@ -13,12 +13,12 @@ The [first DSC article](<./Desired State Configuration in 2026 - What It Actuall
 >
 > - A discovery script on `MM-DSC1` writes the DCs from `mathiasmotron.com` to `inventory.json`.
 > - A separate compliance parameter file defines the checks, expected values, configuration owners, and audit or enforcement modes.
-> - The orchestrator on MM-DSC1 will read both files: the inventory tells it which machines exist; the parameters tell it what to check.
+> - The orchestrator on MM-DSC1 reads both files: the inventory tells it which machines exist; the parameters tell it what to check.
 > - DSC tests the effective configuration on each target. PowerShell provides the orchestration and reporting around it.
 > - Settings owned by Group Policy are audited, not repeatedly overwritten locally by DSC.
 > - Remediation is a separate, explicitly triggered operation against a smaller configuration document. It is disabled by default.
 
-**Current hands-on coverage:** discovery and automatic JSON export are implemented. The compliance parameter file, DSC orchestrator, and compliance reporting are the next steps. The five control families and their audit/remediation design are described below; an inventory is not a security assessment.
+The accompanying scripts implement discovery, eleven checks across five control families, HTML/CSV/JSON reporting, and selective remediation. The walkthrough starts with one DC and one control, then expands to the inventory. This is a configuration baseline example, not a complete Microsoft security baseline or an AD health assessment.
 
 ---
 
@@ -29,10 +29,14 @@ The [first DSC article](<./Desired State Configuration in 2026 - What It Actuall
 - [The Five Control Families](#the-five-control-families)
 - [One Setting, One Configuration Owner](#one-setting-one-configuration-owner)
 - [Step 1: Build the DC Inventory](#step-1-build-the-dc-inventory)
-- [What the Compliance Report Must Say](#what-the-compliance-report-must-say)
-- [The Remediation Boundary](#the-remediation-boundary)
+- [Step 2: Define the Compliance Parameters](#step-2-define-the-compliance-parameters)
+- [Step 3: Prepare the Target DCs](#step-3-prepare-the-target-dcs)
+- [Step 4: Run the Compliance Audit](#step-4-run-the-compliance-audit)
+- [Step 5: Read the Reports](#step-5-read-the-reports)
+- [Step 6: Correct Selected Settings](#step-6-correct-selected-settings)
+- [Step 7: Schedule the Audit](#step-7-schedule-the-audit)
 - [Operational Constraints](#operational-constraints)
-- [Next Checkpoint](#next-checkpoint)
+- [Verification](#verification)
 - [Sources](#sources)
 
 ---
@@ -43,7 +47,7 @@ The [first DSC article](<./Desired State Configuration in 2026 - What It Actuall
 | --- | --- | --- |
 | `MM-DSC1` | Administration and orchestration server | Windows Server 2025; RSAT AD DS tools are already available |
 | `mathiasmotron.com` | AD domain to enumerate | Explicitly configured; we do not automatically expand to the entire forest |
-| Domain controllers | Future audit targets | Names, OS versions, sites, and read-only status are discovered from AD |
+| `MM-DC1`, `MM-DC2`, `MM-DC3` | DCs discovered in this environment | Use the FQDNs from the generated inventory; OS versions and read-only status come from AD |
 
 `MM-DSC1` remains the administration server. Nothing in this article promotes it, or the previous article's `MM-SRV01`, to a domain controller.
 
@@ -52,6 +56,8 @@ The inventory runs in **Windows PowerShell 5.1 on MM-DSC1**, from a filesystem l
 **No installation on the DCs is needed for this first step.** It does not use DSC, WinRM, or a remote script on every DC. It queries AD to obtain the list of machines. Successful directory discovery does not prove that those machines can later accept a WinRM connection.
 
 The later DSC step also requires a working WinRM endpoint, an account with the permissions needed by the checks, DSC v3, and the chosen resources on the pilot DC. Installing RSAT on MM-DSC1 does not provide those components on the targets.
+
+The runner accepts writable Windows Server 2019, 2022, and 2025 DCs, checks their live OS build and identity, and excludes RODCs. **The Windows PowerShell DSC adapter requires an elevated process on the target even for Test.** AD read access alone is not sufficient for this implementation. MM-DSC1 itself does not need DSC installed just to orchestrate these remote operations.
 
 ---
 
@@ -64,30 +70,28 @@ The workflow separates the machines from the rules:
 | Component | Produced or maintained by | Purpose |
 | --- | --- | --- |
 | `inventory.json` | The discovery script | DC hostnames and directory metadata, with the discovery time |
-| `compliance.settings.json` (next step) | You | Control definitions, desired values, configuration owners, and `Audit` or `Enforce` mode |
-| Orchestration script on MM-DSC1 (next step) | Runs against both files | Reads targets from the inventory, builds the DSC configuration documents from the parameters, invokes DSC remotely, and collects results |
+| `compliance.settings.json` | You | Control definitions, desired values, configuration owners, and `Audit` or `Enforce` mode |
+| `Invoke-DCCompliance.ps1` on MM-DSC1 | Runs against both files | Reads targets from the inventory, builds the DSC configuration documents from the parameters, invokes DSC remotely, and collects results |
 
 Changing a desired value does not require rediscovering the DCs. Rediscovering the DCs does not overwrite the compliance parameters.
 
 For each control, `Audit` means test and report without correction. `Enforce` makes a DSC-owned control eligible for correction when the remediation operation is explicitly started. A normal audit still uses `Test` for both modes. These modes and ownership rules belong to our orchestrator, not to the native DSC resource properties.
 
-The intended workflow is:
+The workflow is:
 
 ```mermaid
 flowchart LR
     Domain["DomainName parameter"] --> Inventory["MM-DSC1: discover DCs"]
     AD["Active Directory"] --> Inventory
     Inventory --> Snapshot["inventory.json: DCs"]
-    Snapshot -.-> Audit["MM-DSC1: orchestrator"]
-    Baseline["compliance.settings.json: rules and modes"] -.-> Audit
-    Audit -.-> Target["DSC on each target DC: Test / explicit Set"]
-    Target -.-> Results["Results returned to MM-DSC1"]
-    Results -.-> Report["JSON evidence and HTML report"]
+    Snapshot --> Audit["MM-DSC1: orchestrator"]
+    Baseline["compliance.settings.json: rules and modes"] --> Audit
+    Audit --> Target["DSC on each target DC: Test / explicit Set"]
+    Target --> Results["Results returned to MM-DSC1"]
+    Results --> Report["JSON evidence and HTML report"]
 ```
 
-The solid path is implemented in the inventory step. The dashed path is the next stage.
-
-DSC v3 does not discover the domain, provide a central dashboard, or schedule itself. A later scheduled task on MM-DSC1 can initiate the audit. The `dsc` command still executes on each target DC in this WinRM-based design.
+DSC v3 does not discover the domain, provide a central dashboard, or schedule itself. PowerShell and Task Scheduler provide those surrounding functions. The `dsc` command executes on each target DC, not on MM-DSC1.
 
 ---
 
@@ -98,12 +102,12 @@ These five **families** cover settings expected to be configured identically acr
 | ID | Control family | What we intend to check | Initial correction policy |
 | --- | --- | --- | --- |
 | DC-01 | Print Spooler | Service stopped and startup type disabled | Audit; optional DSC Set for DSC-owned settings. |
-| DC-02 | SMB | SMBv1 disabled; signing settings match the defined baseline | Audit only; correct the owning GPO where applicable |
+| DC-02 | SMB | SMB server protocol version 1 disabled; server signing required | Audit only; correct the owning GPO or configuration tool |
 | DC-03 | Security auditing | Required advanced audit subcategories are effectively enabled | Audit only; correct the audit policy in its owning GPO |
 | DC-04 | Event logs | Required maximum sizes and retention behavior | Audit; optional DSC Set for DSC-owned settings. |
-| DC-05 | LDAP security | LDAP signing and channel binding requirements match the defined policy | Audit only; compatibility assessment before a policy change |
+| DC-05 | LDAP security | Explicit registry policy values for LDAP signing and channel binding | Audit only; compatibility assessment before a policy change |
 
-Before implementing each family, define the exact expected values, the authoritative configuration tool, the supported OS versions, and the evidence needed to establish the effective state.
+Step 2 defines the exact values used by these checks. The LDAP rows deliberately test **explicit policy configuration**, not effective protocol enforcement inferred from OS defaults.
 
 Two examples explain why this preparation matters:
 
@@ -121,13 +125,13 @@ This is configuration compliance, not a complete AD health assessment. Replicati
 | Declared owner | What DSC may do | Where a correction belongs |
 | --- | --- | --- |
 | Group Policy | Test the effective setting | The owning GPO |
-| DSC | Test; later Set through the separate remediation workflow | A dedicated remediation configuration |
+| DSC | Test; Set through the separate remediation workflow | A dedicated remediation configuration |
 | Another management tool | Test where a suitable resource exists | The owning tool, such as OSConfig |
 | Unknown | Report the observation or the inability to evaluate it | Investigate ownership before enabling correction |
 
 An absent or incomplete GPO result does not identify the setting's owner. Ownership is declared per setting so that DSC and Group Policy do not keep overwriting one another.
 
-You maintain one compliance parameter file. The orchestrator will build **separate DSC configuration documents** from it: an audit document for all applicable checks, and a remediation document containing only DSC-owned controls in `Enforce` mode. Running `dsc config set` against the full audit document could otherwise change settings intended for audit only.
+You maintain one compliance parameter file. The orchestrator builds **separate DSC configuration documents**, one per control. Audit calls Test. Remediation calls Set only for explicitly selected, DSC-owned controls in `Enforce` mode. Running Set against a document containing every control could otherwise change settings intended for audit only.
 
 ---
 
@@ -161,7 +165,7 @@ This step uses one supporting file: [Get-DCInventory.ps1](<./DomainControllersDC
 
 There is no discovery settings file to fill in. The script takes the domain as `-DomainName`, queries AD, and writes `inventory.json` next to the script. It also returns the DC objects for immediate display.
 
-The output contains every discovered DC, including RODCs with `IsReadOnly = true`. Inventory describes what exists; it does not decide which controls to run or authorize corrections. The first compliance checks will target writable DCs, with any exclusions handled by the orchestrator rather than by deleting entries from this generated file.
+The output contains every discovered DC, including RODCs with `IsReadOnly = true`. Inventory describes what exists; it does not decide which controls to run or authorize corrections. The compliance checks target writable DCs, with exclusions handled by the orchestrator rather than by deleting entries from this generated file.
 
 ### 3. Discover the DCs and write the JSON
 
@@ -214,53 +218,432 @@ Write-Output "Discovered DCs: $($domainControllers.Count)"
 
 The OS information is directory metadata, not a live remote OS probe. The inventory contains no compliance verdict and no audit or enforcement settings.
 
-The future orchestrator will load this file the same way, then load the separate compliance parameter file. It will use each target's `HostName` for WinRM and the common control definitions to build the DSC tests. It does not need to run discovery again inside every check.
+The orchestrator loads this file the same way, then loads the compliance parameter file. It uses each target's `HostName` for WinRM and the common control definitions to build the DSC tests. Discovery does not run again inside every check.
 
 ---
 
-## What the Compliance Report Must Say
+## Step 2: Define the Compliance Parameters
 
-The next stage will preserve the raw DSC JSON results, then produce a readable HTML report and a CSV export. The report is a PowerShell deliverable around DSC, not a built-in DSC dashboard.
+**Machine: MM-DSC1.** Keep the accompanying files together under `C:\DSC\DomainControllersDCS`:
 
-Each evaluated control needs its DC identity, control ID, baseline version, evaluation time, expected state, observed state, configuration owner, and result. Keep the resource and engine versions with the execution evidence so that a later reader can identify what performed the check.
-
-The report must distinguish:
-
-| Control status | Meaning |
+| File | Role |
 | --- | --- |
-| `Compliant` | The check completed and the observed state satisfies the declared requirement |
-| `NonCompliant` | The check completed and found an actual difference |
-| `Error` | The check could not establish compliance, for example because access was denied, a resource was missing, or its output was invalid |
-| `Unreachable` | The target could not be reached for the assessment |
-| `NotApplicable` | An explicit applicability rule says the control does not apply to this target |
-| `NotEvaluated` | No valid evaluation was performed yet |
+| [Get-DCInventory.ps1](./DomainControllersDCS/Get-DCInventory.ps1) | Generates the inventory |
+| [compliance.settings.json](./DomainControllersDCS/compliance.settings.json) | Values and modes that you maintain |
+| [Initialize-DCCompliance.ps1](./DomainControllersDCS/Initialize-DCCompliance.ps1) | Prepares DSC and the resource modules on selected DCs |
+| [Invoke-DCCompliance.ps1](./DomainControllersDCS/Invoke-DCCompliance.ps1) | The command you run for audit or remediation |
+| [DCCompliance.psm1](./DomainControllersDCS/DCCompliance.psm1) | Shared validation, DSC document generation, and reporting |
+| [Invoke-DCResource.ps1](./DomainControllersDCS/Invoke-DCResource.ps1) | Sent through WinRM by the orchestrator; normally not invoked directly |
+| [Invoke-ScheduledDCAudit.ps1](./DomainControllersDCS/Invoke-ScheduledDCAudit.ps1) | Refreshes inventory and runs an audit for Task Scheduler |
+| [Test-DCCompliance.ps1](./DomainControllersDCS/Test-DCCompliance.ps1) | Offline tests with simulated DCs and DSC responses |
 
-Scope exclusions remain separate from these control results and visible in the report's coverage figures. Security exceptions retain the observed difference, justification, and expiry instead of rewriting a failed control as compliant.
+`inventory.json` is generated, not maintained manually. `compliance.settings.json` is maintained manually and is never overwritten by discovery.
 
-`hadErrors: false` means the DSC operation did not report an error. It does **not** mean every resource is in the desired state. The reporting code must also inspect each test result, including `inDesiredState` and the differing properties.
+### 1. Understand a control
 
-The orchestrator will validate the inventory structure and discovery timestamp, then load it once for the audit run. An unreadable, empty, or outdated inventory is not a successful assessment. A DC that becomes unreachable still belongs to that run's expected coverage, even if a later discovery updates the file on disk.
+This is the Spooler entry from the parameters file:
+
+```json
+{
+  "Id": "DC-01-Spooler",
+  "Name": "Print Spooler stopped and disabled",
+  "Owner": "DSC",
+  "Mode": "Audit",
+  "ResourceType": "PSDscResources/Service",
+  "Properties": {
+    "Name": "Spooler",
+    "Ensure": "Present",
+    "State": "Stopped",
+    "StartupType": "Disabled"
+  }
+}
+```
+
+`Id` is a stable identifier for selection and reporting. `Name` is the report label. `Properties` contains the actual resource settings. `Owner` and `Mode` are interpreted by our orchestrator; they are not passed to the DSC resource.
+
+`Ensure: Present` means the service must exist, not that it must be running. `State: Stopped` and `StartupType: Disabled` are two separate requirements.
+
+The supplied values are:
+
+| Control ID | Expected state |
+| --- | --- |
+| `DC-01-Spooler` | Spooler present, stopped, and disabled |
+| `DC-02-SMB1` | SMB **server** `EnableSMB1Protocol = false` |
+| `DC-02-Signing` | SMB **server** `RequireSecuritySignature = true` |
+| `DC-03-Logon` | Logon audit: Success And Failure |
+| `DC-03-Accounts` | User Account Management audit: Success And Failure |
+| `DC-03-DirectoryChanges` | Directory Service Changes audit: Success |
+| `DC-04-Security` | Security log: 1 GiB, Circular |
+| `DC-04-System` | System log: 64 MiB, Circular |
+| `DC-04-Directory` | Directory Service log: 128 MiB, Circular |
+| `DC-05-Signing` | Explicit `LDAPServerIntegrity` DWORD value `2` |
+| `DC-05-ChannelBinding` | Explicit `LdapEnforceChannelBinding` DWORD value `2` |
+
+The log sizes are example operational choices, not universal requirements. `Circular` overwrites the oldest events when the log fills; it does not guarantee a retention duration. `Retain` and `AutoBackup` have different behavior. The resource checks exact configuration values, not an abstract security score.
+
+The SMB checks do not inspect the SMB client configuration or prove that the SMB1 optional feature is uninstalled. They read the server configuration through the SMB resource. `EnableSecuritySignature` is deliberately not used as the SMB2/3 requirement; `RequireSecuritySignature` is the relevant setting.
+
+The audit resource is `AuditPolicyDsc/AuditPolicyGUID`: its `Name` uses the module's fixed names, which it maps to subcategory GUIDs, and it compares numeric audit flags. Directory Service Changes also needs suitable object SACLs to generate the intended events; this check does not inspect those SACLs. Module parsing or locale failures appear as `Error`, not as proof that auditing is disabled.
+
+**LDAP interpretation matters.** These two rows check stored policy values using `PSDscResources/Registry`. They do not prove GPO provenance or effective LDAP enforcement. Windows Server 2025 can enforce signing through its newer policy/default behavior without the legacy value being present. A missing legacy value therefore fails this **explicit-policy baseline**, but does not prove that unsigned LDAP is accepted. The channel-binding value `2` means Always; `1` means When Supported. Client compatibility remains a separate assessment.
+
+### 2. Review the modes and versions
+
+On MM-DSC1:
+
+```powershell
+$settings = Get-Content -LiteralPath 'C:\DSC\DomainControllersDCS\compliance.settings.json' -Raw -Encoding UTF8 |
+    ConvertFrom-Json
+
+$settings.Controls |
+    Format-Table Id, Owner, Mode, ResourceType -AutoSize -Wrap
+```
+
+**Expected:** eleven controls, all with `Mode = Audit`. Spooler and event logs initially declare `Owner = DSC`; the other controls declare `Owner = GPO`. These are your declarations, not ownership detected by the script. Use `GPO`, `External`, or `Unknown` where appropriate in your environment. This version only permits enforcement of Spooler and event-log resources.
+
+| Global parameter | Supplied value / meaning |
+| --- | --- |
+| `SchemaVersion` | `1`: structure understood by the scripts |
+| `BaselineVersion` | `1.0.0`: your version of the expected values; increase it when the baseline changes |
+| `MaximumInventoryAgeHours` | `24`: inventory older than this is rejected |
+| `DscExecutable` | `C:\Tools\DSC\dsc.exe` on each target |
+| `DscVersion` | `3.2.3`: the version expected by preflight |
+| `ModuleVersions` | PSDscResources `2.12.0.0`, ComputerManagementDsc `10.0.0`, AuditPolicyDsc `1.4.0.0` |
+| `ExcludedDCs` | Empty initially; add exact inventory FQDNs to exclude machines without deleting their inventory entries |
+
+An unknown target, duplicate control ID, invalid property, or GPO-owned control in `Enforce` causes a validation error before remote execution. Resource types and writable properties are restricted to this article's control set; the parameters file is not a container for arbitrary scripts.
 
 ---
 
-## The Remediation Boundary
+## Step 3: Prepare the Target DCs
 
-The first remediation example targets the Print Spooler on one DC, with DSC declared as the configuration owner.
+**Start from MM-DSC1.** The first target is `MM-DC1.mathiasmotron.com`, one of the discovered DCs.
 
-The future runner must require all of the following:
+### 1. Check the remoting endpoint
 
-1. The DC is present in the loaded inventory and explicitly selected for the remediation run.
-2. The specific control is declared DSC-owned and set to `Enforce` in the compliance parameters.
-3. Current state and relevant preconditions are checked again before a change.
-4. An operator explicitly approves the bounded operation using the appropriate execution identity.
-5. A dedicated remediation document contains only those DSC-owned settings.
-6. A fresh audit confirms the resulting state and records the outcome.
+```powershell
+Invoke-Command -ComputerName 'MM-DC1.mathiasmotron.com' `
+    -ConfigurationName 'Microsoft.PowerShell' -Authentication Kerberos `
+    -ErrorAction Stop -ScriptBlock {
+        Write-Output "Server: $env:COMPUTERNAME"
+        $PSVersionTable.PSVersion
+        Get-CimInstance Win32_OperatingSystem |
+            Select-Object Caption, BuildNumber
+    }
+```
 
-The discovery script only produces inventory. It does not read the compliance parameters, grant permissions, or execute remediation. Discovering a new DC never triggers `Set` by itself.
+**Expected:** MM-DC1, Windows PowerShell 5.1, and the target's OS details. This establishes a working authenticated session. If WinRM is not configured, `Enable-PSRemoting -Force` in an elevated Windows PowerShell console **on that DC** enables the endpoint and its firewall rules. The full audit preflight also verifies elevation and the live DC identity.
 
-Do not assume that every resource supports `--what-if`. Use the resource's supported read-only test operation and validate its actual capabilities before building a preview workflow. A compliance test is not a simulation of every consequence of a future change.
+### 2. Install the runtime and modules from MM-DSC1
 
-For GPO-owned settings, the action in the report should lead to the owning GPO and change process. A local `Set` that is undone at the next policy refresh is not a durable correction.
+The preparation script downloads the complete DSC 3.2.3 Windows x64 ZIP from the official release and verifies its fixed SHA256. It uses `Save-Module` to stage the three pinned resource modules on MM-DSC1, then transfers the packages over WinRM. The DC does not need direct access to GitHub or PowerShell Gallery for this route.
+
+Windows PowerShell's PowerShellGet may need its NuGet provider on **MM-DSC1**:
+
+```powershell
+$nugetProvider = Get-PackageProvider -ListAvailable |
+    Where-Object { $_.Name -eq 'NuGet' -and $_.Version -ge [version]'2.8.5.201' }
+
+if (-not $nugetProvider) {
+    Install-PackageProvider -Name NuGet -MinimumVersion '2.8.5.201' -Scope CurrentUser -Force
+}
+```
+
+Preview the preparation, then run it:
+
+```powershell
+& 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1' `
+    -ComputerName 'MM-DC1.mathiasmotron.com' -WhatIf
+```
+
+```powershell
+& 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1' `
+    -ComputerName 'MM-DC1.mathiasmotron.com'
+```
+
+The second command asks for confirmation. **Expected:** a `Prepared` result naming MM-DC1, the DSC executable path, and the Windows PowerShell module directory.
+
+This installs tools, not the security baseline. It does not stop Spooler, change LDAP, or alter audit policy. The modules must be in `%ProgramFiles%\WindowsPowerShell\Modules`: PSDSC 1.1 cannot invoke these resources from an arbitrary user module folder. The script leaves existing versions in place; a conflicting runtime or ambiguous resource version is reported rather than silently removed. Preflight verifies the actual resource discovery, not just folder existence.
+
+The package cache remains under `C:\DSC\DomainControllersDCS\Packages` on MM-DSC1. It can be populated ahead of time with the matching ZIP and complete versioned module directories for a disconnected environment. A failed ZIP hash check stops preparation.
+
+### 3. Local preparation alternative
+
+The same prerequisites can be installed directly **on a DC** instead. Use elevated Windows PowerShell 5.1. Extract the complete, hash-verified DSC 3.2.3 Windows x64 ZIP to `C:\Tools\DSC`, then install the pinned modules:
+
+```powershell
+$versions = @{
+    PSDscResources = '2.12.0.0'
+    ComputerManagementDsc = '10.0.0'
+    AuditPolicyDsc = '1.4.0.0'
+}
+
+foreach ($moduleName in $versions.Keys) {
+    Install-Module -Name $moduleName -RequiredVersion $versions[$moduleName] `
+        -Repository PSGallery -Scope AllUsers -Force
+}
+
+& 'C:\Tools\DSC\dsc.exe' --version
+& 'C:\Tools\DSC\dsc.exe' resource list --adapter Microsoft.Adapter/WindowsPowerShell `
+    PSDscResources/Service --output-format yaml
+```
+
+This alternative requires repository access and the NuGet provider on the DC. The expected runtime is `dsc 3.2.3`; service discovery must show `requireAdapter: Microsoft.Adapter/WindowsPowerShell`. The adapter name is singular `Adapter`. DSC does not install modules merely because they appear in the configuration.
+
+---
+
+## Step 4: Run the Compliance Audit
+
+**Machine: MM-DSC1.** The orchestrator reads `inventory.json` and `compliance.settings.json` from its own directory by default. An explicit `-InventoryPath` or `-SettingsPath` overrides those locations.
+
+### 1. Start with the Spooler on one DC
+
+```powershell
+$run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1' `
+    -ComputerName 'MM-DC1.mathiasmotron.com' `
+    -ControlId 'DC-01-Spooler'
+$auditExitCode = $LASTEXITCODE
+
+$run | Format-List
+Write-Output "Audit exit code: $auditExitCode"
+```
+
+**Expected:** one evaluated control and the paths of its reports. If Spooler is already stopped and disabled, the result is `Compliant`. If it is running or enabled, the result is `NonCompliant`. Neither outcome changes the service.
+
+The runner checks the live DC identity, build, elevation, DSC version, and discovery of the resource version needed for the selected control. It then sends a one-resource JSON configuration through WinRM, invokes `dsc config test`, and returns the output. A short-lived configuration file on the DC is removed afterward; there is no SMB share or second-hop file read.
+
+One process is used per control. This is intentionally sequential and easier to diagnose than a large parallel run. It is not a high-throughput fleet engine. A control has a 180-second DSC process limit; a timeout is an error, and partial target state after a timed-out Set is not assumed to be correct.
+
+### 2. Audit all eleven controls on the pilot
+
+```powershell
+$run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1' `
+    -ComputerName 'MM-DC1.mathiasmotron.com'
+$auditExitCode = $LASTEXITCODE
+
+$run | Format-List
+```
+
+**Expected:** eleven results for MM-DC1. A failed resource produces an error for that control while the remaining tests continue. A failed preflight gives every selected control an error or unreachable result; it cannot produce a green report by skipping the DC.
+
+### 3. Extend to the inventory
+
+Prepare MM-DC2 and MM-DC3 with the same modules:
+
+```powershell
+& 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1' `
+    -ComputerName 'MM-DC2.mathiasmotron.com', 'MM-DC3.mathiasmotron.com'
+```
+
+Then omit the target and control selections:
+
+```powershell
+$run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1'
+$auditExitCode = $LASTEXITCODE
+
+$run | Format-List
+```
+
+With three writable DCs and no exclusions, **33 control results** are expected. `ExcludedDCs`, RODCs, and machines outside an explicit `-ComputerName` selection stay visible in target coverage. They are not counted as compliant controls.
+
+The current logon identity is used by default. The preparation and audit commands also accept `-Credential $credential`, where `$credential = Get-Credential` is entered directly in the MM-DSC1 console. No credentials belong in either JSON file.
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | All evaluated controls in the selected scope are compliant |
+| `1` | Evaluation completed with at least one noncompliant control |
+| `2` | Invalid input, an unreachable target, a failed check, or another execution error |
+
+These codes belong to the orchestrator. A successful DSC process exit does not, by itself, mean that its configuration is compliant.
+
+---
+
+## Step 5: Read the Reports
+
+Each run creates a new directory under `C:\DSC\DomainControllersDCS\Reports`:
+
+```text
+Reports\<UTC time>-<run id>\
+    report.html
+    report.csv
+    report.json
+    inventory.input.json
+    compliance.input.json
+    Evidence\
+        <DC>--<control id>.json
+```
+
+Open the report from the previous command on **MM-DSC1**:
+
+```powershell
+Invoke-Item -LiteralPath $run.HtmlPath
+```
+
+The HTML file is self-contained: no web server, external script, or CDN is needed. It shows the selected targets, counts, expected and observed values, and any errors. Wide control tables scroll horizontally on smaller screens. CSV is suitable for filtering or importing into another reporting tool; JSON retains the structured data.
+
+Example report generated with fictitious targets and results:
+
+![Illustrative compliance report with two Spooler deviations and an excluded RODC](<./assets/Domain Controller Compliance with DSC v3/report-example.png>)
+
+| Result | Meaning |
+| --- | --- |
+| `Compliant` | Test completed and the requested state matches |
+| `NonCompliant` | Test completed and found a difference |
+| `Error` | The result could not be established, for example an invalid resource result, permission problem, or version mismatch |
+| `Unreachable` | A target session could not be established; the connection diagnostic is retained |
+| `NotEvaluated` | No valid test result was obtained |
+
+The overall result is `Incomplete` when any control is in error or a DC is unreachable. Otherwise it reports noncompliance or compliance within the **selected** scope. A report for one DC and one control does not attest to the other DCs or controls. Excluded and unselected machines are listed separately.
+
+For example, a Spooler row can contain:
+
+| Expected | Observed | Result |
+| --- | --- | --- |
+| `State = Stopped`, `StartupType = Disabled` | `State = Running`, `StartupType = Automatic` | `NonCompliant` |
+
+For LDAP, the row explicitly says that it is an explicit-policy value check. A missing value is not automatically interpreted as disabled protocol protection.
+
+The evidence file contains the exact DSC document, stdout, stderr, native exit code, and test result. A remediation run also retains before, Set, and after responses. Input snapshots, SHA256 identifiers, baseline version, timestamps, and target runtime/resource metadata are stored with the report.
+
+Inspect the results without HTML:
+
+```powershell
+$report = Get-Content -LiteralPath $run.JsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$report.Results |
+    Select-Object HostName, ControlId, Status, Action, Message |
+    Format-Table -AutoSize -Wrap
+```
+
+`hadErrors: false` means the DSC operation reported no execution error. The runner separately reads `inDesiredState` for compliance. It validates result identity and types rather than treating missing or malformed results as success.
+
+The inventory is loaded once per run and rejected if it is empty, inconsistent, or older than `MaximumInventoryAgeHours`. A DC that becomes unreachable remains part of that run's expected coverage. To compare runs, use the retained JSON/CSV and stable control IDs; automatic historical trend analysis and exception-expiry management are not part of these scripts.
+
+---
+
+## Step 6: Correct Selected Settings
+
+The correction path has two independent selections: **a control must be DSC-owned and in Enforce mode**, and **the command must explicitly name the DC and control to remediate**. An audit command never performs Set, even when some controls use Enforce.
+
+This example changes only the Spooler requirement's mode. It does not change its desired values. If a GPO owns Spooler in your environment, keep the control in Audit and correct the GPO instead.
+
+### 1. Enable remediation for the Spooler control
+
+On MM-DSC1:
+
+```powershell
+$settingsPath = 'C:\DSC\DomainControllersDCS\compliance.settings.json'
+$settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$spooler = $settings.Controls | Where-Object Id -eq 'DC-01-Spooler'
+if ($spooler.Owner -ne 'DSC') { throw 'This control is not declared DSC-owned.' }
+$spooler.Mode = 'Enforce'
+$settings.BaselineVersion = '1.0.1'
+$settings | ConvertTo-Json -Depth 15 |
+    Set-Content -LiteralPath $settingsPath -Encoding UTF8
+```
+
+The parameters file is reread on every invocation. Changing `Mode` does not itself modify a DC or start a background enforcement loop.
+
+### 2. Preview the selected operation
+
+```powershell
+$preview = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1' `
+    -Operation Remediate `
+    -ComputerName 'MM-DC1.mathiasmotron.com' `
+    -ControlId 'DC-01-Spooler' `
+    -WhatIf
+
+$preview | Format-List
+```
+
+This is **our PowerShell runner's WhatIf**, not `dsc config set --what-if`. The WindowsPowerShell adapter does not implement that DSC preview capability. The runner performs preflight and a read-only test, shows the Set it would request if there is drift, and writes the local report. It executes no Set. It is not a simulation of all consequences of stopping a service.
+
+### 3. Apply and verify
+
+```powershell
+$remediation = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1' `
+    -Operation Remediate `
+    -ComputerName 'MM-DC1.mathiasmotron.com' `
+    -ControlId 'DC-01-Spooler'
+$remediationExitCode = $LASTEXITCODE
+
+$remediation | Format-List
+```
+
+The runner tests current state, asks for confirmation if a change is needed, executes Set for this resource only, and runs Test again. If already compliant, it records `AlreadyCompliant` without Set. A Set failure remains an error even if a subsequent test returns useful state. There is no automatic retry of a timed-out or failed Set.
+
+Stopping Spooler stops printing functions that depend on it. Changing an event-log size or mode also has direct consequences: shrinking a log can discard older entries, and Circular allows old events to be overwritten. These are not rollback operations.
+
+Run a complete audit of that DC afterward:
+
+```powershell
+$run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1' `
+    -ComputerName 'MM-DC1.mathiasmotron.com'
+
+Invoke-Item -LiteralPath $run.HtmlPath
+```
+
+For GPO-owned controls, DSC remains a checker. The configured `Owner` is not proof of which GPO applies; use resultant-policy information to locate and change the owning policy. A local correction that is overwritten at the next GPO refresh is not durable.
+
+To disable future Spooler corrections, change its mode back to `Audit`. That does not restart the service or restore its previous configuration. The scripts do not automatically reverse prior changes, restart DCs, or remove the installed runtime and modules.
+
+---
+
+## Step 7: Schedule the Audit
+
+**Machine: MM-DSC1.** The scheduled entry point always performs discovery first, then calls `Invoke-DCCompliance.ps1 -Operation Audit`. It never starts remediation. Discovery errors stop the run; the previous JSON may still exist, but it is not reused by a failed scheduled run.
+
+Test the entry point manually:
+
+```powershell
+& 'C:\DSC\DomainControllersDCS\Invoke-ScheduledDCAudit.ps1' `
+    -DomainName 'mathiasmotron.com'
+$LASTEXITCODE
+```
+
+It writes an execution transcript under `Reports\Runs`, alongside the per-audit report directories. Exit codes remain `0`, `1`, and `2` as described above.
+
+For unattended operation, the account needs batch logon on MM-DSC1, access to the local files and report directory, directory read access, and an elevated WinRM execution context on the DCs. A task's account does not inherit the credentials of the interactive session that created it.
+
+The following example uses an **existing gMSA** named `MATHIASMOTRON\svcDscAudit$`, installed and usable on MM-DSC1. It does not create or grant rights to that account. Replace it with your task identity. For this gMSA example, `Test-ADServiceAccount -Identity 'svcDscAudit'` on MM-DSC1 should return `True`.
+
+In elevated Windows PowerShell on MM-DSC1:
+
+```powershell
+$action = New-ScheduledTaskAction `
+    -Execute 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' `
+    -Argument '-NoLogo -NoProfile -NonInteractive -File "C:\DSC\DomainControllersDCS\Invoke-ScheduledDCAudit.ps1" -DomainName "mathiasmotron.com"' `
+    -WorkingDirectory 'C:\DSC\DomainControllersDCS'
+
+$trigger = New-ScheduledTaskTrigger -Daily -At '02:00'
+$principal = New-ScheduledTaskPrincipal `
+    -UserId 'MATHIASMOTRON\svcDscAudit$' -LogonType Password -RunLevel Highest
+$taskSettings = New-ScheduledTaskSettingsSet `
+    -StartWhenAvailable -MultipleInstances IgnoreNew `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+
+Register-ScheduledTask -TaskName 'DC Compliance Audit' `
+    -Action $action -Trigger $trigger -Principal $principal -Settings $taskSettings
+```
+
+The `Password` logon type here is the Task Scheduler setting used for this gMSA task; no password is embedded in the action or JSON. Interactive-user or service-account alternatives need their corresponding logon configuration. Avoid an S4U task for this workflow: it does not provide the network credentials required by these remote operations.
+
+Start and inspect the task:
+
+```powershell
+Start-ScheduledTask -TaskName 'DC Compliance Audit'
+Get-ScheduledTaskInfo -TaskName 'DC Compliance Audit' |
+    Select-Object LastRunTime, LastTaskResult, NextRunTime
+```
+
+After completion, inspect the new transcript and report directory, not just a report left by an earlier run. A nonzero task result can mean detected drift (`1`) as well as execution failure (`2`). If the task reaches its two-hour limit, its last report may be incomplete or absent; the task status and transcript are part of monitoring this workflow.
+
+To stop future scheduled audits:
+
+```powershell
+Disable-ScheduledTask -TaskName 'DC Compliance Audit'
+```
+
+Disabling the task does not reverse configuration changes or delete reports. Retention is not automated; accumulated evidence and transcripts need a retention policy appropriate to your environment.
 
 ---
 
@@ -273,15 +656,17 @@ For GPO-owned settings, the action in the report should lead to the owning GPO a
 - **Report contents.** Inventory and compliance reports expose hostnames, topology, and configuration weaknesses. Their access controls and retention determine who can see that information and for how long.
 - **Scheduling.** A scheduled task may use a different account and environment from an interactive session. Module discovery, DSC paths, permissions, and failure reporting need to work in that context.
 
-Discovery and JSON export are implemented at this stage. Compliance evaluation and remediation are not yet available.
-
 ---
 
-## Next Checkpoint
+## Verification
 
-The JSON inventory identifies the DCs, their reported OS versions, and whether they are writable. One writable DC from this file will serve as the pilot for the first DSC check.
+The companion suite exercises file validation, target selection, generated DSC documents, error handling, reports, and bounded remediation with simulated AD/WinRM/DSC responses. Run it locally with:
 
-The next step will define the Print Spooler requirement in the compliance parameter file, add its DSC prerequisites on the target, and introduce the orchestrator that reads both files on MM-DSC1. Multiple DCs, the other control families, HTML reporting, and explicitly triggered remediation then build on that first test.
+```powershell
+& 'C:\DSC\DomainControllersDCS\Test-DCCompliance.ps1'
+```
+
+The integration tests have been run under Windows PowerShell 5.1. Resource contracts and version pins were checked against their published schemas and source. These tests do not execute DSC on the real DCs or prove their installed resources work in that environment; Step 4's pilot audit supplies that evidence. The generated HTML was also checked with fictitious results.
 
 ---
 
@@ -290,5 +675,13 @@ The next step will define the Print Spooler requirement in the compliance parame
 - [Get-ADDomainController](https://learn.microsoft.com/en-us/powershell/module/activedirectory/get-addomaincontroller?view=windowsserver2025-ps): enumeration, parameter sets, returned properties, and discovery behavior.
 - [DSC configuration test](https://learn.microsoft.com/en-us/powershell/dsc/reference/cli/config/test?view=dsc-3.0): the read-only configuration test operation.
 - [DSC configuration test result schema](https://learn.microsoft.com/en-us/powershell/dsc/reference/schemas/outputs/config/test?view=dsc-3.0): operation errors and per-resource test results.
+- [WindowsPowerShell adapter](https://learn.microsoft.com/en-us/powershell/dsc/reference/resources/microsoft/adapter/windowspowershell?view=dsc-3.0): elevation, machine-scope modules, and direct adapted-resource syntax.
+- [DSC 3.2.3 release](https://github.com/PowerShell/DSC/releases/tag/v3.2.3): the pinned runtime package.
+- [PSDscResources 2.12.0.0](https://www.powershellgallery.com/packages/PSDscResources/2.12.0.0): Service and Registry resources.
+- [ComputerManagementDsc 10.0.0](https://www.powershellgallery.com/packages/ComputerManagementDsc/10.0.0): SmbServerConfiguration and WindowsEventLog resources.
+- [AuditPolicyDsc 1.4.0.0](https://www.powershellgallery.com/packages/AuditPolicyDsc/1.4.0.0): AuditPolicyGUID and its name/GUID mapping.
+- [SMB signing](https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-signing-overview): server signing requirement semantics.
+- [LDAP signing defaults](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/ldap-signing): Windows Server version and deployment differences.
+- [LDAP signing Group Policy](https://learn.microsoft.com/en-us/windows-server/identity/manage-ldap-signing-group-policy): newer enforcement policy and precedence.
 - [LDAP signing guidance](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/enable-ldap-signing-in-windows-server): compatibility assessment before enforcing signing requirements.
 - [OSConfig overview](https://learn.microsoft.com/en-us/windows-server/security/osconfig/osconfig-overview): another configuration authority to account for on Windows Server 2025.
