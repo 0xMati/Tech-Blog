@@ -382,11 +382,17 @@ Preview the targets without downloading, copying, or installing anything:
 & 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1' -WhatIf
 ```
 
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-11-42-12.png>)
+
 Then run the preparation against the same inventory:
 
 ```powershell
 & 'C:\DSC\DomainControllersDCS\Initialize-DCCompliance.ps1'
 ```
+
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-11-43-43.png>)
+
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-11-50-48.png>)
 
 The script asks for confirmation for the selected DCs, then prepares them one at a time. **Expected:** a `Prepared` row per completed DC, with its name, DSC executable path, and module directory. With three writable DCs and no exclusions, this prepares MM-DC1, MM-DC2, and MM-DC3.
 
