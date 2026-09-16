@@ -177,7 +177,7 @@ $ErrorActionPreference = 'Stop'
 
 ![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-09-43-10.png>)
 
-**Expected:** an `Inventory saved to:` message with `C:\DSC\DomainControllersDCS\inventory.json`, followed by one row per discovered DC. The JSON is already on disk when the command finishes; there is no separate export block to run.
+**Expected:** an `Inventory saved to:` message with `C:\DSC\DomainControllersDCS\inventory.json`, followed by one row per discovered DC. The orchestrator reads this file directly when you start an audit; no manual reload is needed.
 
 The `&` invokes the script. `Format-Table` displays the returned objects without changing the JSON. The default output location is based on the script's directory, not the current console directory. The optional `-OutputPath` parameter selects another JSON destination.
 
@@ -192,31 +192,6 @@ Get-ADDomainController -Filter * -Server 'mathiasmotron.com' -ErrorAction Stop
 Each successful discovery replaces the destination JSON with the current inventory. The script writes a temporary file first, then publishes it after discovery and serialization succeed. If AD discovery fails, returns no DCs, or returns inconsistent identities, the previous inventory remains unchanged. Its `DiscoveredAtUtc` value still identifies the earlier run, not the failed one.
 
 This command does not test WinRM connectivity or filter machines by ping response. A discovered DC that cannot later be contacted must remain visible in the audit results.
-
-### 3. Read the generated inventory
-
-This works in the same console or a new PowerShell session, because it reads the saved file rather than a variable from the discovery command:
-
-```powershell
-$inventoryPath = 'C:\DSC\DomainControllersDCS\inventory.json'
-$inventoryDocument = Get-Content -LiteralPath $inventoryPath -Raw -Encoding UTF8 -ErrorAction Stop |
-    ConvertFrom-Json -ErrorAction Stop
-
-$inventoryDocument |
-    Format-List Domain, DiscoveredAtUtc, SourceComputer
-
-$domainControllers = @($inventoryDocument.DomainControllers)
-$domainControllers |
-    Format-Table HostName, Site, OperatingSystem, IsReadOnly -AutoSize -Wrap
-
-Write-Output "Discovered DCs: $($domainControllers.Count)"
-```
-
-**Expected:** the discovery domain and timestamp, the source computer, and the same DCs that the discovery command displayed. Each DC entry contains `HostName`, `Domain`, `Site`, `OperatingSystem`, and `IsReadOnly`. The `DomainControllers` property is always an array, even for a single DC.
-
-The OS information is directory metadata, not a live remote OS probe. The inventory contains no compliance verdict and no audit or enforcement settings.
-
-The orchestrator loads this file the same way, then loads the compliance parameter file. It uses each target's `HostName` for WinRM and the common control definitions to build the DSC tests. Discovery does not run again inside every check.
 
 ---
 
