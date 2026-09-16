@@ -65,13 +65,29 @@ The runner accepts writable Windows Server 2019, 2022, and 2025 DCs, checks thei
 
 A **baseline** is a versioned set of requirements that defines the expected configuration. For example, a baseline might require a particular service to be stopped, or a particular audit subcategory to be enabled.
 
-The workflow separates the machines from the rules:
+The eight supplied files each have a role, but **they are not eight scripts to run one after another**. Keep them together under `C:\DSC\DomainControllersDCS` on MM-DSC1. The main commands load their supporting files automatically.
 
-| Component | Produced or maintained by | Purpose |
+### Commands You Run
+
+Run these commands from **MM-DSC1**:
+
+| File | What it does | When to use it |
 | --- | --- | --- |
-| `inventory.json` | The discovery script | DC hostnames and directory metadata, with the discovery time |
-| `compliance.settings.json` | You | Control definitions, desired values, configuration owners, and `Audit` or `Enforce` mode |
-| `Invoke-DCCompliance.ps1` on MM-DSC1 | Runs against both files | Reads targets from the inventory, builds the DSC configuration documents from the parameters, invokes DSC remotely, and collects results |
+| [Get-DCInventory.ps1](./DomainControllersDCS/Get-DCInventory.ps1) | Queries AD and writes the DC hostnames, directory metadata, and discovery time to `inventory.json`. | Create or refresh the inventory. It does not audit or change the DCs. |
+| [Initialize-DCCompliance.ps1](./DomainControllersDCS/Initialize-DCCompliance.ps1) | Downloads and stages DSC and the resource modules on MM-DSC1, then installs them on selected DCs through WinRM. | Prepare the targets, not before every audit. It installs tools, not the security baseline. |
+| [Invoke-DCCompliance.ps1](./DomainControllersDCS/Invoke-DCCompliance.ps1) | Reads the inventory and compliance parameters, invokes DSC on the target DCs, and produces HTML, CSV, and JSON reports. | **The routine entry point.** Audit is the default; correction requires `-Operation Remediate` and explicit target and control selections. |
+
+### Supporting Files
+
+| File | What it does | How it is used |
+| --- | --- | --- |
+| [compliance.settings.json](./DomainControllersDCS/compliance.settings.json) | Defines the controls, expected values, configuration owners, modes, and runtime/module versions. | **The parameter file you edit**, not a script to execute. Discovery never overwrites it. |
+| [DCCompliance.psm1](./DomainControllersDCS/DCCompliance.psm1) | Provides shared functions for input validation, DSC document generation, result interpretation, and reporting. | Imported automatically by the main scripts. It is not a separate command to run. |
+| [Invoke-DCResource.ps1](./DomainControllersDCS/Invoke-DCResource.ps1) | Checks the live target context, executes DSC, and captures its output and errors. | Its content is sent through WinRM by the orchestrator and **executed on the target DC**. No manual invocation or separate script copy is needed. |
+| [Invoke-ScheduledDCAudit.ps1](./DomainControllersDCS/Invoke-ScheduledDCAudit.ps1) | Refreshes inventory, runs an audit, and records an execution transcript. Stops if discovery fails. | Optional entry point for Task Scheduler on MM-DSC1. It does not create the task or perform remediation. |
+| [Test-DCCompliance.ps1](./DomainControllersDCS/Test-DCCompliance.ps1) | Tests the scripts using simulated AD, WinRM, and DSC responses. | Optional offline code validation, not an audit of the real DCs. It is not required to run a normal audit. |
+
+The generated `inventory.json` is an additional output file, not a supplied configuration file. It describes **which machines exist**; the compliance parameters describe **what to check**. Neither the test suite nor the scheduled entry point is needed for a manual audit. Target preparation can also be performed locally using the alternative in Step 3.
 
 Changing a desired value does not require rediscovering the DCs. Rediscovering the DCs does not overwrite the compliance parameters.
 
@@ -224,20 +240,7 @@ The orchestrator loads this file the same way, then loads the compliance paramet
 
 ## Step 2: Define the Compliance Parameters
 
-**Machine: MM-DSC1.** Keep the accompanying files together under `C:\DSC\DomainControllersDCS`:
-
-| File | Role |
-| --- | --- |
-| [Get-DCInventory.ps1](./DomainControllersDCS/Get-DCInventory.ps1) | Generates the inventory |
-| [compliance.settings.json](./DomainControllersDCS/compliance.settings.json) | Values and modes that you maintain |
-| [Initialize-DCCompliance.ps1](./DomainControllersDCS/Initialize-DCCompliance.ps1) | Prepares DSC and the resource modules on selected DCs |
-| [Invoke-DCCompliance.ps1](./DomainControllersDCS/Invoke-DCCompliance.ps1) | The command you run for audit or remediation |
-| [DCCompliance.psm1](./DomainControllersDCS/DCCompliance.psm1) | Shared validation, DSC document generation, and reporting |
-| [Invoke-DCResource.ps1](./DomainControllersDCS/Invoke-DCResource.ps1) | Sent through WinRM by the orchestrator; normally not invoked directly |
-| [Invoke-ScheduledDCAudit.ps1](./DomainControllersDCS/Invoke-ScheduledDCAudit.ps1) | Refreshes inventory and runs an audit for Task Scheduler |
-| [Test-DCCompliance.ps1](./DomainControllersDCS/Test-DCCompliance.ps1) | Offline tests with simulated DCs and DSC responses |
-
-`inventory.json` is generated, not maintained manually. `compliance.settings.json` is maintained manually and is never overwritten by discovery.
+**Machine: MM-DSC1.** With the files listed in [Who Does What](#who-does-what) together under `C:\DSC\DomainControllersDCS`, open the compliance parameter file to define the expected values and modes. The inventory remains a generated list of DCs; this step changes the rules, not the machine list.
 
 ### 1. Understand a control
 
