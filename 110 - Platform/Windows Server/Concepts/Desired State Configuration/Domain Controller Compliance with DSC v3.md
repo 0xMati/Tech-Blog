@@ -374,6 +374,8 @@ if (-not $nugetProvider) {
 }
 ```
 
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-11-30-18.png>)
+
 Preview the targets without downloading, copying, or installing anything:
 
 ```powershell
