@@ -441,6 +441,11 @@ $run | Format-List
 Write-Output "Audit exit code: $auditExitCode"
 ```
 
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-12-23-34.png>)
+
+
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-12-24-03.png>)
+
 **Expected:** one evaluated control and the paths of its reports. If Spooler is already stopped and disabled, the result is `Compliant`. If it is running or enabled, the result is `NonCompliant`. Neither outcome changes the service.
 
 The runner checks the live DC identity, build, elevation, DSC version, and discovery of the resource version needed for the selected control. It then sends a one-resource JSON configuration through WinRM, invokes `dsc config test`, and returns the output. A short-lived configuration file on the DC is removed afterward; there is no SMB share or second-hop file read.
