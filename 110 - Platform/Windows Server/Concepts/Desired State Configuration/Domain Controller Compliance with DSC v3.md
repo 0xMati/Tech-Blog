@@ -115,12 +115,12 @@ DSC v3 does not discover the domain, provide a central dashboard, or schedule it
 
 These five **families** cover settings expected to be configured identically across the DCs in scope. Each family can contain several resource instances. SMBv1 and SMB signing, for example, should have separate results so that one failure cannot hide the other.
 
-| ID | Control family | What we intend to check | Initial correction policy |
+| ID prefix | Control family | What we intend to check | Initial correction policy |
 | --- | --- | --- | --- |
 | DSC-01 | Print Spooler | Service stopped and startup type disabled | Audit; optional DSC Set for DSC-owned settings. |
 | DSC-02 | SMB | SMB server protocol version 1 disabled; server signing required | Audit only; correct the owning GPO or configuration tool |
 | DSC-03 | Security auditing | Required advanced audit subcategories are effectively enabled | Audit only; correct the audit policy in its owning GPO |
-| DSC-04 | Event logs | Required maximum sizes and retention behavior | Audit; optional DSC Set for DSC-owned settings. |
+| DSC-04 | Event logs | Security, System, and Directory Service: 1 GiB each, Circular | Audit; optional DSC Set for DSC-owned settings. |
 | DSC-05 | LDAP security | Explicit registry policy values for LDAP signing and channel binding | Audit only; compatibility assessment before a policy change |
 
 Step 2 defines the exact values used by these checks. The LDAP rows deliberately test **explicit policy configuration**, not effective protocol enforcement inferred from OS defaults.
