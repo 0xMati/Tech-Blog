@@ -138,7 +138,7 @@ This is configuration compliance, not a complete AD health assessment. Replicati
 
 **A setting should have one declared configuration owner.** Checking a value is different from taking responsibility for writing it.
 
-| Declared owner | What DSC may do | Where a correction belongs |
+| Declared owner | What our scripts allow | Where a correction belongs |
 | --- | --- | --- |
 | Group Policy | Test the effective setting | The owning GPO |
 | DSC | Test; Set through the separate remediation workflow | A dedicated remediation configuration |
@@ -241,7 +241,9 @@ The supplied values are:
 
 The log sizes are example operational choices, not universal requirements. `Circular` overwrites the oldest events when the log fills; it does not guarantee a retention duration. `Retain` and `AutoBackup` have different behavior. The resource checks exact configuration values, not an abstract security score.
 
-The SMB checks do not inspect the SMB client configuration or prove that the SMB1 optional feature is uninstalled. They read the server configuration through the SMB resource. `EnableSecuritySignature` is deliberately not used as the SMB2/3 requirement; `RequireSecuritySignature` is the relevant setting.
+The SMB checks do not inspect the SMB client configuration or prove that the SMB1 optional feature is uninstalled. They read the server configuration through the SMB resource.
+
+For SMB2 and SMB3, Windows ignores `EnableSecuritySignature`. We check `RequireSecuritySignature = true` to confirm that the DC requires signing for incoming SMB connections.
 
 The audit resource is `AuditPolicyDsc/AuditPolicyGUID`: its `Name` uses the module's fixed names, which it maps to subcategory GUIDs, and it compares numeric audit flags. Directory Service Changes also needs suitable object SACLs to generate the intended events; this check does not inspect those SACLs. Module parsing or locale failures appear as `Error`, not as proof that auditing is disabled.
 
@@ -259,7 +261,16 @@ $settings.Controls |
     Format-Table Id, Owner, Mode, ResourceType -AutoSize -Wrap
 ```
 
-**Expected:** eleven controls, all with `Mode = Audit`. Spooler and event logs initially declare `Owner = DSC`; the other controls declare `Owner = GPO`. These are your declarations, not ownership detected by the script. Use `GPO`, `External`, or `Unknown` where appropriate in your environment. This version only permits enforcement of Spooler and event-log resources.
+**Expected:** eleven controls, all with `Mode = Audit`. Spooler and event logs initially declare `Owner = DSC`; the other controls declare `Owner = GPO`.
+
+**`Owner` and `Mode` are rules we added to our PowerShell scripts, not native DSC settings.** You choose their values:
+
+- `Owner`: which tool should configure and maintain the setting: `GPO`, `DSC`, `External` (another tool), or `Unknown`. The script does not detect this automatically.
+- `Mode`: `Audit` means check only; `Enforce` allows correction when you explicitly run remediation.
+
+`Owner` is not just a report label: our scripts reject `Enforce` unless `Owner = DSC`. Correction also requires `-Operation Remediate` with selected DCs and controls. An audit run never changes settings, even for controls in `Enforce` mode.
+
+DSC receives the resource configuration and executes Test or Set as requested by our script. It never receives `Owner` or `Mode`. This example permits correction only for Spooler and event logs.
 
 | Global parameter | Supplied value / meaning |
 | --- | --- |
