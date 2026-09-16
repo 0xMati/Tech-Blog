@@ -401,35 +401,89 @@ function Write-DCComplianceReport {
     $matrixColumns = '<col class="target-track">' + ('<col>' * [Math]::Max(1, $controlIndex.Count))
     $template = @'
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Domain Controller Compliance</title>
 <style>
-:root { color-scheme: light; --ink: #24312e; --muted: #5d6965; --line: #d9e2dd; --accent: #1b6251; --paper: #fff; --wash: #f5f8f6; --pass: #186541; --fail: #a52d42; --error: #855209; }
+:root {
+    color-scheme: dark;
+    --ink: #ededf0; --muted: #b4b4bd; --line: #3c3c43; --accent: #80b6ff;
+    --canvas: #000; --paper: #030303; --top: #070707;
+    --wash: #0f0f11; --surface: #08080a; --hover: #17171b;
+    --header-start: #111114; --header-end: #080809; --header-line: #3a3a42;
+    --accent-bg: #1e2b40; --accent-line: #4c6585;
+    --control-line: #74747e; --scroll-thumb: #696974;
+    --switch-track: #53535f; --switch-active: #185dbb; --switch-knob: #fff;
+    --pass: #8eddb0; --pass-bg: #18251f; --pass-line: #456654;
+    --fail: #ffadbd; --fail-bg: #2d1d26; --fail-line: #78505f;
+    --error: #f3cc70; --error-bg: #26252b; --error-line: #7e724e;
+    --pending: #acccfa; --pending-bg: #1e2531; --pending-line: #506583;
+    --neutral-bg: #0e0e11; --neutral-line: #3a3a42;
+}
+:root[data-theme="light"] {
+    color-scheme: light;
+    --ink: #20242d; --muted: #59616e; --line: #cdd1d8; --accent: #185dbb;
+    --canvas: #eef0f4; --paper: #fff; --top: #f7f8fb;
+    --wash: #f1f3f6; --surface: #f8f9fb; --hover: #e9eef7;
+    --header-start: #edf1f8; --header-end: #f7f9fc; --header-line: #b5bdcb;
+    --accent-bg: #e7effd; --accent-line: #a7bee1;
+    --control-line: #8993a3; --scroll-thumb: #929baa;
+    --pass: #14633f; --pass-bg: #eaf5ee; --pass-line: #97c4a5;
+    --fail: #a32344; --fail-bg: #fdecf0; --fail-line: #d49baa;
+    --error: #795009; --error-bg: #faf4e5; --error-line: #c8b47e;
+    --pending: #2b5387; --pending-bg: #ecf2fb; --pending-line: #a8bdd8;
+    --neutral-bg: #eef0f4; --neutral-line: #bbc1cd;
+}
 * { box-sizing: border-box; letter-spacing: 0; }
-body { margin: 0; color: var(--ink); background: #edf2ef; font: 14px/1.45 "Trebuchet MS", "Liberation Sans", sans-serif; }
-main { max-width: 1720px; margin: 0 auto; padding: 28px 32px; background: var(--paper); min-height: 100vh; border-top: 5px solid var(--accent); }
+body { margin: 0; color: var(--ink); background: var(--canvas); font: 14px/1.45 "Trebuchet MS", "Liberation Sans", sans-serif; }
+main { max-width: 1720px; margin: 0 auto; padding: 28px 32px; background: linear-gradient(180deg, var(--top), var(--paper) 380px); min-height: 100vh; }
 h1, h2 { font-family: "Bahnschrift", "Trebuchet MS", sans-serif; font-weight: 600; }
-h1 { font-size: 27px; line-height: 1.2; margin: 0 0 10px; overflow-wrap: anywhere; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 10px; overflow-wrap: anywhere; }
 h2 { font-size: 19px; margin: 0; }
 p { margin: 8px 0; overflow-wrap: anywhere; }
 a { color: var(--accent); text-underline-offset: 3px; }
 a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, .scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.report-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
-.run-meta { color: var(--muted); display: flex; flex-wrap: wrap; gap: 5px 18px; font-size: 13px; }
-.header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.report-header { padding: 18px 26px 20px; border: 1px solid var(--header-line); border-top: 3px solid var(--accent); border-radius: 8px; background: linear-gradient(115deg, var(--header-start), var(--header-end) 70%); box-shadow: inset 0 1px 0 #ffffff08; }
+.header-topline { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px 20px; }
+.report-label { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: 11px; }
+.product-mark { font: 700 12px Consolas, monospace; color: var(--accent); padding-right: 10px; border-right: 1px solid var(--line); }
+.header-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.theme-control { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.theme-control input { appearance: none; position: relative; flex: 0 0 40px; width: 40px; height: 24px; margin: 0; border: 1px solid var(--control-line); border-radius: 999px; background: var(--switch-track); cursor: pointer; }
+.theme-control input::before { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--switch-knob); }
+.theme-control input:checked { background: var(--switch-active); border-color: var(--switch-active); }
+.theme-control input:checked::before { transform: translateX(16px); }
 .export { font-size: 12px; font-weight: 700; }
-.run-id { margin-top: 8px; color: var(--muted); font: 11px Consolas, monospace; overflow-wrap: anywhere; }
-.summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; border-block: 1px solid var(--line); padding: 18px 0; margin-top: 24px; background: linear-gradient(90deg, #f7faf8, #fff); }
-.summary div { padding-left: 16px; border-left: 2px solid var(--line); min-width: 0; }
-.summary strong { font: 600 26px/1.2 "Bahnschrift", "Trebuchet MS", sans-serif; display: block; }
+.header-overview { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px 28px; margin: 14px 0 18px; }
+.report-identity { min-width: 0; }
+.title-accent { color: var(--accent); }
+.domain-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.domain-line strong { font-size: 14px; overflow-wrap: anywhere; min-width: 0; }
+.operation { padding: 2px 9px; border: 1px solid var(--accent-line); border-radius: 999px; color: var(--accent); background: var(--accent-bg); font-size: 11px; }
+.report-verdict { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+.verdict-label { color: var(--muted); font-size: 11px; }
+.report-verdict .status { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 14px; }
+.report-verdict .status::before { content: ''; flex: 0 0 6px; width: 6px; height: 6px; background: currentColor; border-radius: 50%; }
+.run-meta { display: grid; grid-template-columns: minmax(80px, .6fr) minmax(190px, 1.2fr) minmax(220px, 1.7fr); gap: 12px 24px; margin: 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.run-meta > div { min-width: 0; }
+.run-meta dt { color: var(--muted); font-size: 10px; }
+.run-meta dd { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.run-meta .run-id { font: 11px/1.5 Consolas, monospace; }
+.summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; border-bottom: 1px solid var(--line); padding: 24px 0; margin-top: 4px; }
+.summary div { padding-left: 16px; border-left: 3px solid var(--line); min-width: 0; }
+.summary div:nth-child(1) { border-left-color: var(--accent); }
+.summary div:nth-child(2) { border-left-color: var(--pass-line); }
+.summary div:nth-child(3) { border-left-color: var(--fail-line); }
+.summary div:nth-child(4) { border-left-color: var(--error-line); }
+.summary div:nth-child(5) { border-left-color: var(--pending-line); }
+.summary strong { font: 600 28px/1.2 "Bahnschrift", "Trebuchet MS", sans-serif; display: block; }
 .summary span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
-.pass { color: var(--pass); } .fail { color: var(--fail); } .error { color: var(--error); } .neutral, .pending, .muted { color: var(--muted); }
+.pass { color: var(--pass); } .fail { color: var(--fail); } .error { color: var(--error); } .pending { color: var(--pending); } .neutral, .muted { color: var(--muted); }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 28px 0 12px; }
-.section-heading > span { color: var(--muted); font-size: 12px; }
-.scroll { width: 100%; overflow: auto; border: 1px solid var(--line); border-radius: 4px; }
+.section-heading > span { color: var(--muted); font-size: 11px; padding: 4px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; }
+.scroll { width: 100%; overflow: auto; border: 1px solid var(--line); border-radius: 8px; scrollbar-color: var(--scroll-thumb) var(--paper); }
 table { border-collapse: separate; border-spacing: 0; width: 100%; text-align: left; }
 th, td { border-bottom: 1px solid var(--line); padding: 11px 12px; vertical-align: top; overflow-wrap: anywhere; }
 thead th { background: var(--wash); font-size: 12px; color: var(--muted); font-weight: 600; }
@@ -438,28 +492,32 @@ tbody tr:last-child > th, tbody tr:last-child > td { border-bottom: 0; }
 .target-track { width: 248px; }
 .matrix thead th { vertical-align: bottom; text-align: center; border-right: 1px solid var(--line); padding: 12px 7px; }
 .matrix thead th:first-child { text-align: left; padding-left: 14px; }
-.matrix .dc-column { position: sticky; left: 0; z-index: 1; background: #fff; border-right: 1px solid var(--line); font-weight: 400; padding: 12px 14px; }
+.matrix .dc-column { position: sticky; left: 0; z-index: 1; background: var(--surface); border-right: 1px solid var(--line); font-weight: 400; padding: 12px 14px; }
 .matrix thead .dc-column { background: var(--wash); z-index: 2; }
 .dc-name { display: block; font-size: 13px; font-weight: 700; }
-.scope-label { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: var(--muted); }
+.scope-label { display: inline-block; margin-top: 7px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 10px; font-weight: 400; color: var(--muted); }
 .scope-reason { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
 .control-prefix { display: block; font: 11px Consolas, monospace; }
 .control-name { display: block; color: var(--ink); font-size: 12px; margin: 4px 0; overflow-wrap: anywhere; }
-.control-owner { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
+.control-owner { display: inline-block; min-width: 36px; margin-top: 3px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); font-size: 10px; color: var(--muted); font-weight: 400; }
 .matrix-status { padding: 0; text-align: center; vertical-align: middle; border-right: 1px solid var(--line); }
 .matrix-status a, .matrix-status > span { display: flex; min-height: 72px; height: 100%; align-items: center; justify-content: center; padding: 10px 5px; font-size: 12px; font-weight: 700; color: inherit; }
 .matrix-status a { text-decoration: none; }
 .matrix-status a:hover { box-shadow: inset 0 0 0 2px currentColor; text-decoration: underline; }
-.matrix-status.pass { background: #edf7f1; } .matrix-status.fail { background: #fff0f1; } .matrix-status.error { background: #fff5e6; }
-.matrix-status.neutral { background: #f3f5f4; font-weight: 400; } .matrix-status.pending { background: #f4f1e7; }
-.legend { display: flex; flex-wrap: wrap; gap: 7px 18px; margin: 10px 0; font-size: 11px; color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.swatch { width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
-.status { display: inline-block; padding: 3px 7px; border-radius: 3px; font-size: 11px; font-weight: 700; line-height: 1.4; }
-.status.pass { background: #edf7f1; } .status.fail { background: #fff0f1; } .status.error { background: #fff5e6; } .status.neutral, .status.pending { background: #f0f3f1; }
+.matrix-status.pass { background: var(--pass-bg); } .matrix-status.fail { background: var(--fail-bg); } .matrix-status.error { background: var(--error-bg); }
+.matrix-status.neutral { background: var(--neutral-bg); font-weight: 400; } .matrix-status.pending { background: var(--pending-bg); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; font-size: 11px; }
+.legend-item { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; }
+.swatch { flex: 0 0 7px; width: 7px; height: 7px; background: currentColor; border-radius: 50%; }
+.status { display: inline-block; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1.4; }
+.status.pass, .legend-item.pass { background: var(--pass-bg); border-color: var(--pass-line); }
+.status.fail, .legend-item.fail { background: var(--fail-bg); border-color: var(--fail-line); }
+.status.error, .legend-item.error { background: var(--error-bg); border-color: var(--error-line); }
+.status.neutral, .legend-item.neutral { background: var(--neutral-bg); border-color: var(--neutral-line); }
+.status.pending, .legend-item.pending { background: var(--pending-bg); border-color: var(--pending-line); }
 .filters { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding: 12px 0; }
 .filters label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
-.filters input, .filters select { font: 13px "Trebuchet MS", sans-serif; color: var(--ink); background: #fff; min-height: 34px; border: 1px solid #b9c7bf; border-radius: 3px; padding: 6px 9px; max-width: 100%; }
+.filters input, .filters select { font: 13px "Trebuchet MS", sans-serif; color: var(--ink); background: var(--surface); min-height: 36px; border: 1px solid var(--control-line); border-radius: 6px; padding: 6px 9px; max-width: 100%; }
 .filters .search-field { flex: 1 1 220px; }
 .filters label:not(.search-field) { flex: 0 1 240px; min-width: 160px; }
 .results { min-width: 1150px; table-layout: fixed; }
@@ -467,9 +525,10 @@ tbody tr:last-child > th, tbody tr:last-child > td { border-bottom: 0; }
 .results > colgroup > col:nth-child(3), .results > colgroup > col:nth-child(4) { width: 7%; }
 .results > colgroup > col:nth-child(5) { width: 11%; } .results > colgroup > col:nth-child(6) { width: 10%; }
 .results > colgroup > col:nth-child(7) { width: 25%; }
-.results > tbody > tr:nth-child(even) { background: #fafcfb; }
-.results > tbody > tr:hover { background: #f3f7f4; }
-.results > tbody > tr:target { background: #f0f5e9; }
+.results > tbody > tr:nth-child(even) { background: var(--surface); }
+.results > tbody > tr:hover { background: var(--hover); }
+.results > tbody > tr:target { background: var(--hover); }
+.results > tbody > tr:target > td:first-child { box-shadow: inset 3px 0 var(--accent); }
 .results > tbody > tr { scroll-margin-top: 16px; }
 .results > tbody > tr > th { font-weight: 400; }
 .result-host { font-size: 12px; } .owner { font-weight: 700; font-size: 12px; } .action { font-size: 12px; }
@@ -480,20 +539,23 @@ summary { cursor: pointer; color: var(--accent); font-size: 12px; padding: 2px 0
 .comparison { table-layout: fixed; font-size: 11px; }
 .comparison th, .comparison td { padding: 6px; vertical-align: top; border-bottom: 1px solid var(--line); }
 .comparison th { font-weight: 400; }
-.comparison thead th { font-size: 10px; background: #eef3ef; }
-.comparison .different { background: #fff0f1; }
+.comparison thead th { font-size: 10px; background: var(--wash); }
+.comparison .different { background: var(--fail-bg); }
 .comparison .different > th { color: var(--fail); font-weight: 700; }
-.diagnostic { font-size: 12px; border-left: 2px solid #c59445; padding-left: 8px; white-space: pre-wrap; }
+.diagnostic { font-size: 12px; border-left: 2px solid var(--error); padding-left: 8px; white-space: pre-wrap; }
 .evaluation-time { font: 10px Consolas, monospace; color: var(--muted); }
 .empty-state { padding: 22px; color: var(--muted); text-align: center; }
 [hidden] { display: none !important; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 footer { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
 @media (max-width: 700px) {
-    main { padding: 20px 14px; }
+    main { padding: 16px 14px; }
     h1 { font-size: 23px; }
-    .report-header { display: block; }
-    .header-actions { justify-content: flex-start; margin-top: 14px; }
+    .report-header { padding: 14px 16px 18px; }
+    .header-overview { grid-template-columns: minmax(0, 1fr); }
+    .report-verdict { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .run-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .run-meta > div:last-child { grid-column: 1 / -1; }
     .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
     .filters label:not(.search-field) { flex: 1 1 150px; min-width: 0; }
     .target-track { width: 184px; }
@@ -501,8 +563,21 @@ footer { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line);
 }
 @media print {
     @page { size: landscape; margin: 12mm; }
+    :root, :root[data-theme] {
+        color-scheme: light;
+        --ink: #20242d; --muted: #59616e; --line: #cdd1d8; --accent: #185dbb;
+        --paper: #fff; --wash: #f1f3f6; --surface: #f8f9fb; --hover: #e9eef7;
+        --accent-bg: #e7effd; --accent-line: #a7bee1;
+        --pass: #186541; --pass-bg: #edf7f1; --pass-line: #a5c6b2;
+        --fail: #a52d42; --fail-bg: #fff0f1; --fail-line: #d5a7af;
+        --error: #855209; --error-bg: #fff5e6; --error-line: #d1bd94;
+        --pending: #385d85; --pending-bg: #edf3fa; --pending-line: #a5bbd2;
+        --neutral-bg: #f0f3f1; --neutral-line: #c2cec5;
+    }
+    body, main { background: var(--paper); }
     main { max-width: none; padding: 0; }
-    .filters, .export { display: none; }
+    .report-header { background: var(--paper); box-shadow: none; border-color: var(--line); border-top-color: var(--accent); }
+    .filters, .header-actions { display: none; }
     .scroll { overflow: visible; border-radius: 0; }
     .matrix, .results { min-width: 0 !important; font-size: 10px; }
     .matrix .dc-column { position: static; }
@@ -514,10 +589,13 @@ footer { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line);
 </style>
 </head>
 <body><main>
-<header class="report-header"><div><h1>Domain Controller Compliance</h1>
-<div class="run-meta"><span>{{DOMAIN}}</span><span>{{OPERATION}}</span><span>Baseline {{BASELINE}}</span><span>{{TIME}}</span></div>
-<p class="run-id">Run {{RUN}}</p></div>
-<div class="header-actions"><span class="status {{OVERALLCLASS}}">{{OVERALL}}</span><a class="export" href="report.json" download>JSON</a><a class="export" href="report.csv" download>CSV</a></div></header>
+<header class="report-header">
+<div class="header-topline"><div class="report-label"><span class="product-mark">DSC v3</span><span>Configuration assessment</span></div>
+<div class="header-actions"><label class="theme-control" id="theme-control" hidden><input id="theme-toggle" type="checkbox" role="switch"><span>Light mode</span></label><a class="export" href="report.json" download title="Download JSON report">JSON</a><a class="export" href="report.csv" download title="Download CSV report">CSV</a></div></div>
+<div class="header-overview"><div class="report-identity"><h1>Domain Controller <span class="title-accent">Compliance</span></h1><div class="domain-line"><strong>{{DOMAIN}}</strong><span class="operation">{{OPERATION}}</span></div></div>
+<div class="report-verdict"><span class="verdict-label">Selected scope</span><span class="status {{OVERALLCLASS}}">{{OVERALL}}</span></div></div>
+<dl class="run-meta"><div><dt>Baseline</dt><dd>{{BASELINE}}</dd></div><div><dt>Completed</dt><dd>{{TIME}}</dd></div><div><dt>Run ID</dt><dd class="run-id">{{RUN}}</dd></div></dl>
+</header>
 <section class="summary" aria-label="Run summary">
 <div><strong>{{INCLUDED}} / {{TARGETCOUNT}}</strong><span>DCs selected</span></div>
 <div><strong class="pass">{{PASS}}</strong><span>Compliant</span></div>
@@ -527,7 +605,7 @@ footer { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line);
 </section>
 <section aria-labelledby="matrix-title"><div class="section-heading"><h2 id="matrix-title">DC / Control Matrix</h2><span>{{CONTROLCOUNT}} controls | {{TARGETCOUNT}} DCs</span></div>
 <div class="scroll" tabindex="0" role="region" aria-label="DC and control results"><table id="dc-matrix" class="matrix" style="min-width: {{MATRIXWIDTH}}px"><caption class="visually-hidden">Results by domain controller and selected control</caption><colgroup>{{MATRIXCOLUMNS}}</colgroup><thead><tr><th scope="col" class="dc-column">Domain controller</th>{{MATRIXHEADERS}}</tr></thead><tbody>{{MATRIXROWS}}</tbody></table></div>
-<div class="legend" aria-label="Result legend"><span><i class="swatch pass"></i>Pass: compliant</span><span><i class="swatch fail"></i>Drift: noncompliant</span><span><i class="swatch error"></i>Error / Offline</span><span><i class="swatch neutral"></i>Excluded / Not selected</span><span>Pending: not evaluated</span></div></section>
+<div class="legend" aria-label="Result legend"><span class="legend-item pass"><i class="swatch" aria-hidden="true"></i>Pass: compliant</span><span class="legend-item fail"><i class="swatch" aria-hidden="true"></i>Drift: noncompliant</span><span class="legend-item error"><i class="swatch" aria-hidden="true"></i>Error / Offline</span><span class="legend-item neutral"><i class="swatch" aria-hidden="true"></i>Excluded / Not selected</span><span class="legend-item pending"><i class="swatch" aria-hidden="true"></i>Pending: not evaluated</span></div></section>
 <section aria-labelledby="results-title"><div class="section-heading"><h2 id="results-title">Control Details</h2><span id="visible-count" aria-live="polite">{{RESULTCOUNT}} results</span></div>
 <div class="filters" id="result-filters" hidden>
 <label>Domain controller<select id="dc-filter"><option value="">All DCs</option>{{TARGETOPTIONS}}</select></label>
@@ -539,6 +617,12 @@ footer { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line);
 </main>
 <script>
 (() => {
+    const themeToggle = document.getElementById('theme-toggle');
+    themeToggle.checked = false;
+    themeToggle.addEventListener('change', () => {
+        document.documentElement.dataset.theme = themeToggle.checked ? 'light' : 'dark';
+    });
+    document.getElementById('theme-control').hidden = false;
     const rows = Array.from(document.querySelectorAll('#control-results tr[data-result]'));
     const host = document.getElementById('dc-filter');
     const status = document.getElementById('status-filter');

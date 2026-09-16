@@ -516,6 +516,8 @@ The HTML report opens with a **DC / Control Matrix**: one row per DC, one column
 
 Click a result to open its **Control Details** row. **Owner** and **Mode** have separate columns; expected and observed values are compared property by property, with differences highlighted. Errors and deviations appear first. Filters narrow the details by DC, result, or keyword.
 
+The report opens in dark mode. Use the **Light mode** switch in the header to change the palette; printing always uses a light background.
+
 The report is self-contained: no web server, external script, or CDN is needed. CSV retains one row per DC/control for analysis; JSON retains the structured data.
 
 Example report generated with fictitious targets and results:

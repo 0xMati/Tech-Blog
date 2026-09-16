@@ -201,6 +201,12 @@ try {
     Assert-Test (@($report.Targets | Where-Object Scope -eq 'Excluded').Count -eq 1) 'RODC remains visible as excluded'
     Assert-Test (@(Get-ChildItem -LiteralPath (Join-Path $run.Summary.RunDirectory 'Evidence') -File).Count -eq 22) 'Each checked control has raw evidence'
     $html = Get-Content -LiteralPath $run.Summary.HtmlPath -Raw -Encoding UTF8
+    Assert-Test ($html.Contains('<html lang="en" data-theme="dark">') -and
+        $html.Contains('<input id="theme-toggle" type="checkbox" role="switch">') -and
+        $html.Contains(':root[data-theme="light"]')) 'HTML defaults to dark and includes a native switch with an embedded light palette'
+    Assert-Test ($html.Contains('<div class="report-identity">') -and $html.Contains('<div class="report-verdict">') -and
+        $html.Contains('<dl class="run-meta">') -and $html.Contains('<dt>Completed</dt>') -and
+        $html.Contains($report.Domain) -and $html.Contains($report.RunId)) 'HTML header separates report identity, selected-scope verdict, and execution metadata'
     $matrix = [regex]::Match($html, '(?s)<table id="dc-matrix".*?</table>').Value
     Assert-Test ([regex]::Matches($matrix, '<tr data-host=').Count -eq 3 -and
         [regex]::Matches($matrix, '<th scope="col"').Count -eq 12) 'HTML matrix has one row per inventory DC and one column per selected control'
