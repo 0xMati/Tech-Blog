@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC1.mathiasmotron.com",
+    "ControlId":  "DSC-02-SMB1",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-02-SMB1\",\r\n                          \"type\":  \"Blog.DC/SmbServer\",\r\n                          \"properties\":  {\r\n                                             \"Name\":  \"Server\",\r\n                                             \"EnableSMB1Protocol\":  false\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT0.771178S\",\"endDatetime\":\"2026-09-25T15:03:08.226327200+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T15:03:07.455149200+02:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.7711731S\",\"endDatetime\":\"2026-09-25T15:03:08.226322300+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T15:03:07.455149200+02:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT0.7618206S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.7618206S\"}},\"name\":\"DSC-02-SMB1\",\"type\":\"Blog.DC/SmbServer\",\"result\":{\"desiredState\":{\"Name\":\"Server\",\"EnableSMB1Protocol\":false},\"actualState\":{\"Name\":\"Server\",\"EnableSMB1Protocol\":false,\"RequireSecuritySignature\":true},\"inDesiredState\":true,\"differingProperties\":[]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T13:03:08.2283181Z",
+                   "PSComputerName":  "MM-DC1.mathiasmotron.com",
+                   "RunspaceId":  "fdcc4ade-9515-489c-a87d-75c8b8f08ebe",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

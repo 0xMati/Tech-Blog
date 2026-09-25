@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC1.mathiasmotron.com",
+    "ControlId":  "DSC-05-Signing",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-05-Signing\",\r\n                          \"type\":  \"Blog.DC/LdapPolicy\",\r\n                          \"properties\":  {\r\n                                             \"ValueName\":  \"LDAPServerIntegrity\",\r\n                                             \"Exists\":  true,\r\n                                             \"ValueType\":  \"DWord\",\r\n                                             \"ValueData\":  2\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT0.5141876S\",\"endDatetime\":\"2026-09-25T15:01:58.593427200+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T15:01:58.079239600+02:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.5141824S\",\"endDatetime\":\"2026-09-25T15:01:58.593422+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T15:01:58.079239600+02:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT0.4969948S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.4969948S\"}},\"name\":\"DSC-05-Signing\",\"type\":\"Blog.DC/LdapPolicy\",\"result\":{\"desiredState\":{\"ValueName\":\"LDAPServerIntegrity\",\"Exists\":true,\"ValueType\":\"DWord\",\"ValueData\":2},\"actualState\":{\"ValueName\":\"LDAPServerIntegrity\",\"Exists\":true,\"ValueType\":\"DWord\",\"ValueData\":2},\"inDesiredState\":true,\"differingProperties\":[]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T13:01:58.5960506Z",
+                   "PSComputerName":  "MM-DC1.mathiasmotron.com",
+                   "RunspaceId":  "c92c592e-3fa6-4981-affc-396f07a305db",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

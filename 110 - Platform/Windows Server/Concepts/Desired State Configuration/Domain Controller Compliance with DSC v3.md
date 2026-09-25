@@ -443,6 +443,8 @@ $run | Format-List
 Write-Output "Audit exit code: $auditExitCode"
 ```
 
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-25-15-02-54.png>)
+
 **Expected:** one evaluated control and the paths of its reports. If Spooler is already stopped and disabled, the result is `Compliant`. If it is running or enabled, the result is `NonCompliant`. Neither outcome changes the service.
 
 Preflight checks the live DC identity and build, elevation, x64 Windows PowerShell 5.1, the exact DSC runtime version, and installed custom-file SHA256 hashes against the local Resources package. Writable-target selection comes from the inventory. It performs one native `dsc resource list 'Blog.DC/*'` discovery and validates the required resource versions, `kind = resource`, and absence of `requireAdapter`.
@@ -460,6 +462,8 @@ $auditExitCode = $LASTEXITCODE
 
 $run | Format-List
 ```
+
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-25-15-03-33.png>)
 
 **Expected:** eleven results for MM-DC1. A failed resource produces an error for that control while the remaining tests continue. A failed preflight gives every selected control an error or unreachable result; it cannot produce a green report by skipping the DC.
 
@@ -511,6 +515,10 @@ Open the report from the previous command on **MM-DSC1**:
 Invoke-Item -LiteralPath $run.HtmlPath
 ```
 
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-25-15-05-33.png>)
+
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-25-15-05-49.png>)
+
 The HTML report opens with a **DC / Control Matrix**: one row per DC, one column per selected control, and a result in each cell. The DC column stays visible when scrolling horizontally on smaller screens.
 
 Click a result to open its **Control Details** row. **Owner** and **Mode** have separate columns; expected and observed values are compared property by property, with differences highlighted. Errors and deviations appear first. Filters narrow the details by DC, result, or keyword.
@@ -560,13 +568,15 @@ The inventory is loaded once per run and rejected if it is empty, inconsistent, 
 
 ## Step 7: Correct Selected Settings
 
-The correction path has two independent selections: **a control must be DSC-owned and in Enforce mode**, and **the command must explicitly name the DC and control to remediate**. An audit command never performs Set, even when some controls use Enforce.
+Until now, the audit has only compared the DCs with the baseline. **Remediation** means changing Windows configuration to match that baseline. For Spooler, this means stopping the service and setting its startup type to Disabled.
 
-This example changes only the Spooler requirement's mode. It does not change its desired values. If a GPO owns Spooler in your environment, keep the control in Audit and correct the GPO instead.
+There are two separate decisions: **allow correction for a control**, then **explicitly request that correction on selected DCs**. This prevents a routine audit from changing settings just because it found a difference. If a GPO owns Spooler in your environment, keep the control in Audit and correct the GPO instead.
 
 ### 1. Enable remediation for the Spooler control
 
-On MM-DSC1:
+**On MM-DSC1.** This first block only edits the local [compliance.settings.json](./DomainControllersDCS/compliance.settings.json). It does not connect to a DC or execute DSC.
+
+`Mode = Audit` allows observation only. `Mode = Enforce` makes the control **eligible for a later, explicitly requested correction**; it does not apply the setting immediately. These modes are rules of our PowerShell orchestrator, not native DSC resource properties.
 
 ```powershell
 $settingsPath = 'C:\DSC\DomainControllersDCS\compliance.settings.json'
@@ -579,7 +589,17 @@ $settings | ConvertTo-Json -Depth 15 |
     Set-Content -LiteralPath $settingsPath -Encoding UTF8
 ```
 
-The parameters file is reread on every invocation. Changing `Mode` does not itself modify a DC or start a background enforcement loop.
+| Part of the block | What it does and why |
+| --- | --- |
+| Read the JSON and select `DSC-01-Spooler` | Loads the parameters and selects the existing Spooler control inside `$settings.Controls`. Changing `$spooler` updates that same object in `$settings`. |
+| Check `Owner = DSC` | Stops before saving if another owner is declared. This does not detect GPO ownership or grant Windows permissions; it checks the ownership decision recorded in the file. |
+| Set `Mode = Enforce` | Allows the runner to request Set for this control when you later invoke `-Operation Remediate`. Its desired values remain Stopped and Disabled; the other controls keep their modes and values. |
+| Set `BaselineVersion = 2.0.1` | Records this policy revision from the supplied `2.0.0` baseline in subsequent reports. This is a label you maintain, not an upgrade of DSC or the resource package. |
+| Convert back to JSON and save | Writes the updated settings to the same local file. Without this step, the changes would exist only in the current PowerShell variables. |
+
+**Expected:** no console output, then a return to the prompt if the file was saved successfully. Spooler has not been stopped or disabled on any DC.
+
+The eligibility change applies to the control, not to a particular DC. The next commands select **MM-DC1 only**. A normal audit still performs Test even with `Mode = Enforce`; actual correction requires `-Operation Remediate`, explicit DC/control selections, and confirmation when a change is needed. The runner rereads the parameters on each invocation, so this edit needs no resource reinstallation and starts no background enforcement loop.
 
 ### 2. Preview the selected operation
 
@@ -594,6 +614,8 @@ $preview | Format-List
 ```
 
 This is **our PowerShell runner's WhatIf**, implemented through `ShouldProcess`. The runner performs preflight and a read-only Test, shows the Set it would request if there is drift, and writes local reports. **It executes no Set.** This is not a simulation of every consequence of stopping a service.
+
+If Spooler is still running or enabled, the preview remains `NonCompliant`: it reports the observed state, not the state a future correction would produce.
 
 ### 3. Apply and verify
 

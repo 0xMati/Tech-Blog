@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC1.mathiasmotron.com",
+    "ControlId":  "DSC-03-DirectoryChanges",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-03-DirectoryChanges\",\r\n                          \"type\":  \"Blog.DC/AuditPolicy\",\r\n                          \"properties\":  {\r\n                                             \"Name\":  \"Directory Service Changes\",\r\n                                             \"AuditSuccess\":  true,\r\n                                             \"AuditFailure\":  false\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT0.4531478S\",\"endDatetime\":\"2026-09-25T15:03:50.792829400+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T15:03:50.339681600+02:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.4531425S\",\"endDatetime\":\"2026-09-25T15:03:50.792824100+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T15:03:50.339681600+02:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT0.4445124S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.4445124S\"}},\"name\":\"DSC-03-DirectoryChanges\",\"type\":\"Blog.DC/AuditPolicy\",\"result\":{\"desiredState\":{\"Name\":\"Directory Service Changes\",\"AuditSuccess\":true,\"AuditFailure\":false},\"actualState\":{\"Name\":\"Directory Service Changes\",\"AuditSuccess\":true,\"AuditFailure\":true},\"inDesiredState\":false,\"differingProperties\":[\"AuditFailure\"]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T13:03:50.7959423Z",
+                   "PSComputerName":  "MM-DC1.mathiasmotron.com",
+                   "RunspaceId":  "82c289f9-ca6f-46ce-87dd-775394a00f8a",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

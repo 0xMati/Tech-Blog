@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC2.mathiasmotron.com",
+    "ControlId":  "DSC-05-ChannelBinding",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-05-ChannelBinding\",\r\n                          \"type\":  \"Blog.DC/LdapPolicy\",\r\n                          \"properties\":  {\r\n                                             \"ValueName\":  \"LdapEnforceChannelBinding\",\r\n                                             \"Exists\":  true,\r\n                                             \"ValueType\":  \"DWord\",\r\n                                             \"ValueData\":  2\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT0.7220629S\",\"endDatetime\":\"2026-09-25T13:04:14.582429900+00:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:04:13.860367+00:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.7220545S\",\"endDatetime\":\"2026-09-25T13:04:14.582421500+00:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:04:13.860367+00:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT0.7080343S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.7080343S\"}},\"name\":\"DSC-05-ChannelBinding\",\"type\":\"Blog.DC/LdapPolicy\",\"result\":{\"desiredState\":{\"ValueName\":\"LdapEnforceChannelBinding\",\"Exists\":true,\"ValueType\":\"DWord\",\"ValueData\":2},\"actualState\":{\"ValueName\":\"LdapEnforceChannelBinding\",\"Exists\":true,\"ValueType\":\"DWord\",\"ValueData\":2},\"inDesiredState\":true,\"differingProperties\":[]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T13:04:14.5871954Z",
+                   "PSComputerName":  "MM-DC2.mathiasmotron.com",
+                   "RunspaceId":  "d8ced3c9-ea1a-488a-9f10-f46e03103c06",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC3.mathiasmotron.com",
+    "ControlId":  "DSC-04-Security",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-04-Security\",\r\n                          \"type\":  \"Blog.DC/EventLog\",\r\n                          \"properties\":  {\r\n                                             \"LogName\":  \"Security\",\r\n                                             \"MaximumSizeInBytes\":  1073741824,\r\n                                             \"LogMode\":  \"Circular\"\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT0.8990531S\",\"endDatetime\":\"2026-09-25T13:04:33.554555+00:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:04:32.655501900+00:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.8990451S\",\"endDatetime\":\"2026-09-25T13:04:33.554547+00:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:04:32.655501900+00:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT0.8842369S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.8842369S\"}},\"name\":\"DSC-04-Security\",\"type\":\"Blog.DC/EventLog\",\"result\":{\"desiredState\":{\"LogName\":\"Security\",\"MaximumSizeInBytes\":1073741824,\"LogMode\":\"Circular\"},\"actualState\":{\"LogName\":\"Security\",\"MaximumSizeInBytes\":134217728,\"LogMode\":\"Circular\"},\"inDesiredState\":false,\"differingProperties\":[\"MaximumSizeInBytes\"]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T13:04:33.5519608Z",
+                   "PSComputerName":  "MM-DC3.mathiasmotron.com",
+                   "RunspaceId":  "5980a191-80b9-48b9-b964-8ca217e0bb5d",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

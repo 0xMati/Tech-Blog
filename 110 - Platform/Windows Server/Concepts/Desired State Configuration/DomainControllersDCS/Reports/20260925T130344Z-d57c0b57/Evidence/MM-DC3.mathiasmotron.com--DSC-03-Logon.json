@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC3.mathiasmotron.com",
+    "ControlId":  "DSC-03-Logon",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-03-Logon\",\r\n                          \"type\":  \"Blog.DC/AuditPolicy\",\r\n                          \"properties\":  {\r\n                                             \"Name\":  \"Logon\",\r\n                                             \"AuditSuccess\":  true,\r\n                                             \"AuditFailure\":  true\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT1.2747532S\",\"endDatetime\":\"2026-09-25T13:04:25.397963800+00:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:04:24.123210600+00:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT1.2747444S\",\"endDatetime\":\"2026-09-25T13:04:25.397955+00:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:04:24.123210600+00:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT1.2588319S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT1.2588319S\"}},\"name\":\"DSC-03-Logon\",\"type\":\"Blog.DC/AuditPolicy\",\"result\":{\"desiredState\":{\"Name\":\"Logon\",\"AuditSuccess\":true,\"AuditFailure\":true},\"actualState\":{\"Name\":\"Logon\",\"AuditSuccess\":true,\"AuditFailure\":true},\"inDesiredState\":true,\"differingProperties\":[]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T13:04:25.3952385Z",
+                   "PSComputerName":  "MM-DC3.mathiasmotron.com",
+                   "RunspaceId":  "5980a191-80b9-48b9-b964-8ca217e0bb5d",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

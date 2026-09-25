@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC1.mathiasmotron.com",
+    "ControlId":  "DSC-01-Spooler",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-01-Spooler\",\r\n                          \"type\":  \"Blog.DC/Spooler\",\r\n                          \"properties\":  {\r\n                                             \"Name\":  \"Spooler\",\r\n                                             \"State\":  \"Stopped\",\r\n                                             \"StartupType\":  \"Disabled\"\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT0.6028276S\",\"endDatetime\":\"2026-09-25T15:01:51.231551500+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T15:01:50.628723900+02:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.6028225S\",\"endDatetime\":\"2026-09-25T15:01:51.231546400+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T15:01:50.628723900+02:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT0.5896002S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT0.5896002S\"}},\"name\":\"DSC-01-Spooler\",\"type\":\"Blog.DC/Spooler\",\"result\":{\"desiredState\":{\"Name\":\"Spooler\",\"State\":\"Stopped\",\"StartupType\":\"Disabled\"},\"actualState\":{\"Name\":\"Spooler\",\"State\":\"Running\",\"StartupType\":\"Automatic\"},\"inDesiredState\":false,\"differingProperties\":[\"State\",\"StartupType\"]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T13:01:51.2336142Z",
+                   "PSComputerName":  "MM-DC1.mathiasmotron.com",
+                   "RunspaceId":  "c92c592e-3fa6-4981-affc-396f07a305db",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

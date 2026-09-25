@@ -1,0 +1,1118 @@
+{
+    "SchemaVersion":  1,
+    "RunId":  "d57c0b5719c040ae9bc2cece9fdd7c0a",
+    "Domain":  "mathiasmotron.com",
+    "Operation":  "Audit",
+    "WhatIf":  false,
+    "BaselineVersion":  "2.0.0",
+    "StartedAtUtc":  "2026-09-25T13:03:44.6942517Z",
+    "CompletedAtUtc":  "2026-09-25T13:04:38.5209519Z",
+    "SourceComputer":  "MM-DSC1",
+    "InventoryDiscoveredAtUtc":  "2026-09-25T12:58:52.3793787Z",
+    "InventorySha256":  "7D3883290B3D731AF75E203AD5700A2AFB9630151C7904E73E46057E1DD74218",
+    "SettingsSha256":  "BEF2F9411F51D4736A1D8CB4340B7B5D4CA7A0F987927D3888BE23672633FCC1",
+    "ResourceVersion":  "1.0.0",
+    "ResourceFileHashes":  [
+                               {
+                                   "Name":  "Spooler.dsc.resource.json",
+                                   "Sha256":  "D9E57B2B69D59691F42E0489FF986176EC70F45729E9864C70D952F10A35B96F"
+                               },
+                               {
+                                   "Name":  "SmbServer.dsc.resource.json",
+                                   "Sha256":  "2025294F102A6FE305DC2515D549E006DB9ECE6FD3750EC8B0C85263BA37D722"
+                               },
+                               {
+                                   "Name":  "AuditPolicy.dsc.resource.json",
+                                   "Sha256":  "CD9D230FF70FC4BBAF33DDEF20840BAE554E9340106E3DFCC6D9A2413EA04429"
+                               },
+                               {
+                                   "Name":  "EventLog.dsc.resource.json",
+                                   "Sha256":  "747229EF4A2B870A12B1F0656C6331EEE128992BAF42BAE25D8A3B06BCE3142A"
+                               },
+                               {
+                                   "Name":  "LdapPolicy.dsc.resource.json",
+                                   "Sha256":  "42A3DCF552FBC1C1E4F622F482EEDE51D0287805A5138FD16DF4B2E385554DEF"
+                               },
+                               {
+                                   "Name":  "Invoke-NativeResource.ps1",
+                                   "Sha256":  "5F0796A7570BD5E59FA6B6E0FC2012B45A7016D8753567BCC3A973BFEA5B8128"
+                               },
+                               {
+                                   "Name":  "NativeResources.psm1",
+                                   "Sha256":  "B1C23A7AEAC42A681C62705DC147DB2159FF6174929A7F324965F646419935C9"
+                               },
+                               {
+                                   "Name":  "NativeAudit.cs",
+                                   "Sha256":  "3BAB58946C5F073E6005FBFE241B64DBFCF824D937F61BD5A0CA0B501261CB42"
+                               }
+                           ],
+    "Targets":  [
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "Scope":  "Included",
+                        "Reason":  "Writable DC selected for this run"
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "Scope":  "Included",
+                        "Reason":  "Writable DC selected for this run"
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "Scope":  "Included",
+                        "Reason":  "Writable DC selected for this run"
+                    }
+                ],
+    "TargetMetadata":  [
+                           {
+                               "HostName":  "MM-DC1.mathiasmotron.com",
+                               "OperatingSystem":  "Microsoft Windows Server 2025 Datacenter",
+                               "BuildNumber":  "26100",
+                               "Account":  "MATHIASMOTRON\\mathiasadmin",
+                               "DscVersion":  "3.2.3",
+                               "ResourceVersions":  [
+                                                        {
+                                                            "Type":  "Blog.DC/AuditPolicy",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/EventLog",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/LdapPolicy",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/SmbServer",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/Spooler",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        }
+                                                    ],
+                               "ResourceDirectory":  "C:\\Tools\\DSC\\Resources\\DCCompliance\\1.0.0",
+                               "ResourceFileHashes":  [
+                                                          {
+                                                              "Name":  "Spooler.dsc.resource.json",
+                                                              "Sha256":  "D9E57B2B69D59691F42E0489FF986176EC70F45729E9864C70D952F10A35B96F"
+                                                          },
+                                                          {
+                                                              "Name":  "SmbServer.dsc.resource.json",
+                                                              "Sha256":  "2025294F102A6FE305DC2515D549E006DB9ECE6FD3750EC8B0C85263BA37D722"
+                                                          },
+                                                          {
+                                                              "Name":  "AuditPolicy.dsc.resource.json",
+                                                              "Sha256":  "CD9D230FF70FC4BBAF33DDEF20840BAE554E9340106E3DFCC6D9A2413EA04429"
+                                                          },
+                                                          {
+                                                              "Name":  "EventLog.dsc.resource.json",
+                                                              "Sha256":  "747229EF4A2B870A12B1F0656C6331EEE128992BAF42BAE25D8A3B06BCE3142A"
+                                                          },
+                                                          {
+                                                              "Name":  "LdapPolicy.dsc.resource.json",
+                                                              "Sha256":  "42A3DCF552FBC1C1E4F622F482EEDE51D0287805A5138FD16DF4B2E385554DEF"
+                                                          },
+                                                          {
+                                                              "Name":  "Invoke-NativeResource.ps1",
+                                                              "Sha256":  "5F0796A7570BD5E59FA6B6E0FC2012B45A7016D8753567BCC3A973BFEA5B8128"
+                                                          },
+                                                          {
+                                                              "Name":  "NativeResources.psm1",
+                                                              "Sha256":  "B1C23A7AEAC42A681C62705DC147DB2159FF6174929A7F324965F646419935C9"
+                                                          },
+                                                          {
+                                                              "Name":  "NativeAudit.cs",
+                                                              "Sha256":  "3BAB58946C5F073E6005FBFE241B64DBFCF824D937F61BD5A0CA0B501261CB42"
+                                                          }
+                                                      ],
+                               "CompletedAtUtc":  "2026-09-25T13:03:46.1911687Z",
+                               "PSComputerName":  "MM-DC1.mathiasmotron.com",
+                               "RunspaceId":  "82c289f9-ca6f-46ce-87dd-775394a00f8a",
+                               "PSShowComputerName":  true
+                           },
+                           {
+                               "HostName":  "MM-DC2.mathiasmotron.com",
+                               "OperatingSystem":  "Microsoft Windows Server 2019 Datacenter",
+                               "BuildNumber":  "17763",
+                               "Account":  "MATHIASMOTRON\\mathiasadmin",
+                               "DscVersion":  "3.2.3",
+                               "ResourceVersions":  [
+                                                        {
+                                                            "Type":  "Blog.DC/AuditPolicy",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/EventLog",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/LdapPolicy",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/SmbServer",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/Spooler",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        }
+                                                    ],
+                               "ResourceDirectory":  "C:\\Tools\\DSC\\Resources\\DCCompliance\\1.0.0",
+                               "ResourceFileHashes":  [
+                                                          {
+                                                              "Name":  "Spooler.dsc.resource.json",
+                                                              "Sha256":  "D9E57B2B69D59691F42E0489FF986176EC70F45729E9864C70D952F10A35B96F"
+                                                          },
+                                                          {
+                                                              "Name":  "SmbServer.dsc.resource.json",
+                                                              "Sha256":  "2025294F102A6FE305DC2515D549E006DB9ECE6FD3750EC8B0C85263BA37D722"
+                                                          },
+                                                          {
+                                                              "Name":  "AuditPolicy.dsc.resource.json",
+                                                              "Sha256":  "CD9D230FF70FC4BBAF33DDEF20840BAE554E9340106E3DFCC6D9A2413EA04429"
+                                                          },
+                                                          {
+                                                              "Name":  "EventLog.dsc.resource.json",
+                                                              "Sha256":  "747229EF4A2B870A12B1F0656C6331EEE128992BAF42BAE25D8A3B06BCE3142A"
+                                                          },
+                                                          {
+                                                              "Name":  "LdapPolicy.dsc.resource.json",
+                                                              "Sha256":  "42A3DCF552FBC1C1E4F622F482EEDE51D0287805A5138FD16DF4B2E385554DEF"
+                                                          },
+                                                          {
+                                                              "Name":  "Invoke-NativeResource.ps1",
+                                                              "Sha256":  "5F0796A7570BD5E59FA6B6E0FC2012B45A7016D8753567BCC3A973BFEA5B8128"
+                                                          },
+                                                          {
+                                                              "Name":  "NativeResources.psm1",
+                                                              "Sha256":  "B1C23A7AEAC42A681C62705DC147DB2159FF6174929A7F324965F646419935C9"
+                                                          },
+                                                          {
+                                                              "Name":  "NativeAudit.cs",
+                                                              "Sha256":  "3BAB58946C5F073E6005FBFE241B64DBFCF824D937F61BD5A0CA0B501261CB42"
+                                                          }
+                                                      ],
+                               "CompletedAtUtc":  "2026-09-25T13:03:55.1335348Z",
+                               "PSComputerName":  "MM-DC2.mathiasmotron.com",
+                               "RunspaceId":  "d8ced3c9-ea1a-488a-9f10-f46e03103c06",
+                               "PSShowComputerName":  true
+                           },
+                           {
+                               "HostName":  "MM-DC3.mathiasmotron.com",
+                               "OperatingSystem":  "Microsoft Windows Server 2019 Datacenter",
+                               "BuildNumber":  "17763",
+                               "Account":  "MATHIASMOTRON\\mathiasadmin",
+                               "DscVersion":  "3.2.3",
+                               "ResourceVersions":  [
+                                                        {
+                                                            "Type":  "Blog.DC/AuditPolicy",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/EventLog",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/LdapPolicy",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/SmbServer",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        },
+                                                        {
+                                                            "Type":  "Blog.DC/Spooler",
+                                                            "Version":  "1.0.0",
+                                                            "DiscoveryDiagnostics":  ""
+                                                        }
+                                                    ],
+                               "ResourceDirectory":  "C:\\Tools\\DSC\\Resources\\DCCompliance\\1.0.0",
+                               "ResourceFileHashes":  [
+                                                          {
+                                                              "Name":  "Spooler.dsc.resource.json",
+                                                              "Sha256":  "D9E57B2B69D59691F42E0489FF986176EC70F45729E9864C70D952F10A35B96F"
+                                                          },
+                                                          {
+                                                              "Name":  "SmbServer.dsc.resource.json",
+                                                              "Sha256":  "2025294F102A6FE305DC2515D549E006DB9ECE6FD3750EC8B0C85263BA37D722"
+                                                          },
+                                                          {
+                                                              "Name":  "AuditPolicy.dsc.resource.json",
+                                                              "Sha256":  "CD9D230FF70FC4BBAF33DDEF20840BAE554E9340106E3DFCC6D9A2413EA04429"
+                                                          },
+                                                          {
+                                                              "Name":  "EventLog.dsc.resource.json",
+                                                              "Sha256":  "747229EF4A2B870A12B1F0656C6331EEE128992BAF42BAE25D8A3B06BCE3142A"
+                                                          },
+                                                          {
+                                                              "Name":  "LdapPolicy.dsc.resource.json",
+                                                              "Sha256":  "42A3DCF552FBC1C1E4F622F482EEDE51D0287805A5138FD16DF4B2E385554DEF"
+                                                          },
+                                                          {
+                                                              "Name":  "Invoke-NativeResource.ps1",
+                                                              "Sha256":  "5F0796A7570BD5E59FA6B6E0FC2012B45A7016D8753567BCC3A973BFEA5B8128"
+                                                          },
+                                                          {
+                                                              "Name":  "NativeResources.psm1",
+                                                              "Sha256":  "B1C23A7AEAC42A681C62705DC147DB2159FF6174929A7F324965F646419935C9"
+                                                          },
+                                                          {
+                                                              "Name":  "NativeAudit.cs",
+                                                              "Sha256":  "3BAB58946C5F073E6005FBFE241B64DBFCF824D937F61BD5A0CA0B501261CB42"
+                                                          }
+                                                      ],
+                               "CompletedAtUtc":  "2026-09-25T13:04:17.0978770Z",
+                               "PSComputerName":  "MM-DC3.mathiasmotron.com",
+                               "RunspaceId":  "5980a191-80b9-48b9-b964-8ca217e0bb5d",
+                               "PSShowComputerName":  true
+                           }
+                       ],
+    "Results":  [
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-01-Spooler",
+                        "ControlName":  "Print Spooler stopped and disabled",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/Spooler",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:46.4159436Z",
+                        "DesiredState":  {
+                                             "Name":  "Spooler",
+                                             "State":  "Stopped",
+                                             "StartupType":  "Disabled"
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Spooler",
+                                            "State":  "Running",
+                                            "StartupType":  "Automatic"
+                                        },
+                        "DifferingProperties":  [
+                                                    "State",
+                                                    "StartupType"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-02-SMB1",
+                        "ControlName":  "SMB server protocol version 1 disabled",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/SmbServer",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:47.3341703Z",
+                        "DesiredState":  {
+                                             "Name":  "Server",
+                                             "EnableSMB1Protocol":  false
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Server",
+                                            "EnableSMB1Protocol":  false
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-02-Signing",
+                        "ControlName":  "SMB server signing required",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/SmbServer",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:48.2855704Z",
+                        "DesiredState":  {
+                                             "Name":  "Server",
+                                             "RequireSecuritySignature":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Server",
+                                            "RequireSecuritySignature":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-03-Logon",
+                        "ControlName":  "Logon audit: success and failure",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:48.9802766Z",
+                        "DesiredState":  {
+                                             "Name":  "Logon",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Logon",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-03-Accounts",
+                        "ControlName":  "User account management audit: success and failure",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:49.6617606Z",
+                        "DesiredState":  {
+                                             "Name":  "User Account Management",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "User Account Management",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-03-DirectoryChanges",
+                        "ControlName":  "Directory service changes audit: success",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:50.3186264Z",
+                        "DesiredState":  {
+                                             "Name":  "Directory Service Changes",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  false
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Directory Service Changes",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+                                                    "AuditFailure"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-04-Security",
+                        "ControlName":  "Security log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:50.8156623Z",
+                        "DesiredState":  {
+                                             "LogName":  "Security",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "Security",
+                                            "MaximumSizeInBytes":  134217728,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-04-System",
+                        "ControlName":  "System log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:51.3798368Z",
+                        "DesiredState":  {
+                                             "LogName":  "System",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "System",
+                                            "MaximumSizeInBytes":  20971520,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-04-Directory",
+                        "ControlName":  "Directory Service log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:51.9180082Z",
+                        "DesiredState":  {
+                                             "LogName":  "Directory Service",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "Directory Service",
+                                            "MaximumSizeInBytes":  1052672,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-05-Signing",
+                        "ControlName":  "Explicit LDAP signing policy: Require signing",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/LdapPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:52.5432619Z",
+                        "DesiredState":  {
+                                             "ValueName":  "LDAPServerIntegrity",
+                                             "Exists":  true,
+                                             "ValueType":  "DWord",
+                                             "ValueData":  2
+                                         },
+                        "ActualState":  {
+                                            "ValueName":  "LDAPServerIntegrity",
+                                            "Exists":  true,
+                                            "ValueType":  "DWord",
+                                            "ValueData":  2
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  "Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+                    },
+                    {
+                        "HostName":  "MM-DC1.mathiasmotron.com",
+                        "ControlId":  "DSC-05-ChannelBinding",
+                        "ControlName":  "Explicit LDAP channel binding policy: Always",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/LdapPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:53.1004520Z",
+                        "DesiredState":  {
+                                             "ValueName":  "LdapEnforceChannelBinding",
+                                             "Exists":  true,
+                                             "ValueType":  "DWord",
+                                             "ValueData":  2
+                                         },
+                        "ActualState":  {
+                                            "ValueName":  "LdapEnforceChannelBinding",
+                                            "Exists":  true,
+                                            "ValueType":  "DWord",
+                                            "ValueData":  2
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  "Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-01-Spooler",
+                        "ControlName":  "Print Spooler stopped and disabled",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/Spooler",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:03:57.7080258Z",
+                        "DesiredState":  {
+                                             "Name":  "Spooler",
+                                             "State":  "Stopped",
+                                             "StartupType":  "Disabled"
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Spooler",
+                                            "State":  "Running",
+                                            "StartupType":  "Automatic"
+                                        },
+                        "DifferingProperties":  [
+                                                    "State",
+                                                    "StartupType"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-02-SMB1",
+                        "ControlName":  "SMB server protocol version 1 disabled",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/SmbServer",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:00.2173276Z",
+                        "DesiredState":  {
+                                             "Name":  "Server",
+                                             "EnableSMB1Protocol":  false
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Server",
+                                            "EnableSMB1Protocol":  false
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-02-Signing",
+                        "ControlName":  "SMB server signing required",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/SmbServer",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:01.7076061Z",
+                        "DesiredState":  {
+                                             "Name":  "Server",
+                                             "RequireSecuritySignature":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Server",
+                                            "RequireSecuritySignature":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-03-Logon",
+                        "ControlName":  "Logon audit: success and failure",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:03.1388436Z",
+                        "DesiredState":  {
+                                             "Name":  "Logon",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Logon",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-03-Accounts",
+                        "ControlName":  "User account management audit: success and failure",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:07.7940860Z",
+                        "DesiredState":  {
+                                             "Name":  "User Account Management",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "User Account Management",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-03-DirectoryChanges",
+                        "ControlName":  "Directory service changes audit: success",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:09.1737728Z",
+                        "DesiredState":  {
+                                             "Name":  "Directory Service Changes",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  false
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Directory Service Changes",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+                                                    "AuditFailure"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-04-Security",
+                        "ControlName":  "Security log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:10.2737698Z",
+                        "DesiredState":  {
+                                             "LogName":  "Security",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "Security",
+                                            "MaximumSizeInBytes":  134217728,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-04-System",
+                        "ControlName":  "System log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:11.3191569Z",
+                        "DesiredState":  {
+                                             "LogName":  "System",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "System",
+                                            "MaximumSizeInBytes":  20971520,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-04-Directory",
+                        "ControlName":  "Directory Service log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:12.4094871Z",
+                        "DesiredState":  {
+                                             "LogName":  "Directory Service",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "Directory Service",
+                                            "MaximumSizeInBytes":  1052672,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-05-Signing",
+                        "ControlName":  "Explicit LDAP signing policy: Require signing",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/LdapPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:13.4756894Z",
+                        "DesiredState":  {
+                                             "ValueName":  "LDAPServerIntegrity",
+                                             "Exists":  true,
+                                             "ValueType":  "DWord",
+                                             "ValueData":  2
+                                         },
+                        "ActualState":  {
+                                            "ValueName":  "LDAPServerIntegrity",
+                                            "Exists":  true,
+                                            "ValueType":  "DWord",
+                                            "ValueData":  2
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  "Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+                    },
+                    {
+                        "HostName":  "MM-DC2.mathiasmotron.com",
+                        "ControlId":  "DSC-05-ChannelBinding",
+                        "ControlName":  "Explicit LDAP channel binding policy: Always",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/LdapPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:14.5993341Z",
+                        "DesiredState":  {
+                                             "ValueName":  "LdapEnforceChannelBinding",
+                                             "Exists":  true,
+                                             "ValueType":  "DWord",
+                                             "ValueData":  2
+                                         },
+                        "ActualState":  {
+                                            "ValueName":  "LdapEnforceChannelBinding",
+                                            "Exists":  true,
+                                            "ValueType":  "DWord",
+                                            "ValueData":  2
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  "Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-01-Spooler",
+                        "ControlName":  "Print Spooler stopped and disabled",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/Spooler",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:19.5284673Z",
+                        "DesiredState":  {
+                                             "Name":  "Spooler",
+                                             "State":  "Stopped",
+                                             "StartupType":  "Disabled"
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Spooler",
+                                            "State":  "Running",
+                                            "StartupType":  "Automatic"
+                                        },
+                        "DifferingProperties":  [
+                                                    "State",
+                                                    "StartupType"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-02-SMB1",
+                        "ControlName":  "SMB server protocol version 1 disabled",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/SmbServer",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:21.9794740Z",
+                        "DesiredState":  {
+                                             "Name":  "Server",
+                                             "EnableSMB1Protocol":  false
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Server",
+                                            "EnableSMB1Protocol":  false
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-02-Signing",
+                        "ControlName":  "SMB server signing required",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/SmbServer",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:23.7459841Z",
+                        "DesiredState":  {
+                                             "Name":  "Server",
+                                             "RequireSecuritySignature":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Server",
+                                            "RequireSecuritySignature":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-03-Logon",
+                        "ControlName":  "Logon audit: success and failure",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:25.4120548Z",
+                        "DesiredState":  {
+                                             "Name":  "Logon",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Logon",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-03-Accounts",
+                        "ControlName":  "User account management audit: success and failure",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:30.5659096Z",
+                        "DesiredState":  {
+                                             "Name":  "User Account Management",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  true
+                                         },
+                        "ActualState":  {
+                                            "Name":  "User Account Management",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-03-DirectoryChanges",
+                        "ControlName":  "Directory service changes audit: success",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/AuditPolicy",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:32.2872005Z",
+                        "DesiredState":  {
+                                             "Name":  "Directory Service Changes",
+                                             "AuditSuccess":  true,
+                                             "AuditFailure":  false
+                                         },
+                        "ActualState":  {
+                                            "Name":  "Directory Service Changes",
+                                            "AuditSuccess":  true,
+                                            "AuditFailure":  true
+                                        },
+                        "DifferingProperties":  [
+                                                    "AuditFailure"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-04-Security",
+                        "ControlName":  "Security log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:33.5695786Z",
+                        "DesiredState":  {
+                                             "LogName":  "Security",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "Security",
+                                            "MaximumSizeInBytes":  134217728,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-04-System",
+                        "ControlName":  "System log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:34.8062957Z",
+                        "DesiredState":  {
+                                             "LogName":  "System",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "System",
+                                            "MaximumSizeInBytes":  20971520,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-04-Directory",
+                        "ControlName":  "Directory Service log: 1 GiB, overwrite oldest events",
+                        "Owner":  "DSC",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/EventLog",
+                        "Status":  "NonCompliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:36.0393010Z",
+                        "DesiredState":  {
+                                             "LogName":  "Directory Service",
+                                             "MaximumSizeInBytes":  1073741824,
+                                             "LogMode":  "Circular"
+                                         },
+                        "ActualState":  {
+                                            "LogName":  "Directory Service",
+                                            "MaximumSizeInBytes":  1052672,
+                                            "LogMode":  "Circular"
+                                        },
+                        "DifferingProperties":  [
+                                                    "MaximumSizeInBytes"
+                                                ],
+                        "Message":  ""
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-05-Signing",
+                        "ControlName":  "Explicit LDAP signing policy: Require signing",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/LdapPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:37.2995612Z",
+                        "DesiredState":  {
+                                             "ValueName":  "LDAPServerIntegrity",
+                                             "Exists":  true,
+                                             "ValueType":  "DWord",
+                                             "ValueData":  2
+                                         },
+                        "ActualState":  {
+                                            "ValueName":  "LDAPServerIntegrity",
+                                            "Exists":  true,
+                                            "ValueType":  "DWord",
+                                            "ValueData":  2
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  "Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+                    },
+                    {
+                        "HostName":  "MM-DC3.mathiasmotron.com",
+                        "ControlId":  "DSC-05-ChannelBinding",
+                        "ControlName":  "Explicit LDAP channel binding policy: Always",
+                        "Owner":  "GPO",
+                        "Mode":  "Audit",
+                        "ResourceType":  "Blog.DC/LdapPolicy",
+                        "Status":  "Compliant",
+                        "Action":  "Test",
+                        "EvaluatedAtUtc":  "2026-09-25T13:04:38.5040172Z",
+                        "DesiredState":  {
+                                             "ValueName":  "LdapEnforceChannelBinding",
+                                             "Exists":  true,
+                                             "ValueType":  "DWord",
+                                             "ValueData":  2
+                                         },
+                        "ActualState":  {
+                                            "ValueName":  "LdapEnforceChannelBinding",
+                                            "Exists":  true,
+                                            "ValueType":  "DWord",
+                                            "ValueData":  2
+                                        },
+                        "DifferingProperties":  [
+
+                                                ],
+                        "Message":  "Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+                    }
+                ],
+    "OverallStatus":  "NonCompliant"
+}
