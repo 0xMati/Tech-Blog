@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Invoke-DCNativeProcess {
-    param([string]$Executable, [string]$Arguments, [int]$TimeoutSeconds = 180)
+    param([string]$Executable, [string]$Arguments, [int]$TimeoutSeconds = 180, [hashtable]$Environment = @{})
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $Executable
     $startInfo.Arguments = $Arguments
@@ -17,6 +17,7 @@ function Invoke-DCNativeProcess {
     $startInfo.RedirectStandardError = $true
     $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
     $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+    foreach ($name in $Environment.Keys) { $startInfo.EnvironmentVariables[$name] = [string]$Environment[$name] }
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     try {
@@ -72,21 +73,15 @@ function Invoke-DCNativeProcess {
     finally { $process.Dispose() }
 }
 
-function ConvertTo-DCVersion {
-    param([string]$Value)
-    $version = [version]$Value
-    [version]::new($version.Major, $version.Minor, [Math]::Max(0, $version.Build), [Math]::Max(0, $version.Revision))
-}
-
 $request = $RequestJson | ConvertFrom-Json -ErrorAction Stop
 if ($request.Operation -cnotin @('Preflight', 'Test', 'Set')) { throw 'Unsupported remote operation.' }
-if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) {
-    throw 'Use the Microsoft.PowerShell endpoint (Windows PowerShell 5.1).'
+if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1 -or -not [Environment]::Is64BitProcess) {
+    throw 'Use an x64 Microsoft.PowerShell endpoint (Windows PowerShell 5.1).'
 }
 $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [System.Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'The WindowsPowerShell DSC adapter requires an elevated target process.'
+    throw 'The native DC resource checks require an elevated target process.'
 }
 $computer = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
 $operatingSystem = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
@@ -101,13 +96,23 @@ $settings = $request.Settings
 if (-not (Test-Path -LiteralPath $settings.DscExecutable -PathType Leaf)) {
     throw "DSC executable is missing: $($settings.DscExecutable)"
 }
-$env:PATH = '{0};{1}' -f (Split-Path $settings.DscExecutable -Parent), $env:PATH
-$machineModuleRoot = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'
-$systemModuleRoot = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules'
-$env:PSModulePath = "$machineModuleRoot;$systemModuleRoot"
+$powerShellRoot = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0'
+$nativeEnvironment = @{
+    DSC_RESOURCE_PATH = $settings.ResourceDirectory + ';' + $powerShellRoot
+    PATH = $powerShellRoot + ';' + $env:PATH
+}
 
 if ($request.Operation -eq 'Preflight') {
-    $versionResult = Invoke-DCNativeProcess -Executable $settings.DscExecutable -Arguments '--version'
+    if (-not (Test-Path -LiteralPath $settings.ResourceDirectory -PathType Container)) { throw 'The native resource package is missing. Run preparation first.' }
+    if ($request.ResourceFiles -isnot [array] -or $request.ResourceFiles.Count -ne 8) { throw 'Expected eight native resource-file hashes.' }
+    foreach ($file in $request.ResourceFiles) {
+        if ($file.Name -cnotmatch '^[A-Za-z][A-Za-z0-9.]+$' -or $file.Sha256 -cnotmatch '^[A-F0-9]{64}$') { throw 'Invalid native resource-file identity.' }
+        if ((Get-FileHash -LiteralPath (Join-Path $settings.ResourceDirectory $file.Name) -Algorithm SHA256 -ErrorAction Stop).Hash -cne $file.Sha256) {
+            throw "Installed native resource file differs from the orchestration package: $($file.Name). Deploy the matching resource version."
+        }
+    }
+    if (@(Get-ChildItem -LiteralPath $settings.ResourceDirectory -File -Recurse -Force).Count -ne $request.ResourceFiles.Count) { throw 'Unexpected files in the installed native resource directory.' }
+    $versionResult = Invoke-DCNativeProcess -Executable $settings.DscExecutable -Arguments '--version' -Environment $nativeEnvironment
     if ($versionResult.ExitCode -ne 0 -or $versionResult.StdOut.Trim() -notmatch '^dsc\s+(\S+)$') {
         throw "Could not read the DSC version. $($versionResult.StdErr)"
     }
@@ -115,26 +120,20 @@ if ($request.Operation -eq 'Preflight') {
     if ($dscVersion -cne $settings.DscVersion) {
         throw "DSC version mismatch: expected $($settings.DscVersion), found $dscVersion."
     }
+    $listing = Invoke-DCNativeProcess -Executable $settings.DscExecutable -Arguments 'resource list Blog.DC/* --output-format json' -Environment $nativeEnvironment
+    if ($listing.ExitCode -ne 0) { throw "Native resource discovery failed. $($listing.StdErr)" }
+    $discoveredResources = @(
+        foreach ($line in ($listing.StdOut -split '\r?\n')) {
+            if (-not [string]::IsNullOrWhiteSpace($line)) { $line | ConvertFrom-Json -ErrorAction Stop }
+        }
+    )
     $resourceVersions = @(
         foreach ($resourceType in $request.ResourceTypes) {
-            $moduleName, $resourceName = $resourceType -split '/', 2
-            $expectedVersion = $settings.ModuleVersions.$moduleName
-            $resourceInfo = @(Get-DscResource -Name $resourceName -Module $moduleName -ErrorAction Stop)
-            if ($resourceInfo.Count -ne 1 -or
-                (ConvertTo-DCVersion ([string]$resourceInfo[0].Version)) -ne (ConvertTo-DCVersion $expectedVersion)) {
-                throw "Resource '$resourceType' must resolve to version $expectedVersion in machine scope."
-            }
-            $listing = Invoke-DCNativeProcess -Executable $settings.DscExecutable -Arguments ('resource list --adapter Microsoft.Adapter/WindowsPowerShell {0} --output-format json' -f $resourceType)
-            if ($listing.ExitCode -ne 0) { throw "DSC discovery failed for '$resourceType'. $($listing.StdErr)" }
-            $discoveredResources = @(
-                foreach ($line in ($listing.StdOut -split '\r?\n')) {
-                    if (-not [string]::IsNullOrWhiteSpace($line)) { $line | ConvertFrom-Json -ErrorAction Stop }
-                }
-            )
             $match = @($discoveredResources | Where-Object type -eq $resourceType)
-            if ($match.Count -ne 1 -or $match[0].requireAdapter -cne 'Microsoft.Adapter/WindowsPowerShell' -or
-                (ConvertTo-DCVersion ([string]$match[0].version)) -ne (ConvertTo-DCVersion $expectedVersion)) {
-                throw "DSC did not discover '$resourceType' with the pinned version and adapter."
+            if ($match.Count -ne 1 -or $match[0].kind -cne 'resource' -or
+                ($match[0].PSObject.Properties['requireAdapter'] -and $match[0].requireAdapter) -or
+                $match[0].version -cne $settings.ResourceVersion) {
+                throw "DSC did not discover native '$resourceType' version $($settings.ResourceVersion)."
             }
             [pscustomobject]@{ Type = $resourceType; Version = [string]$match[0].version; DiscoveryDiagnostics = $listing.StdErr }
         }
@@ -146,6 +145,8 @@ if ($request.Operation -eq 'Preflight') {
         Account = $identity.Name
         DscVersion = $dscVersion
         ResourceVersions = $resourceVersions
+        ResourceDirectory = $settings.ResourceDirectory
+        ResourceFileHashes = $request.ResourceFiles
         CompletedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     }
     return
@@ -154,7 +155,7 @@ if ($request.Operation -eq 'Preflight') {
 if ($request.Operation -eq 'Set') {
     $control = $request.Control
     if ($control.Mode -cne 'Enforce' -or $control.Owner -cne 'DSC' -or
-        $control.ResourceType -cnotin @('PSDscResources/Service', 'ComputerManagementDsc/WindowsEventLog')) {
+        $control.ResourceType -cnotin @('Blog.DC/Spooler', 'Blog.DC/EventLog')) {
         throw 'This control is not eligible for DSC remediation.'
     }
 }
@@ -168,7 +169,7 @@ $temporaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().
 try {
     [System.IO.File]::WriteAllText($temporaryPath, $request.ConfigurationJson, [System.Text.UTF8Encoding]::new($false))
     $arguments = 'config {0} --file "{1}" --output-format json' -f $request.Operation.ToLowerInvariant(), $temporaryPath
-    Invoke-DCNativeProcess -Executable $settings.DscExecutable -Arguments $arguments
+    Invoke-DCNativeProcess -Executable $settings.DscExecutable -Arguments $arguments -Environment $nativeEnvironment
 }
 finally {
     if ([System.IO.File]::Exists($temporaryPath)) { [System.IO.File]::Delete($temporaryPath) }

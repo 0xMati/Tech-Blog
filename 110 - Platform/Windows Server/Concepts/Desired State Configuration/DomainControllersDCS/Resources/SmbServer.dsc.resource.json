@@ -1,0 +1,25 @@
+{
+  "$schema": "https://aka.ms/dsc/schemas/v3/bundled/resource/manifest.json",
+  "type": "Blog.DC/SmbServer",
+  "version": "1.0.0",
+  "description": "Reads SMB server configuration through the inbox SmbShare module; no Set operation.",
+  "kind": "resource",
+  "get": {
+    "executable": "powershell.exe",
+    "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", "Invoke-NativeResource.ps1", "-Resource", "SmbServer", "-Operation", "Get"],
+    "input": "stdin"
+  },
+  "schema": {
+    "embedded": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name"],
+      "properties": {
+        "Name": { "type": "string", "const": "Server" },
+        "EnableSMB1Protocol": { "type": "boolean" },
+        "RequireSecuritySignature": { "type": "boolean" }
+      }
+    }
+  }
+}

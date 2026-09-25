@@ -74,12 +74,14 @@ function Invoke-Command {
     [CmdletBinding()]
     param($Session, $FilePath, $ArgumentList)
     $request = $ArgumentList | ConvertFrom-Json
+    if ($request.ResourceFiles.Count -ne 8) { throw 'Native resource hashes were not passed to the remote request.' }
     $calls.Add([pscustomobject]@{ HostName = $Session.ComputerName; Operation = $request.Operation; ControlId = $(if ($request.Control) { $request.Control.Id } else { '' }) })
     if ($request.Operation -eq 'Preflight') {
         return [pscustomobject]@{ HostName = $Session.ComputerName; DscVersion = '3.2.3'; Account = 'inventory\TestOperator'; OperatingSystem = 'Windows Server 2025' }
     }
     $document = $request.ConfigurationJson | ConvertFrom-Json
     if ($document.resources.Count -ne 1 -or $document.resources[0].name -ne $request.Control.Id) { throw 'Invalid requested DSC document.' }
+    if ($document.resources[0].PSObject.Properties['directives'] -or $document.resources[0].type -notlike 'Blog.DC/*') { throw 'Legacy adapter dependency found in requested configuration.' }
     if ($request.Operation -eq 'Set') {
         if ($fixtureState.Scenario -eq 'SetFailure') {
             return [pscustomobject]@{ ExitCode = 1; StdOut = '{"hadErrors":true}'; StdErr = 'Simulated Set failure'; TimedOut = $false }
@@ -123,6 +125,14 @@ function Invoke-PreparationFixture {
     $effects = [System.Collections.Generic.List[string]]::new()
     $transportFiles = [System.Collections.Generic.List[string]]::new()
     $packageDirectory = Join-Path $temporaryRoot 'PreparationPackages'
+    $sourceDirectory = Join-Path $temporaryRoot 'PreparationSource'
+    if (-not (Test-Path -LiteralPath $sourceDirectory)) {
+        $null = New-Item -Path $sourceDirectory -ItemType Directory
+        foreach ($name in @('Initialize-DCCompliance.ps1', 'DCCompliance.psm1', 'Resources')) {
+            Microsoft.PowerShell.Management\Copy-Item -LiteralPath (Join-Path $root $name) -Destination $sourceDirectory -Recurse
+        }
+        [System.IO.File]::SetAttributes((Join-Path $sourceDirectory 'Resources\NativeAudit.cs'), [System.IO.FileAttributes]::Hidden)
+    }
     function Invoke-WebRequest {
         [CmdletBinding()]param($Uri, $OutFile, [switch]$UseBasicParsing)
         $effects.Add('DownloadZIP')
@@ -130,14 +140,7 @@ function Invoke-PreparationFixture {
     }
     function Save-Module {
         [CmdletBinding()]param($Name, $RequiredVersion, $Repository, $Path, [switch]$Force)
-        $effects.Add("SaveModule:$Name")
-        $versionDirectory = Join-Path $Path (Join-Path $Name $RequiredVersion)
-        $null = [System.IO.Directory]::CreateDirectory((Join-Path $versionDirectory 'Helpers\Empty'))
-        [System.IO.File]::WriteAllText((Join-Path $versionDirectory ($Name + '.psd1')), "@{ ModuleVersion = '$RequiredVersion' }")
-        [System.IO.File]::WriteAllText((Join-Path $versionDirectory ($Name + '.psm1')), "Module fixture: $Name")
-        $helperPath = Join-Path $versionDirectory 'Helpers\helper.bin'
-        [System.IO.File]::WriteAllBytes($helperPath, [byte[]]@(0, 7, 255, 32))
-        [System.IO.File]::SetAttributes($helperPath, [System.IO.FileAttributes]::Hidden)
+        throw 'Native preparation must not download Gallery modules.'
     }
     function Get-FileHash {
         [CmdletBinding()]param($LiteralPath, $Algorithm)
@@ -146,12 +149,8 @@ function Invoke-PreparationFixture {
         }
         else { Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $LiteralPath -Algorithm $Algorithm }
     }
-    function Test-ModuleManifest {
-        [CmdletBinding()]param($Path)
-        [pscustomobject]@{ Version = [version](Split-Path (Split-Path $Path -Parent) -Leaf) }
-    }
     function New-PSSession {
-        [CmdletBinding()]param($ComputerName, $ConfigurationName, $Authentication, $Credential)
+        [CmdletBinding()]param($ComputerName, $ConfigurationName, $Authentication, $Credential, $SessionOption)
         if ($ConfigurationName -ne 'Microsoft.PowerShell' -or $Authentication -ne 'Kerberos') { throw 'Unexpected preparation endpoint.' }
         $effects.Add("Connect:$ComputerName")
         [pscustomobject]@{ ComputerName = $ComputerName }
@@ -180,14 +179,12 @@ function Invoke-PreparationFixture {
             $extracted = Join-Path $temporaryRoot ('Extracted-' + [guid]::NewGuid().ToString('N'))
             Microsoft.PowerShell.Archive\Expand-Archive -LiteralPath $transportPath -DestinationPath $extracted -ErrorAction Stop
             if ([System.IO.File]::ReadAllText((Join-Path $extracted 'dsc.zip')) -cne 'DSC runtime ZIP fixture') { throw 'Runtime ZIP content changed in transit.' }
-            $versions = $ArgumentList[3] | ConvertFrom-Json
-            foreach ($module in $versions.PSObject.Properties) {
-                $versionPath = Join-Path $extracted ('Modules\{0}\{1}' -f $module.Name, $module.Value)
-                if (-not (Test-Path -LiteralPath (Join-Path $versionPath ($module.Name + '.psd1'))) -or
-                    [System.IO.File]::ReadAllText((Join-Path $versionPath ($module.Name + '.psm1'))) -cne ('Module fixture: ' + $module.Name) -or
-                    ([System.IO.File]::ReadAllBytes((Join-Path $versionPath 'Helpers\helper.bin')) -join ',') -ne '0,7,255,32' -or
-                    -not (Test-Path -LiteralPath (Join-Path $versionPath 'Helpers\Empty') -PathType Container)) {
-                    throw 'The transport ZIP lost module content or directory structure.'
+            $resources = $ArgumentList[3] | ConvertFrom-Json
+            if ($resources.Files.Count -ne 8 -or $resources.Version -ne '1.0.0') { throw 'Unexpected native resource package.' }
+            foreach ($file in $resources.Files) {
+                $resourcePath = Join-Path $extracted ('Resources\' + $file.Name)
+                if ((Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $resourcePath -Algorithm SHA256).Hash -cne $file.Sha256) {
+                    throw 'The transport ZIP lost or changed native resource content.'
                 }
             }
             $effects.Add("VerifiedPackage:$($Session.ComputerName)")
@@ -204,12 +201,12 @@ function Invoke-PreparationFixture {
     $failure = $null
     try {
         $rows = @(
-            & (Join-Path $root 'Initialize-DCCompliance.ps1') -InventoryPath $inventoryPath `
+            & (Join-Path $sourceDirectory 'Initialize-DCCompliance.ps1') -InventoryPath $inventoryPath `
                 -SettingsPath $settingsPath -PackageDirectory $packageDirectory -Confirm:$false @Parameters
         )
     }
     catch { $failure = $_.Exception.Message }
-    [pscustomobject]@{ Rows = $rows; Effects = @($effects.ToArray()); Error = $failure; PackageDirectory = $packageDirectory; TransportFiles = @($transportFiles.ToArray()) }
+    [pscustomobject]@{ Rows = $rows; Effects = @($effects.ToArray()); Error = $failure; PackageDirectory = $packageDirectory; SourceDirectory = $sourceDirectory; TransportFiles = @($transportFiles.ToArray()) }
 }
 
 try {
@@ -392,10 +389,10 @@ try {
     Assert-Test ($null -eq $preparation.Error -and ($preparation.Rows.ComputerName -join ',') -eq 'dc-a.inventory.test,dc-b.inventory.test' -and
         @($preparation.Effects | Where-Object { $_ -like 'Install:*' }).Count -eq 2) 'Preparation defaults to all writable inventory DCs, not RODCs'
     Assert-Test ($preparation.TransportFiles.Count -eq 2 -and @($preparation.TransportFiles | Select-Object -Unique).Count -eq 1 -and
-        @($preparation.Effects | Where-Object { $_ -like 'VerifiedPackage:*' }).Count -eq 2) 'One normalized ZIP is reused across DCs with intact runtime, module versions, hidden files, and subdirectories'
+        @($preparation.Effects | Where-Object { $_ -like 'VerifiedPackage:*' }).Count -eq 2) 'One normalized ZIP is reused across DCs with intact runtime and all native resource files, including hidden files'
     Assert-Test (@($preparation.TransportFiles | Where-Object { Test-Path -LiteralPath $_ }).Count -eq 0) 'Successful preparation removes the local transport ZIP'
 
-    $pinnedPath = Join-Path $preparation.PackageDirectory 'Modules\PSDscResources\2.12.0.0\PSDscResources.psm1'
+    $pinnedPath = Join-Path $preparation.SourceDirectory 'Resources\NativeResources.psm1'
     $pinnedAttributes = [System.Enum]::ToObject([System.IO.FileAttributes], 524320)
     [System.IO.File]::SetAttributes($pinnedPath, $pinnedAttributes)
     $sourceAttributes = [int][System.IO.File]::GetAttributes($pinnedPath)

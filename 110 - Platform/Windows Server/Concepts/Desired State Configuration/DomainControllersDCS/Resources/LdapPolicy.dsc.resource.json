@@ -1,0 +1,26 @@
+{
+  "$schema": "https://aka.ms/dsc/schemas/v3/bundled/resource/manifest.json",
+  "type": "Blog.DC/LdapPolicy",
+  "version": "1.0.0",
+  "description": "Reads two explicit LDAP policy DWORDs in the 64-bit NTDS registry key; no Set operation or default-policy inference.",
+  "kind": "resource",
+  "get": {
+    "executable": "powershell.exe",
+    "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", "Invoke-NativeResource.ps1", "-Resource", "LdapPolicy", "-Operation", "Get"],
+    "input": "stdin"
+  },
+  "schema": {
+    "embedded": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ValueName"],
+      "properties": {
+        "ValueName": { "type": "string", "enum": ["LDAPServerIntegrity", "LdapEnforceChannelBinding"] },
+        "Exists": { "type": "boolean" },
+        "ValueType": { "type": "string" },
+        "ValueData": { "type": "integer" }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://aka.ms/dsc/schemas/v3/bundled/resource/manifest.json",
+  "type": "Blog.DC/AuditPolicy",
+  "version": "1.0.0",
+  "description": "Reads three system audit subcategories through AuditQuerySystemPolicy; no auditpol process or Set operation.",
+  "kind": "resource",
+  "get": {
+    "executable": "powershell.exe",
+    "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", "Invoke-NativeResource.ps1", "-Resource", "AuditPolicy", "-Operation", "Get"],
+    "input": "stdin"
+  },
+  "schema": {
+    "embedded": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name"],
+      "properties": {
+        "Name": { "type": "string", "enum": ["Logon", "User Account Management", "Directory Service Changes"] },
+        "AuditSuccess": { "type": "boolean" },
+        "AuditFailure": { "type": "boolean" }
+      }
+    }
+  }
+}

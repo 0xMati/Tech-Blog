@@ -1,0 +1,31 @@
+{
+  "$schema": "https://aka.ms/dsc/schemas/v3/bundled/resource/manifest.json",
+  "type": "Blog.DC/EventLog",
+  "version": "1.0.0",
+  "description": "Reads and manages three event log configurations through EventLogConfiguration, without the DSC LCM.",
+  "kind": "resource",
+  "get": {
+    "executable": "powershell.exe",
+    "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", "Invoke-NativeResource.ps1", "-Resource", "EventLog", "-Operation", "Get"],
+    "input": "stdin"
+  },
+  "set": {
+    "executable": "powershell.exe",
+    "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", "Invoke-NativeResource.ps1", "-Resource", "EventLog", "-Operation", "Set"],
+    "input": "stdin",
+    "return": "state"
+  },
+  "schema": {
+    "embedded": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["LogName"],
+      "properties": {
+        "LogName": { "type": "string", "enum": ["Security", "System", "Directory Service"] },
+        "MaximumSizeInBytes": { "type": "integer", "minimum": 65536, "multipleOf": 65536 },
+        "LogMode": { "type": "string", "enum": ["Circular", "AutoBackup", "Retain"] }
+      }
+    }
+  }
+}

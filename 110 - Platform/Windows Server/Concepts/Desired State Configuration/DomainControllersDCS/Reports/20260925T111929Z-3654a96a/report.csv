@@ -1,0 +1,2 @@
+﻿"HostName","ControlId","ControlName","Owner","Mode","Status","Action","EvaluatedAtUtc","DesiredState","ActualState","DifferingProperties","Message"
+"MM-DC1.mathiasmotron.com","DSC-01-Spooler","Print Spooler stopped and disabled","DSC","Audit","NonCompliant","Test","2026-09-25T11:19:43.1584008Z","{""Name"":""Spooler"",""Ensure"":""Present"",""State"":""Stopped"",""StartupType"":""Disabled""}","{""Name"":""Spooler"",""Ensure"":""Present"",""State"":""Running"",""StartupType"":""Automatic""}","State, StartupType",""

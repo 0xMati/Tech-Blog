@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC1.mathiasmotron.com",
+    "ControlId":  "DSC-05-Signing",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-05-Signing\",\r\n                          \"type\":  \"PSDscResources/Registry\",\r\n                          \"properties\":  {\r\n                                             \"Key\":  \"HKLM:\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\NTDS\\\\Parameters\",\r\n                                             \"ValueName\":  \"LDAPServerIntegrity\",\r\n                                             \"ValueType\":  \"DWord\",\r\n                                             \"ValueData\":  [\r\n                                                               \"2\"\r\n                                                           ],\r\n                                             \"Ensure\":  \"Present\"\r\n                                         },\r\n                          \"directives\":  {\r\n                                             \"requireAdapter\":  \"Microsoft.Adapter/WindowsPowerShell\"\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT6.3777391S\",\"endDatetime\":\"2026-09-25T13:21:26.691255800+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:21:20.313516700+02:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT6.3777338S\",\"endDatetime\":\"2026-09-25T13:21:26.691250500+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:21:20.313516700+02:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT2.5442137S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT2.5442137S\"}},\"name\":\"DSC-05-Signing\",\"type\":\"PSDscResources/Registry\",\"result\":{\"desiredState\":{\"Key\":\"HKLM:\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\NTDS\\\\Parameters\",\"ValueName\":\"LDAPServerIntegrity\",\"ValueType\":\"DWord\",\"ValueData\":[\"2\"],\"Ensure\":\"Present\"},\"actualState\":{\"PSComputerName\":\"localhost\",\"ResourceId\":null,\"PsDscRunAsCredential\":null,\"ValueName\":\"LDAPServerIntegrity\",\"ConfigurationName\":null,\"Ensure\":\"Present\",\"DependsOn\":null,\"SourceInfo\":null,\"key\":\"HKLM:\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\NTDS\\\\Parameters\",\"ModuleVersion\":\"2.12.0.0\",\"ModuleName\":\"PSDscResources\",\"Hex\":null,\"ValueType\":\"DWord\",\"Force\":null,\"ValueData\":[\"2\"],\"_inDesiredState\":true},\"inDesiredState\":true,\"differingProperties\":[\"Key\"]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T11:21:26.6931029Z",
+                   "PSComputerName":  "MM-DC1.mathiasmotron.com",
+                   "RunspaceId":  "57c15391-988b-4415-bb90-012f61ba9f2a",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

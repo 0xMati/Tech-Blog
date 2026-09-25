@@ -1,0 +1,448 @@
+﻿"HostName","ControlId","ControlName","Owner","Mode","Status","Action","EvaluatedAtUtc","DesiredState","ActualState","DifferingProperties","Message"
+"MM-DC1.mathiasmotron.com","DSC-01-Spooler","Print Spooler stopped and disabled","DSC","Audit","NonCompliant","Test","2026-09-25T11:22:11.0977417Z","{""Name"":""Spooler"",""Ensure"":""Present"",""State"":""Stopped"",""StartupType"":""Disabled""}","{""Name"":""Spooler"",""Ensure"":""Present"",""State"":""Running"",""StartupType"":""Automatic""}","State, StartupType",""
+"MM-DC1.mathiasmotron.com","DSC-02-SMB1","SMB server protocol version 1 disabled","GPO","Audit","Compliant","Test","2026-09-25T11:22:18.1964691Z","{""IsSingleInstance"":""Yes"",""EnableSMB1Protocol"":false}","{""IsSingleInstance"":""Yes"",""EnableSMB1Protocol"":false}","",""
+"MM-DC1.mathiasmotron.com","DSC-02-Signing","SMB server signing required","GPO","Audit","Compliant","Test","2026-09-25T11:22:24.8684200Z","{""IsSingleInstance"":""Yes"",""RequireSecuritySignature"":true}","{""IsSingleInstance"":""Yes"",""RequireSecuritySignature"":true}","",""
+"MM-DC1.mathiasmotron.com","DSC-03-Logon","Logon audit: success and failure","GPO","Audit","Compliant","Test","2026-09-25T11:22:31.6059957Z","{""Name"":""Logon"",""AuditFlag"":""Success And Failure"",""Ensure"":""Present""}","{""Name"":""Logon"",""AuditFlag"":""Success and Failure"",""Ensure"":""Present""}","AuditFlag",""
+"MM-DC1.mathiasmotron.com","DSC-03-Accounts","User account management audit: success and failure","GPO","Audit","Compliant","Test","2026-09-25T11:22:38.2830520Z","{""Name"":""User Account Management"",""AuditFlag"":""Success And Failure"",""Ensure"":""Present""}","{""Name"":""User Account Management"",""AuditFlag"":""Success and Failure"",""Ensure"":""Present""}","AuditFlag",""
+"MM-DC1.mathiasmotron.com","DSC-03-DirectoryChanges","Directory service changes audit: success","GPO","Audit","NonCompliant","Test","2026-09-25T11:22:44.8673389Z","{""Name"":""Directory Service Changes"",""AuditFlag"":""Success"",""Ensure"":""Present""}","{""Name"":""Directory Service Changes"",""AuditFlag"":""Success and Failure"",""Ensure"":""Absent""}","AuditFlag, Ensure",""
+"MM-DC1.mathiasmotron.com","DSC-04-Security","Security log: 1 GiB, overwrite oldest events","DSC","Audit","NonCompliant","Test","2026-09-25T11:22:51.9599722Z","{""LogName"":""Security"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}","{""LogName"":""Security"",""MaximumSizeInBytes"":134217728,""LogMode"":""Circular""}","MaximumSizeInBytes",""
+"MM-DC1.mathiasmotron.com","DSC-04-System","System log: 1 GiB, overwrite oldest events","DSC","Audit","NonCompliant","Test","2026-09-25T11:22:58.6366747Z","{""LogName"":""System"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}","{""LogName"":""System"",""MaximumSizeInBytes"":20971520,""LogMode"":""Circular""}","MaximumSizeInBytes",""
+"MM-DC1.mathiasmotron.com","DSC-04-Directory","Directory Service log: 1 GiB, overwrite oldest events","DSC","Audit","NonCompliant","Test","2026-09-25T11:23:05.4706368Z","{""LogName"":""Directory Service"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}","{""LogName"":""Directory Service"",""MaximumSizeInBytes"":1052672,""LogMode"":""Circular""}","MaximumSizeInBytes",""
+"MM-DC1.mathiasmotron.com","DSC-05-Signing","Explicit LDAP signing policy: Require signing","GPO","Audit","Compliant","Test","2026-09-25T11:23:11.8407386Z","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LDAPServerIntegrity"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LDAPServerIntegrity"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","Key","Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+"MM-DC1.mathiasmotron.com","DSC-05-ChannelBinding","Explicit LDAP channel binding policy: Always","GPO","Audit","Compliant","Test","2026-09-25T11:23:18.9172706Z","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LdapEnforceChannelBinding"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LdapEnforceChannelBinding"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","Key","Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+"MM-DC2.mathiasmotron.com","DSC-01-Spooler","Print Spooler stopped and disabled","DSC","Audit","NonCompliant","Test","2026-09-25T11:24:23.6163347Z","{""Name"":""Spooler"",""Ensure"":""Present"",""State"":""Stopped"",""StartupType"":""Disabled""}","{""Name"":""Spooler"",""Ensure"":""Present"",""State"":""Running"",""StartupType"":""Automatic""}","State, StartupType",""
+"MM-DC2.mathiasmotron.com","DSC-02-SMB1","SMB server protocol version 1 disabled","GPO","Audit","Compliant","Test","2026-09-25T11:24:39.3254965Z","{""IsSingleInstance"":""Yes"",""EnableSMB1Protocol"":false}","{""IsSingleInstance"":""Yes"",""EnableSMB1Protocol"":false}","",""
+"MM-DC2.mathiasmotron.com","DSC-02-Signing","SMB server signing required","GPO","Audit","Compliant","Test","2026-09-25T11:24:52.4897176Z","{""IsSingleInstance"":""Yes"",""RequireSecuritySignature"":true}","{""IsSingleInstance"":""Yes"",""RequireSecuritySignature"":true}","",""
+"MM-DC2.mathiasmotron.com","DSC-03-Logon","Logon audit: success and failure","GPO","Audit","Error","None","","{""Name"":""Logon"",""AuditFlag"":""Success And Failure"",""Ensure"":""Present""}",,"","DSC exit code 2. [2m2026-09-25T11:25:05.157407Z[0m [31mERROR[0m PID 5476: 
+
+Exception             : System.Management.Automation.ActionPreferenceStopException: The running command stopped because 
+                        the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: 
+                        (ERROR) auditpol.exe was not found on the system
+                           at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext 
+                        funcContext, Exception exception)
+                           at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+                           at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke 
+                        clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 
+                        variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object 
+                        input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+                           at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+                           at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThrea
+                        dCheck(Action action)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean 
+                        propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] 
+                        args)
+                           at System.Management.Automation.ScriptBlock.DoInvokeReturnAsIs(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Object[] args)
+                           at System.Management.Automation.ScriptBlock.InvokeReturnAsIs(Object[] args)
+                           at System.Management.Automation.PSModuleInfo.Invoke(ScriptBlock sb, Object[] args)
+                           at CallSite.Target(Closure , CallSite , Object , ScriptBlock , Object , Object , Object )
+TargetObject          : 
+CategoryInfo          : NotSpecified: (:) [], ActionPreferenceStopException
+FullyQualifiedErrorId : ActionPreferenceStopException
+ErrorDetails          : 
+InvocationInfo        : System.Management.Automation.InvocationInfo
+ScriptStackTrace      : at <ScriptBlock>, <No file>: line 198
+PipelineIterationInfo : {}
+PSMessageDetails      : 
+
+
+
+
+[2m2026-09-25T11:25:05.161528Z[0m [31mERROR[0m PID 5476: Exception calling ""Invoke"" with ""4"" argument(s): ""The running command stopped because the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: (ERROR) auditpol.exe was not found on the system""
+[2m2026-09-25T11:25:05.390887Z[0m [31mERROR[0m PID 5476: Errors were captured during script execution. Check previous error traces for details.
+[2m2026-09-25T11:25:05.451800Z[0m [31mERROR[0m Failed to run process 'powershell': Command: Resource 'powershell' [exit code 1] 
+[2m2026-09-25T11:25:05.452540Z[0m [31mERROR[0m Command: Resource 'powershell' [exit code 1] 
+"
+"MM-DC2.mathiasmotron.com","DSC-03-Accounts","User account management audit: success and failure","GPO","Audit","Error","None","","{""Name"":""User Account Management"",""AuditFlag"":""Success And Failure"",""Ensure"":""Present""}",,"","DSC exit code 2. [2m2026-09-25T11:25:18.015584Z[0m [31mERROR[0m PID 6416: 
+
+Exception             : System.Management.Automation.ActionPreferenceStopException: The running command stopped because 
+                        the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: 
+                        (ERROR) auditpol.exe was not found on the system
+                           at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext 
+                        funcContext, Exception exception)
+                           at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+                           at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke 
+                        clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 
+                        variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object 
+                        input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+                           at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+                           at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThrea
+                        dCheck(Action action)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean 
+                        propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] 
+                        args)
+                           at System.Management.Automation.ScriptBlock.DoInvokeReturnAsIs(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Object[] args)
+                           at System.Management.Automation.ScriptBlock.InvokeReturnAsIs(Object[] args)
+                           at System.Management.Automation.PSModuleInfo.Invoke(ScriptBlock sb, Object[] args)
+                           at CallSite.Target(Closure , CallSite , Object , ScriptBlock , Object , Object , Object )
+TargetObject          : 
+CategoryInfo          : NotSpecified: (:) [], ActionPreferenceStopException
+FullyQualifiedErrorId : ActionPreferenceStopException
+ErrorDetails          : 
+InvocationInfo        : System.Management.Automation.InvocationInfo
+ScriptStackTrace      : at <ScriptBlock>, <No file>: line 198
+PipelineIterationInfo : {}
+PSMessageDetails      : 
+
+
+
+
+[2m2026-09-25T11:25:18.019424Z[0m [31mERROR[0m PID 6416: Exception calling ""Invoke"" with ""4"" argument(s): ""The running command stopped because the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: (ERROR) auditpol.exe was not found on the system""
+[2m2026-09-25T11:25:18.249964Z[0m [31mERROR[0m PID 6416: Errors were captured during script execution. Check previous error traces for details.
+[2m2026-09-25T11:25:18.312309Z[0m [31mERROR[0m Failed to run process 'powershell': Command: Resource 'powershell' [exit code 1] 
+[2m2026-09-25T11:25:18.313019Z[0m [31mERROR[0m Command: Resource 'powershell' [exit code 1] 
+"
+"MM-DC2.mathiasmotron.com","DSC-03-DirectoryChanges","Directory service changes audit: success","GPO","Audit","Error","None","","{""Name"":""Directory Service Changes"",""AuditFlag"":""Success"",""Ensure"":""Present""}",,"","DSC exit code 2. [2m2026-09-25T11:25:30.781091Z[0m [31mERROR[0m PID 9688: 
+
+Exception             : System.Management.Automation.ActionPreferenceStopException: The running command stopped because 
+                        the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: 
+                        Cannot invoke the Invoke-DscResource cmdlet. The Consistency Check or Pull cmdlet is in 
+                        progress and must return before Invoke-DscResource can be invoked. Use -Force option if that is 
+                        available to cancel the current operation.
+                           at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext 
+                        funcContext, Exception exception)
+                           at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+                           at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke 
+                        clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 
+                        variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object 
+                        input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+                           at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+                           at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThrea
+                        dCheck(Action action)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean 
+                        propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] 
+                        args)
+                           at System.Management.Automation.ScriptBlock.DoInvokeReturnAsIs(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Object[] args)
+                           at System.Management.Automation.ScriptBlock.InvokeReturnAsIs(Object[] args)
+                           at System.Management.Automation.PSModuleInfo.Invoke(ScriptBlock sb, Object[] args)
+                           at CallSite.Target(Closure , CallSite , Object , ScriptBlock , Object , Object , Object )
+TargetObject          : 
+CategoryInfo          : NotSpecified: (:) [], ActionPreferenceStopException
+FullyQualifiedErrorId : ActionPreferenceStopException
+ErrorDetails          : 
+InvocationInfo        : System.Management.Automation.InvocationInfo
+ScriptStackTrace      : at <ScriptBlock>, <No file>: line 198
+PipelineIterationInfo : {}
+PSMessageDetails      : 
+
+
+
+
+[2m2026-09-25T11:25:30.785247Z[0m [31mERROR[0m PID 9688: Exception calling ""Invoke"" with ""4"" argument(s): ""The running command stopped because the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: Cannot invoke the Invoke-DscResource cmdlet. The Consistency Check or Pull cmdlet is in progress and must return before Invoke-DscResource can be invoked. Use -Force option if that is available to cancel the current operation.""
+[2m2026-09-25T11:25:31.016398Z[0m [31mERROR[0m PID 9688: Errors were captured during script execution. Check previous error traces for details.
+[2m2026-09-25T11:25:31.080177Z[0m [31mERROR[0m Failed to run process 'powershell': Command: Resource 'powershell' [exit code 1] 
+[2m2026-09-25T11:25:31.080932Z[0m [31mERROR[0m Command: Resource 'powershell' [exit code 1] 
+"
+"MM-DC2.mathiasmotron.com","DSC-04-Security","Security log: 1 GiB, overwrite oldest events","DSC","Audit","Error","None","","{""LogName"":""Security"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}",,"","DSC exit code 2. [2m2026-09-25T11:25:43.481661Z[0m [31mERROR[0m PID 8036: 
+
+Exception             : System.Management.Automation.ActionPreferenceStopException: The running command stopped because 
+                        the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: 
+                        Cannot invoke the Invoke-DscResource cmdlet. The Consistency Check or Pull cmdlet is in 
+                        progress and must return before Invoke-DscResource can be invoked. Use -Force option if that is 
+                        available to cancel the current operation.
+                           at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext 
+                        funcContext, Exception exception)
+                           at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+                           at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke 
+                        clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 
+                        variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object 
+                        input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+                           at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+                           at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThrea
+                        dCheck(Action action)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean 
+                        propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] 
+                        args)
+                           at System.Management.Automation.ScriptBlock.DoInvokeReturnAsIs(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Object[] args)
+                           at System.Management.Automation.ScriptBlock.InvokeReturnAsIs(Object[] args)
+                           at System.Management.Automation.PSModuleInfo.Invoke(ScriptBlock sb, Object[] args)
+                           at CallSite.Target(Closure , CallSite , Object , ScriptBlock , Object , Object , Object )
+TargetObject          : 
+CategoryInfo          : NotSpecified: (:) [], ActionPreferenceStopException
+FullyQualifiedErrorId : ActionPreferenceStopException
+ErrorDetails          : 
+InvocationInfo        : System.Management.Automation.InvocationInfo
+ScriptStackTrace      : at <ScriptBlock>, <No file>: line 198
+PipelineIterationInfo : {}
+PSMessageDetails      : 
+
+
+
+
+[2m2026-09-25T11:25:43.485481Z[0m [31mERROR[0m PID 8036: Exception calling ""Invoke"" with ""4"" argument(s): ""The running command stopped because the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: Cannot invoke the Invoke-DscResource cmdlet. The Consistency Check or Pull cmdlet is in progress and must return before Invoke-DscResource can be invoked. Use -Force option if that is available to cancel the current operation.""
+[2m2026-09-25T11:25:43.722089Z[0m [31mERROR[0m PID 8036: Errors were captured during script execution. Check previous error traces for details.
+[2m2026-09-25T11:25:43.779841Z[0m [31mERROR[0m Failed to run process 'powershell': Command: Resource 'powershell' [exit code 1] 
+[2m2026-09-25T11:25:43.780627Z[0m [31mERROR[0m Command: Resource 'powershell' [exit code 1] 
+"
+"MM-DC2.mathiasmotron.com","DSC-04-System","System log: 1 GiB, overwrite oldest events","DSC","Audit","NonCompliant","Test","2026-09-25T11:25:57.6049279Z","{""LogName"":""System"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}","{""LogName"":""System"",""MaximumSizeInBytes"":20971520,""LogMode"":""Circular""}","MaximumSizeInBytes",""
+"MM-DC2.mathiasmotron.com","DSC-04-Directory","Directory Service log: 1 GiB, overwrite oldest events","DSC","Audit","NonCompliant","Test","2026-09-25T11:26:10.5665565Z","{""LogName"":""Directory Service"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}","{""LogName"":""Directory Service"",""MaximumSizeInBytes"":1052672,""LogMode"":""Circular""}","MaximumSizeInBytes",""
+"MM-DC2.mathiasmotron.com","DSC-05-Signing","Explicit LDAP signing policy: Require signing","GPO","Audit","Compliant","Test","2026-09-25T11:26:23.7370837Z","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LDAPServerIntegrity"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LDAPServerIntegrity"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","Key","Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+"MM-DC2.mathiasmotron.com","DSC-05-ChannelBinding","Explicit LDAP channel binding policy: Always","GPO","Audit","Compliant","Test","2026-09-25T11:26:36.5068700Z","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LdapEnforceChannelBinding"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LdapEnforceChannelBinding"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","Key","Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+"MM-DC3.mathiasmotron.com","DSC-01-Spooler","Print Spooler stopped and disabled","DSC","Audit","NonCompliant","Test","2026-09-25T11:28:07.0330565Z","{""Name"":""Spooler"",""Ensure"":""Present"",""State"":""Stopped"",""StartupType"":""Disabled""}","{""Name"":""Spooler"",""Ensure"":""Present"",""State"":""Running"",""StartupType"":""Automatic""}","State, StartupType",""
+"MM-DC3.mathiasmotron.com","DSC-02-SMB1","SMB server protocol version 1 disabled","GPO","Audit","Compliant","Test","2026-09-25T11:28:27.2634798Z","{""IsSingleInstance"":""Yes"",""EnableSMB1Protocol"":false}","{""IsSingleInstance"":""Yes"",""EnableSMB1Protocol"":false}","",""
+"MM-DC3.mathiasmotron.com","DSC-02-Signing","SMB server signing required","GPO","Audit","Compliant","Test","2026-09-25T11:28:44.9545723Z","{""IsSingleInstance"":""Yes"",""RequireSecuritySignature"":true}","{""IsSingleInstance"":""Yes"",""RequireSecuritySignature"":true}","",""
+"MM-DC3.mathiasmotron.com","DSC-03-Logon","Logon audit: success and failure","GPO","Audit","Error","None","","{""Name"":""Logon"",""AuditFlag"":""Success And Failure"",""Ensure"":""Present""}",,"","DSC exit code 2. [2m2026-09-25T11:29:01.914331Z[0m [31mERROR[0m PID 3360: 
+
+Exception             : System.Management.Automation.ActionPreferenceStopException: The running command stopped because 
+                        the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: 
+                        (ERROR) auditpol.exe was not found on the system
+                           at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext 
+                        funcContext, Exception exception)
+                           at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+                           at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke 
+                        clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 
+                        variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object 
+                        input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+                           at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+                           at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThrea
+                        dCheck(Action action)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean 
+                        propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] 
+                        args)
+                           at System.Management.Automation.ScriptBlock.DoInvokeReturnAsIs(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Object[] args)
+                           at System.Management.Automation.ScriptBlock.InvokeReturnAsIs(Object[] args)
+                           at System.Management.Automation.PSModuleInfo.Invoke(ScriptBlock sb, Object[] args)
+                           at CallSite.Target(Closure , CallSite , Object , ScriptBlock , Object , Object , Object )
+TargetObject          : 
+CategoryInfo          : NotSpecified: (:) [], ActionPreferenceStopException
+FullyQualifiedErrorId : ActionPreferenceStopException
+ErrorDetails          : 
+InvocationInfo        : System.Management.Automation.InvocationInfo
+ScriptStackTrace      : at <ScriptBlock>, <No file>: line 198
+PipelineIterationInfo : {}
+PSMessageDetails      : 
+
+
+
+
+[2m2026-09-25T11:29:01.918102Z[0m [31mERROR[0m PID 3360: Exception calling ""Invoke"" with ""4"" argument(s): ""The running command stopped because the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: (ERROR) auditpol.exe was not found on the system""
+[2m2026-09-25T11:29:02.151237Z[0m [31mERROR[0m PID 3360: Errors were captured during script execution. Check previous error traces for details.
+[2m2026-09-25T11:29:02.229844Z[0m [31mERROR[0m Failed to run process 'powershell': Command: Resource 'powershell' [exit code 1] 
+[2m2026-09-25T11:29:02.230632Z[0m [31mERROR[0m Command: Resource 'powershell' [exit code 1] 
+"
+"MM-DC3.mathiasmotron.com","DSC-03-Accounts","User account management audit: success and failure","GPO","Audit","Error","None","","{""Name"":""User Account Management"",""AuditFlag"":""Success And Failure"",""Ensure"":""Present""}",,"","DSC exit code 2. [2m2026-09-25T11:29:18.871951Z[0m [31mERROR[0m PID 7676: 
+
+Exception             : System.Management.Automation.ActionPreferenceStopException: The running command stopped because 
+                        the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: 
+                        (ERROR) auditpol.exe was not found on the system
+                           at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext 
+                        funcContext, Exception exception)
+                           at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+                           at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke 
+                        clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 
+                        variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object 
+                        input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+                           at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+                           at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThrea
+                        dCheck(Action action)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean 
+                        propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] 
+                        args)
+                           at System.Management.Automation.ScriptBlock.DoInvokeReturnAsIs(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Object[] args)
+                           at System.Management.Automation.ScriptBlock.InvokeReturnAsIs(Object[] args)
+                           at System.Management.Automation.PSModuleInfo.Invoke(ScriptBlock sb, Object[] args)
+                           at CallSite.Target(Closure , CallSite , Object , ScriptBlock , Object , Object , Object )
+TargetObject          : 
+CategoryInfo          : NotSpecified: (:) [], ActionPreferenceStopException
+FullyQualifiedErrorId : ActionPreferenceStopException
+ErrorDetails          : 
+InvocationInfo        : System.Management.Automation.InvocationInfo
+ScriptStackTrace      : at <ScriptBlock>, <No file>: line 198
+PipelineIterationInfo : {}
+PSMessageDetails      : 
+
+
+
+
+[2m2026-09-25T11:29:18.873856Z[0m [31mERROR[0m PID 7676: Exception calling ""Invoke"" with ""4"" argument(s): ""The running command stopped because the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: (ERROR) auditpol.exe was not found on the system""
+[2m2026-09-25T11:29:19.104442Z[0m [31mERROR[0m PID 7676: Errors were captured during script execution. Check previous error traces for details.
+[2m2026-09-25T11:29:19.182457Z[0m [31mERROR[0m Failed to run process 'powershell': Command: Resource 'powershell' [exit code 1] 
+[2m2026-09-25T11:29:19.183392Z[0m [31mERROR[0m Command: Resource 'powershell' [exit code 1] 
+"
+"MM-DC3.mathiasmotron.com","DSC-03-DirectoryChanges","Directory service changes audit: success","GPO","Audit","Error","None","","{""Name"":""Directory Service Changes"",""AuditFlag"":""Success"",""Ensure"":""Present""}",,"","DSC exit code 2. [2m2026-09-25T11:29:35.961520Z[0m [31mERROR[0m PID 10212: 
+
+Exception             : System.Management.Automation.ActionPreferenceStopException: The running command stopped because 
+                        the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: 
+                        (ERROR) auditpol.exe was not found on the system
+                           at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext 
+                        funcContext, Exception exception)
+                           at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+                           at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke 
+                        clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 
+                        variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object 
+                        input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+                           at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+                           at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThrea
+                        dCheck(Action action)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean 
+                        propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] 
+                        args)
+                           at System.Management.Automation.ScriptBlock.DoInvokeReturnAsIs(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Object[] args)
+                           at System.Management.Automation.ScriptBlock.InvokeReturnAsIs(Object[] args)
+                           at System.Management.Automation.PSModuleInfo.Invoke(ScriptBlock sb, Object[] args)
+                           at CallSite.Target(Closure , CallSite , Object , ScriptBlock , Object , Object , Object )
+TargetObject          : 
+CategoryInfo          : NotSpecified: (:) [], ActionPreferenceStopException
+FullyQualifiedErrorId : ActionPreferenceStopException
+ErrorDetails          : 
+InvocationInfo        : System.Management.Automation.InvocationInfo
+ScriptStackTrace      : at <ScriptBlock>, <No file>: line 198
+PipelineIterationInfo : {}
+PSMessageDetails      : 
+
+
+
+
+[2m2026-09-25T11:29:35.965525Z[0m [31mERROR[0m PID 10212: Exception calling ""Invoke"" with ""4"" argument(s): ""The running command stopped because the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: (ERROR) auditpol.exe was not found on the system""
+[2m2026-09-25T11:29:36.199349Z[0m [31mERROR[0m PID 10212: Errors were captured during script execution. Check previous error traces for details.
+[2m2026-09-25T11:29:36.278745Z[0m [31mERROR[0m Failed to run process 'powershell': Command: Resource 'powershell' [exit code 1] 
+[2m2026-09-25T11:29:36.281504Z[0m [31mERROR[0m Command: Resource 'powershell' [exit code 1] 
+"
+"MM-DC3.mathiasmotron.com","DSC-04-Security","Security log: 1 GiB, overwrite oldest events","DSC","Audit","NonCompliant","Test","2026-09-25T11:29:53.6958955Z","{""LogName"":""Security"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}","{""LogName"":""Security"",""MaximumSizeInBytes"":134217728,""LogMode"":""Circular""}","MaximumSizeInBytes",""
+"MM-DC3.mathiasmotron.com","DSC-04-System","System log: 1 GiB, overwrite oldest events","DSC","Audit","NonCompliant","Test","2026-09-25T11:30:11.1871169Z","{""LogName"":""System"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}","{""LogName"":""System"",""MaximumSizeInBytes"":20971520,""LogMode"":""Circular""}","MaximumSizeInBytes",""
+"MM-DC3.mathiasmotron.com","DSC-04-Directory","Directory Service log: 1 GiB, overwrite oldest events","DSC","Audit","Error","None","","{""LogName"":""Directory Service"",""MaximumSizeInBytes"":1073741824,""LogMode"":""Circular""}",,"","DSC exit code 2. [2m2026-09-25T11:30:30.013851Z[0m [31mERROR[0m PID 6248: Exception calling ""Invoke"" with ""4"" argument(s): ""The running command stopped because the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: Cannot invoke the Invoke-DscResource cmdlet. The Consistency Check or Pull cmdlet is in progress and must return before Invoke-DscResource can be invoked. Use -Force option if that is available to cancel the current operation.""
+[2m2026-09-25T11:30:30.018320Z[0m [31mERROR[0m PID 6248: 
+
+Exception             : System.Management.Automation.ActionPreferenceStopException: The running command stopped because 
+                        the preference variable ""ErrorActionPreference"" or common parameter is set to Stop: Exception: 
+                        Cannot invoke the Invoke-DscResource cmdlet. The Consistency Check or Pull cmdlet is in 
+                        progress and must return before Invoke-DscResource can be invoked. Use -Force option if that is 
+                        available to cancel the current operation.
+                           at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext 
+                        funcContext, Exception exception)
+                           at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at 
+                        System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame 
+                        frame)
+                           at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+                           at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke 
+                        clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 
+                        variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object 
+                        input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+                           at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+                           at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThrea
+                        dCheck(Action action)
+                           at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean 
+                        propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] 
+                        args)
+                           at System.Management.Automation.ScriptBlock.DoInvokeReturnAsIs(Boolean useLocalScope, 
+                        ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object 
+                        scriptThis, Object[] args)
+                           at System.Management.Automation.ScriptBlock.InvokeReturnAsIs(Object[] args)
+                           at System.Management.Automation.PSModuleInfo.Invoke(ScriptBlock sb, Object[] args)
+                           at CallSite.Target(Closure , CallSite , Object , ScriptBlock , Object , Object , Object )
+TargetObject          : 
+CategoryInfo          : NotSpecified: (:) [], ActionPreferenceStopException
+FullyQualifiedErrorId : ActionPreferenceStopException
+ErrorDetails          : 
+InvocationInfo        : System.Management.Automation.InvocationInfo
+ScriptStackTrace      : at <ScriptBlock>, <No file>: line 198
+PipelineIterationInfo : {}
+PSMessageDetails      : 
+
+
+
+
+[2m2026-09-25T11:30:30.249219Z[0m [31mERROR[0m PID 6248: Errors were captured during script execution. Check previous error traces for details.
+[2m2026-09-25T11:30:30.324059Z[0m [31mERROR[0m Failed to run process 'powershell': Command: Resource 'powershell' [exit code 1] 
+[2m2026-09-25T11:30:30.324833Z[0m [31mERROR[0m Command: Resource 'powershell' [exit code 1] 
+"
+"MM-DC3.mathiasmotron.com","DSC-05-Signing","Explicit LDAP signing policy: Require signing","GPO","Audit","Compliant","Test","2026-09-25T11:30:48.1585032Z","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LDAPServerIntegrity"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LDAPServerIntegrity"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","Key","Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."
+"MM-DC3.mathiasmotron.com","DSC-05-ChannelBinding","Explicit LDAP channel binding policy: Always","GPO","Audit","Compliant","Test","2026-09-25T11:31:05.4064953Z","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LdapEnforceChannelBinding"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","{""Key"":""HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters"",""ValueName"":""LdapEnforceChannelBinding"",""ValueType"":""DWord"",""ValueData"":[""2""],""Ensure"":""Present""}","Key","Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement."

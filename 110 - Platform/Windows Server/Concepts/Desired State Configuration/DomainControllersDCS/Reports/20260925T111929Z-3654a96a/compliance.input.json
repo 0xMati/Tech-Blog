@@ -1,11 +1,14 @@
 {
-  "SchemaVersion": 2,
-  "BaselineVersion": "2.0.0",
+  "SchemaVersion": 1,
+  "BaselineVersion": "1.0.0",
   "MaximumInventoryAgeHours": 24,
   "DscExecutable": "C:\\Tools\\DSC\\dsc.exe",
   "DscVersion": "3.2.3",
-  "ResourceDirectory": "C:\\Tools\\DSC\\Resources\\DCCompliance\\1.0.0",
-  "ResourceVersion": "1.0.0",
+  "ModuleVersions": {
+    "PSDscResources": "2.12.0.0",
+    "ComputerManagementDsc": "10.0.0",
+    "AuditPolicyDsc": "1.4.0.0"
+  },
   "ExcludedDCs": [],
   "Controls": [
     {
@@ -13,9 +16,10 @@
       "Name": "Print Spooler stopped and disabled",
       "Owner": "DSC",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/Spooler",
+      "ResourceType": "PSDscResources/Service",
       "Properties": {
         "Name": "Spooler",
+        "Ensure": "Present",
         "State": "Stopped",
         "StartupType": "Disabled"
       }
@@ -25,9 +29,9 @@
       "Name": "SMB server protocol version 1 disabled",
       "Owner": "GPO",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/SmbServer",
+      "ResourceType": "ComputerManagementDsc/SmbServerConfiguration",
       "Properties": {
-        "Name": "Server",
+        "IsSingleInstance": "Yes",
         "EnableSMB1Protocol": false
       }
     },
@@ -36,9 +40,9 @@
       "Name": "SMB server signing required",
       "Owner": "GPO",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/SmbServer",
+      "ResourceType": "ComputerManagementDsc/SmbServerConfiguration",
       "Properties": {
-        "Name": "Server",
+        "IsSingleInstance": "Yes",
         "RequireSecuritySignature": true
       }
     },
@@ -47,11 +51,11 @@
       "Name": "Logon audit: success and failure",
       "Owner": "GPO",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/AuditPolicy",
+      "ResourceType": "AuditPolicyDsc/AuditPolicyGUID",
       "Properties": {
         "Name": "Logon",
-        "AuditSuccess": true,
-        "AuditFailure": true
+        "AuditFlag": "Success And Failure",
+        "Ensure": "Present"
       }
     },
     {
@@ -59,11 +63,11 @@
       "Name": "User account management audit: success and failure",
       "Owner": "GPO",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/AuditPolicy",
+      "ResourceType": "AuditPolicyDsc/AuditPolicyGUID",
       "Properties": {
         "Name": "User Account Management",
-        "AuditSuccess": true,
-        "AuditFailure": true
+        "AuditFlag": "Success And Failure",
+        "Ensure": "Present"
       }
     },
     {
@@ -71,11 +75,11 @@
       "Name": "Directory service changes audit: success",
       "Owner": "GPO",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/AuditPolicy",
+      "ResourceType": "AuditPolicyDsc/AuditPolicyGUID",
       "Properties": {
         "Name": "Directory Service Changes",
-        "AuditSuccess": true,
-        "AuditFailure": false
+        "AuditFlag": "Success",
+        "Ensure": "Present"
       }
     },
     {
@@ -83,7 +87,7 @@
       "Name": "Security log: 1 GiB, overwrite oldest events",
       "Owner": "DSC",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/EventLog",
+      "ResourceType": "ComputerManagementDsc/WindowsEventLog",
       "Properties": {
         "LogName": "Security",
         "MaximumSizeInBytes": 1073741824,
@@ -95,7 +99,7 @@
       "Name": "System log: 1 GiB, overwrite oldest events",
       "Owner": "DSC",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/EventLog",
+      "ResourceType": "ComputerManagementDsc/WindowsEventLog",
       "Properties": {
         "LogName": "System",
         "MaximumSizeInBytes": 1073741824,
@@ -107,7 +111,7 @@
       "Name": "Directory Service log: 1 GiB, overwrite oldest events",
       "Owner": "DSC",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/EventLog",
+      "ResourceType": "ComputerManagementDsc/WindowsEventLog",
       "Properties": {
         "LogName": "Directory Service",
         "MaximumSizeInBytes": 1073741824,
@@ -119,12 +123,13 @@
       "Name": "Explicit LDAP signing policy: Require signing",
       "Owner": "GPO",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/LdapPolicy",
+      "ResourceType": "PSDscResources/Registry",
       "Properties": {
+        "Key": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
         "ValueName": "LDAPServerIntegrity",
-        "Exists": true,
         "ValueType": "DWord",
-        "ValueData": 2
+        "ValueData": ["2"],
+        "Ensure": "Present"
       }
     },
     {
@@ -132,12 +137,13 @@
       "Name": "Explicit LDAP channel binding policy: Always",
       "Owner": "GPO",
       "Mode": "Audit",
-      "ResourceType": "Blog.DC/LdapPolicy",
+      "ResourceType": "PSDscResources/Registry",
       "Properties": {
+        "Key": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
         "ValueName": "LdapEnforceChannelBinding",
-        "Exists": true,
         "ValueType": "DWord",
-        "ValueData": 2
+        "ValueData": ["2"],
+        "Ensure": "Present"
       }
     }
   ]

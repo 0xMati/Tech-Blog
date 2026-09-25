@@ -42,52 +42,50 @@ function Assert-DCControl {
     $properties = $Control.Properties
     $required = @()
     switch -CaseSensitive ($Control.ResourceType) {
-        'PSDscResources/Service' {
-            $required = @('Name', 'Ensure', 'State', 'StartupType')
+        'Blog.DC/Spooler' {
+            $required = @('Name', 'State', 'StartupType')
             Assert-DCObject $properties $required $Control.Id
-            if ($properties.Name -cne 'Spooler' -or $properties.Ensure -cne 'Present' -or
+            if ($properties.Name -cne 'Spooler' -or
                 $properties.State -cnotin @('Running', 'Stopped') -or
-                $properties.StartupType -cnotin @('Automatic', 'Manual', 'Disabled')) {
+                $properties.StartupType -cnotin @('Automatic', 'Manual', 'Disabled') -or
+                ($properties.State -ceq 'Running' -and $properties.StartupType -ceq 'Disabled')) {
                 throw "Invalid Spooler properties on '$($Control.Id)'."
             }
         }
-        'ComputerManagementDsc/SmbServerConfiguration' {
-            Assert-DCObject $properties @('IsSingleInstance') $Control.Id
-            $switchNames = @($properties.PSObject.Properties.Name | Where-Object { $_ -ne 'IsSingleInstance' })
-            if ($properties.IsSingleInstance -cne 'Yes' -or $switchNames.Count -ne 1 -or
+        'Blog.DC/SmbServer' {
+            Assert-DCObject $properties @('Name') $Control.Id
+            $switchNames = @($properties.PSObject.Properties.Name | Where-Object { $_ -ne 'Name' })
+            if ($properties.Name -cne 'Server' -or $switchNames.Count -ne 1 -or
                 $switchNames[0] -cnotin @('EnableSMB1Protocol', 'RequireSecuritySignature')) {
                 throw "Each SMB control must test one supported Boolean property: '$($Control.Id)'."
             }
-            $required = @('IsSingleInstance', $switchNames[0])
+            $required = @('Name', $switchNames[0])
             if ($properties.($switchNames[0]) -isnot [bool]) { throw "SMB values must be Booleans: '$($Control.Id)'." }
         }
-        'AuditPolicyDsc/AuditPolicyGUID' {
-            $required = @('Name', 'AuditFlag', 'Ensure')
+        'Blog.DC/AuditPolicy' {
+            $required = @('Name', 'AuditSuccess', 'AuditFailure')
             Assert-DCObject $properties $required $Control.Id
             if ($properties.Name -cnotin @('Logon', 'User Account Management', 'Directory Service Changes') -or
-                $properties.AuditFlag -cnotin @('Success', 'Failure', 'Success And Failure', 'No Auditing') -or
-                $properties.Ensure -cne 'Present') {
+                $properties.AuditSuccess -isnot [bool] -or $properties.AuditFailure -isnot [bool]) {
                 throw "Unsupported audit policy properties on '$($Control.Id)'."
             }
         }
-        'ComputerManagementDsc/WindowsEventLog' {
+        'Blog.DC/EventLog' {
             $required = @('LogName', 'MaximumSizeInBytes', 'LogMode')
             Assert-DCObject $properties $required $Control.Id
             $size = $properties.MaximumSizeInBytes
-            if ($properties.LogName -cnotin @('Security', 'System', 'Application', 'Directory Service') -or
+            if ($properties.LogName -cnotin @('Security', 'System', 'Directory Service') -or
                 $properties.LogMode -cnotin @('Circular', 'AutoBackup', 'Retain') -or
                 ($size -isnot [int] -and $size -isnot [long]) -or $size -lt 65536 -or $size % 65536 -ne 0) {
                 throw "Invalid log properties on '$($Control.Id)'; size must be a positive multiple of 64 KiB."
             }
         }
-        'PSDscResources/Registry' {
-            $required = @('Key', 'ValueName', 'ValueType', 'ValueData', 'Ensure')
+        'Blog.DC/LdapPolicy' {
+            $required = @('ValueName', 'Exists', 'ValueType', 'ValueData')
             Assert-DCObject $properties $required $Control.Id
-            if ($properties.Key -ine 'HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters' -or
-                $properties.ValueName -cnotin @('LDAPServerIntegrity', 'LdapEnforceChannelBinding') -or
-                $properties.ValueType -cne 'DWord' -or $properties.Ensure -cne 'Present' -or
-                $properties.ValueData -isnot [array] -or $properties.ValueData.Count -ne 1 -or
-                $properties.ValueData[0] -isnot [string] -or $properties.ValueData[0] -cnotin @('0', '1', '2')) {
+            if ($properties.ValueName -cnotin @('LDAPServerIntegrity', 'LdapEnforceChannelBinding') -or
+                $properties.ValueType -cne 'DWord' -or $properties.Exists -isnot [bool] -or -not $properties.Exists -or
+                ($properties.ValueData -isnot [int] -and $properties.ValueData -isnot [long]) -or $properties.ValueData -notin @(0, 1, 2)) {
                 throw "Unsupported explicit LDAP registry policy on '$($Control.Id)'."
             }
         }
@@ -95,7 +93,7 @@ function Assert-DCControl {
     }
     $unknown = @($properties.PSObject.Properties.Name | Where-Object { $required -cnotcontains $_ })
     if ($unknown.Count -gt 0) { throw "Unknown properties on '$($Control.Id)': $($unknown -join ', ')." }
-    if ($Control.Mode -eq 'Enforce' -and $Control.ResourceType -cnotin @('PSDscResources/Service', 'ComputerManagementDsc/WindowsEventLog')) {
+    if ($Control.Mode -eq 'Enforce' -and $Control.ResourceType -cnotin @('Blog.DC/Spooler', 'Blog.DC/EventLog')) {
         throw "This implementation only enforces Spooler and event-log controls: '$($Control.Id)'."
     }
 }
@@ -108,8 +106,9 @@ function Read-DCComplianceInput {
     $inventory = $inventoryText | ConvertFrom-Json -ErrorAction Stop
     $settings = $settingsText | ConvertFrom-Json -ErrorAction Stop
     Assert-DCObject $inventory @('Domain', 'DiscoveredAtUtc', 'SourceComputer', 'DomainControllers') 'Inventory'
-    Assert-DCObject $settings @('SchemaVersion', 'BaselineVersion', 'MaximumInventoryAgeHours', 'DscExecutable', 'DscVersion', 'ModuleVersions', 'ExcludedDCs', 'Controls') 'Settings'
-    if ($settings.SchemaVersion -ne 1) { throw 'Unsupported compliance settings schema version.' }
+    Assert-DCObject $settings @('SchemaVersion') 'Settings'
+    if ($settings.SchemaVersion -ne 2) { throw 'Native DSC v3 requires settings SchemaVersion 2. Migrate the controls and resource package; legacy adapter settings are not accepted.' }
+    Assert-DCObject $settings @('BaselineVersion', 'MaximumInventoryAgeHours', 'DscExecutable', 'DscVersion', 'ResourceDirectory', 'ResourceVersion', 'ExcludedDCs', 'Controls') 'Settings'
     if ($settings.BaselineVersion -isnot [string] -or [string]::IsNullOrWhiteSpace($settings.BaselineVersion)) {
         throw 'BaselineVersion must be a non-empty string.'
     }
@@ -123,12 +122,13 @@ function Read-DCComplianceInput {
     if ($settings.DscVersion -isnot [string] -or $settings.DscVersion -notmatch '^3\.[2-9][0-9]*\.[0-9]+$') {
         throw 'This runner requires a stable DSC version 3.2 or later in the 3.x series.'
     }
-    Assert-DCObject $settings.ModuleVersions @('PSDscResources', 'ComputerManagementDsc', 'AuditPolicyDsc') 'ModuleVersions'
-    foreach ($module in $settings.ModuleVersions.PSObject.Properties) {
-        if ($module.Name -notin @('PSDscResources', 'ComputerManagementDsc', 'AuditPolicyDsc') -or
-            $module.Value -isnot [string] -or $module.Value -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
-            throw "Invalid module/version entry: '$($module.Name)'."
-        }
+    if ($settings.PSObject.Properties['ModuleVersions']) { throw 'ModuleVersions belongs to the old adapter-based implementation. Use ResourceVersion and ResourceDirectory.' }
+    if ($settings.ResourceVersion -isnot [string] -or $settings.ResourceVersion -cnotmatch '^\d+\.\d+\.\d+$') {
+        throw 'ResourceVersion must be a stable semantic version.'
+    }
+    if ($settings.ResourceDirectory -isnot [string] -or
+        $settings.ResourceDirectory -cne ('C:\Tools\DSC\Resources\DCCompliance\' + $settings.ResourceVersion)) {
+        throw 'ResourceDirectory must be C:\Tools\DSC\Resources\DCCompliance\<ResourceVersion>.'
     }
     Assert-DCDnsName $inventory.Domain 'Inventory Domain'
     if ($inventory.DiscoveredAtUtc -is [string] -and $inventory.DiscoveredAtUtc -notmatch '(Z|[+-]\d\d:\d\d)$') {
@@ -188,11 +188,33 @@ function New-DCConfiguration {
                 name = $Control.Id
                 type = $Control.ResourceType
                 properties = $Control.Properties
-                directives = @{ requireAdapter = 'Microsoft.Adapter/WindowsPowerShell' }
             }
         )
     }
     ConvertTo-Json -InputObject $document -Depth 12
+}
+
+function Get-DCResourcePackage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ResourceVersion,
+        [string]$Path = (Join-Path $PSScriptRoot 'Resources')
+    )
+    $resourceNames = @('Spooler', 'SmbServer', 'AuditPolicy', 'EventLog', 'LdapPolicy')
+    foreach ($name in $resourceNames) {
+        $manifest = Get-Content -LiteralPath (Join-Path $Path "$name.dsc.resource.json") -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
+        if ($manifest.type -cne "Blog.DC/$name" -or $manifest.version -cne $ResourceVersion -or $manifest.kind -cne 'resource' -or
+            $manifest.PSObject.Properties['adapter'] -or $manifest.PSObject.Properties['requireAdapter']) {
+            throw "Invalid native resource manifest/version for '$name'."
+        }
+    }
+    $fileNames = @($resourceNames | ForEach-Object { "$_.dsc.resource.json" }) + @('Invoke-NativeResource.ps1', 'NativeResources.psm1', 'NativeAudit.cs')
+    $files = @(
+        foreach ($name in $fileNames) {
+            [pscustomobject]@{ Name = $name; Sha256 = (Get-FileHash -LiteralPath (Join-Path $Path $name) -Algorithm SHA256 -ErrorAction Stop).Hash }
+        }
+    )
+    [pscustomobject]@{ Version = $ResourceVersion; Directory = $Path; Files = $files }
 }
 
 function Get-DCTestState {
@@ -699,4 +721,4 @@ footer { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line);
     }
 }
 
-Export-ModuleMember -Function Read-DCComplianceInput, New-DCConfiguration, Get-DCTestState, Write-DCComplianceReport
+Export-ModuleMember -Function Read-DCComplianceInput, New-DCConfiguration, Get-DCResourcePackage, Get-DCTestState, Write-DCComplianceReport

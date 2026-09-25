@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC1.mathiasmotron.com",
+    "ControlId":  "DSC-03-Accounts",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-03-Accounts\",\r\n                          \"type\":  \"AuditPolicyDsc/AuditPolicyGUID\",\r\n                          \"properties\":  {\r\n                                             \"Name\":  \"User Account Management\",\r\n                                             \"AuditFlag\":  \"Success And Failure\",\r\n                                             \"Ensure\":  \"Present\"\r\n                                         },\r\n                          \"directives\":  {\r\n                                             \"requireAdapter\":  \"Microsoft.Adapter/WindowsPowerShell\"\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT6.2139261S\",\"endDatetime\":\"2026-09-25T13:22:38.641508100+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:22:32.427582+02:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT6.213921S\",\"endDatetime\":\"2026-09-25T13:22:38.641503+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:22:32.427582+02:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT2.5795525S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT2.5795525S\"}},\"name\":\"DSC-03-Accounts\",\"type\":\"AuditPolicyDsc/AuditPolicyGUID\",\"result\":{\"desiredState\":{\"Name\":\"User Account Management\",\"AuditFlag\":\"Success And Failure\",\"Ensure\":\"Present\"},\"actualState\":{\"ResourceId\":null,\"PsDscRunAsCredential\":null,\"PSComputerName\":\"localhost\",\"ModuleVersion\":\"1.4.0.0\",\"AuditFlag\":\"Success and Failure\",\"ConfigurationName\":null,\"Name\":\"User Account Management\",\"ModuleName\":\"AuditPolicyDsc\",\"SourceInfo\":null,\"DependsOn\":null,\"Ensure\":\"Present\",\"_inDesiredState\":true},\"inDesiredState\":true,\"differingProperties\":[\"AuditFlag\"]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T11:22:38.6390995Z",
+                   "PSComputerName":  "MM-DC1.mathiasmotron.com",
+                   "RunspaceId":  "3324fcb3-43cd-4afd-b54f-062fc6bb5200",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

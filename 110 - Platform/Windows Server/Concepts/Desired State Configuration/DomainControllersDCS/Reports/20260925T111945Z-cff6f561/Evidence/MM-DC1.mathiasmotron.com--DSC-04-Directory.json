@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC1.mathiasmotron.com",
+    "ControlId":  "DSC-04-Directory",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-04-Directory\",\r\n                          \"type\":  \"ComputerManagementDsc/WindowsEventLog\",\r\n                          \"properties\":  {\r\n                                             \"LogName\":  \"Directory Service\",\r\n                                             \"MaximumSizeInBytes\":  1073741824,\r\n                                             \"LogMode\":  \"Circular\"\r\n                                         },\r\n                          \"directives\":  {\r\n                                             \"requireAdapter\":  \"Microsoft.Adapter/WindowsPowerShell\"\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT6.6663508S\",\"endDatetime\":\"2026-09-25T13:21:19.700301400+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:21:13.033950600+02:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT6.666345S\",\"endDatetime\":\"2026-09-25T13:21:19.700295600+02:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T13:21:13.033950600+02:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT2.7722069S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT2.7722069S\"}},\"name\":\"DSC-04-Directory\",\"type\":\"ComputerManagementDsc/WindowsEventLog\",\"result\":{\"desiredState\":{\"LogName\":\"Directory Service\",\"MaximumSizeInBytes\":1073741824,\"LogMode\":\"Circular\"},\"actualState\":{\"PSComputerName\":\"localhost\",\"PsDscRunAsCredential\":null,\"ResourceId\":null,\"MaximumSizeInBytes\":1052672,\"ParameterResourceFile\":null,\"CategoryResourceFile\":null,\"LogMode\":\"Circular\",\"SecurityDescriptor\":\"O:BAG:SYD:(A;;0xf0007;;;SY)(A;;0x7;;;BA)(A;;0x3;;;BO)(A;;0x5;;;SO)(A;;0x1;;;IU)(A;;0x3;;;SU)(A;;0x1;;;S-1-5-3)(A;;0x2;;;S-1-5-33)(A;;0x1;;;S-1-5-32-573)\",\"ConfigurationName\":null,\"SourceInfo\":null,\"DependsOn\":null,\"IsEnabled\":true,\"LogName\":\"Directory Service\",\"RegisteredSource\":null,\"LogRetentionDays\":0,\"ModuleVersion\":\"10.0.0\",\"ModuleName\":\"ComputerManagementDsc\",\"MessageResourceFile\":null,\"RestrictGuestAccess\":false,\"LogFilePath\":\"%SystemRoot%\\\\System32\\\\Winevt\\\\Logs\\\\Directory Service.evtx\",\"_inDesiredState\":false},\"inDesiredState\":false,\"differingProperties\":[\"MaximumSizeInBytes\"]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T11:21:19.7021588Z",
+                   "PSComputerName":  "MM-DC1.mathiasmotron.com",
+                   "RunspaceId":  "57c15391-988b-4415-bb90-012f61ba9f2a",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}

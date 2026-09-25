@@ -42,6 +42,7 @@ function New-DCRequest {
         HostName = $HostName
         Domain = $inputs.Inventory.Domain
         Settings = $inputs.Settings
+        ResourceFiles = $resourcePackage.Files
         ResourceTypes = @($controls.ResourceType | Sort-Object -Unique)
         Control = $Control
         ConfigurationJson = $(if ($null -ne $Control) { New-DCConfiguration -Control $Control } else { '' })
@@ -59,6 +60,7 @@ function Set-DCRowState {
 
 try {
     $inputs = Read-DCComplianceInput -InventoryPath $InventoryPath -SettingsPath $SettingsPath
+    $resourcePackage = Get-DCResourcePackage -ResourceVersion $inputs.Settings.ResourceVersion
     if (-not (Test-Path -LiteralPath $remoteScript -PathType Leaf)) { throw 'Invoke-DCResource.ps1 is missing.' }
     foreach ($name in @($ComputerName)) {
         if ($inputs.Inventory.DomainControllers.HostName -notcontains $name) {
@@ -116,6 +118,8 @@ try {
         InventoryDiscoveredAtUtc = $inputs.Inventory.DiscoveredAtUtc
         InventorySha256 = $inputs.InventorySha256
         SettingsSha256 = $inputs.SettingsSha256
+        ResourceVersion = $resourcePackage.Version
+        ResourceFileHashes = $resourcePackage.Files
         Targets = $targets
         TargetMetadata = @()
         Results = @()
@@ -123,7 +127,8 @@ try {
     foreach ($target in $includedTargets) {
         $session = $null
         $connectionEstablished = $false
-        Write-Information -MessageData "Assessing $($target.HostName) ($Operation)" -InformationAction Continue
+        $preflightTimer = [System.Diagnostics.Stopwatch]::StartNew()
+        Write-Information -MessageData "Assessing $($target.HostName) ($Operation): preflight" -InformationAction Continue
         try {
             $sessionParameters = @{
                 ComputerName = $target.HostName
@@ -139,9 +144,11 @@ try {
             $preflight = @(Invoke-Command -Session $session -FilePath $remoteScript -ArgumentList $preflightRequest -ErrorAction Stop)
             if ($preflight.Count -ne 1 -or $preflight[0].HostName -ine $target.HostName) { throw 'Invalid preflight response.' }
             $metadata.Add($preflight[0])
+            Write-Information -MessageData ('{0}: preflight completed in {1:N1}s' -f $target.HostName, $preflightTimer.Elapsed.TotalSeconds) -InformationAction Continue
         }
         catch {
             $failure = $_
+            Write-Information -MessageData ('{0}: preflight failed after {1:N1}s - {2}' -f $target.HostName, $preflightTimer.Elapsed.TotalSeconds, $failure.Exception.Message) -InformationAction Continue
             $status = 'Error'
             if (-not $connectionEstablished -and $failure.Exception -isnot [UnauthorizedAccessException] -and
                 $failure.CategoryInfo.Category -notin @('PermissionDenied', 'AuthenticationError', 'SecurityError')) {
@@ -159,6 +166,8 @@ try {
         }
         try {
             foreach ($control in $controls) {
+                $controlTimer = [System.Diagnostics.Stopwatch]::StartNew()
+                Write-Information -MessageData ('{0} | {1}: starting Test' -f $target.HostName, $control.Id) -InformationAction Continue
                 $row = New-DCResultRow -HostName $target.HostName -Control $control
                 $evidence = [ordered]@{ HostName = $target.HostName; ControlId = $control.Id; Configuration = New-DCConfiguration $control; Before = $null; Set = $null; After = $null; Error = $null }
                 try {
@@ -203,12 +212,13 @@ try {
                     $row.Message = $_.Exception.Message
                     $evidence.Error = $row.Message
                 }
-                if ($control.ResourceType -eq 'PSDscResources/Registry') {
+                if ($control.ResourceType -eq 'Blog.DC/LdapPolicy') {
                     $row.Message = ($row.Message + ' Explicit policy value check only; no inference about implicit LDAP defaults or effective enforcement.').Trim()
                 }
                 $evidencePath = Join-Path $evidenceDirectory ('{0}--{1}.json' -f $target.HostName, $control.Id)
                 [System.IO.File]::WriteAllText($evidencePath, (ConvertTo-Json -InputObject $evidence -Depth 35), [System.Text.UTF8Encoding]::new($false))
                 $results.Add($row)
+                Write-Information -MessageData ('{0} | {1}: {2} ({3}), {4:N1}s' -f $target.HostName, $control.Id, $row.Status, $row.Action, $controlTimer.Elapsed.TotalSeconds) -InformationAction Continue
             }
         }
         finally { Remove-PSSession -Session $session -ErrorAction SilentlyContinue }

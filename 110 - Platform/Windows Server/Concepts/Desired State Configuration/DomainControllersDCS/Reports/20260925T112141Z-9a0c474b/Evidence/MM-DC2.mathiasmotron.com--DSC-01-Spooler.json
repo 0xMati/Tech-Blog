@@ -1,0 +1,18 @@
+{
+    "HostName":  "MM-DC2.mathiasmotron.com",
+    "ControlId":  "DSC-01-Spooler",
+    "Configuration":  "{\r\n    \"$schema\":  \"https://aka.ms/dsc/schemas/v3/bundled/config/document.json\",\r\n    \"resources\":  [\r\n                      {\r\n                          \"name\":  \"DSC-01-Spooler\",\r\n                          \"type\":  \"PSDscResources/Service\",\r\n                          \"properties\":  {\r\n                                             \"Name\":  \"Spooler\",\r\n                                             \"Ensure\":  \"Present\",\r\n                                             \"State\":  \"Stopped\",\r\n                                             \"StartupType\":  \"Disabled\"\r\n                                         },\r\n                          \"directives\":  {\r\n                                             \"requireAdapter\":  \"Microsoft.Adapter/WindowsPowerShell\"\r\n                                         }\r\n                      }\r\n                  ]\r\n}",
+    "Before":  {
+                   "ExitCode":  0,
+                   "StdOut":  "{\"executionInformation\":{\"duration\":\"PT14.4872463S\",\"endDatetime\":\"2026-09-25T11:24:23.590471700+00:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T11:24:09.103225400+00:00\",\"version\":\"3.2.3\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT14.4872376S\",\"endDatetime\":\"2026-09-25T11:24:23.590463+00:00\",\"executionType\":\"actual\",\"operation\":\"test\",\"securityContext\":\"elevated\",\"startDatetime\":\"2026-09-25T11:24:09.103225400+00:00\",\"version\":\"3.2.3\"}},\"results\":[{\"executionInformation\":{\"duration\":\"PT6.7197314S\"},\"metadata\":{\"Microsoft.DSC\":{\"duration\":\"PT6.7197314S\"}},\"name\":\"DSC-01-Spooler\",\"type\":\"PSDscResources/Service\",\"result\":{\"desiredState\":{\"Name\":\"Spooler\",\"Ensure\":\"Present\",\"State\":\"Stopped\",\"StartupType\":\"Disabled\"},\"actualState\":{\"Description\":\"This service spools print jobs and handles interaction with the printer.  If you turn off this service, you won\u0027t be able to print or see your printers.\",\"TerminateTimeout\":null,\"DisplayName\":\"Print Spooler\",\"ResourceId\":null,\"StartupType\":\"Automatic\",\"PsDscRunAsCredential\":null,\"Name\":\"Spooler\",\"Credential\":null,\"PSComputerName\":\"localhost\",\"ConfigurationName\":null,\"Ensure\":\"Present\",\"DependsOn\":null,\"SourceInfo\":null,\"BuiltInAccount\":\"LocalSystem\",\"StartupTimeout\":null,\"State\":\"Running\",\"ModuleVersion\":\"2.12.0.0\",\"ModuleName\":\"PSDscResources\",\"DesktopInteract\":true,\"Path\":\"C:\\\\windows\\\\System32\\\\spoolsv.exe\",\"Dependencies\":[\"RPCSS\",\"http\"],\"_inDesiredState\":false},\"inDesiredState\":false,\"differingProperties\":[\"State\",\"StartupType\"]}}],\"messages\":[],\"hadErrors\":false}\n",
+                   "StdErr":  "",
+                   "TimedOut":  false,
+                   "CompletedAtUtc":  "2026-09-25T11:24:23.5874401Z",
+                   "PSComputerName":  "MM-DC2.mathiasmotron.com",
+                   "RunspaceId":  "d0e8f188-9548-42e0-9093-113c4d44ff17",
+                   "PSShowComputerName":  true
+               },
+    "Set":  null,
+    "After":  null,
+    "Error":  null
+}
