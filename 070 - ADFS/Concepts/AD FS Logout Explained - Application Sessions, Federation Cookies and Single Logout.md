@@ -44,10 +44,15 @@ $metadata = Invoke-RestMethod `
     -Uri 'https://fs.corp.example/adfs/.well-known/openid-configuration' `
     -Method Get -ErrorAction Stop
 
-$metadata | Select-Object issuer, end_session_endpoint
+$metadata | Select-Object issuer, end_session_endpoint,
+    frontchannel_logout_supported, frontchannel_logout_session_supported
 ```
 
 Use the application's supported middleware to initiate logout and validate any return URI against its registration. Do not place live tokens in documentation, diagnostics shared publicly or arbitrary logout URLs.
+
+AD FS added OIDC front-channel logout to updated AD FS 2016 and later. Microsoft documents **best-effort** notifications to each participating application's registered `LogoutUri`, with the relevant `sid` session identifier. That callback must clear the application's authentication state. It is different from `post_logout_redirect_uri`, the registered destination to which the browser returns after sign-out.
+
+Microsoft also explicitly notes that a client retaining a valid refresh token can obtain another access token after logout. The application must discard its authenticated artifacts when processing sign-out; do not describe the browser operation as global token revocation.
 
 ## 3. What the SAML captures show
 
@@ -102,6 +107,7 @@ Use a fresh navigation or server request rather than only the Back button or a c
 
 ## References
 
+- [Microsoft: single log-out for OpenID Connect with AD FS](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/ad-fs-logout-openid-connect)
 - [Microsoft: AD FS OpenID Connect and OAuth concepts](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/ad-fs-openid-connect-oauth-concepts)
 - [OpenID Foundation: RP-Initiated Logout](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
 - [OASIS: SAML 2.0 Profiles, Single Logout Profile](https://docs.oasis-open.org/security/saml/v2.0/saml-profiles-2.0-os.pdf)

@@ -476,7 +476,7 @@ The DCs were prepared in Step 4. Omit the target and control selections to audit
 $run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1'
 $auditExitCode = $LASTEXITCODE
 
-$run | Format-List$
+$run | Format-List
 ```
 
 With three writable DCs and no exclusions, **33 control results** are expected. `ExcludedDCs`, RODCs, and machines outside an explicit `-ComputerName` selection stay visible in target coverage. They are not counted as compliant controls.
