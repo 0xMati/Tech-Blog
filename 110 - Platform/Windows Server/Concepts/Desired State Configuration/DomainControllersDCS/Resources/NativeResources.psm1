@@ -68,7 +68,12 @@ function Set-DCSpoolerState {
 }
 
 function Get-DCSmbServerState {
-    $configuration = Get-SmbServerConfiguration -ErrorAction Stop
+    $responses = @(Get-SmbServerConfiguration -ErrorAction Stop)
+    if ($responses.Count -ne 1 -or $null -eq $responses[0]) { throw 'Expected one SMB server configuration.' }
+    $configuration = $responses[0]
+    if ($configuration.EnableSMB1Protocol -isnot [bool] -or $configuration.RequireSecuritySignature -isnot [bool]) {
+        throw 'SMB server configuration did not return both Boolean settings.'
+    }
     [pscustomobject][ordered]@{
         Name = 'Server'
         EnableSMB1Protocol = [bool]$configuration.EnableSMB1Protocol
@@ -115,6 +120,9 @@ function Set-DCEventLogState {
     foreach ($required in @('MaximumSizeInBytes', 'LogMode')) {
         if (-not $Properties.PSObject.Properties[$required]) { throw "Set requires '$required'." }
     }
+    if ($Properties.MaximumSizeInBytes -lt 65536 -or $Properties.MaximumSizeInBytes % 65536 -ne 0) {
+        throw 'The requested log size must be a positive multiple of 64 KiB.'
+    }
     $configuration = New-DCEventLogConfiguration $Properties.LogName
     try {
         if ($configuration.MaximumSizeInBytes -ne $Properties.MaximumSizeInBytes -or [string]$configuration.LogMode -cne $Properties.LogMode) {
@@ -135,7 +143,12 @@ function Get-DCLdapPolicyState {
         $key = $baseKey.OpenSubKey('SYSTEM\CurrentControlSet\Services\NTDS\Parameters', $false)
         $exists = $null -ne $key -and $key.GetValueNames() -contains $ValueName
         $kind = if ($exists) { [string]$key.GetValueKind($ValueName) } else { 'Missing' }
-        $value = if ($kind -ceq 'DWord') { [long]$key.GetValue($ValueName) -band 4294967295L } else { -1L }
+        $value = -1L
+        if ($kind -ceq 'DWord') {
+            $rawValue = $key.GetValue($ValueName)
+            if ($null -eq $rawValue) { throw "LDAP policy value '$ValueName' disappeared during the query." }
+            $value = [long]$rawValue -band 4294967295L
+        }
         [pscustomobject][ordered]@{ ValueName = $ValueName; Exists = [bool]$exists; ValueType = $kind; ValueData = $value }
     }
     finally {

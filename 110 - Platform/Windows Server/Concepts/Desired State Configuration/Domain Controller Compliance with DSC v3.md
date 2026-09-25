@@ -35,7 +35,6 @@ The accompanying scripts implement discovery, eleven checks across five control 
 - [Step 5: Run the Compliance Audit](#step-5-run-the-compliance-audit)
 - [Step 6: Read the Reports](#step-6-read-the-reports)
 - [Step 7: Correct Selected Settings](#step-7-correct-selected-settings)
-- [Step 8: Schedule the Audit](#step-8-schedule-the-audit)
 - [Operational Constraints](#operational-constraints)
 - [Verification](#verification)
 - [Sources](#sources)
@@ -66,7 +65,7 @@ The runner accepts writable Windows Server 2019, 2022, and 2025 DCs, checks thei
 
 A **baseline** is a versioned set of requirements that defines the expected configuration. For example, a baseline might require a particular service to be stopped, or a particular audit subcategory to be enabled.
 
-The download contains **nine root files and a Resources folder containing eight files**. They are not scripts to run one after another. Keep this structure under `C:\DSC\DomainControllersDCS` on MM-DSC1; the main commands load their supporting files automatically.
+The download contains **eight root files and a Resources folder containing eight files**. They are not scripts to run one after another. Keep this structure under `C:\DSC\DomainControllersDCS` on MM-DSC1; the main commands load their supporting files automatically.
 
 ### Commands You Run
 
@@ -85,14 +84,13 @@ Run these commands from **MM-DSC1**:
 | [compliance.settings.json](./DomainControllersDCS/compliance.settings.json) | Defines controls, expected values, configuration owners, modes, and runtime/resource versions and paths. | **The parameter file you edit**, not a script to execute. Discovery never overwrites it. |
 | [DCCompliance.psm1](./DomainControllersDCS/DCCompliance.psm1) | Provides shared functions for input validation, DSC document generation, result interpretation, and reporting. | Imported automatically by the main scripts. It is not a separate command to run. |
 | [Invoke-DCResource.ps1](./DomainControllersDCS/Invoke-DCResource.ps1) | Checks the live target context, executes DSC, and captures its output and errors. | Its content is sent through WinRM by the orchestrator and **executed on the target DC**. No manual invocation or separate script copy is needed. |
-| [Invoke-ScheduledDCAudit.ps1](./DomainControllersDCS/Invoke-ScheduledDCAudit.ps1) | Refreshes inventory, runs an audit, and records an execution transcript. Stops if discovery fails. | Optional entry point for Task Scheduler on MM-DSC1. It does not create the task or perform remediation. |
 | [Test-DCCompliance.ps1](./DomainControllersDCS/Test-DCCompliance.ps1) | Tests the scripts using simulated AD, WinRM, and DSC responses. | Optional offline code validation, not an audit of the real DCs. It is not required to run a normal audit. |
 | [Test-NativeResources.ps1](./DomainControllersDCS/Test-NativeResources.ps1) | Tests resource behavior with mocks; optionally exercises the real DSC engine with simulated Windows effects. | Optional local verification, described under [Verification](#verification). It does not validate a live DC. |
 | [Resources](./DomainControllersDCS/Resources) | Five `*.dsc.resource.json` manifests plus the three implementation files below. | Copied as a complete, versioned resource package to each selected DC. |
 
 Inside Resources, [Invoke-NativeResource.ps1](./DomainControllersDCS/Resources/Invoke-NativeResource.ps1) is the command entry point, [NativeResources.psm1](./DomainControllersDCS/Resources/NativeResources.psm1) is a plain PowerShell script library, and [NativeAudit.cs](./DomainControllersDCS/Resources/NativeAudit.cs) provides the audit-policy Windows API interop. The `.psm1` extension does **not** make this library a legacy PowerShell DSC module.
 
-The generated `inventory.json` is an additional output file, not a supplied configuration file. It describes **which machines exist**; the compliance parameters describe **what to check**. Neither the test suite nor the scheduled entry point is needed for a manual audit.
+The generated `inventory.json` is an additional output file, not a supplied configuration file. It describes **which machines exist**; the compliance parameters describe **what to check**. The test suites are optional and are not needed for a manual audit.
 
 Changing a desired value does not require rediscovering the DCs. Rediscovering the DCs does not overwrite the compliance parameters.
 
@@ -112,7 +110,7 @@ flowchart LR
     Results --> Report["JSON evidence and HTML report"]
 ```
 
-DSC v3 does not discover the domain, provide a central dashboard, or schedule itself. PowerShell and Task Scheduler provide those surrounding functions. The `dsc` command executes on each target DC, not on MM-DSC1.
+DSC v3 does not discover the domain or provide a central dashboard. PowerShell handles discovery, orchestration, and reporting around it. The `dsc` command executes on each target DC, not on MM-DSC1.
 
 ### How Native Resources Work
 
@@ -169,7 +167,7 @@ You maintain one compliance parameter file. The orchestrator builds **separate D
 **Machine: MM-DSC1.** Prepare the files once before running the commands below:
 
 1. [Download the complete scripts folder as a ZIP](https://download-directory.github.io/?url=https%3A%2F%2Fgithub.com%2F0xMati%2FTech-Blog%2Ftree%2Fmain%2F110%2520-%2520Platform%2FWindows%2520Server%2FConcepts%2FDesired%2520State%2520Configuration%2FDomainControllersDCS).
-2. Extract it so that the nine root files and Resources subfolder listed in [Who Does What](#who-does-what) are directly under `C:\DSC\DomainControllersDCS`, not inside an extra nested folder.
+2. Extract it so that the eight root files and Resources subfolder listed in [Who Does What](#who-does-what) are directly under `C:\DSC\DomainControllersDCS`, not inside an extra nested folder.
 3. After reviewing the downloaded code, unblock only the PowerShell files in the root and Resources directories on MM-DSC1:
 
 ```powershell
@@ -401,7 +399,7 @@ It validates eligible writable targets, including their live identity, supported
 
 Only MM-DSC1 needs access to GitHub for the runtime download; the DCs receive the files over WinRM. There are **no Gallery modules, NuGet provider installation, or `Save-Module` downloads** in this workflow. The custom resources come from the companion download, not from a module repository.
 
-The paths are choices for this example, not DSC installation requirements. The full runtime ZIP may contain adapters, but this route does **not discover or invoke them**.
+The paths are choices for this example, not DSC installation requirements. The full runtime ZIP includes adapters, but this route does **not discover or invoke them**.
 
 Preview the targets without downloading, copying, or installing anything:
 
@@ -423,7 +421,7 @@ This installs tools, not the security baseline: no Spooler, SMB, audit-policy, e
 
 **Resource versions are immutable here.** Preparation refuses an existing same-version resource directory whose content differs from the package. To change resource files, publish a new resource version with matching manifests and update `ResourceVersion` and `ResourceDirectory`; do not silently overwrite version `1.0.0`.
 
-For each DSC child process, the wrapper sets `DSC_RESOURCE_PATH` to the versioned resource directory and includes `%SystemRoot%\System32\WindowsPowerShell\v1.0` in that child's `PATH` so `powershell.exe` resolves. It does not change machine `PATH` or `PSModulePath`.
+For each DSC child process, the wrapper sets `DSC_RESOURCE_PATH` to the versioned resource directory **plus** `%SystemRoot%\System32\WindowsPowerShell\v1.0`. DSC 3.2.3 also uses this search path to resolve the resource executable. The wrapper prepends the PowerShell directory to the child's `PATH` as well. It does not change machine `PATH` or `PSModulePath`.
 
 The runtime ZIP is cached under `C:\DSC\DomainControllersDCS\Packages` on MM-DSC1. Disconnected preparation needs that exact, hash-matching archive and the complete local Resources folder. The transfer ZIP is created under `%TEMP%` and removed when preparation ends, including on failure. Hash failures stop preparation; old cached modules are neither used nor deleted.
 
@@ -447,7 +445,7 @@ Write-Output "Audit exit code: $auditExitCode"
 
 **Expected:** one evaluated control and the paths of its reports. If Spooler is already stopped and disabled, the result is `Compliant`. If it is running or enabled, the result is `NonCompliant`. Neither outcome changes the service.
 
-Preflight checks the live writable DC identity and build, elevation, x64 Windows PowerShell 5.1, the exact DSC runtime version, and installed custom-file SHA256 hashes against the local Resources package. It performs one native `dsc resource list 'Blog.DC/*'` discovery and validates the required resource versions, `kind = resource`, and absence of `requireAdapter`.
+Preflight checks the live DC identity and build, elevation, x64 Windows PowerShell 5.1, the exact DSC runtime version, and installed custom-file SHA256 hashes against the local Resources package. Writable-target selection comes from the inventory. It performs one native `dsc resource list 'Blog.DC/*'` discovery and validates the required resource versions, `kind = resource`, and absence of `requireAdapter`.
 
 The runner sends a one-resource JSON configuration through WinRM and invokes `dsc config test`. DSC calls the manifest's Get command and compares the desired properties with the returned state. The short-lived configuration file is removed afterward; there is no SMB share or second-hop file read. Resource failures preserve stderr and the native error, return a nonzero exit, and cannot become success with absent data.
 
@@ -488,6 +486,8 @@ The current logon identity is used by default. The preparation and audit command
 
 These codes belong to the orchestrator. A successful DSC process exit does not, by itself, mean that its configuration is compliant.
 
+For recurring checks, you can use a Windows scheduled task on MM-DSC1 to run discovery followed by an audit. Scheduling is external to DSC v3; remediation remains a separate, explicit operation.
+
 ---
 
 ## Step 6: Read the Reports
@@ -519,7 +519,7 @@ The report opens in dark mode. Use the **Light mode** switch in the header to ch
 
 The report is self-contained: no web server, external script, or CDN is needed. CSV retains one row per DC/control for analysis; JSON retains the structured data.
 
-The image below is retained as a **fictitious report-layout illustration**, with invented targets and results. It needs to be regenerated for the native revision; it is not evidence of a native DSC run.
+The image below is a **fictitious report-layout illustration** generated by the revised orchestration tests. Its targets and results are simulated; it is not evidence of an audit on the real DCs.
 
 ![DC and control matrix with two Spooler deviations, an excluded RODC, and control ownership](<./assets/Domain Controller Compliance with DSC v3/report-example.png>)
 
@@ -626,74 +626,14 @@ To disable future Spooler corrections, change its mode back to `Audit`. That doe
 
 ---
 
-## Step 8: Schedule the Audit
-
-**Machine: MM-DSC1.** The scheduled entry point always performs discovery first, then calls `Invoke-DCCompliance.ps1 -Operation Audit`. It never starts remediation. Discovery errors stop the run; the previous JSON may still exist, but it is not reused by a failed scheduled run.
-
-Test the entry point manually:
-
-```powershell
-& 'C:\DSC\DomainControllersDCS\Invoke-ScheduledDCAudit.ps1' `
-    -DomainName 'mathiasmotron.com'
-$LASTEXITCODE
-```
-
-It writes an execution transcript under `Reports\Runs`, alongside the per-audit report directories. Exit codes remain `0`, `1`, and `2` as described above.
-
-For unattended operation, the account needs batch logon on MM-DSC1, access to the local files and report directory, directory read access, and an elevated WinRM execution context on the DCs. A task's account does not inherit the credentials of the interactive session that created it.
-
-The following example uses an **existing gMSA** named `MATHIASMOTRON\svcDscAudit$`, installed and usable on MM-DSC1. It does not create or grant rights to that account. Replace it with your task identity. For this gMSA example, `Test-ADServiceAccount -Identity 'svcDscAudit'` on MM-DSC1 should return `True`.
-
-In elevated Windows PowerShell on MM-DSC1:
-
-```powershell
-$action = New-ScheduledTaskAction `
-    -Execute 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' `
-    -Argument '-NoLogo -NoProfile -NonInteractive -File "C:\DSC\DomainControllersDCS\Invoke-ScheduledDCAudit.ps1" -DomainName "mathiasmotron.com"' `
-    -WorkingDirectory 'C:\DSC\DomainControllersDCS'
-
-$trigger = New-ScheduledTaskTrigger -Daily -At '02:00'
-$principal = New-ScheduledTaskPrincipal `
-    -UserId 'MATHIASMOTRON\svcDscAudit$' -LogonType Password -RunLevel Highest
-$taskSettings = New-ScheduledTaskSettingsSet `
-    -StartWhenAvailable -MultipleInstances IgnoreNew `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-
-Register-ScheduledTask -TaskName 'DC Compliance Audit' `
-    -Action $action -Trigger $trigger -Principal $principal -Settings $taskSettings
-```
-
-The `Password` logon type here is the Task Scheduler setting used for this gMSA task; no password is embedded in the action or JSON. Interactive-user or service-account alternatives need their corresponding logon configuration. Avoid an S4U task for this workflow: it does not provide the network credentials required by these remote operations.
-
-Start and inspect the task:
-
-```powershell
-Start-ScheduledTask -TaskName 'DC Compliance Audit'
-Get-ScheduledTaskInfo -TaskName 'DC Compliance Audit' |
-    Select-Object LastRunTime, LastTaskResult, NextRunTime
-```
-
-After completion, inspect the new transcript and report directory, not just a report left by an earlier run. A nonzero task result can mean detected drift (`1`) as well as execution failure (`2`). If the task reaches its two-hour limit, its last report may be incomplete or absent; the task status and transcript are part of monitoring this workflow.
-
-To stop future scheduled audits:
-
-```powershell
-Disable-ScheduledTask -TaskName 'DC Compliance Audit'
-```
-
-Disabling the task does not reverse configuration changes or delete reports. Retention is not automated; accumulated evidence and transcripts need a retention policy appropriate to your environment.
-
----
-
 ## Operational Constraints
 
 - **Privilege boundary.** A server that can administer DCs is part of the privileged AD administration boundary. Using the same privileged identity on application servers exposes those credentials to a wider set of machines.
-- **Permissions.** The elevated endpoint and Windows API access rights govern what succeeds. `AuditQuerySystemPolicy` requires `SeSecurityPrivilege` or `AUDIT_QUERY_SYSTEM_POLICY` access on the audit security object. Missing rights produce `Error`, not a report that auditing is disabled.
+- **Permissions.** The elevated endpoint and Windows API access rights govern what succeeds. `AuditQuerySystemPolicy` requires `SeSecurityPrivilege` or `AUDIT_QUERY_SYSTEM_POLICY` access on the audit security object. If needed, the resource enables an existing `SeSecurityPrivilege` in its own process token for the query, then restores its prior state. It does not grant account rights. Missing rights produce `Error` with the Windows error code, not a report that auditing is disabled.
 - **Code policy.** The audit implementation loads [NativeAudit.cs](./DomainControllersDCS/Resources/NativeAudit.cs) with `Add-Type`. It requires `FullLanguage` and a code policy that permits this compilation and interop. The workflow does not bypass execution policy or application control; blocked execution is a real failure.
 - **Versioning.** Keep the scripts and local Resources package together, and record runtime, baseline, and resource versions with the hashes. Changing resource content requires a new resource version and target preparation; changing desired values requires a baseline revision.
 - **File access.** Write access to scripts, the inventory, or compliance parameters can change what a privileged runner executes and which machines it contacts. These files are security-sensitive even without embedded passwords.
 - **Report contents.** Inventory and compliance reports expose hostnames, topology, and configuration weaknesses. Their access controls and retention determine who can see that information and for how long.
-- **Scheduling.** A scheduled task may use a different account and environment from an interactive session. Native resource discovery, command paths, permissions, and failure reporting must work in that context.
 
 ---
 
@@ -723,6 +663,8 @@ Optionally, provide the local portable DSC runtime to exercise the **real engine
 ```
 
 Only this optional invocation needs DSC installed on MM-DSC1. It checks the native engine/resource interaction without applying settings to real DCs. Passing mocks or fixture-based engine tests does not validate the installed package, privileges, or Windows behavior on the targets.
+
+The revised suites were run under Windows PowerShell 5.1, including the engine fixtures with DSC 3.2.3. They exercise the production process wrapper, native preflight, resource package checks, synthetic comparison, and fixture-based Test/Set/Test. Network calls and Windows configuration changes remain simulated.
 
 **Native live-DC validation has not yet been established for this revision.** Step 5's pilot must provide that evidence, with a new report retaining the native resource versions and file hashes. The expected results in the procedure describe what to verify, not an already completed native run.
 

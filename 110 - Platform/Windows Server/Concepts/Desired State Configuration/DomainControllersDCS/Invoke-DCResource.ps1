@@ -106,7 +106,7 @@ if ($request.Operation -eq 'Preflight') {
     if (-not (Test-Path -LiteralPath $settings.ResourceDirectory -PathType Container)) { throw 'The native resource package is missing. Run preparation first.' }
     if ($request.ResourceFiles -isnot [array] -or $request.ResourceFiles.Count -ne 8) { throw 'Expected eight native resource-file hashes.' }
     foreach ($file in $request.ResourceFiles) {
-        if ($file.Name -cnotmatch '^[A-Za-z][A-Za-z0-9.]+$' -or $file.Sha256 -cnotmatch '^[A-F0-9]{64}$') { throw 'Invalid native resource-file identity.' }
+        if ($file.Name -cnotmatch '^[A-Za-z][A-Za-z0-9.-]+$' -or $file.Sha256 -cnotmatch '^[A-F0-9]{64}$') { throw 'Invalid native resource-file identity.' }
         if ((Get-FileHash -LiteralPath (Join-Path $settings.ResourceDirectory $file.Name) -Algorithm SHA256 -ErrorAction Stop).Hash -cne $file.Sha256) {
             throw "Installed native resource file differs from the orchestration package: $($file.Name). Deploy the matching resource version."
         }

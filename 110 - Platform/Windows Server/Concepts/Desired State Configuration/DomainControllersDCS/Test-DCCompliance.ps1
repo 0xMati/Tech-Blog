@@ -144,7 +144,7 @@ function Invoke-PreparationFixture {
     }
     function Get-FileHash {
         [CmdletBinding()]param($LiteralPath, $Algorithm)
-        if ((Split-Path $LiteralPath -Leaf) -eq 'DSC-3.2.3-x86_64-pc-windows-msvc.zip') {
+        if ((Split-Path $LiteralPath -Leaf) -in @('DSC-3.2.3-x86_64-pc-windows-msvc.zip', 'dsc.zip')) {
             [pscustomobject]@{ Hash = 'E1E48218014C166BBBE0EE6364D1E9C2AB20AB5515CEDA4EABD529A4BFD49881' }
         }
         else { Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $LiteralPath -Algorithm $Algorithm }
@@ -165,12 +165,15 @@ function Invoke-PreparationFixture {
         $transportFiles.Add($LiteralPath)
         $effects.Add("Copy:$($ToSession.ComputerName)")
         if ($FailTransfer) { throw 'Simulated transfer failure.' }
+        Microsoft.PowerShell.Management\Copy-Item -LiteralPath $LiteralPath -Destination $Destination -ErrorAction Stop
     }
     function Invoke-Command {
-        [CmdletBinding()]param($Session, $ArgumentList, [scriptblock]$ScriptBlock)
+        [CmdletBinding()]param($Session, [object[]]$ArgumentList, [scriptblock]$ScriptBlock)
         $parameterNames = @($ScriptBlock.Ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
         if ($parameterNames[0] -eq 'ExpectedDomain') {
-            return 'C:\ProgramData\DCCompliance-TestStage'
+            $fixtureStage = Join-Path $temporaryRoot ('RemoteStage-' + [guid]::NewGuid().ToString('N'))
+            $null = New-Item -Path $fixtureStage -ItemType Directory
+            return $fixtureStage
         }
         if ($parameterNames.Count -eq 4) {
             $transportPath = $transportFiles[$transportFiles.Count - 1]
@@ -188,10 +191,42 @@ function Invoke-PreparationFixture {
                 }
             }
             $effects.Add("VerifiedPackage:$($Session.ComputerName)")
+            $resources.Destination = Join-Path $temporaryRoot ('Installed-' + $Session.ComputerName)
+            $testArguments = @($ArgumentList[0], $ArgumentList[1], $ArgumentList[2], (ConvertTo-Json -InputObject $resources -Depth 8 -Compress))
+            function Test-Path {
+                [CmdletBinding()]param($LiteralPath, $PathType)
+                if ($LiteralPath -in @('C:\Tools\DSC\dsc.exe', 'C:\Tools\DSC')) { return $false }
+                $parameters = @{ LiteralPath = $LiteralPath }
+                if ($PathType) { $parameters.PathType = $PathType }
+                Microsoft.PowerShell.Management\Test-Path @parameters
+            }
+            function Expand-Archive {
+                [CmdletBinding()]param($LiteralPath, $DestinationPath)
+                if ($DestinationPath -eq 'C:\Tools\DSC') {
+                    $effects.Add('RuntimeExtractionSimulated')
+                    return
+                }
+                Microsoft.PowerShell.Archive\Expand-Archive -LiteralPath $LiteralPath -DestinationPath $DestinationPath -ErrorAction Stop
+            }
+            function Copy-Item {
+                [CmdletBinding()]
+                param([Parameter(ValueFromPipeline)]$InputObject, $Destination, [switch]$Recurse, [switch]$Force)
+                process {
+                    if (-not $Destination.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Fixture attempted to write outside its temporary root.' }
+                    Microsoft.PowerShell.Management\Copy-Item -LiteralPath $InputObject.FullName -Destination $Destination -Recurse:$Recurse -Force:$Force
+                }
+            }
+            $installed = & $ScriptBlock @testArguments
+            if ($installed.Result -cne 'Prepared' -or $installed.ResourceVersion -cne $resources.Version) { throw 'Native resource installation did not finish.' }
+            foreach ($file in $resources.Files) {
+                if ((Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath (Join-Path $resources.Destination $file.Name) -Algorithm SHA256).Hash -cne $file.Sha256) { throw 'Installed resource content changed.' }
+            }
             $effects.Add("Install:$($Session.ComputerName)")
             return [pscustomobject]@{ ComputerName = $Session.ComputerName; Result = 'Prepared' }
         }
         $effects.Add("Cleanup:$($Session.ComputerName)")
+        if (-not ([string]$ArgumentList[0]).StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Fixture attempted to clean up outside its temporary root.' }
+        & $ScriptBlock @ArgumentList
     }
     function Remove-PSSession {
         [CmdletBinding()]param($Session)
@@ -226,8 +261,11 @@ try {
         }
     }
     Assert-Test ($run.ExitCode -eq 0 -and $run.Summary.Compliant -eq 22) 'Default audit covers eleven controls on two writable DCs'
+    Assert-Test (@($run.Summary).Count -eq 1 -and $run.Summary.RunDirectory) 'Per-control Information messages do not enter the captured run result'
     Assert-Test (@($calls | Where-Object Operation -eq 'Set').Count -eq 0) 'Audit never invokes Set'
     $report = Get-Content -LiteralPath $run.Summary.JsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Test ($report.ResourceVersion -ceq '1.0.0' -and $report.ResourceFileHashes.Count -eq 8 -and
+        @($report.Results | Where-Object { $_.ResourceType -notlike 'Blog.DC/*' }).Count -eq 0) 'Reports retain the native package version, hashes, and resource types'
     Assert-Test (@($report.Targets | Where-Object Scope -eq 'Excluded').Count -eq 1) 'RODC remains visible as excluded'
     Assert-Test (@(Get-ChildItem -LiteralPath (Join-Path $run.Summary.RunDirectory 'Evidence') -File).Count -eq 22) 'Each checked control has raw evidence'
     $html = Get-Content -LiteralPath $run.Summary.HtmlPath -Raw -Encoding UTF8
@@ -370,6 +408,13 @@ try {
     Assert-Test ($run.ExitCode -eq 2 -and $calls.Count -eq 0) 'GPO Enforce is rejected before connecting'
 
     Reset-Fixtures
+    $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $settings.SchemaVersion = 1
+    Write-Fixture $settingsPath $settings
+    $run = Invoke-FixtureRun
+    Assert-Test ($run.ExitCode -eq 2 -and $calls.Count -eq 0) 'Legacy schema 1 settings are rejected before native execution'
+
+    Reset-Fixtures
     $inventory = Get-Content -LiteralPath $inventoryPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $inventory.DiscoveredAtUtc = (Get-Date).AddDays(-2).ToUniversalTime().ToString('o')
     Write-Fixture $inventoryPath $inventory
@@ -386,6 +431,7 @@ try {
         -not (Test-Path -LiteralPath $preparation.PackageDirectory)) 'Inventory-based preparation WhatIf performs no download, staging, or connection'
 
     $preparation = Invoke-PreparationFixture
+    if ($preparation.Error) { throw "Preparation fixture failed: $($preparation.Error)" }
     Assert-Test ($null -eq $preparation.Error -and ($preparation.Rows.ComputerName -join ',') -eq 'dc-a.inventory.test,dc-b.inventory.test' -and
         @($preparation.Effects | Where-Object { $_ -like 'Install:*' }).Count -eq 2) 'Preparation defaults to all writable inventory DCs, not RODCs'
     Assert-Test ($preparation.TransportFiles.Count -eq 2 -and @($preparation.TransportFiles | Select-Object -Unique).Count -eq 1 -and
@@ -413,6 +459,15 @@ try {
         $failedPreparation.Effects -contains 'Cleanup:dc-a.inventory.test' -and
         $failedPreparation.Effects -contains 'Disconnect:dc-a.inventory.test' -and
         @($failedPreparation.Effects | Where-Object { $_ -like 'Install:*' }).Count -eq 0) 'A transfer failure cleans staging, disconnects the session, and removes the local ZIP without installing'
+
+    $installedFixtureFile = Join-Path $temporaryRoot 'Installed-dc-a.inventory.test\NativeResources.psm1'
+    $installedFixtureText = [System.IO.File]::ReadAllText($installedFixtureFile)
+    [System.IO.File]::WriteAllText($installedFixtureFile, 'Different resource content')
+    $mismatchedPreparation = Invoke-PreparationFixture
+    Assert-Test ($mismatchedPreparation.Error -like '*already exists with different content*' -and
+        [System.IO.File]::ReadAllText($installedFixtureFile) -ceq 'Different resource content' -and
+        @($mismatchedPreparation.Effects | Where-Object { $_ -like 'Install:*' }).Count -eq 0) 'The real installation block refuses different content in an existing resource version without overwriting it'
+    [System.IO.File]::WriteAllText($installedFixtureFile, $installedFixtureText)
 
     $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $settings.ExcludedDCs = @('dc-b.inventory.test')

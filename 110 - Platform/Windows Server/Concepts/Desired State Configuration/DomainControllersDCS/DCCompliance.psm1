@@ -209,6 +209,9 @@ function Get-DCResourcePackage {
         }
     }
     $fileNames = @($resourceNames | ForEach-Object { "$_.dsc.resource.json" }) + @('Invoke-NativeResource.ps1', 'NativeResources.psm1', 'NativeAudit.cs')
+    if (@(Get-ChildItem -LiteralPath $Path -File -Recurse -Force -ErrorAction Stop).Count -ne $fileNames.Count) {
+        throw 'The native Resources folder must contain exactly the five manifests and three implementation files.'
+    }
     $files = @(
         foreach ($name in $fileNames) {
             [pscustomobject]@{ Name = $name; Sha256 = (Get-FileHash -LiteralPath (Join-Path $Path $name) -Algorithm SHA256 -ErrorAction Stop).Hash }

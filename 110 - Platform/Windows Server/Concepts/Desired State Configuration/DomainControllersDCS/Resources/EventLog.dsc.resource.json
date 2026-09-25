@@ -23,7 +23,7 @@
       "required": ["LogName"],
       "properties": {
         "LogName": { "type": "string", "enum": ["Security", "System", "Directory Service"] },
-        "MaximumSizeInBytes": { "type": "integer", "minimum": 65536, "multipleOf": 65536 },
+        "MaximumSizeInBytes": { "type": "integer", "minimum": 0 },
         "LogMode": { "type": "string", "enum": ["Circular", "AutoBackup", "Retain"] }
       }
     }

@@ -4,6 +4,13 @@
 param([string]$DscExecutable)
 
 $ErrorActionPreference = 'Stop'
+$nativeTokens = $null
+$nativeParseErrors = $null
+$nativeScript = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Invoke-DCResource.ps1'), [ref]$nativeTokens, [ref]$nativeParseErrors)
+if ($nativeParseErrors.Count) { throw 'The production native-process wrapper has syntax errors.' }
+$nativeProcessFunction = $nativeScript.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-DCNativeProcess' }, $true)
+if ($null -eq $nativeProcessFunction) { throw 'The production native-process wrapper was not found.' }
+. ([scriptblock]::Create($nativeProcessFunction.Extent.Text))
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('DCNative-Test-' + [guid]::NewGuid().ToString('N'))
 $module = Import-Module (Join-Path $PSScriptRoot 'Resources\NativeResources.psm1') -Force -PassThru
 try {
@@ -21,6 +28,11 @@ try {
         }
         $smb = Invoke-DCNativeResource SmbServer Get ([pscustomobject]@{ Name = 'Server' })
         if ($smb.EnableSMB1Protocol -isnot [bool] -or $smb.EnableSMB1Protocol -or -not $smb.RequireSecuritySignature) { throw 'Invalid SMB state.' }
+        function Get-SmbServerConfiguration { param($ErrorAction) [pscustomobject]@{ EnableSMB1Protocol = $null; RequireSecuritySignature = $true } }
+        $rejected = $false
+        try { Invoke-DCNativeResource SmbServer Get ([pscustomobject]@{ Name = 'Server' }) }
+        catch { $rejected = $_.Exception.Message -like '*Boolean settings*' }
+        if (-not $rejected) { throw 'An unknown SMB1 state was treated as disabled.' }
         function Get-DCAuditFlags {
             param([guid]$Subcategory)
             if ($Subcategory -ne [guid]'0cce9215-69ae-11d9-bed3-505054503030') { throw 'Unexpected audit GUID.' }
@@ -68,6 +80,10 @@ try {
         if ($log.MaximumSizeInBytes -ne 1073741824 -or $eventConfiguration.Saves -ne 1) { throw 'Event-log Set did not save the requested state.' }
         $null = Invoke-DCNativeResource EventLog Set $log
         if ($eventConfiguration.Saves -ne 1) { throw 'Event-log Set is not idempotent.' }
+        $rejected = $false
+        try { Invoke-DCNativeResource EventLog Set ([pscustomobject]@{ LogName = 'Security'; MaximumSizeInBytes = 1052672L; LogMode = 'Circular' }) }
+        catch { $rejected = $_.Exception.Message -like '*64 KiB*' }
+        if (-not $rejected -or $eventConfiguration.Saves -ne 1) { throw 'Invalid event-log Set size was accepted.' }
         foreach ($resource in @('SmbServer', 'AuditPolicy', 'LdapPolicy')) {
             $properties = switch ($resource) {
                 'SmbServer' { [pscustomobject]@{ Name = 'Server' } }
@@ -92,9 +108,51 @@ try {
         if ($resourceManifest.kind -cne 'resource' -or $resourceManifest.PSObject.Properties['adapter']) { throw 'An adapter was found in the native resource package.' }
     }
     'PASS: Native Get contracts, read-only Set rejection, invalid Spooler state, manifests and audit interop compilation; Windows operations mocked.'
+    $null = New-Item -Path $temporaryRoot -ItemType Directory -Force
+    $preflightRoot = Join-Path $temporaryRoot 'PreflightResources'
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Resources') -Destination $preflightRoot -Recurse
+    $preflightFiles = @(
+        foreach ($file in (Get-ChildItem -LiteralPath $preflightRoot -File)) {
+            [pscustomobject]@{ Name = $file.Name; Sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash }
+        }
+    )
+    $preflightBranch = $nativeScript.Find({ param($node) $node -is [System.Management.Automation.Language.IfStatementAst] -and $node.Clauses[0].Item1.Extent.Text -eq '$request.Operation -eq ''Preflight''' }, $true)
+    if ($null -eq $preflightBranch) { throw 'The production preflight block was not found.' }
+    $preflightBlock = [scriptblock]::Create(($preflightBranch.Clauses[0].Item2.Statements | ForEach-Object { $_.Extent.Text }) -join "`n")
+    function Invoke-PreflightFixture {
+        param([switch]$WithAdapter)
+        $settings = [pscustomobject]@{ ResourceDirectory = $preflightRoot; ResourceVersion = '1.0.0'; DscExecutable = 'fixture-dsc.exe'; DscVersion = '3.2.3' }
+        $request = [pscustomobject]@{ ResourceFiles = $preflightFiles; ResourceTypes = @('Blog.DC/Spooler', 'Blog.DC/SmbServer', 'Blog.DC/AuditPolicy', 'Blog.DC/EventLog', 'Blog.DC/LdapPolicy') }
+        $nativeEnvironment = @{}
+        $actualHostName = 'dc.fixture.test'
+        $operatingSystem = [pscustomobject]@{ Caption = 'Windows Server fixture'; BuildNumber = '26100' }
+        $identity = [pscustomobject]@{ Name = 'fixture\operator' }
+        function Invoke-DCNativeProcess {
+            param($Executable, $Arguments, $Environment)
+            if ($Arguments -eq '--version') { return [pscustomobject]@{ ExitCode = 0; StdOut = 'dsc 3.2.3'; StdErr = '' } }
+            if ($Arguments -cne 'resource list Blog.DC/* --output-format json') { throw 'Preflight used another discovery command.' }
+            $entries = foreach ($resourceType in $request.ResourceTypes) {
+                [pscustomobject]@{ type = $resourceType; version = '1.0.0'; kind = 'resource'; requireAdapter = $(if ($WithAdapter) { 'Fixture/Adapter' } else { $null }) } | ConvertTo-Json -Compress
+            }
+            [pscustomobject]@{ ExitCode = 0; StdOut = $entries -join "`n"; StdErr = '' }
+        }
+        & $preflightBlock
+    }
+    $preflight = @(Invoke-PreflightFixture)
+    if ($preflight.Count -ne 1 -or $preflight[0].ResourceVersions.Count -ne 5 -or $preflight[0].ResourceFileHashes.Count -ne 8) { throw 'Native preflight lost resource identities or hashes.' }
+    $rejected = $false
+    try { Invoke-PreflightFixture -WithAdapter }
+    catch { $rejected = $_.Exception.Message -like '*did not discover native*' }
+    if (-not $rejected) { throw 'Native preflight accepted an adapter-based resource.' }
+    $changedFile = Join-Path $preflightRoot 'Invoke-NativeResource.ps1'
+    [System.IO.File]::AppendAllText($changedFile, "`n ")
+    $rejected = $false
+    try { Invoke-PreflightFixture }
+    catch { $rejected = $_.Exception.Message -like '*differs from the orchestration package*' }
+    if (-not $rejected) { throw 'Native preflight accepted an altered resource file.' }
+    'PASS: Production preflight accepts eight hashed native files and rejects adapter discovery or changed content; no remote execution.'
     if ($DscExecutable) {
         $fixtureRoot = Join-Path $temporaryRoot 'Resources'
-        $null = New-Item -Path $temporaryRoot -ItemType Directory
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Resources') -Destination $fixtureRoot -Recurse
         $fixtureModule = @'
 function Invoke-DCNativeResource {
@@ -111,7 +169,7 @@ Export-ModuleMember -Function Invoke-DCNativeResource
             Spooler = @{ Name = 'Spooler'; State = 'Running'; StartupType = 'Automatic' }
             SmbServer = @{ Name = 'Server'; EnableSMB1Protocol = $false; RequireSecuritySignature = $true }
             AuditPolicy = @{ Name = 'Logon'; AuditSuccess = $true; AuditFailure = $false }
-            EventLog = @{ LogName = 'Security'; MaximumSizeInBytes = 65536; LogMode = 'Circular' }
+            EventLog = @{ LogName = 'Directory Service'; MaximumSizeInBytes = 1052672; LogMode = 'Circular' }
             LdapPolicy = @{ ValueName = 'LDAPServerIntegrity'; Exists = $false; ValueType = 'Missing'; ValueData = -1 }
         }
         foreach ($name in $states.Keys) {
@@ -122,23 +180,11 @@ Export-ModuleMember -Function Invoke-DCNativeResource
             $configuration = @{ '$schema' = 'https://aka.ms/dsc/schemas/v3/bundled/config/document.json'; resources = @(@{ name = 'native-fixture'; type = "Blog.DC/$Resource"; properties = $Properties }) }
             $configurationPath = Join-Path $temporaryRoot 'configuration.json'
             [System.IO.File]::WriteAllText($configurationPath, (ConvertTo-Json -InputObject $configuration -Depth 12))
-            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-            $startInfo.FileName = $DscExecutable
-            $startInfo.Arguments = 'config {0} --file "{1}" --output-format json' -f $Operation, $configurationPath
-            $startInfo.UseShellExecute = $false
-            $startInfo.CreateNoWindow = $true
-            $startInfo.RedirectStandardOutput = $true
-            $startInfo.RedirectStandardError = $true
-            $startInfo.EnvironmentVariables['DSC_RESOURCE_PATH'] = $fixtureRoot + ';' + (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0')
-            $startInfo.EnvironmentVariables['PATH'] = (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0') + ';' + $env:PATH
-            $process = [System.Diagnostics.Process]::Start($startInfo)
-            try {
-                $stdout = $process.StandardOutput.ReadToEndAsync()
-                $stderr = $process.StandardError.ReadToEndAsync()
-                if (-not $process.WaitForExit(30000)) { $process.Kill(); throw 'Native DSC fixture exceeded 30 seconds.' }
-                [pscustomobject]@{ ExitCode = $process.ExitCode; StdOut = $stdout.GetAwaiter().GetResult(); StdErr = $stderr.GetAwaiter().GetResult() }
+            $environment = @{
+                DSC_RESOURCE_PATH = $fixtureRoot + ';' + (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0')
+                PATH = (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0') + ';' + $env:PATH
             }
-            finally { $process.Dispose() }
+            Invoke-DCNativeProcess -Executable $DscExecutable -Arguments ('config {0} --file "{1}" --output-format json' -f $Operation, $configurationPath) -Environment $environment -TimeoutSeconds 30
         }
         foreach ($name in $states.Keys) {
             $response = Invoke-NativeFixture test $name $states[$name]
@@ -146,6 +192,10 @@ Export-ModuleMember -Function Invoke-DCNativeResource
             $output = $response.StdOut | ConvertFrom-Json
             if ($output.hadErrors -or -not $output.results[0].result.inDesiredState) { throw "DSC did not synthesize a successful Test for $name." }
         }
+        $logTest = Invoke-NativeFixture test EventLog @{ LogName = 'Directory Service'; MaximumSizeInBytes = 1073741824; LogMode = 'Circular' }
+        if ($logTest.ExitCode -ne 0 -or ($logTest.StdOut | ConvertFrom-Json).results[0].result.inDesiredState) { throw 'A non-aligned observed log size became an error or false compliance.' }
+        $ldapTest = Invoke-NativeFixture test LdapPolicy @{ ValueName = 'LDAPServerIntegrity'; Exists = $true; ValueType = 'DWord'; ValueData = 2 }
+        if ($ldapTest.ExitCode -ne 0 -or ($ldapTest.StdOut | ConvertFrom-Json).results[0].result.inDesiredState) { throw 'A missing LDAP value became an error or false compliance.' }
         $desired = @{ Name = 'Spooler'; State = 'Stopped'; StartupType = 'Disabled' }
         $test = Invoke-NativeFixture test Spooler $desired
         $state = ($test.StdOut | ConvertFrom-Json).results[0].result
