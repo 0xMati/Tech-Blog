@@ -12,6 +12,60 @@ Both are 100% PowerShell 5.1-compatible and follow Microsoft’s official steps 
 
 ---
 
+## Read-Only Preflight: Subscription, Content and Events
+
+Before changing either flag, distinguish an AD configuration problem from a DFSR initialization or content problem. Inspect the subscription through the target DC's own directory view rather than assuming its computer account lives in the default OU:
+
+```powershell
+Import-Module ActiveDirectory
+
+$targetName = 'dc02.corp.example'
+$targetDc = Get-ADDomainController -Identity $targetName -Server $targetName -ErrorAction Stop
+$subscriptionDn = "CN=SYSVOL Subscription,CN=Domain System Volume,CN=DFSR-LocalSettings,$($targetDc.ComputerObjectDN)"
+
+Get-ADObject -Identity $subscriptionDn -Server $targetDc.HostName `
+    -Properties 'msDFSR-Enabled', 'msDFSR-Options', 'msDFSR-RootPath', 'msDFSR-StagingPath' `
+    -ErrorAction Stop |
+    Select-Object DistinguishedName, 'msDFSR-Enabled', 'msDFSR-Options',
+                  'msDFSR-RootPath', 'msDFSR-StagingPath'
+
+repadmin.exe /showrepl $targetDc.HostName
+```
+
+Use the actual root path when backing up or inspecting SYSVOL; deployments do not all use the same historical `SYSVOL_DFSR` path. Repeat the subscription read from the DCs involved in a change to confirm AD convergence before expecting DFSR to consume it.
+
+`msDFSR-Options = 1` requests primary initialization for the authoritative procedure. It is not a permanent role, a content-health check or evidence that this replica is the best source. Choose the authoritative copy from verified policy/script contents and backups, not merely its FSMO role or flag value. If only one DC needs repair and a healthy partner exists, use non-authoritative synchronization without changing the healthy peers.
+
+Inspect the **DFS Replication** log, not just the System log:
+
+```powershell
+$windowStart = (Get-Date).AddHours(-4)
+
+Get-WinEvent -ComputerName $targetDc.HostName -FilterHashtable @{
+    LogName = 'DFS Replication'
+    Id = 4114, 4614, 4604, 4602, 2213, 4012
+    StartTime = $windowStart
+} -ErrorAction Stop |
+    Select-Object TimeCreated, Id, MachineName, RecordId, Message
+```
+
+| Event | Meaning for this workflow |
+|---|---|
+| 4114 | SYSVOL replication has been disabled for the subscription; required before re-enabling it |
+| 4614 | SYSVOL is initialized locally but waiting for initial replication; not a completion signal |
+| 4604 | SYSVOL initial synchronization completed on a non-authoritative member |
+| 4602 | SYSVOL initialized as the primary member in the authoritative procedure |
+| 2213 | Replication paused after an unexpected shutdown; investigate the event's recovery instructions |
+| 4012 | Content-freshness protection stopped replication; assess the offline history and source before repair |
+
+For non-authoritative recovery, verify a **new 4114** after disabling the subscription, then the **4614/4604** initialization sequence after re-enabling it. For authoritative recovery, verify **4114 then 4602 on the chosen primary** before allowing the other members to complete their non-authoritative initialization. Old events from an earlier attempt do not satisfy these checkpoints.
+
+`dfsrdiag pollad` asks DFSR to reload its AD configuration; it does not replicate that configuration between DCs or prove content synchronization. A running service, an empty instantaneous replication-state display, or a fixed sleep is not equivalent to a completed initial sync. After the required events, validate shares, representative GPO/script contents and backlog against the intended partner.
+
+The required sequence is documented in [Microsoft's DFSR SYSVOL synchronization procedure](https://learn.microsoft.com/en-us/troubleshoot/windows-server/group-policy/force-authoritative-non-authoritative-synchronization). Resolve ordinary [AD replication failures](Troubleshooting%20Active%20Directory%20Replication%20-%20repadmin,%20dcdiag,%20DNS,%20RPC,%20Time%20and%20Kerberos.md) before using DFSR reinitialization to address a file-replication problem.
+
+---
+
 ## Non-Authoritative Restore (DFSR)
 
 Use this when **a DC’s SYSVOL is out of sync** and needs to **pull a fresh copy** from a healthy partner.  
@@ -76,7 +130,7 @@ $sysvolSubDn         = "CN=SYSVOL Subscription,CN=Domain System Volume,$dfsrLoca
 
 # 4) Bind to SYSVOL Subscription
 try {
-    $sysvolSub = [ADSI]("LDAP://$sysvolSubDn")  # throws if missing
+    $sysvolSub = [ADSI]("LDAP://$ServerCN/$sysvolSubDn")
     $null = $sysvolSub.Properties["msDFSR-Enabled"] # touch to validate
     Write-Ok "Bound to: $sysvolSubDn"
 }
@@ -97,7 +151,7 @@ function Stop-DFSRService {
         $q = sc.exe "\\$Computer" query dfsr 2>$null
         if (($q | Where-Object {$_ -match "STATE"}) -match "STOPPED") { Write-Ok "DFSR stopped on $Computer."; return }
     } while ((Get-Date) -lt $deadline)
-    Write-Warn "Could not confirm DFSR is stopped on $Computer (continuing)."
+    throw "Could not confirm DFSR is stopped on $Computer."
 }
 function Start-DFSRService {
     param([string]$Computer)
@@ -109,13 +163,35 @@ function Start-DFSRService {
         $q = sc.exe "\\$Computer" query dfsr 2>$null
         if (($q | Where-Object {$_ -match "STATE"}) -match "RUNNING") { Write-Ok "DFSR running on $Computer."; return }
     } while ((Get-Date) -lt $deadline)
-    Write-Warn "Could not confirm DFSR is running on $Computer (continuing)."
+    throw "Could not confirm DFSR is running on $Computer."
 }
 function Invoke-OnTarget {
     param([string]$Computer, [scriptblock]$ScriptBlock)
-    if ($Computer -ieq $env:COMPUTERNAME) { & powershell.exe -NoProfile -Command $ScriptBlock; return $LASTEXITCODE }
+    if ($Computer -ieq $env:COMPUTERNAME) { & $ScriptBlock; return 0 }
     try { Invoke-Command -ComputerName $Computer -ScriptBlock $ScriptBlock -ErrorAction Stop | Out-Null; return 0 } catch { return 1 }
 }
+
+function Wait-SysvolEvent {
+    param([string]$Computer, [int]$EventId, [datetime]$Since, [int]$TimeoutSeconds = 900)
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $eventErrors = @()
+        $phaseEvents = @(Get-WinEvent -ComputerName $Computer -FilterHashtable @{
+            LogName = 'DFS Replication'
+            Id = $EventId
+            StartTime = $Since
+        } -ErrorAction SilentlyContinue -ErrorVariable eventErrors)
+        if (@($eventErrors | Where-Object { $_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*' }).Count) {
+            throw "Cannot verify DFSR events on $Computer."
+        }
+        if ($phaseEvents | Where-Object { $_.ToXml() -match 'SYSVOL' }) { return }
+        if ((Get-Date) -ge $deadline) { break }
+        Start-Sleep -Seconds 2
+    } while ((Get-Date) -lt $deadline)
+    throw "No new SYSVOL event $EventId on $Computer; stop at this phase."
+}
+
+if (-not $PSCmdlet.ShouldProcess($ServerCN, 'Reinitialize DFSR SYSVOL non-authoritatively')) { return }
 
 if (-not $SkipSafetyPrompt) {
     Write-Warn "This will perform a NON-AUTHORITATIVE SYSVOL restore on $ServerCN."
@@ -126,29 +202,41 @@ if (-not $SkipSafetyPrompt) {
 try {
     Stop-DFSRService -Computer $ServerCN
 
+    $disableStarted = Get-Date
     Write-Step "Setting msDFSR-Enabled = FALSE on $ServerCN..."
     $sysvolSub.Put("msDFSR-Enabled", $false)
     $sysvolSub.SetInfo()
     Write-Ok "msDFSR-Enabled = FALSE applied."
 
+    & repadmin.exe /syncall $ServerCN $domainDN /deP
+    if ($LASTEXITCODE -ne 0) { throw 'AD replication of the disabled subscription failed.' }
     Start-DFSRService -Computer $ServerCN
 
     Write-Step "Forcing 'dfsrdiag pollad' on $ServerCN..."
-    $rc = Invoke-OnTarget -Computer $ServerCN -ScriptBlock { dfsrdiag.exe pollad }
-    if ($rc -ne 0) { Write-Warn "Could not run 'dfsrdiag pollad' remotely. That's OK; DFSR will pick up shortly." }
+    $rc = Invoke-OnTarget -Computer $ServerCN -ScriptBlock {
+        dfsrdiag.exe pollad | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'dfsrdiag pollad failed.' }
+    }
+    if ($rc -ne 0) { throw "Could not run 'dfsrdiag pollad' on $ServerCN." }
+    Wait-SysvolEvent -Computer $ServerCN -EventId 4114 -Since $disableStarted
 
-    Start-Sleep -Seconds 5
-
+    $enableStarted = Get-Date
     Write-Step "Re-enabling subscription (msDFSR-Enabled = TRUE) on $ServerCN..."
     $sysvolSub.Put("msDFSR-Enabled", $true)
     $sysvolSub.SetInfo()
     Write-Ok "msDFSR-Enabled = TRUE applied."
 
+    & repadmin.exe /syncall $ServerCN $domainDN /deP
+    if ($LASTEXITCODE -ne 0) { throw 'AD replication of the enabled subscription failed.' }
     Write-Step "Polling AD again on $ServerCN..."
-    $rc = Invoke-OnTarget -Computer $ServerCN -ScriptBlock { dfsrdiag.exe pollad }
-    if ($rc -ne 0) { Write-Warn "Second pollad could not run remotely." }
+    $rc = Invoke-OnTarget -Computer $ServerCN -ScriptBlock {
+        dfsrdiag.exe pollad | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'dfsrdiag pollad failed.' }
+    }
+    if ($rc -ne 0) { throw "Second pollad failed on $ServerCN." }
+    Wait-SysvolEvent -Computer $ServerCN -EventId 4604 -Since $enableStarted
 
-    Write-Ok "Non-authoritative restore completed on $ServerCN. Check DFSR log (IDs 4602/4604) and backlog."
+    Write-Ok "SYSVOL initial synchronization reported event 4604 on $ServerCN. Validate content, shares and backlog."
 }
 catch {
     Write-Err "Failure: $($_.Exception.Message)"
@@ -157,8 +245,8 @@ catch {
 
 Write-Step "Follow-ups:"
 Write-Host "  dfsrdiag ReplicationState"
-Write-Host "  dfsrdiag backlog /rgname:`"Domain System Volume`" /rfname:`"SYSVOL Share`" /smem:$ServerCN /partner:<OtherDC>"
-Write-Host "  repadmin /syncall /AdeP"
+Write-Host "  dfsrdiag backlog /rgname:`"Domain System Volume`" /rfname:`"SYSVOL Share`" /smem:<HealthyDC> /rmem:$ServerCN"
+Write-Host "  repadmin /showrepl $ServerCN"
 Write-Host "  net share"
 ```
 
@@ -180,7 +268,7 @@ What this script does (strict sequence):
   5) START DFSR on PRIMARY only  (expect Event 4114 on PRIMARY)
   6) On PRIMARY:     msDFSR-Enabled=TRUE
   7) Force AD replication
-  8) On PRIMARY:     dfsrdiag pollad (expect Event 4602/4604)
+    8) On PRIMARY:     dfsrdiag pollad (require Event 4602)
   9) START DFSR on OTHER DCs     (expect Event 4114 on each)
  10) On OTHER DCs:   msDFSR-Enabled=TRUE
  11) On OTHER DCs:   dfsrdiag pollad
@@ -224,6 +312,7 @@ function Set-DFSR-Startup {
     param([string]$Computer,[ValidateSet("auto","demand")] [string]$Mode)
     WStep "[$Computer] Set DFSR StartupType -> $Mode"
     & sc.exe "\\$Computer" config dfsr start= $Mode | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "[$Computer] Failed to set DFSR startup type." }
 }
 function Stop-DFSR {
     param([string]$Computer)
@@ -235,7 +324,7 @@ function Stop-DFSR {
         $q = sc.exe "\\$Computer" query dfsr 2>$null
         if (($q | Where-Object {$_ -match "STATE"}) -match "STOPPED"){ WOk "[$Computer] DFSR stopped"; return }
     } while((Get-Date) -lt $deadline)
-    WWarn "[$Computer] Unable to confirm DFSR stopped (continuing)."
+    throw "[$Computer] Unable to confirm DFSR stopped."
 }
 function Start-DFSR {
     param([string]$Computer)
@@ -247,30 +336,50 @@ function Start-DFSR {
         $q = sc.exe "\\$Computer" query dfsr 2>$null
         if (($q | Where-Object {$_ -match "STATE"}) -match "RUNNING"){ WOk "[$Computer] DFSR running"; return }
     } while((Get-Date) -lt $deadline)
-    WWarn "[$Computer] Unable to confirm DFSR running (continuing)."
+    throw "[$Computer] Unable to confirm DFSR running."
 }
 
-# --- Best-effort remote 'dfsrdiag pollad' (WinRM if available) ---
+# --- Verified remote 'dfsrdiag pollad' ---
 function Try-PollAD {
     param([string]$Computer)
-    if ($Computer -ieq $env:COMPUTERNAME) { & dfsrdiag.exe pollad; return }
-    try {
-        Invoke-Command -ComputerName $Computer -ScriptBlock { dfsrdiag.exe pollad } -ErrorAction Stop | Out-Null
-        WOk "[$Computer] dfsrdiag pollad executed"
-    } catch {
-        WWarn "[$Computer] Couldn't run 'dfsrdiag pollad' remotely (WinRM disabled?). Run it locally if needed."
+    $poll = {
+        dfsrdiag.exe pollad | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'dfsrdiag pollad failed.' }
     }
+    if (($Computer -split '\.')[0] -ieq $env:COMPUTERNAME) { & $poll; return }
+    Invoke-Command -ComputerName $Computer -ScriptBlock $poll -ErrorAction Stop | Out-Null
+    WOk "[$Computer] dfsrdiag pollad executed"
+}
+
+function Wait-SysvolEvent {
+    param([string]$Computer, [int]$EventId, [datetime]$Since, [int]$TimeoutSeconds = 900)
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $eventErrors = @()
+        $phaseEvents = @(Get-WinEvent -ComputerName $Computer -FilterHashtable @{
+            LogName = 'DFS Replication'
+            Id = $EventId
+            StartTime = $Since
+        } -ErrorAction SilentlyContinue -ErrorVariable eventErrors)
+        if (@($eventErrors | Where-Object { $_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*' }).Count) {
+            throw "Cannot verify DFSR events on $Computer."
+        }
+        if ($phaseEvents | Where-Object { $_.ToXml() -match 'SYSVOL' }) { return }
+        if ((Get-Date) -ge $deadline) { break }
+        Start-Sleep -Seconds 2
+    } while ((Get-Date) -lt $deadline)
+    throw "No new SYSVOL event $EventId on $Computer; stop at this phase."
 }
 
 # --- Resolve Computer DN and bind SYSVOL Subscription robustly ---
 function Get-SysvolSubscriptionADSI {
     param([string]$ComputerNameOrFQDN)
     $cn = ($ComputerNameOrFQDN -split '\.')[0]
-    $root = [ADSI]"LDAP://RootDSE"
+    $root = [ADSI]("LDAP://$primaryFQDN/RootDSE")
     $domainDN = $root.defaultNamingContext
 
     $searcher = New-Object System.DirectoryServices.DirectorySearcher
-    $searcher.SearchRoot = [ADSI]("LDAP://$domainDN")
+    $searcher.SearchRoot = [ADSI]("LDAP://$primaryFQDN/$domainDN")
     $searcher.Filter = "(&(objectClass=computer)(|(dNSHostName=$ComputerNameOrFQDN)(name=$cn)))"
     $searcher.PageSize = 1000
     $res = $searcher.FindOne()
@@ -281,14 +390,14 @@ function Get-SysvolSubscriptionADSI {
     $domainSysVol = "CN=Domain System Volume,$dfsrLocal"
     $sysvolSub = "CN=SYSVOL Subscription,$domainSysVol"
 
-    $adsi = [ADSI]("LDAP://$sysvolSub")
+    $adsi = [ADSI]("LDAP://$primaryFQDN/$sysvolSub")
     # touch a property to validate bind
     $null = $adsi.Properties["msDFSR-Enabled"]
     return $adsi
 }
 
 # --- Gather DCs and fix PRIMARY selection/exclusion (short-name safe) ---
-$allDCs = Get-AllDCNames   # ex: ["MM-DC1.domain.com","MM-DC2.domain.com","MM-DC3.domain.com"]
+$allDCs = @(Get-AllDCNames)
 $primaryShort = ($PrimaryDC -split '\.')[0]
 $primaryFQDN  = $allDCs | Where-Object { ($_ -split '\.')[0] -ieq $primaryShort } | Select-Object -First 1
 
@@ -299,10 +408,13 @@ if (-not $primaryFQDN) {
 }
 
 # Exclude PRIMARY from others by comparing short names
-$otherDCs = $allDCs | Where-Object { ($_ -split '\.')[0] -ne ($primaryFQDN -split '\.')[0] }
+$otherDCs = @($allDCs | Where-Object { ($_ -split '\.')[0] -ne ($primaryFQDN -split '\.')[0] })
+$domainDN = [string]([ADSI]("LDAP://$primaryFQDN/RootDSE")).defaultNamingContext
 
 WStep "PRIMARY DC     : $primaryFQDN"
 WStep "OTHER DCs count: $($otherDCs.Count)"
+
+if (-not $PSCmdlet.ShouldProcess(($allDCs -join ', '), "Reinitialize DFSR SYSVOL using $primaryFQDN as primary")) { return }
 
 if (-not $SkipSafetyPrompt) {
     WWarn "This will perform an AUTHORITATIVE SYSVOL restore per Microsoft guidance."
@@ -316,6 +428,7 @@ try {
     foreach ($dc in $allDCs) { Set-DFSR-Startup -Computer $dc -Mode demand }
     foreach ($dc in $allDCs) { Stop-DFSR -Computer $dc }
 
+    $disableStarted = Get-Date
     # 2) PRIMARY: msDFSR-Enabled=FALSE, msDFSR-Options=1
     $adsiPrimary = Get-SysvolSubscriptionADSI -ComputerNameOrFQDN $primaryFQDN
     WStep "[PRIMARY] Set msDFSR-Enabled=FALSE"
@@ -331,52 +444,62 @@ try {
     }
 
     # 4) Force AD replication throughout the domain
-    WStep "Forcing AD replication (repadmin /syncall /AdeP)…"
-    & repadmin.exe /syncall /AdeP | Out-Null
+    WStep "Replicating SYSVOL configuration from $primaryFQDN..."
+    & repadmin.exe /syncall $primaryFQDN $domainDN /deP
+    if ($LASTEXITCODE -ne 0) { throw 'AD replication of disabled subscriptions failed.' }
 
     # 5) START DFSR on PRIMARY only (expect Event 4114)
     Start-DFSR -Computer $primaryFQDN
-    WWarn "[PRIMARY] Expect Event 4114 in 'DFS Replication' log."
+    Wait-SysvolEvent -Computer $primaryFQDN -EventId 4114 -Since $disableStarted
 
     # 6) PRIMARY: msDFSR-Enabled=TRUE
+    $primaryEnableStarted = Get-Date
     WStep "[PRIMARY] Set msDFSR-Enabled=TRUE"
     $adsiPrimary.Put("msDFSR-Enabled",$true); $adsiPrimary.SetInfo()
 
     # 7) Force AD replication
-    WStep "Forcing AD replication again…"
-    & repadmin.exe /syncall /AdeP | Out-Null
+    WStep "Replicating the primary subscription change..."
+    & repadmin.exe /syncall $primaryFQDN $domainDN /deP
+    if ($LASTEXITCODE -ne 0) { throw 'AD replication of the primary subscription failed.' }
 
-    # 8) PRIMARY: dfsrdiag pollad (expect Event 4602/4604)
+    # 8) PRIMARY: dfsrdiag pollad (require Event 4602)
     WStep "[PRIMARY] dfsrdiag pollad"
     Try-PollAD -Computer $primaryFQDN
-    WWarn "[PRIMARY] Expect Event 4602/4604 (initialization) in 'DFS Replication' log."
+    Wait-SysvolEvent -Computer $primaryFQDN -EventId 4602 -Since $primaryEnableStarted
 
     # 9) START DFSR on OTHER DCs (expect Event 4114)
-    foreach ($dc in $otherDCs) { Start-DFSR -Computer $dc }
-    WWarn "[OTHERS] Expect Event 4114 after service start."
+    foreach ($dc in $otherDCs) {
+        Start-DFSR -Computer $dc
+        Wait-SysvolEvent -Computer $dc -EventId 4114 -Since $disableStarted
+    }
 
     # 10) OTHERS: msDFSR-Enabled=TRUE
+    $othersEnableStarted = Get-Date
     foreach ($dc in $otherDCs) {
         $adsi = Get-SysvolSubscriptionADSI -ComputerNameOrFQDN $dc
         WStep "[$dc] Set msDFSR-Enabled=TRUE"
         $adsi.Put("msDFSR-Enabled",$true); $adsi.SetInfo()
     }
 
+    & repadmin.exe /syncall $primaryFQDN $domainDN /deP
+    if ($LASTEXITCODE -ne 0) { throw 'AD replication of the other subscriptions failed.' }
+
     # 11) OTHERS: dfsrdiag pollad
     foreach ($dc in $otherDCs) {
         WStep "[$dc] dfsrdiag pollad"
         Try-PollAD -Computer $dc
+        Wait-SysvolEvent -Computer $dc -EventId 4604 -Since $othersEnableStarted
     }
 
     # 12) Restore StartupType=Automatic on ALL DCs
     foreach ($dc in $allDCs) { Set-DFSR-Startup -Computer $dc -Mode auto }
 
     WOk  "Authoritative sequence completed successfully."
-    WStep "Verify: Event 4602/4604 on PRIMARY then on others; SYSVOL/NETLOGON shares present; dfsrdiag backlog ~ 0."
+    WStep "Events confirmed: 4602 on PRIMARY, 4604 on other members. Validate SYSVOL/NETLOGON shares, contents and backlog."
 }
 catch {
     WErr "Failure during authoritative sequence: $($_.Exception.Message)"
-    WWarn "Check AD/DFSR health, event logs, and retry if needed."
+    WWarn "Preserve the current phase and subscription states. Do not restart all members or rerun blindly."
     exit 1
 }
 ```
@@ -384,34 +507,30 @@ catch {
 ## Quick Verification Commands
 
 ```powershell
-# Check DFSR state
-dfsrdiag ReplicationState
+$sendingDc = 'dc01.corp.example'
+$receivingDc = 'dc02.corp.example'
 
-# Check backlog (example) — run from a DC, comparing with another DC as partner
-dfsrdiag backlog /rgname:"Domain System Volume" /rfname:"SYSVOL Share" /smem:$env:COMPUTERNAME /partner:<OtherDC>
-
-# Force AD replication
-#   /A = sync all naming contexts
-#   /d = display DSA (server) names instead of GUIDs
-#   /e = cross-site (enterprise-wide)
-#   /P = push changes outward from this DC
-repadmin /syncall /AdeP
-
-# Verify SYSVOL and NETLOGON shares are advertised again
-net share
+dfsrdiag.exe ReplicationState
+dfsrdiag.exe backlog /rgname:"Domain System Volume" /rfname:"SYSVOL Share" /smem:$sendingDc /rmem:$receivingDc
+repadmin.exe /showrepl $receivingDc
+net.exe share
 ```
 
 ## ⚠️ Recovery if the script crashes mid-run
 
-The authoritative script sets the DFSR service `StartupType=Manual` on every DC at step 1 and restores `Automatic` only at step 12. If the script aborts in between (network glitch, AD bind error, Ctrl+C…), DFSR will **not auto-start at next reboot** on the affected DCs. Re-enable it manually:
+The authoritative script sets the DFSR service `StartupType=Manual` on every DC at step 1 and restores `Automatic` only at step 12. A failed phase can leave services stopped or subscriptions disabled. **Do not start every DC or rerun the complete script automatically.** First record the last completed phase, each subscription's state and the new events on the chosen primary and other members.
 
 ```powershell
-# Run on each DC that did not reach step 12
-sc.exe config dfsr start= auto
-sc.exe start dfsr
+Get-Service DFSR | Select-Object Name, Status, StartType
+Get-WinEvent -FilterHashtable @{
+    LogName = 'DFS Replication'
+    StartTime = (Get-Date).AddHours(-4)
+} -MaxEvents 50 | Select-Object TimeCreated, Id, Message
 ```
 
-Then verify with `dfsrdiag ReplicationState` and `net share` that SYSVOL/NETLOGON are advertised again before declaring the incident closed.
+Use the preflight query to inspect AD state as well. Correct the failure and resume the documented phase with the intended primary/member ordering. Restore Automatic startup only when the recovery sequence permits it. The scripts now stop when an event cannot be verified; their 15-minute event timeout is an operational stop condition, not proof that a large SYSVOL can never take longer to synchronize.
+
+Remote execution requires access to service control, the DFS Replication event log and WinRM for `dfsrdiag pollad`. Validate those paths before changing subscriptions. If a required remote path is unavailable, use the Microsoft procedure locally on the affected DCs rather than bypassing the checks.
 
 ## 📚 References
 

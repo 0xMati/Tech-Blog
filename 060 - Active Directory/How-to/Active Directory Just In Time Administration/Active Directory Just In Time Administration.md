@@ -57,7 +57,7 @@ TTL on `Domain Admins` is valid as a transitional model if needed. The better lo
 
 Before implementing TTL-based privileged membership, verify:
 
-- the forest supports expiring links
+- the forest functional level is Windows Server 2016 or later and the Privileged Access Management feature is enabled
 - the Active Directory PowerShell module is available
 - administrative accounts are separated from standard user accounts
 - privileged workstations or hardened admin hosts are part of the model
@@ -66,10 +66,17 @@ Before implementing TTL-based privileged membership, verify:
 ### Validate the forest capability
 
 ```powershell
-Import-Module ActiveDirectory
+Import-Module ActiveDirectory -ErrorAction Stop
 
-Get-ADOptionalFeature -Filter 'name -like "Privileged Access Management*"' |
-    Select-Object Name, EnabledScopes
+$forest = Get-ADForest -ErrorAction Stop
+$pamFeature = Get-ADOptionalFeature -Identity 'Privileged Access Management Feature' -ErrorAction Stop
+
+$forest | Select-Object Name, ForestMode
+$pamFeature | Select-Object Name, RequiredForestMode, IsDisableable, EnabledScopes
+
+if ([int]$forest.ForestMode -lt [int]$pamFeature.RequiredForestMode) {
+    throw 'The forest functional level does not meet the PAM feature requirement.'
+}
 ```
 
 ### Enable the feature if required
@@ -85,10 +92,28 @@ $params = @{
     Target   = $forest.Name
 }
 
-Enable-ADOptionalFeature @params
+Enable-ADOptionalFeature @params -WhatIf
 ```
 
-If you enable the feature, do it from a trusted admin host and validate replication.
+Enabling the PAM optional feature is a forest-wide, irreversible change. Verify the functional level, supported DCs, delegated/forest-level authority and replication first. The example previews the operation; remove `-WhatIf` only for the reviewed enablement, then verify `EnabledScopes` and convergence on relevant DCs. Do not raise a functional level as an incidental step in a self-elevation script.
+
+### TTL membership is not a dynamic-group rule
+
+The expiring-link feature adds a lifetime to a specific membership. It does not calculate membership from department, location or another query rule, and it is not a Microsoft Entra dynamic group. The historical notes titled "TTL Groups" and "Dynamic Group" describe this same time-limited membership mechanism.
+
+| Boundary | What to verify |
+|---|---|
+| AD membership | Inspect the actual link with `Get-ADGroup -ShowMemberTimeToLive -Properties member` on the selected DC |
+| Replication | Confirm the intended membership/expiry view on relevant DCs; keep clocks synchronized |
+| Kerberos tickets | The KDC accounts for expiring memberships in ticket lifetimes; inspect the affected logon session's actual ticket end times |
+| Windows access token | A token already created for a process is not rebuilt merely because the directory link expires |
+| Application session | An existing remote session, database connection or application cookie can have its own lifetime |
+
+A fresh elevation test needs the appropriate fresh logon/ticket state. Purging tickets alone does not recreate every existing process token. At the end of the window, verify new authentication/authorization behavior rather than assuming that an open privileged session has been terminated.
+
+The requester must not retain an unrestricted path to write permanent membership if the broker is supposed to enforce duration. TTL constrains the membership created by the operation; it does not constrain a principal that can independently rewrite the group.
+
+For the broker's managed service identity, see [Deploying gMSAs](../Deploying%20gMSAs%20-%20KDS,%20Host%20Authorization%20and%20Scheduled%20Tasks.md). The [Add-ADGroupMember reference](https://learn.microsoft.com/en-us/powershell/module/activedirectory/add-adgroupmember) documents `MemberTimeToLive`; supported forest capability and actual session behavior still need verification.
 
 ## Deployment Model 1: Basic Self-Elevation
 

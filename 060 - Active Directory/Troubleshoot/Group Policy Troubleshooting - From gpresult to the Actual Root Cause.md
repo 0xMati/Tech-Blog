@@ -522,6 +522,30 @@ The endpoint is not "`gpupdate` returned successfully." The endpoint is **the in
 
 ---
 
+## Source Note Captures
+
+The following captures are retained from the original OneNote troubleshooting notes in source order. They show older consoles, documentation and diagnostic examples; use the current workflow and commands in this article as the authoritative procedure. Captures 6 and 7 are identical in the source notes and are intentionally both preserved.
+
+![OneNote GPO troubleshooting capture 1](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-01.png>)
+
+![OneNote GPO troubleshooting capture 2](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-02.png>)
+
+![OneNote GPO troubleshooting capture 3](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-03.png>)
+
+![OneNote GPO troubleshooting capture 4](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-04.jpg>)
+
+![OneNote GPO troubleshooting capture 5](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-05.jpg>)
+
+![OneNote GPO troubleshooting capture 6](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-06.jpg>)
+
+![OneNote GPO troubleshooting capture 7](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-07.jpg>)
+
+![OneNote GPO troubleshooting capture 8](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-08.jpg>)
+
+![OneNote GPO troubleshooting capture 9](<./assets/Group Policy Troubleshooting - From gpresult to the Actual Root Cause/Source note captures/capture-09.jpg>)
+
+---
+
 ## 🔗 Related Articles
 
 - [Active Directory Design Guidelines — Group Policy Strategy](<../Concepts/Active Directory Design Guidelines (Architecture Overview).md#-9--group-policy-strategy>)

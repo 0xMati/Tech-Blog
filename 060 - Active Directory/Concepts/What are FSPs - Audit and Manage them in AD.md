@@ -103,7 +103,34 @@ If an FSP object is **deleted**, but the SID is still referenced in a group or A
 | Add external group to a local group           | ✅ Yes       | ✅ If still referenced      |
 | Trust is broken or object no longer exists    | ❌ No        | ❌ Not recreated            |
 
-> ℹ️ **A SID that doesn’t resolve isn’t always orphaned.** If the trust direction is outgoing-only, or the remote DC is unreachable at lookup time, `LSA Lookup` (and PowerShell’s `Translate()`) will fail even though the source object still exists. Always validate from a DC that can actually reach the trusted domain before declaring an FSP stale.
+> ℹ️ **A SID that doesn’t resolve isn’t always orphaned.** An unavailable lookup path, directory permissions or trust/DC discovery problems can prevent name resolution while the source object still exists. Trust direction alone is not a universal explanation. Validate the source identity through an appropriate reachable DC before declaring an FSP stale.
+
+### SID/name lookup caches are not authentication caches
+
+Windows name-translation APIs and PowerShell's `SecurityIdentifier.Translate()` use the lookup facilities available to the machine executing the call. The LSA lookup cache is associated with that calling machine; changing the DC selected for a separate LDAP query does not automatically clear it. An application can also retain its own displayed names.
+
+| Observation | What it does not prove |
+|---|---|
+| A SID resolves to a name | That the displayed name is a fresh directory read or that the identity currently has access |
+| A rename is visible through LDAP but not in a console | That the rename failed; lookup or application display state can lag |
+| A SID cannot be translated | That the source object was deleted or that the FSP is safe to remove |
+| A new PowerShell process shows the same result | That the machine's LSA lookup cache was flushed |
+| The user's Kerberos cache was purged | That SID/name lookup state or an existing Windows access token was rebuilt |
+
+The cached value is an identity mapping, not the cached-domain-logon verifier, a Kerberos ticket, or a process access token. Treat these as different subsystems. Clearing the DNS cache also does not clear every LSA or application mapping.
+
+For a disputed mapping:
+
+1. Preserve the original SID, lookup result/error, time and machine where the lookup ran.
+2. Query the appropriate source domain for the original object SID; include SIDHistory where migration history makes that relevant.
+3. Compare object GUID, SID, current name and replication state through explicitly selected DCs.
+4. Investigate the lookup path and application cache independently before considering any FSP/group removal.
+
+An LSA lookup can resolve a SID through SIDHistory, so the returned name does not necessarily identify an object whose current `objectSid` equals the queried SID. Partial or unmapped results must be retained as such, not converted into a list of objects to delete.
+
+Do not copy legacy Windows 7/Server 2008 R2 cache-size or timeout registry recipes into Windows Server 2022/2025 as a generic fix. Use documented behavior for the affected API/build and measure a reproducible lookup issue first. Restarting LSASS is not a cache-maintenance procedure.
+
+See Microsoft's [LsaLookupSids reference](https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/nf-ntsecapi-lsalookupsids) for mapping results and SIDHistory behavior, and [LsaLookupSids2](https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/nf-ntsecapi-lsalookupsids2) for the newer API. For network and trust evidence, use [Troubleshooting Active Directory Trusts](../Troubleshoot/Troubleshooting%20Active%20Directory%20Trusts%20-%20DNS,%20Firewall,%20Time,%20Secure%20Channels%20and%20Name%20Suffix%20Routing.md).
 
 ## Auditing Foreign Security Principal (FSP) Usage in Active Directory
 
