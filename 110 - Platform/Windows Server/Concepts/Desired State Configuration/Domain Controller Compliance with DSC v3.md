@@ -446,7 +446,7 @@ Write-Output "Audit exit code: $auditExitCode"
 ![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-12-23-34.png>)
 
 
-![](<./assets/Domain Controller Compliance with DSC v3/2026-09-16-12-24-03.png>)
+![](<./assets/Domain Controller Compliance with DSC v3/2026-09-25-12-37-38.png>)
 
 **Expected:** one evaluated control and the paths of its reports. If Spooler is already stopped and disabled, the result is `Compliant`. If it is running or enabled, the result is `NonCompliant`. Neither outcome changes the service.
 
