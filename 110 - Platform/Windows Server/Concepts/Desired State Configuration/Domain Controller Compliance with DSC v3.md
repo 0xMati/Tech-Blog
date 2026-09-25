@@ -379,8 +379,8 @@ This tests remoting for every inventory entry, including RODCs or DCs excluded f
 For those DCs, the script handles three steps:
 
 1. **On MM-DSC1:** download the official DSC 3.2.3 Windows x64 ZIP, verify its SHA256, and download the three resource modules with `Save-Module`.
-2. **Over WinRM:** transfer those packages to the selected DCs.
-3. **On each DC:** extract the complete DSC package, including its adapters, to `C:\Tools\DSC`, and install the resource modules under `%ProgramFiles%\WindowsPowerShell\Modules` (AllUsers).
+2. **Over WinRM:** transfer a temporary ZIP containing the runtime archive and the complete module directories to the selected DCs.
+3. **On each DC:** verify the transfer ZIP's SHA256, extract it, and verify the original DSC archive again. Install the complete DSC package, including its adapters, to `C:\Tools\DSC`, and the resource modules under `%ProgramFiles%\WindowsPowerShell\Modules` (AllUsers).
 
 Only MM-DSC1 needs access to GitHub and PowerShell Gallery. The DCs receive the files from MM-DSC1. The folder `C:\Tools\DSC` is our choice for this example, not a DSC requirement or a WinGet default; `DscExecutable` tells the audit script to use the program installed there.
 
@@ -422,6 +422,8 @@ The optional `-ComputerName` parameter still limits preparation to specific inve
 This installs tools, not the security baseline: no Spooler, LDAP, or audit-policy settings are changed. The AllUsers module location is required by the Windows PowerShell DSC adapter. Existing versions are not silently removed or replaced; the audit preflight checks which resource versions are actually available.
 
 Downloads are cached under `C:\DSC\DomainControllersDCS\Packages` on MM-DSC1 for reuse. For disconnected preparation, this cache can be populated beforehand with the matching ZIP and complete versioned modules. A failed ZIP hash check stops preparation.
+
+The transfer ZIP is created under `%TEMP%` on MM-DSC1 and removed when preparation ends, including on failure. Transferring this generated file avoids `Copy-Item -ToSession` errors on unsupported source attributes such as `Pinned`; the cached files and their attributes remain unchanged.
 
 ---
 
@@ -474,7 +476,7 @@ The DCs were prepared in Step 4. Omit the target and control selections to audit
 $run = & 'C:\DSC\DomainControllersDCS\Invoke-DCCompliance.ps1'
 $auditExitCode = $LASTEXITCODE
 
-$run | Format-List
+$run | Format-List$
 ```
 
 With three writable DCs and no exclusions, **33 control results** are expected. `ExcludedDCs`, RODCs, and machines outside an explicit `-ComputerName` selection stay visible in target coverage. They are not counted as compliant controls.

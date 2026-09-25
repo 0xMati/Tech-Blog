@@ -119,20 +119,29 @@ function Enable-SpoolerEnforcement {
 }
 
 function Invoke-PreparationFixture {
-    param([hashtable]$Parameters = @{})
+    param([hashtable]$Parameters = @{}, [switch]$FailTransfer)
     $effects = [System.Collections.Generic.List[string]]::new()
+    $transportFiles = [System.Collections.Generic.List[string]]::new()
     $packageDirectory = Join-Path $temporaryRoot 'PreparationPackages'
     function Invoke-WebRequest {
         [CmdletBinding()]param($Uri, $OutFile, [switch]$UseBasicParsing)
         $effects.Add('DownloadZIP')
+        [System.IO.File]::WriteAllText($OutFile, 'DSC runtime ZIP fixture')
     }
     function Save-Module {
         [CmdletBinding()]param($Name, $RequiredVersion, $Repository, $Path, [switch]$Force)
         $effects.Add("SaveModule:$Name")
+        $versionDirectory = Join-Path $Path (Join-Path $Name $RequiredVersion)
+        $null = [System.IO.Directory]::CreateDirectory((Join-Path $versionDirectory 'Helpers\Empty'))
+        [System.IO.File]::WriteAllText((Join-Path $versionDirectory ($Name + '.psd1')), "@{ ModuleVersion = '$RequiredVersion' }")
+        [System.IO.File]::WriteAllText((Join-Path $versionDirectory ($Name + '.psm1')), "Module fixture: $Name")
+        $helperPath = Join-Path $versionDirectory 'Helpers\helper.bin'
+        [System.IO.File]::WriteAllBytes($helperPath, [byte[]]@(0, 7, 255, 32))
+        [System.IO.File]::SetAttributes($helperPath, [System.IO.FileAttributes]::Hidden)
     }
     function Get-FileHash {
         [CmdletBinding()]param($LiteralPath, $Algorithm)
-        if ($LiteralPath -like '*.zip') {
+        if ((Split-Path $LiteralPath -Leaf) -eq 'DSC-3.2.3-x86_64-pc-windows-msvc.zip') {
             [pscustomobject]@{ Hash = 'E1E48218014C166BBBE0EE6364D1E9C2AB20AB5515CEDA4EABD529A4BFD49881' }
         }
         else { Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $LiteralPath -Algorithm $Algorithm }
@@ -149,7 +158,14 @@ function Invoke-PreparationFixture {
     }
     function Copy-Item {
         [CmdletBinding()]param($LiteralPath, $Destination, [switch]$Recurse, $ToSession)
+        if ($Recurse -or -not (Test-Path -LiteralPath $LiteralPath -PathType Leaf) -or [System.IO.Path]::GetExtension($LiteralPath) -ne '.zip') {
+            throw 'Preparation must transfer a ZIP file, not a recursive module directory.'
+        }
+        $null = [System.IO.FileAttributes][int][System.IO.File]::GetAttributes($LiteralPath)
+        if ((Split-Path $Destination -Leaf) -ne 'package.zip') { throw 'Unexpected transfer filename.' }
+        $transportFiles.Add($LiteralPath)
         $effects.Add("Copy:$($ToSession.ComputerName)")
+        if ($FailTransfer) { throw 'Simulated transfer failure.' }
     }
     function Invoke-Command {
         [CmdletBinding()]param($Session, $ArgumentList, [scriptblock]$ScriptBlock)
@@ -157,7 +173,24 @@ function Invoke-PreparationFixture {
         if ($parameterNames[0] -eq 'ExpectedDomain') {
             return 'C:\ProgramData\DCCompliance-TestStage'
         }
-        if ($parameterNames.Count -eq 3) {
+        if ($parameterNames.Count -eq 4) {
+            $transportPath = $transportFiles[$transportFiles.Count - 1]
+            $packageHash = (Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $transportPath -Algorithm SHA256).Hash
+            if ($ArgumentList[2] -cne $packageHash) { throw 'The installer did not receive the transport ZIP hash.' }
+            $extracted = Join-Path $temporaryRoot ('Extracted-' + [guid]::NewGuid().ToString('N'))
+            Microsoft.PowerShell.Archive\Expand-Archive -LiteralPath $transportPath -DestinationPath $extracted -ErrorAction Stop
+            if ([System.IO.File]::ReadAllText((Join-Path $extracted 'dsc.zip')) -cne 'DSC runtime ZIP fixture') { throw 'Runtime ZIP content changed in transit.' }
+            $versions = $ArgumentList[3] | ConvertFrom-Json
+            foreach ($module in $versions.PSObject.Properties) {
+                $versionPath = Join-Path $extracted ('Modules\{0}\{1}' -f $module.Name, $module.Value)
+                if (-not (Test-Path -LiteralPath (Join-Path $versionPath ($module.Name + '.psd1'))) -or
+                    [System.IO.File]::ReadAllText((Join-Path $versionPath ($module.Name + '.psm1'))) -cne ('Module fixture: ' + $module.Name) -or
+                    ([System.IO.File]::ReadAllBytes((Join-Path $versionPath 'Helpers\helper.bin')) -join ',') -ne '0,7,255,32' -or
+                    -not (Test-Path -LiteralPath (Join-Path $versionPath 'Helpers\Empty') -PathType Container)) {
+                    throw 'The transport ZIP lost module content or directory structure.'
+                }
+            }
+            $effects.Add("VerifiedPackage:$($Session.ComputerName)")
             $effects.Add("Install:$($Session.ComputerName)")
             return [pscustomobject]@{ ComputerName = $Session.ComputerName; Result = 'Prepared' }
         }
@@ -176,7 +209,7 @@ function Invoke-PreparationFixture {
         )
     }
     catch { $failure = $_.Exception.Message }
-    [pscustomobject]@{ Rows = $rows; Effects = @($effects.ToArray()); Error = $failure; PackageDirectory = $packageDirectory }
+    [pscustomobject]@{ Rows = $rows; Effects = @($effects.ToArray()); Error = $failure; PackageDirectory = $packageDirectory; TransportFiles = @($transportFiles.ToArray()) }
 }
 
 try {
@@ -358,6 +391,31 @@ try {
     $preparation = Invoke-PreparationFixture
     Assert-Test ($null -eq $preparation.Error -and ($preparation.Rows.ComputerName -join ',') -eq 'dc-a.inventory.test,dc-b.inventory.test' -and
         @($preparation.Effects | Where-Object { $_ -like 'Install:*' }).Count -eq 2) 'Preparation defaults to all writable inventory DCs, not RODCs'
+    Assert-Test ($preparation.TransportFiles.Count -eq 2 -and @($preparation.TransportFiles | Select-Object -Unique).Count -eq 1 -and
+        @($preparation.Effects | Where-Object { $_ -like 'VerifiedPackage:*' }).Count -eq 2) 'One normalized ZIP is reused across DCs with intact runtime, module versions, hidden files, and subdirectories'
+    Assert-Test (@($preparation.TransportFiles | Where-Object { Test-Path -LiteralPath $_ }).Count -eq 0) 'Successful preparation removes the local transport ZIP'
+
+    $pinnedPath = Join-Path $preparation.PackageDirectory 'Modules\PSDscResources\2.12.0.0\PSDscResources.psm1'
+    $pinnedAttributes = [System.Enum]::ToObject([System.IO.FileAttributes], 524320)
+    [System.IO.File]::SetAttributes($pinnedPath, $pinnedAttributes)
+    $sourceAttributes = [int][System.IO.File]::GetAttributes($pinnedPath)
+    $sourceHash = (Get-FileHash -LiteralPath $pinnedPath -Algorithm SHA256).Hash
+    $attributeConversionFailed = $false
+    try { $null = [System.IO.FileAttributes]524320 }
+    catch { $attributeConversionFailed = $true }
+    Assert-Test ($sourceAttributes -eq 524320 -and $attributeConversionFailed) 'Archive plus Pinned reproduces the PowerShell file-attribute conversion failure'
+    $preparation = Invoke-PreparationFixture
+    Assert-Test ($null -eq $preparation.Error -and $preparation.Rows.Count -eq 2 -and
+        [int][System.IO.File]::GetAttributes($pinnedPath) -eq $sourceAttributes -and
+        (Get-FileHash -LiteralPath $pinnedPath -Algorithm SHA256).Hash -ceq $sourceHash) 'Preparation accepts Pinned source files without changing their attributes or content'
+
+    $failedPreparation = Invoke-PreparationFixture -FailTransfer
+    Assert-Test ($failedPreparation.Error -eq 'Simulated transfer failure.' -and $failedPreparation.Rows.Count -eq 0 -and
+        $failedPreparation.TransportFiles.Count -eq 1 -and
+        @($failedPreparation.TransportFiles | Where-Object { Test-Path -LiteralPath $_ }).Count -eq 0 -and
+        $failedPreparation.Effects -contains 'Cleanup:dc-a.inventory.test' -and
+        $failedPreparation.Effects -contains 'Disconnect:dc-a.inventory.test' -and
+        @($failedPreparation.Effects | Where-Object { $_ -like 'Install:*' }).Count -eq 0) 'A transfer failure cleans staging, disconnects the session, and removes the local ZIP without installing'
 
     $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $settings.ExcludedDCs = @('dc-b.inventory.test')

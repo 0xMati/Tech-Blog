@@ -59,80 +59,99 @@ foreach ($module in $inputs.Settings.ModuleVersions.PSObject.Properties) {
     $moduleInfo = Test-ModuleManifest -Path $manifest -ErrorAction Stop
     if ([version]$moduleInfo.Version -ne [version]$module.Value) { throw "Wrong cached module version: $($module.Name)." }
 }
-foreach ($name in $selectedTargets) {
-    $session = $null
-    $stagePath = $null
+$transportPath = Join-Path ([System.IO.Path]::GetTempPath()) ('DCCompliance-Package-' + [guid]::NewGuid().ToString('N') + '.zip')
+try {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($moduleRoot, $transportPath, [System.IO.Compression.CompressionLevel]::Optimal, $true)
+    $archive = [System.IO.Compression.ZipFile]::Open($transportPath, [System.IO.Compression.ZipArchiveMode]::Update)
     try {
-        $sessionArguments = @{
-            ComputerName = $name
-            ConfigurationName = 'Microsoft.PowerShell'
-            Authentication = 'Kerberos'
-            ErrorAction = 'Stop'
+        $null = [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $zipPath, 'dsc.zip', [System.IO.Compression.CompressionLevel]::NoCompression)
+    }
+    finally { $archive.Dispose() }
+    [System.IO.File]::SetAttributes($transportPath, [System.IO.FileAttributes]::Normal)
+    $transportHash = (Get-FileHash -LiteralPath $transportPath -Algorithm SHA256).Hash
+    foreach ($name in $selectedTargets) {
+        $session = $null
+        $stagePath = $null
+        try {
+            $sessionArguments = @{
+                ComputerName = $name
+                ConfigurationName = 'Microsoft.PowerShell'
+                Authentication = 'Kerberos'
+                ErrorAction = 'Stop'
+            }
+            if ($null -ne $Credential) { $sessionArguments.Credential = $Credential }
+            $session = New-PSSession @sessionArguments
+            $stagePath = Invoke-Command -Session $session -ArgumentList $inputs.Inventory.Domain, $name -ErrorAction Stop -ScriptBlock {
+                param($ExpectedDomain, $ExpectedHostName)
+                $ErrorActionPreference = 'Stop'
+                $computer = Get-CimInstance Win32_ComputerSystem
+                $actualHost = '{0}.{1}' -f $computer.DNSHostName, $computer.Domain
+                if ($computer.DomainRole -notin @(4, 5) -or $computer.Domain -ine $ExpectedDomain -or $actualHost -ine $ExpectedHostName) {
+                    throw 'Unexpected target identity or role.'
+                }
+                $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+                $principal = [System.Security.Principal.WindowsPrincipal]::new($identity)
+                if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Target preparation requires elevation.' }
+                $stage = Join-Path $env:ProgramData ('DCCompliance-Stage-' + [guid]::NewGuid().ToString('N'))
+                $null = New-Item -Path $stage -ItemType Directory
+                $stage
+            }
+            Copy-Item -LiteralPath $transportPath -Destination (Join-Path $stagePath 'package.zip') -ToSession $session -ErrorAction Stop
+            $versionsJson = $inputs.Settings.ModuleVersions | ConvertTo-Json -Compress
+            Invoke-Command -Session $session -ArgumentList $stagePath, $expectedHash, $transportHash, $versionsJson -ErrorAction Stop -ScriptBlock {
+                param($StagePath, $ZipHash, $PackageHash, $VersionsJson)
+                $ErrorActionPreference = 'Stop'
+                $package = Join-Path $StagePath 'package.zip'
+                if ((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash -cne $PackageHash) { throw 'The transferred preparation package failed hash verification.' }
+                Expand-Archive -LiteralPath $package -DestinationPath $StagePath -ErrorAction Stop
+                $zip = Join-Path $StagePath 'dsc.zip'
+                if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -cne $ZipHash) { throw 'The transferred DSC ZIP failed hash verification.' }
+                $dscPath = 'C:\Tools\DSC\dsc.exe'
+                if (Test-Path -LiteralPath $dscPath -PathType Leaf) {
+                    $versionOutput = & $dscPath --version
+                    if ($LASTEXITCODE -ne 0 -or ($versionOutput -join '').Trim() -cne 'dsc 3.2.3') {
+                        throw 'Another DSC version already occupies C:\Tools\DSC. It was not overwritten.'
+                    }
+                }
+                else {
+                    if ((Test-Path -LiteralPath 'C:\Tools\DSC') -and @(Get-ChildItem -LiteralPath 'C:\Tools\DSC' -Force).Count -gt 0) {
+                        throw 'C:\Tools\DSC is not empty and contains no dsc.exe. It was not overwritten.'
+                    }
+                    Expand-Archive -LiteralPath $zip -DestinationPath 'C:\Tools\DSC' -ErrorAction Stop
+                }
+                $versions = $VersionsJson | ConvertFrom-Json
+                $destinationRoot = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'
+                foreach ($module in $versions.PSObject.Properties) {
+                    $moduleDirectory = Join-Path $destinationRoot $module.Name
+                    $destination = Join-Path $moduleDirectory $module.Value
+                    if (-not (Test-Path -LiteralPath $destination -PathType Container)) {
+                        $null = New-Item -Path $moduleDirectory -ItemType Directory -Force
+                        $source = Join-Path $StagePath ('Modules\{0}\{1}' -f $module.Name, $module.Value)
+                        Copy-Item -LiteralPath $source -Destination $moduleDirectory -Recurse -ErrorAction Stop
+                    }
+                    $manifest = Join-Path $destination ($module.Name + '.psd1')
+                    $installed = Test-ModuleManifest -Path $manifest -ErrorAction Stop
+                    if ([version]$installed.Version -ne [version]$module.Value) { throw "Unexpected installed version of $($module.Name)." }
+                }
+                [pscustomobject]@{ ComputerName = $env:COMPUTERNAME; DscPath = $dscPath; ModulesPath = $destinationRoot; Result = 'Prepared' }
+            }
         }
-        if ($null -ne $Credential) { $sessionArguments.Credential = $Credential }
-        $session = New-PSSession @sessionArguments
-        $stagePath = Invoke-Command -Session $session -ArgumentList $inputs.Inventory.Domain, $name -ErrorAction Stop -ScriptBlock {
-            param($ExpectedDomain, $ExpectedHostName)
-            $ErrorActionPreference = 'Stop'
-            $computer = Get-CimInstance Win32_ComputerSystem
-            $actualHost = '{0}.{1}' -f $computer.DNSHostName, $computer.Domain
-            if ($computer.DomainRole -notin @(4, 5) -or $computer.Domain -ine $ExpectedDomain -or $actualHost -ine $ExpectedHostName) {
-                throw 'Unexpected target identity or role.'
-            }
-            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-            $principal = [System.Security.Principal.WindowsPrincipal]::new($identity)
-            if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Target preparation requires elevation.' }
-            $stage = Join-Path $env:ProgramData ('DCCompliance-Stage-' + [guid]::NewGuid().ToString('N'))
-            $null = New-Item -Path $stage -ItemType Directory
-            $stage
-        }
-        Copy-Item -LiteralPath $zipPath -Destination (Join-Path $stagePath 'dsc.zip') -ToSession $session -ErrorAction Stop
-        Copy-Item -LiteralPath $moduleRoot -Destination $stagePath -Recurse -ToSession $session -ErrorAction Stop
-        $versionsJson = $inputs.Settings.ModuleVersions | ConvertTo-Json -Compress
-        Invoke-Command -Session $session -ArgumentList $stagePath, $expectedHash, $versionsJson -ErrorAction Stop -ScriptBlock {
-            param($StagePath, $ZipHash, $VersionsJson)
-            $ErrorActionPreference = 'Stop'
-            $zip = Join-Path $StagePath 'dsc.zip'
-            if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -cne $ZipHash) { throw 'The transferred DSC ZIP failed hash verification.' }
-            $dscPath = 'C:\Tools\DSC\dsc.exe'
-            if (Test-Path -LiteralPath $dscPath -PathType Leaf) {
-                $versionOutput = & $dscPath --version
-                if ($LASTEXITCODE -ne 0 -or ($versionOutput -join '').Trim() -cne 'dsc 3.2.3') {
-                    throw 'Another DSC version already occupies C:\Tools\DSC. It was not overwritten.'
+        finally {
+            if ($null -ne $session) {
+                if ($stagePath) {
+                    Invoke-Command -Session $session -ArgumentList $stagePath -ErrorAction Continue -ScriptBlock {
+                        param($StagePath)
+                        Remove-Item -LiteralPath $StagePath -Recurse -Force -ErrorAction Continue
+                    }
                 }
+                Remove-PSSession -Session $session -ErrorAction SilentlyContinue
             }
-            else {
-                if ((Test-Path -LiteralPath 'C:\Tools\DSC') -and @(Get-ChildItem -LiteralPath 'C:\Tools\DSC' -Force).Count -gt 0) {
-                    throw 'C:\Tools\DSC is not empty and contains no dsc.exe. It was not overwritten.'
-                }
-                Expand-Archive -LiteralPath $zip -DestinationPath 'C:\Tools\DSC' -ErrorAction Stop
-            }
-            $versions = $VersionsJson | ConvertFrom-Json
-            $destinationRoot = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'
-            foreach ($module in $versions.PSObject.Properties) {
-                $moduleDirectory = Join-Path $destinationRoot $module.Name
-                $destination = Join-Path $moduleDirectory $module.Value
-                if (-not (Test-Path -LiteralPath $destination -PathType Container)) {
-                    $null = New-Item -Path $moduleDirectory -ItemType Directory -Force
-                    $source = Join-Path $StagePath ('Modules\{0}\{1}' -f $module.Name, $module.Value)
-                    Copy-Item -LiteralPath $source -Destination $moduleDirectory -Recurse -ErrorAction Stop
-                }
-                $manifest = Join-Path $destination ($module.Name + '.psd1')
-                $installed = Test-ModuleManifest -Path $manifest -ErrorAction Stop
-                if ([version]$installed.Version -ne [version]$module.Value) { throw "Unexpected installed version of $($module.Name)." }
-            }
-            [pscustomobject]@{ ComputerName = $env:COMPUTERNAME; DscPath = $dscPath; ModulesPath = $destinationRoot; Result = 'Prepared' }
         }
     }
-    finally {
-        if ($null -ne $session) {
-            if ($stagePath) {
-                Invoke-Command -Session $session -ArgumentList $stagePath -ErrorAction Continue -ScriptBlock {
-                    param($StagePath)
-                    Remove-Item -LiteralPath $StagePath -Recurse -Force -ErrorAction Continue
-                }
-            }
-            Remove-PSSession -Session $session -ErrorAction SilentlyContinue
-        }
+}
+finally {
+    if (Test-Path -LiteralPath $transportPath) {
+        Remove-Item -LiteralPath $transportPath -Force -Confirm:$false -ErrorAction Continue
     }
 }
