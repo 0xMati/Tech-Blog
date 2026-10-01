@@ -213,6 +213,43 @@ Correlate the WAP, AD FS and application records for the same attempt. Keep time
 
 An anonymous probe or federation-metadata response can show reachability and some service health. It does not prove preauthentication, client-certificate authentication, KCD or the application's final access decision. Test those behaviors directly instead of promoting one HTTP 200 into a complete health verdict.
 
+## 10. Account for publication features and client limitations
+
+*Added from the WAP 2016 notes, 2026-10-01.* A feature appearing in a historical announcement is not sufficient to select a publication mode for a current application. Match the installed WAP/AD FS versions, supported backend and actual clients.
+
+| Capability | Useful distinction | Boundary to verify |
+|---|---|---|
+| HTTP Basic preauthentication | Allows the documented non-browser credential flow instead of relying on interactive redirects | Specific WAP/AD FS and application support; not a conversion of Basic authentication into OAuth or phishing-resistant MFA |
+| External HTTP publication | Historical WAP support is for pass-through publication, not AD FS preauthentication over plaintext HTTP | Actual exposure and data sensitivity; HTTP does not protect credentials or application content |
+| HTTP-to-HTTPS redirect | Redirects users who enter the HTTP application URL to its HTTPS URL | A redirect is not TLS offload, backend encryption or protection of data already sent in the first HTTP request |
+| Wildcard publication | Can group supported applications under a controlled subdomain | Certificate coverage, DNS, hostname/path behavior and the broader publication scope |
+| Forwarded client IP | Supplies context for backend logging and diagnostics | Trust the proxy chain, not an arbitrary client-supplied header |
+| RD Web / RD Gateway publication | Can involve different resources and authentication steps | Browser and RDP-client support, not only whether the RD Web page loads |
+
+### HTTP Basic is a separate client path
+
+The documented Basic-preauthentication scenario lets WAP submit the relevant credentials to AD FS for a preauthentication decision and forward an accepted request to the backend. It is intended for clients that cannot follow the ordinary browser sign-in redirects.
+
+Use HTTPS on the relevant credential-carrying connections and the documented non-claims-aware RP/application configuration. An old Exchange ActiveSync example is not evidence that Basic authentication is still supported by a particular Microsoft 365 service, or that an interactive MFA challenge can be completed by that client. Verify current service and client support rather than recreating a retired cloud-authentication path.
+
+### Wildcards and forwarded IPs need explicit trust boundaries
+
+A wildcard publication can expose more than one named application. Review every hostname it can match, certificate wildcard rules, backend routing and application authorization. It is not a shortcut for publishing unrelated namespaces or rewriting arbitrary paths.
+
+WAP's forwarded-IP behavior can add to an existing `X-Forwarded-For` chain. The backend must know which proxies it trusts and prevent direct untrusted access from impersonating that chain. Do not use the leftmost string from an arbitrary header as an authenticated user identity or a trusted-location verdict.
+
+### RD Gateway: preserve the historical client caveat
+
+RD Web Access and RD Gateway are different resources, commonly involving `/rdweb/` and `/rpc/` in the documented legacy publication. Their placement on the same or separate servers affects the publication design. Backend authentication remains relevant even after edge preauthentication succeeds.
+
+Microsoft's WAP/RDG walkthrough describes passing a browser-obtained WAP cookie to `mstsc.exe` through an Internet Explorer/ActiveX-based flow and custom RDP properties. It also calls out clients that do not support that preauthentication path. This is **not** a promise that every current Remote Desktop client can consume a WAP browser session.
+
+The historical `DisableHttpOnlyCookieProtection` step deliberately makes a cookie accessible to client-side code for that integration. Do not apply it to ordinary WAP applications, or treat it as a general fix for an RD Gateway authentication failure. The same applies to URL-translation switches: choose them from the actual external/backend application contract, not a copied Boolean in an old sample.
+
+The current [Microsoft SharePoint/Exchange/RDG publication reference](https://learn.microsoft.com/en-us/windows-server/remote/remote-access/web-application-proxy/publishing-applications-with-sharepoint,-exchange-and-rdg) explicitly labels its information as provided **as-is** and directs readers toward the RDS team's recommended Entra application proxy approach. Evaluate that separate design and its client support; it is not an automatic replacement of an existing WAP rule.
+
+**Verify:** test the intended browser, native client and complete application/RDP launch, including an unauthorized user. If pass-through is required for a supported client, document where authentication and MFA are then enforced. Do not remove edge preauthentication silently and continue describing the deployment as though it still supplies that control.
+
 ## References
 
 - [Microsoft Learn: Web Application Proxy in Windows Server](https://learn.microsoft.com/en-us/windows-server/remote/remote-access/web-application-proxy/web-app-proxy-windows-server)

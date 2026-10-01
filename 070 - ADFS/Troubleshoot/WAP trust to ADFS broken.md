@@ -324,6 +324,56 @@ Events 245 and 396 then recorded successful configuration retrieval and trust re
 
 The [existing WAP registration deep dive](Deep%20dive%20into%20ADFS%20and%20WAP%20during%20registration.md) provides historical protocol context. Its interception setup is not required to run the diagnostic sequence here.
 
+## 9. Investigate server-list errors and configuration timeouts
+
+### A missing or retired name in ConnectedServersName
+
+`ConnectedServersName` is part of WAP's shared configuration. It lists WAP servers, not AD FS federation nodes and not the load balancer's backend pool. A listed name does not prove that the server is alive or that its proxy credential is accepted.
+
+If an error says that the current server is not included, compare its actual hostname, deployment/replacement history and configuration with a healthy WAP in the **same deployment**. Read the list in an elevated Windows PowerShell 5.1 session:
+
+```powershell
+Import-Module WebApplicationProxy -ErrorAction Stop
+$configurationForList = Get-WebApplicationProxyConfiguration -ErrorAction Stop
+$connectedProperty = $configurationForList.PSObject.Properties['ConnectedServersName']
+if ($null -eq $connectedProperty) {
+  throw 'ConnectedServersName is not exposed; check the version and retrieval result.'
+}
+$connectedServersBefore = @($connectedProperty.Value)
+if ($connectedServersBefore.Count -eq 0 -or
+  @($connectedServersBefore | Where-Object {
+    $_ -isnot [string] -or [string]::IsNullOrWhiteSpace($_)
+  }).Count -gt 0) {
+  throw 'The server list is empty or incomplete; do not construct a replacement from it.'
+}
+$configurationForList | Select-Object ADFSUrl, ConfigurationVersion
+$connectedServersBefore
+```
+
+If retrieval fails, stop here and use the available healthy management path or retained configuration record. An empty list assembled after an error is not a valid before-state.
+
+For a confirmed retired server, reconcile the **complete intended list** with the servers still in service. `Set-WebApplicationProxyConfiguration -ConnectedServersName` takes that full array; it is not an "add/remove one server" parameter. Its documented syntax has no native `-WhatIf` or `-Confirm`. Do not invent those switches or paste a single surviving name as a harmless test.
+
+Any list correction needs the retained list, a concurrency recheck, explicit change control and readback from the deployment. Verify every intended WAP's configuration retrieval and publication tests afterward. A server that never completed registration still needs the real trust-registration workflow; adding a name is not a substitute.
+
+Normal WAP version/retirement handling is covered in the [WID farm upgrade guide](../How-to/Upgrading%20an%20AD%20FS%20WID%20Farm%20-%20Mixed%20Mode,%20Farm%20Behavior%20Level%20and%20WAP.md). Do not raise a configuration version merely to address an unexpected name.
+
+### A timeout is an elapsed wait, not a root cause
+
+For a configuration/registration timeout, align WAP and AD FS timestamps and find the last successful operation:
+
+| Last evidence | Next discriminating check |
+|---|---|
+| No connection to the intended federation service | DNS answers, route, firewall, forward proxy and TCP reachability from WAP |
+| TCP connects, TLS fails | Actual SNI name, binding, chain, time and the node receiving the request |
+| Request reaches AD FS, then processing waits | AD FS configuration-store and directory dependencies in the service's context |
+| Failure follows a particular backend node | Node-specific logs, service identity and WID synchronization where applicable |
+| Directory/device-registration check is explicitly implicated | Actual DC discovery, selected DC availability and the required operation from the AD FS side |
+
+Historical 2012 R2 cases included waits around directory/device-registration checks. That is a candidate explanation only when the logs support it. It does not mean that every workgroup WAP needs direct LDAP access to domain controllers or that DRS must be enabled to repair all proxy registrations.
+
+Do not reduce the machine-wide TCP initial retransmission timeout to 500 ms or restart a domain controller because an old example did so. Those changes affect unrelated traffic or services and do not establish why the intended dependency is unreachable. Repair the demonstrated route, name, service or configuration problem, then repeat the same setup step and fresh external sign-in. Use the [bounded evidence-collection guide](Troubleshooting%20AD%20FS%20-%20Logs,%20Activity%20IDs%20and%20Evidence%20Collection.md) to correlate the attempt.
+
 ## References
 
 - [Microsoft Learn: Install-WebApplicationProxy](https://learn.microsoft.com/en-us/powershell/module/webapplicationproxy/install-webapplicationproxy?view=windowsserver2025-ps)
@@ -334,3 +384,5 @@ The [existing WAP registration deep dive](Deep%20dive%20into%20ADFS%20and%20WAP%
 - [Microsoft Learn: Federation server farm using WID](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/design/federation-server-farm-using-wid), including the historical primary/secondary configuration roles.
 - [Microsoft Learn: AD FS requirements](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/design/ad-fs-requirements), legacy baseline for the service identity and network model; not a current browser/OS support matrix.
 - [Rhoderick Milne: AD FS 2012 R2 proxy trust recovery](https://blog.rmilne.ca/2015/04/20/adfs-2012-r2-web-application-proxy-re-establish-proxy-trust/), original historical case and screenshots.
+- [Microsoft Learn: Get-WebApplicationProxyConfiguration](https://learn.microsoft.com/en-us/powershell/module/webapplicationproxy/get-webapplicationproxyconfiguration?view=windowsserver2025-ps)
+- [Microsoft Learn: Set-WebApplicationProxyConfiguration](https://learn.microsoft.com/en-us/powershell/module/webapplicationproxy/set-webapplicationproxyconfiguration?view=windowsserver2025-ps)

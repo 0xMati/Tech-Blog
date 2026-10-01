@@ -125,9 +125,47 @@ Set-AdfsGlobalAuthenticationPolicy `
 
 Apply the relevant restoration with confirmation after reviewing the state. Browser policy changes need their own rollback and browser restart. Re-test the same client/path matrix; do not mistake cached SSO for a fresh verification. For identity entered in forms versus WIA identity, see [Alternate Login ID](../How-to/AD%20FS%20Alternate%20Login%20ID.md).
 
+## 8. Read the negotiated protocol and the application's request separately
+
+### What a browser trace can prove
+
+| Observation | Conclusion and limit |
+|---|---|
+| `WWW-Authenticate: Negotiate` | The server offers negotiation; it does not identify the mechanism ultimately selected |
+| An NTLMSSP message decoded by a protocol-aware tool | NTLM is present in that exchange; correlate the final result and server context |
+| A Kerberos AP-REQ for the intended service | A Kerberos request was sent; correlate acceptance, not just ticket availability |
+| A service ticket in the client's cache | The ticket exists; this particular HTTP request may still have taken another path |
+| Different blob sizes or number of 401 round trips | Diagnostic clues, not reliable proof of the selected protocol |
+| A browser credential dialog | HTTP authentication UI, not necessarily AD FS forms authentication |
+
+Pair the exchange with the relevant server logon/authentication package and DC ticket-validation evidence, accounting for existing sessions and cached tickets. An initial 401 challenge can be expected; repeated challenges require the actual error and path. Keep authentication headers out of public traces.
+
+A 400/header-size failure belongs to a different branch. Measure the failing header and identify the component imposing the limit before changing anything. The existing [Kerberos token-bloat guide](../../060%20-%20Active%20Directory/Troubleshoot/Kerberos%20Token%20Bloat%20-%20PAC%20Size,%20MaxTokenSize%20and%20HTTP%20Limits.md) covers PAC size and HTTP limits. Large copied `MaxFieldLength`/`MaxRequestBytes` values are not a default AD FS repair, and modern AD FS is not an IIS website to reconfigure from an old IIS tutorial.
+
+Use the [HTTP trace guide](AD%20FS%20HTTP%20Traces%20-%20Capture,%20Read%20and%20Redact.md) for collection and the [EPA/CBT note](../Concepts/AD%20FS%20Extended%20Protection%20and%20Channel%20Binding.md) when HTTPS interception changes the result.
+
+### "Forms for this RP" is a request/policy question
+
+Keep three things distinct: which primary methods AD FS permits on that path, what the application requests through its protocol, and the authentication context AD FS actually produces.
+
+| Mechanism | Scope |
+|---|---|
+| Intranet/extranet primary providers and WIA user-agent selection | Farm/path behavior described earlier; not a per-RP browser switch |
+| WS-Federation `wauth` | Requested authentication type, subject to the supported AD FS protocol behavior and available methods |
+| SAML `RequestedAuthnContext` | Requested authentication context and comparison semantics; not a place to paste a WS-Federation query option |
+| `prompt=login`, `wfresh=0` or SAML `ForceAuthn` | Fresh-authentication semantics depend on protocol and version; they do not all mean "display forms" |
+| An outgoing authentication-method claim | A statement about authentication; issuing it cannot make the requested authentication happen retroactively |
+
+Microsoft documents native `prompt=login` support in AD FS 2016 and later, and in Windows Server 2012 R2 with the July 2016 update rollup. For Entra-federated requests, the default translation can send `wfresh=0` **plus a password `wauth` request**, whereas native forwarding is different. Inspect the received request and the domain's `PromptLoginBehavior` before attributing a password prompt to browser matching. This is not an instruction to recreate or change the domain federation configuration.
+
+For an RP that needs a particular supported method, verify the application's request capability and the AD FS release's accepted context values. Test fresh and existing sessions on both intended paths. A failed or unsupported requested context should be diagnosed as such, not hidden by manufacturing a claim.
+
+Routing that application through WAP changes the path and its policies; it is not a per-RP forms setting. Changing the global user-agent list affects other applications too. Neither workaround is a substitute for a defined application authentication contract.
+
 ## References
 
 - [Microsoft Learn: Configure browsers for WIA with AD FS](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/configure-ad-fs-browser-wia)
 - [Microsoft Learn: Intranet forms fallback for clients that do not support WIA](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/configure-intranet-forms-based-authentication-for-devices-that-do-not-support-wia)
 - [Microsoft Learn: Set-AdfsGlobalAuthenticationPolicy](https://learn.microsoft.com/en-us/powershell/module/adfs/set-adfsglobalauthenticationpolicy?view=windowsserver2025-ps)
 - [Microsoft Learn: Edge AuthServerAllowlist](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/authserverallowlist)
+- [Microsoft Learn: AD FS prompt=login and Entra federation translation](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-prompt-login)

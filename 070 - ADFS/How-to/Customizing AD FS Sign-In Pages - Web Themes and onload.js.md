@@ -158,9 +158,80 @@ Set-AdfsWebConfig -ActiveThemeName $webBefore.ActiveThemeName -WhatIf -ErrorActi
 
 Restore the reviewed value with confirmation, then repeat the failed scenario. A global switch does not undo RP-specific overrides, separate global/RP text changes, or files already changed inside the original theme. Restore those from their own before-state rather than indiscriminately deleting the customization. Keep the old theme intact until validation is complete.
 
+## 7. AD FS 2019: centered theme versus paginated authentication
+
+*Added 2026-10-01.* A centered layout and a paginated sign-in flow are related experiences, but they are not the same setting:
+
+| Setting | Effect | Scope |
+|---|---|---|
+| A custom theme cloned from `DefaultAdfs2019` | Use the built-in 2019 visual baseline, then apply reviewed branding | Global or per-RP theme assignment |
+| `EnablePaginatedAuthenticationPages` | Separate the username and subsequent authentication steps | Global authentication policy |
+| `AllowAdditionalAuthenticationAsPrimary` | Permit supported external providers as primary authentication; also enables the paginated experience | Authentication behavior, not just branding |
+
+Microsoft documents the new experience as the default for new AD FS installations. An upgraded farm, existing custom theme or older lab screenshot can show something different. Inspect the actual state instead of assuming that every Server 2019 installation needs the same activation command.
+
+![Historical AD FS page with the sign-in area aligned to the right](./assets/Customizing%20AD%20FS%20Sign-In%20Pages%20-%20Web%20Themes%20and%20onload.js/historical-default-sign-in.png)
+
+*Before: the historical lab's original right-aligned layout.*
+
+![The same historical AD FS page using the centered 2019 theme](./assets/Customizing%20AD%20FS%20Sign-In%20Pages%20-%20Web%20Themes%20and%20onload.js/historical-centered-sign-in.png)
+
+*After: a custom theme based on `DefaultAdfs2019`. These are the same IdP-initiated page in a 2018 lab, not proof of pagination, successful authentication or today's installation defaults. Browser chrome was cropped and the lab label masked; copyright notices were retained. Historical source: [Arjan Mensch, msfreaks](https://msfreaks.wordpress.com/2018/10/06/windows-server-2019-adfs-features-center-branded-ui-out-of-the-box/).*
+
+For an upgraded deployment, complete the [farm/FBL upgrade](Upgrading%20an%20AD%20FS%20WID%20Farm%20-%20Mixed%20Mode,%20Farm%20Behavior%20Level%20and%20WAP.md) before enabling its newer authentication features. The following inventory requires the 2019-or-later capability and refuses to reinterpret an absent policy property as `false`:
+
+```powershell
+$farm = Get-AdfsFarmInformation -ErrorAction Stop
+if ($null -eq $farm.CurrentFarmBehavior -or [int]$farm.CurrentFarmBehavior -lt 4) {
+    throw 'The farm has not reached the required 2019 behavior level.'
+}
+$policyCommand = Get-Command Set-AdfsGlobalAuthenticationPolicy -ErrorAction Stop
+if (-not $policyCommand.Parameters.ContainsKey('EnablePaginatedAuthenticationPages')) {
+    throw 'The installed command does not expose paginated authentication.'
+}
+$authenticationBefore = Get-AdfsGlobalAuthenticationPolicy -ErrorAction Stop
+$paginationProperty = $authenticationBefore.PSObject.Properties['EnablePaginatedAuthenticationPages']
+if ($null -eq $paginationProperty -or $paginationProperty.Value -isnot [bool]) {
+    throw 'The current pagination setting is unavailable; do not guess its rollback value.'
+}
+$paginationBefore = $paginationProperty.Value
+$centeredBaseline = @(Get-AdfsWebTheme -ErrorAction Stop | Where-Object Name -eq 'DefaultAdfs2019')
+if ($centeredBaseline.Count -ne 1) {
+    throw 'The expected built-in 2019 theme is unavailable; review the installed version.'
+}
+$centeredBaseline | Select-Object Name, IsBuiltinTheme
+$authenticationBefore | Select-Object EnablePaginatedAuthenticationPages,
+    AllowAdditionalAuthenticationAsPrimary
+```
+
+To use the centered visual baseline, follow the clone/export procedure in section 2 with a **new** name and directory, replacing its `-SourceName $webBefore.ActiveThemeName` with **`-SourceName 'DefaultAdfs2019'`**. This is an alternative to cloning the active theme, not a second creation of the same name. Retain the old export for rollback and reapply only the customizations that have been checked against the new layout. Do not overwrite the built-in theme or blindly replace its `onload.js` with the old theme's entire script.
+
+Import, test and assign the resulting custom theme using the chosen global or RP scope in section 5. Check logos, illustration sizing, error pages, password update where already published and every supported language. A centered appearance alone does not prove pagination is enabled.
+
+If pagination is also required, preview that separate farm-wide change:
+
+```powershell
+Set-AdfsGlobalAuthenticationPolicy -EnablePaginatedAuthenticationPages $true `
+    -WhatIf -ErrorAction Stop
+```
+
+After review, use `-Confirm` instead of `-WhatIf`, read the policy back and test username entry, method selection, MFA and error handling through the real application. An RP-specific theme does not limit this global authentication-policy change to that RP. Do not enable external authentication as primary merely to center a logo.
+
+For rollback, restore the theme assignment using its own before-state and preview the separate pagination restoration:
+
+```powershell
+Set-AdfsGlobalAuthenticationPolicy -EnablePaginatedAuthenticationPages $paginationBefore `
+    -WhatIf -ErrorAction Stop
+```
+
+Apply the reviewed restoration with confirmation and verify it. If external-as-primary authentication was already enabled, account for its interaction with pagination; this theme change does not authorize removing that authentication capability. Test the intended combined policy rather than assuming any arbitrary pair of values is meaningful.
+
+There is no need to enable the IdP-initiated sign-on page or publish a password-update endpoint just to compare themes. Use an existing RP sign-in path. For users who need enrollment guidance on an error page, see the separate [MFA registration note](../Troubleshoot/AD%20FS%20and%20MFA%20Registration%20-%20Guiding%20Unregistered%20Users.md).
+
 ## References
 
 - [Microsoft Learn: AD FS user sign-in customization](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-user-sign-in-customization)
 - [Microsoft Learn: Advanced customization and supported boundaries](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/advanced-customization-of-ad-fs-sign-in-pages)
 - [Microsoft Learn: Per-RP customization in AD FS 2016 and later](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-customization-in-windows-server)
 - [Microsoft Learn: New-AdfsWebTheme](https://learn.microsoft.com/en-us/powershell/module/adfs/new-adfswebtheme?view=windowsserver2025-ps)
+- [Microsoft Learn: AD FS 2019 paginated sign-in](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-paginated-sign-in)
