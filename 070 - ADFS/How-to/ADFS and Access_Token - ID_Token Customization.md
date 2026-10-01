@@ -259,6 +259,28 @@ The **Server application** Client ID is used as the `client_id` in OIDC requests
 
 The **Web API** identifier becomes the **audience** (`aud`) of the Access Token.
 
+### Web Sign-In, Delegated API Access and App-Only Access
+
+An application signing in a user and an application calling an API are related but different operations. A successful sign-in does not automatically grant access to a separate resource.
+
+| Scenario | User context | Relevant AD FS components | Token consumer and purpose |
+|---|---|---|---|
+| Web sign-in with OpenID Connect | A user signs in | Registered OIDC client, redirect URI and applicable sign-in policy | The client validates its ID token, whose audience identifies that client, and manages its own application session |
+| Web application calling an API on behalf of its signed-in user | Delegated user access | OIDC/OAuth client plus the target Web API/resource and the permitted client-to-resource relationship | The API validates an access token intended for its audience and authorizes the operation in the user context |
+| Service or daemon calling an API as itself | No signed-in user | Confidential client plus the target Web API/resource and the required application authorization | The API validates an app-only access token and authorizes the client application; the client-credentials grant does not provide an ID token for a user |
+
+**Confidential client is a client classification, not a grant type.** A server-side client that can protect its credentials can use Authorization Code for a user-based scenario or Client Credentials for an application-only scenario. A native or browser-based public client cannot make an embedded shared secret confidential. Select the supported flow and protections for the AD FS version and client type.
+
+The Authorization Code exchange in this article demonstrates obtaining tokens in a user-based flow. It is not a demonstration of the `client_credentials` grant. Likewise, a web application using a user's access token is not automatically using the separate OAuth On-Behalf-Of flow, in which a middle-tier API exchanges an incoming token for a downstream API token.
+
+An ID token is intended for the OIDC client, not as a substitute for an API access token. The API must validate its own expected issuer, audience, signature and validity constraints, then apply its authorization contract. Requesting a scope, receiving a token or adding a custom claim does not by itself prove that the API grants the intended permission. In an app-only scenario, do not assume user claims or delegated scopes will be available.
+
+The application group organizes configuration; it is not the application, the API or a session store. A client registration, its credential, a resource identifier and a redirect URI have distinct purposes even when a wizard creates them together.
+
+**Verify:** identify the actual grant and whether a user is involved; check which client/resource configuration applies; verify each token at its intended consumer; then distinguish the token result from the application's own session. No application source code is needed to establish these boundaries.
+
+For the surrounding concepts, see [AD FS authentication flows](../Concepts/AD%20FS%20Authentication%20Flows%20-%20Trusts,%20Identifiers,%20Metadata%20and%20Endpoints.md), [claims and token validation](../Concepts/AD%20FS%20Claims%20Explained%20-%20Attribute%20Stores,%20Claim%20Descriptions%20and%20Token%20Issuance.md) and [token versus application-session lifetimes](../Concepts/AD%20FS%20Token%20and%20Session%20Lifetimes%20-%20SSO,%20Persistent%20SSO%20and%20KMSI.md). Microsoft's [AD FS OAuth/OIDC concepts](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/ad-fs-openid-connect-oauth-concepts) describes the protocol-specific capabilities and configuration model.
+
 ---
 
 ## 8. Building the Authorization Request
