@@ -618,9 +618,89 @@ c1:[Type == "http://schemas.xmlsoap.org/claims/UPN"]
 
 > ℹ️ A real trust contains additional pass-through rules (primary SID, MFA instant, password expiry, `insideCorporateNetwork`, certificate context, etc.). Those support extra scenarios (device registration, password expiry notifications, conditional access) and are not strictly required for basic federated authentication.
 
+### Subdomains: the UPN suffix is not always the federation issuer
+
+*Added on 2026-10-18.*
+
+There is one extra trap in the multi-domain example: **a subdomain can inherit its parent's federation settings**. In that case, a user's UPN suffix and the issuer expected by Entra ID are not the same domain string.
+
+For example, if `corp.contoso.com` inherits the federation configuration of `contoso.com`, issuing `http://corp.contoso.com/adfs/services/trust/` just because the user signs in as `alice@corp.contoso.com` can produce an issuer mismatch. The expected value is the parent's configured **`IssuerUri`**.
+
+| UPN suffix | Assumed configuration in this example | Expected issuer |
+|---|---|---|
+| `contoso.com` | Federated root | Exact `IssuerUri` configured for `contoso.com` |
+| `corp.contoso.com` | Inherits from `contoso.com` | Same parent `IssuerUri`, not a new child URI |
+| `fabrikam.com` | Separate federated root | Its own configured `IssuerUri` |
+
+This is an explicit example mapping, not a rule for every tenant. A subdomain promoted to an independently managed root must be assessed against its own configuration. Do not remove labels from a UPN until a plausible-looking domain remains.
+
+![Historical federation settings distinguishing IssuerUri from the AD FS endpoint hostname](<./assets/subdomain-issuer/historical-issuer-uri-versus-endpoint.png>)
+
+*Historical source capture using Microsoft sample domains, cropped to the relevant fields. It illustrates that an issuer identifier can differ from the federation endpoint hostname; the legacy commands and certificate block have been removed.*
+
+#### Inspect the actual root and federation settings
+
+Use a current Microsoft Graph session in the intended tenant. This **read-only** example requires consent to the listed scopes and a supported directory role; it does not convert a domain or change an AD FS trust:
+
+```powershell
+Connect-MgGraph -Scopes 'Domain.Read.All', 'Domain-InternalFederation.Read.All'
+$suffix = 'corp.contoso.com'
+$domain = Get-MgDomain -DomainId $suffix `
+    -Property Id, IsRoot, IsVerified, AuthenticationType -ErrorAction Stop
+if ($domain.IsVerified -ne $true) {
+    throw 'The selected domain is not verified. Check the tenant and domain inventory.'
+}
+if ($domain.IsRoot -eq $true) {
+    $root = $domain
+}
+elseif ($domain.IsRoot -eq $false) {
+    $root = Get-MgDomainRootDomain -DomainId $suffix -ErrorAction Stop
+}
+else {
+    throw 'Root-domain status is unavailable; do not infer it from DNS labels.'
+}
+if ([string]::IsNullOrWhiteSpace($root.Id)) {
+    throw 'No root domain returned. Inspect the domain configuration before continuing.'
+}
+$federation = @(Get-MgDomainFederationConfiguration -DomainId $root.Id -ErrorAction Stop)
+if ($federation.Count -ne 1 -or
+    [string]::IsNullOrWhiteSpace($federation[0].IssuerUri)) {
+    throw 'Expected one federation configuration with an IssuerUri for the selected root.'
+}
+$domain | Select-Object Id, IsRoot, IsVerified, AuthenticationType
+$root | Select-Object Id
+$federation | Select-Object IssuerUri, PassiveSignInUri
+```
+
+For an independently configured domain, inspect that domain's own settings instead of assuming inheritance. Compare the returned issuer with the issuer claim produced by the Microsoft 365 relying party for a representative user from **each** allowed UPN suffix. Keep the exact configured URI, including its path and trailing slash; an issuer is an identifier, not a URL to normalize until it looks tidy.
+
+#### Map known suffixes explicitly
+
+The following claim-rule fragment illustrates a parent/child mapping for **user accounts**. Substitute the issuer actually read from the tenant; do not assume the example URI matches an existing deployment:
+
+```text
+@RuleName = "Issue parent issuer for explicitly mapped user suffixes"
+c1:[Type == "http://schemas.xmlsoap.org/claims/UPN",
+    Value =~ "(?i)^[^@]+@(contoso\.com|corp\.contoso\.com)$"]
+ && c2:[Type == "http://schemas.microsoft.com/ws/2012/01/accounttype", Value == "User"]
+ => issue(Type = "http://schemas.microsoft.com/ws/2008/06/identity/claims/issuerid",
+    Value = "http://contoso.com/adfs/services/trust/");
+```
+
+**This replaces the corresponding user issuer-rule logic; it is not an extra rule to append blindly.** Preserve the other trust rules and handle other approved roots separately. Keeping the old broad rule alongside it can emit conflicting issuer claims. An unknown suffix should trigger investigation, not an automatically invented issuer.
+
+Avoid the historical "keep the last two DNS labels" regex: `alice@dept.example.co.uk` would incorrectly map to `co.uk`. An explicit, reviewed suffix-to-issuer mapping avoids that assumption.
+
+Before applying an approved change, save the existing trust rules and federation before-state privately. Verify rule issuance and normal sign-in for parent, inherited child and separate-root users in a lab, plus negative cases such as `other.contoso.com` and `corp.contoso.com.attacker.example`. Check that each intended user gets exactly one expected issuer, and keep a rollback to the saved rules. This article does not execute the fragment against a farm.
+
+Finally, **`-SupportMultipleDomain` is not available in the Microsoft.Graph or Microsoft.Entra modules**. Do not translate an old `Convert-MsolDomainToFederated -SupportMultipleDomain` recipe into deletion/recreation of the Microsoft 365 trust. Inventory the existing per-domain configuration and use the supported management workflow for the intended change.
+
 ### References for this section
 
 - [Manage and customize AD FS — Modify AD FS claim rules](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-fed-management#modify-ad-fs-claim-rules)
+- [Multiple-domain federation and inherited subdomains](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-install-multiple-domains)
+- [Microsoft Graph: Get the root domain of a subdomain](https://learn.microsoft.com/en-us/graph/api/domain-get-rootdomain?view=graph-rest-1.0)
+- [Microsoft Graph: Read a domain's federation configuration and required permissions](https://learn.microsoft.com/en-us/graph/api/domain-list-federationconfiguration?view=graph-rest-1.0)
 - [The Role of the Claim Rule Language](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-R2-and-2012/dd807118(v=ws.11))
 - [Use a SAML 2.0 IdP for SSO](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-fed-saml-idp) *(the alternative, SAML 2.0 scenario)*
 
