@@ -1,9 +1,9 @@
 ---
-title: "Check SQL Server configuration with PowerShell"
+title: "Audit SQL Server configuration with PowerShell"
 date: 2026-10-19
 ---
 
-# Check SQL Server configuration with PowerShell
+# Audit SQL Server configuration with PowerShell
 
 A basic read-only audit of standard SQL Server configuration settings: memory limits, basic parallelism settings, database options and file growth. Its purpose is to identify common configuration risks and deviations from a production baseline, explain them and recommend next steps, not just inventory values. Context-dependent settings are flagged for review rather than judged against arbitrary universal values. It is not a comprehensive security assessment, performance audit or automatic tuning tool: no SQL setting is changed.
 
