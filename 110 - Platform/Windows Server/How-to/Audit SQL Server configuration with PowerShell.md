@@ -1,9 +1,9 @@
 ---
-title: "Audit SQL Server configuration with PowerShell"
+title: "Basic SQL Server Configuration Audit with PowerShell"
 date: 2026-10-19
 ---
 
-# Audit SQL Server configuration with PowerShell
+# Basic SQL Server Configuration Audit with PowerShell
 
 A basic read-only audit of standard SQL Server configuration settings: memory limits, basic parallelism settings, database options and file growth. Its purpose is to identify common configuration risks and deviations from a production baseline, explain them and recommend next steps, not just inventory values. Context-dependent settings are flagged for review rather than judged against arbitrary universal values. It is not a comprehensive security assessment, performance audit or automatic tuning tool: no SQL setting is changed.
 
@@ -113,9 +113,9 @@ $report.AuditFindings |
 | AuditFindings | One row per evaluated rule and target: `RuleId`, `Title`, `Severity`, `Target`, `Observed`, `WhyItMatters` and `Recommendation`. Included in both JSON and HTML. Titles and impact explanations add context; severity still comes from the documented rules. |
 | Instance | Server, instance, version and edition. Patch currency must be checked separately. |
 | HostMemory | Total and currently available physical RAM on the SQL host, not the workstation running the script. Available RAM is a point-in-time measurement. |
-| Configuration | Configured and running values for min/max memory, MAXDOP, cost threshold for parallelism and default backup compression. Differences require review, not necessarily a restart. |
+| Configuration | Configured and running values for min/max memory, MAXDOP, cost threshold for parallelism and default backup compression. Documented default memory mappings are expected; other differences require review, not necessarily a restart. |
 | Databases | State, recovery model, compatibility level, PAGE_VERIFY, AUTO_CLOSE and AUTO_SHRINK. Recovery model must match the backup and recovery strategy. |
-| Files | Data/log paths, allocated size and autogrowth. Size is allocated file size, not used space. `GrowthRaw` is a percentage when `IsPercentGrowth` is true; otherwise use `GrowthMB`. `MaxSizePages` is in 8-KB pages (`-1` means growth up to applicable limits). |
+| Files | Data/log paths, size and autogrowth from `sys.master_files`. `SizeBasis` is `Startup` for tempdb (configured startup size, not current size after growth) and `Allocated` for other databases. Neither is used space. `GrowthRaw` is a percentage when `IsPercentGrowth` is true; otherwise use `GrowthMB`. `MaxSizePages` is in 8-KB pages (`-1` means growth up to applicable limits). |
 | ReviewNotes | Collection diagnostics and general review notes. Retained alongside the structured audit findings, particularly for permission and visibility limitations. |
 
 ### Severity levels
@@ -135,7 +135,7 @@ $report.AuditFindings |
 | MEMORY_LIMIT | Warning for the effectively unlimited default, or an explicit running limit at least equal to physical host RAM. Unknown when required settings or RAM are missing. Otherwise Review, not Pass. | Agree an explicit memory budget that leaves headroom for Windows, other SQL allocations, other instances and applications. No fixed percentage is imposed. |
 | MEMORY_RANGE | Error if running minimum memory exceeds running maximum; otherwise Pass for range consistency only. | Verify inconsistent collected values with the DBA. Do not mistake min memory for startup preallocation. |
 | HOST_MEMORY | Unknown if the optional host-memory query returns no data. | Check collection notes and the version-specific DMV permission. No memory-pressure diagnosis is made from unavailable data. |
-| SETTING_VALUE | Review if configured and running values differ; Unknown if a setting is missing; otherwise Pass for equality only. Checked for min/max memory, MAXDOP, cost threshold and default backup compression. | Review why the values differ and how that setting becomes effective. A restart is not automatically required. |
+| SETTING_VALUE | Pass for equality or documented default memory mappings: minimum configured at 0 and running at 8 or 16 MB; maximum configured at 0 and running at 2147483647 MB. Review for other differences; Unknown if a setting is missing. Checked for min/max memory, MAXDOP, cost threshold and default backup compression. | Expected default mappings require no reconfiguration or restart; they do not validate memory sizing. Review other differences and how the setting becomes effective. |
 | PARALLELISM | Review for each returned MAXDOP and cost-threshold value. | Compare with CPU/NUMA topology, measured workload and application support guidance. The audit does not guess an optimal value. |
 | DATABASE_VISIBILITY | Unknown if the requested database is not returned, or no database rows are visible. | Confirm the instance, filter and metadata permissions. Missing rows do not prove that a database is absent. |
 | DATABASE_STATE | Error for SUSPECT, RECOVERY_PENDING or EMERGENCY; Review for other non-ONLINE states; Pass for ONLINE. | Determine whether the state is planned and investigate errors. Never force repair or recovery solely from this report. |
@@ -143,7 +143,7 @@ $report.AuditFindings |
 | PAGE_VERIFY | Warning when not CHECKSUM; otherwise Pass for the option value. | Prefer CHECKSUM unless an exception applies. This does not validate existing pages or replace integrity checks and backups. |
 | FILE_VISIBILITY | Unknown when no file metadata is returned. | Check permissions before making conclusions about storage or tempdb. Partial visibility can still go undetected. |
 | FILE_GROWTH | Review for percentage growth or disabled autogrowth; otherwise Pass for growth mode only. | Prefer predictable fixed-MB growth with suitable pre-sizing. Verify disk capacity and file limits first; disabled growth may be deliberate. No optimal increment is calculated. |
-| TEMPDB_LAYOUT | With multiple visible tempdb data files, Review when sizes or growth settings differ; otherwise Pass for equality. | Normally align sizes and growth settings after DBA review. The script does not recommend a file count or diagnose contention. This rule is not evaluated with fewer than two visible data files. |
+| TEMPDB_LAYOUT | With multiple visible tempdb data files, Review when configured startup sizes or growth settings differ; otherwise Pass for equality. | Normally align startup sizes and growth settings after DBA review. Query `tempdb.sys.database_files` for current sizes after growth. The script does not recommend a file count or diagnose contention. This rule is not evaluated with fewer than two visible data files. |
 | CERTIFICATE_VALIDATION | Review when `-TrustServerCertificate` was used; otherwise Pass for this connection's validation setting. | Replace an ongoing bypass with a trusted SQL certificate and matching server name. This is not an audit of server encryption policy or other clients. |
 
 For example, `MEMORY_LIMIT / Warning` with `2147483647` means the running instance has no practical configured memory ceiling. The recommended change is to **plan a suitable memory limit**, not blindly apply a generated number. On a shared application server such as Entra Connect, include the application engine in the RAM budget.
@@ -162,16 +162,22 @@ The default `max server memory (MB)` value is `2147483647`. Review an explicit m
 
 `max server memory` does **not** cap every allocation made by the SQL Server process, and `min server memory` is not a preallocated reservation at startup. A limit below total host RAM is not proof of correct sizing. The script deliberately does not apply a fixed percentage or recommend a value without workload measurements.
 
+SQL Server can expose a configured minimum of `0` as a running minimum of `16` MB on 64-bit systems (`8` MB on 32-bit systems). This is documented default behavior, not a pending change. The audit accepts these mappings without raising a Review finding or a pending-change note.
+
 Likewise, do not automatically change MAXDOP, recovery model or tempdb layout based on this snapshot. File-growth notes can have valid explanations, particularly for deliberately pre-sized system files. Correlate findings with capacity planning, backup policy, application guidance and performance collection.
+
+For tempdb, the file sizes collected from `sys.master_files` describe startup configuration. A reported size of 8 MB does not prove that the running file is still 8 MB or that the workload only needs that amount. Inspect `tempdb.sys.database_files` separately for current allocated sizes; the basic audit deliberately avoids an additional database-scoped query and its access requirements.
 
 ## Scope and validation
 
 This first version does not inspect disk free space, backup history, log usage, wait statistics, query performance or all SQL security settings. Missing metadata is not proof that a database or file is absent. An empty review list is not a health certificate.
 
-PowerShell syntax, SELECT-only query content, JSON round-trip and HTML export (including special-character encoding and empty sections) were checked locally. Synthetic audit scenarios covered memory limits and missing RAM, database states and options, missing settings, configured/running differences, file growth, tempdb layout and certificate-validation bypass. These tests did not connect to SQL Server. Execution against a live SQL Server instance remains to be validated in the target environment.
+PowerShell syntax, SELECT-only query content, JSON round-trip and HTML export (including special-character encoding and empty sections) were checked locally. Synthetic audit scenarios covered memory limits and missing RAM, database states and options, missing settings, configured/running differences, file growth, tempdb layout and certificate-validation bypass. Collection and report generation were also confirmed by a user-provided SQL Server 2019 report. The updated rules were tested offline against that snapshot, including documented memory mappings, genuine mismatches and tempdb startup-size wording; the revised script still needs a fresh run in the target environment.
 
 ## References
 
 - [Server memory configuration options](https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/server-memory-server-configuration-options).
+- [sys.configurations and documented default memory mappings](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-configurations-transact-sql).
+- [sys.master_files and tempdb startup sizes](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-master-files-transact-sql).
 - [sys.dm_os_sys_memory and required permissions](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-os-sys-memory-transact-sql).
 - [Metadata visibility configuration](https://learn.microsoft.com/en-us/sql/relational-databases/security/metadata-visibility-configuration).

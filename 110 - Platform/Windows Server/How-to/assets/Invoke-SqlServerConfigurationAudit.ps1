@@ -47,6 +47,16 @@ function Invoke-ConfigurationQuery {
     }
 }
 
+function Test-SqlDefaultMemoryMapping {
+    param([psobject]$Setting)
+
+    if ($Setting.ConfiguredValue -ne 0) {
+        return $false
+    }
+    return (($Setting.Setting -eq 'min server memory (MB)' -and $Setting.RunningValue -in @(8, 16)) -or
+        ($Setting.Setting -eq 'max server memory (MB)' -and $Setting.RunningValue -eq 2147483647))
+}
+
 function Get-SqlConfigurationAudit {
     param([psobject]$Report)
 
@@ -62,7 +72,7 @@ function Get-SqlConfigurationAudit {
         PAGE_VERIFY = @('Page integrity protection', 'CHECKSUM helps detect some storage-related page corruption when pages are read. It does not prevent corruption, verify every existing page immediately, or replace backups and integrity checks.')
         FILE_VISIBILITY = @('File inventory coverage', 'Without visible file metadata, growth and tempdb layout cannot be assessed. Even a nonempty inventory may be incomplete under restricted permissions.')
         FILE_GROWTH = @('File growth predictability', 'Percentage growth changes increment size as a file grows. Disabled growth can cause allocation failures when preallocated space is exhausted, but may be intentional in a managed capacity plan.')
-        TEMPDB_LAYOUT = @('tempdb data-file consistency', 'Unequal sizes or growth settings can create uneven allocation patterns. This comparison does not measure contention or determine the correct number of files.')
+        TEMPDB_LAYOUT = @('tempdb startup data-file consistency', 'Unequal startup sizes or growth settings can create uneven allocation patterns. Sizes come from sys.master_files and describe startup configuration, not current tempdb sizes after growth. This comparison does not measure contention or determine the correct number of files.')
         CERTIFICATE_VALIDATION = @('Reporting connection identity', 'Bypassing certificate validation keeps encryption but removes certificate-based verification of the SQL endpoint. This finding concerns only this reporting connection.')
     }
 
@@ -113,6 +123,9 @@ function Get-SqlConfigurationAudit {
         if (-not $setting) {
             New-AuditFinding 'SETTING_VALUE' 'Unknown' $settingName 'Setting not returned.' 'Check query results and metadata visibility.'
         }
+        elseif (Test-SqlDefaultMemoryMapping -Setting $setting) {
+            New-AuditFinding 'SETTING_VALUE' 'Pass' $settingName "Configured = $($setting.ConfiguredValue); running = $($setting.RunningValue); documented default memory mapping." 'This is expected SQL Server behavior, not a pending change. No reconfiguration or restart is required for this difference; memory sizing is assessed separately.'
+        }
         elseif ($setting.ConfiguredValue -ne $setting.RunningValue) {
             New-AuditFinding 'SETTING_VALUE' 'Review' $settingName "Configured = $($setting.ConfiguredValue); running = $($setting.RunningValue)." 'Review why the values differ and the setting-specific activation requirements. Do not assume that a restart is needed.'
         }
@@ -149,14 +162,15 @@ function Get-SqlConfigurationAudit {
     }
     foreach ($file in $Report.Files) {
         $target = "$($file.DatabaseName) / $($file.LogicalName)"
+        $sizeBasis = if ($file.DatabaseName -eq 'tempdb') { 'startup configuration, not current size after growth' } else { 'allocated file size, not used space' }
         $severity = if ($file.IsPercentGrowth -or $file.GrowthRaw -eq 0) { 'Review' } else { 'Pass' }
-        New-AuditFinding 'FILE_GROWTH' $severity $target "SizeMB = $($file.SizeMB); percent growth = $($file.IsPercentGrowth); growth raw = $($file.GrowthRaw); growth MB = $($file.GrowthMB)." 'Prefer predictable fixed-MB growth with appropriate pre-sizing. Disabled growth may be intentional; verify free disk space, file limits and capacity policy before changing it. A Pass does not validate the growth increment.'
+        New-AuditFinding 'FILE_GROWTH' $severity $target "SizeMB = $($file.SizeMB) ($sizeBasis); percent growth = $($file.IsPercentGrowth); growth raw = $($file.GrowthRaw); growth MB = $($file.GrowthMB)." 'Prefer predictable fixed-MB growth with appropriate pre-sizing. Disabled growth may be intentional; verify free disk space, file limits and capacity policy before changing it. A Pass does not validate the growth increment.'
     }
     $tempdbFiles = @($Report.Files | Where-Object { $_.DatabaseName -eq 'tempdb' -and $_.FileType -eq 'ROWS' })
     if ($tempdbFiles.Count -gt 1) {
         $layouts = @($tempdbFiles | Select-Object SizeMB, IsPercentGrowth, GrowthRaw -Unique)
         $severity = if ($layouts.Count -gt 1) { 'Review' } else { 'Pass' }
-        New-AuditFinding 'TEMPDB_LAYOUT' $severity 'tempdb data files' "$($tempdbFiles.Count) files; $($layouts.Count) size/growth combinations." 'Normally align data-file sizes and growth settings. Validate intended layout with the DBA; file count must be based on contention and CPU topology, not this snapshot.'
+        New-AuditFinding 'TEMPDB_LAYOUT' $severity 'tempdb data files' "$($tempdbFiles.Count) files; $($layouts.Count) startup size/growth combinations." 'Normally align startup data-file sizes and growth settings. Check tempdb.sys.database_files for current sizes after growth. Validate intended layout with the DBA; file count must be based on contention and CPU topology, not this snapshot.'
     }
     $severity = if ($Report.TrustServerCertificate) { 'Review' } else { 'Pass' }
     New-AuditFinding 'CERTIFICATE_VALIDATION' $severity 'Reporting connection' "TrustServerCertificate = $($Report.TrustServerCertificate)." 'For durable use, validate the SQL certificate chain and server name. This checks only this reporting connection, not every SQL client or server encryption policy.'
@@ -339,6 +353,7 @@ WHERE @DatabaseName IS NULL OR name = @DatabaseName OR name = N'tempdb';
     $files = @(Invoke-ConfigurationQuery -Connection $connection -DatabaseName $Database -Query @'
 SELECT DB_NAME(database_id) AS DatabaseName, name AS LogicalName, type_desc AS FileType,
        physical_name AS PhysicalPath, CONVERT(decimal(18,2), size / 128.0) AS SizeMB,
+    CASE WHEN database_id = DB_ID(N'tempdb') THEN N'Startup' ELSE N'Allocated' END AS SizeBasis,
        is_percent_growth AS IsPercentGrowth, growth AS GrowthRaw,
        CASE WHEN is_percent_growth = 0 THEN CONVERT(decimal(18,2), growth / 128.0) END AS GrowthMB,
        max_size AS MaxSizePages
@@ -366,8 +381,8 @@ FROM sys.dm_os_sys_memory;
     if ($hostMemory -and $maximum.RunningValue -ge $hostMemory.TotalPhysicalMemoryMB) {
         $notes.Add('Max server memory is at least the host physical RAM. Reserve memory for Windows, other SQL instances and applications.')
     }
-    if (@($configuration | Where-Object { $_.ConfiguredValue -ne $_.RunningValue }).Count) {
-        $notes.Add('Some configured values differ from running values. Review pending changes with the DBA.')
+    if (@($configuration | Where-Object { $_.ConfiguredValue -ne $_.RunningValue -and -not (Test-SqlDefaultMemoryMapping -Setting $_) }).Count) {
+        $notes.Add('Some configured values differ from running values beyond documented default memory mappings. Review setting-specific behavior and activation requirements with the DBA; a restart is not automatically required.')
     }
     if ($Database -and -not ($databaseStatus | Where-Object DatabaseName -eq $Database)) {
         $notes.Add("Database '$Database' was not visible. Check the instance, database name and metadata permissions.")
@@ -379,6 +394,9 @@ FROM sys.dm_os_sys_memory;
     }
     if ($files | Where-Object { $_.IsPercentGrowth -or $_.GrowthRaw -eq 0 }) {
         $notes.Add('Some visible files use percentage growth or have autogrowth disabled. Review capacity and growth settings; no change was made.')
+    }
+    if ($files | Where-Object DatabaseName -eq 'tempdb') {
+        $notes.Add('tempdb sizes from sys.master_files describe startup configuration, not current sizes after growth. Query tempdb.sys.database_files to inspect current allocated sizes.')
     }
     $notes.Add('Metadata visibility depends on SQL permissions; missing rows do not prove that a database or file is absent.')
     $report = [pscustomobject]@{
