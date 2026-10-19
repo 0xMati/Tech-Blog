@@ -5,7 +5,7 @@ date: 2026-10-19
 
 # Check SQL Server configuration with PowerShell
 
-A small read-only report for a SQL Server instance: memory limits, basic parallelism settings, database options and file growth. It provides a configuration snapshot, not a performance audit or an automatic tuning recommendation.
+A small read-only configuration audit for a SQL Server instance: memory limits, basic parallelism settings, database options and file growth. It combines raw evidence with findings, severity levels and recommended next steps. It is not a performance audit or an automatic tuning tool: no SQL setting is changed.
 
 Download the [Get-SqlServerConfiguration.ps1 script](assets/Get-SqlServerConfiguration.ps1).
 
@@ -16,6 +16,7 @@ Download the [Get-SqlServerConfiguration.ps1 script](assets/Get-SqlServerConfigu
 - A SQL login mapped to that identity with access to `master` and sufficient metadata visibility. Ask the DBA for read-only reporting permissions rather than granting `sysadmin` just for this script. Database and file results can be incomplete when permissions restrict visibility.
 - For host RAM information from `sys.dm_os_sys_memory`: `VIEW SERVER STATE` on SQL Server 2019 and earlier, or `VIEW SERVER PERFORMANCE STATE` on SQL Server 2022 and later. If this optional query fails, the rest of the report is retained and a note records the failure. Failures in the other queries stop the script.
 - Network access to the selected SQL instance. The script does not enable protocols, open firewall ports or discover instances.
+- Write permission next to the script: each successful collection creates a JSON file in a `Reports` subdirectory there.
 
 The connection is encrypted and validates the SQL Server certificate by default. Use a server name matching the certificate and a trusted certificate chain. For an approved diagnostic exception only, `-TrustServerCertificate` keeps encryption but bypasses certificate validation; it is not a fix for certificate configuration.
 
@@ -62,27 +63,86 @@ The connection remains encrypted, but **server certificate validation is bypasse
 
 ## Export the report
 
-The script returns one structured PowerShell object. Formatting is optional and separate from collection, so the same object can be exported without losing nested sections.
+Every successful collection automatically creates a `Reports` directory **next to the script**, using `$PSScriptRoot`, not the shell's current working directory. A JSON snapshot is saved there with a timestamp and unique suffix, for example `SqlServerConfiguration_20261019_143000_a1b2c3d4.json`. Previous reports are not overwritten.
+
+Add `-GenerateHtml` to also create a self-contained HTML report with the same filename stem. The HTML begins with the collection context, audit summary and findings with recommended actions, followed by the raw evidence. It uses no external resources and can be opened directly in a browser. For the local ADSync example, including the approved certificate exception described above:
 
 ```powershell
-$report | ConvertTo-Json -Depth 6 |
-    Out-File -FilePath '.\SqlServerConfiguration.json' -Encoding utf8
-$report.Configuration |
-    Export-Csv -Path '.\SqlServerSettings.csv' -NoTypeInformation -Encoding utf8
+$report = .\Get-SqlServerConfiguration.ps1 -SqlInstance 'localhost' -Database 'ADSync' -TrustServerCertificate -GenerateHtml
+$report.ReportFiles | Format-List
+Invoke-Item -LiteralPath $report.ReportFiles.Html
 ```
 
-Only these explicit export commands write local files; the script does not change SQL configuration or application data. Protect the reports: they contain server names, database names and physical file paths.
+Omit `-TrustServerCertificate` when the certificate can be validated. The JSON export is always enabled; HTML is optional. Both files describe the same collection, with no second SQL query pass. If the optional host-memory query fails, the report still includes its diagnostic note; a fatal collection error produces no report.
+
+The script still returns one structured PowerShell object for console inspection or additional exports. `ReportFiles` contains the generated paths on that returned object; it is not part of the saved snapshot. For an additional CSV export:
+
+```powershell
+$report.Configuration |
+    Export-Csv -Path (Join-Path (Split-Path $report.ReportFiles.Json) 'SqlServerSettings.csv') -NoTypeInformation -Encoding utf8
+```
+
+The script writes local report files but does not change SQL configuration or application data. Protect the reports: they contain server names, database names and physical file paths. No retention cleanup is performed; manage access, disk space and deletion according to your reporting policy.
 
 ## Read the results
 
+Start with the mini-audit, then inspect the raw evidence for each finding:
+
+```powershell
+$report.AuditSummary | Format-List
+$report.AuditFindings |
+    Where-Object { $_.Severity -ne 'Pass' } |
+    Format-List RuleId, Severity, Target, Observed, Recommendation
+```
+
 | Section | What to review |
 | --- | --- |
+| AuditSummary | Counts of Error, Warning, Review, Unknown and Pass findings, with an explicit limited-scope statement. Counts are findings, not distinct servers or rules. There is no global compliance score. |
+| AuditFindings | One row per evaluated rule and target: `RuleId`, `Severity`, `Target`, `Observed` and `Recommendation`. Included in both JSON and HTML. |
 | Instance | Server, instance, version and edition. Patch currency must be checked separately. |
 | HostMemory | Total and currently available physical RAM on the SQL host, not the workstation running the script. Available RAM is a point-in-time measurement. |
 | Configuration | Configured and running values for min/max memory, MAXDOP, cost threshold for parallelism and default backup compression. Differences require review, not necessarily a restart. |
 | Databases | State, recovery model, compatibility level, PAGE_VERIFY, AUTO_CLOSE and AUTO_SHRINK. Recovery model must match the backup and recovery strategy. |
 | Files | Data/log paths, allocated size and autogrowth. Size is allocated file size, not used space. `GrowthRaw` is a percentage when `IsPercentGrowth` is true; otherwise use `GrowthMB`. `MaxSizePages` is in 8-KB pages (`-1` means growth up to applicable limits). |
-| ReviewNotes | Basic review prompts: default effectively unlimited max memory, max memory at least physical RAM, differing configured/running values, database options or file growth needing attention, and metadata visibility limitations. These are not compliance failures. |
+| ReviewNotes | Collection diagnostics and general review notes. Retained alongside the structured audit findings, particularly for permission and visibility limitations. |
+
+### Severity levels
+
+| Severity | Meaning and response |
+| --- | --- |
+| Error | A serious observed state or inconsistent values: investigate promptly with the DBA. This does not by itself establish root cause or business impact. |
+| Warning | A known configuration risk or departure from a common production baseline. Plan a correction after validating context and documented exceptions. |
+| Review | The observation is real, but whether to change it depends on workload, capacity or application guidance. Not a confirmed misconfiguration. |
+| Unknown | Data required for a check is unavailable or not visible. Resolve collection gaps before drawing conclusions; this is never treated as a Pass. |
+| Pass | Only the specific condition tested was satisfied. Not a guarantee that the setting, database or instance is healthy or optimally configured. |
+
+### Rules and recommended actions
+
+| Rule | Detection and result | Action to consider |
+| --- | --- | --- |
+| MEMORY_LIMIT | Warning for the effectively unlimited default, or an explicit running limit at least equal to physical host RAM. Unknown when required settings or RAM are missing. Otherwise Review, not Pass. | Agree an explicit memory budget that leaves headroom for Windows, other SQL allocations, other instances and applications. No fixed percentage is imposed. |
+| MEMORY_RANGE | Error if running minimum memory exceeds running maximum; otherwise Pass for range consistency only. | Verify inconsistent collected values with the DBA. Do not mistake min memory for startup preallocation. |
+| HOST_MEMORY | Unknown if the optional host-memory query returns no data. | Check collection notes and the version-specific DMV permission. No memory-pressure diagnosis is made from unavailable data. |
+| SETTING_VALUE | Review if configured and running values differ; Unknown if a setting is missing; otherwise Pass for equality only. Checked for min/max memory, MAXDOP, cost threshold and default backup compression. | Review why the values differ and how that setting becomes effective. A restart is not automatically required. |
+| PARALLELISM | Review for each returned MAXDOP and cost-threshold value. | Compare with CPU/NUMA topology, measured workload and application support guidance. The audit does not guess an optimal value. |
+| DATABASE_VISIBILITY | Unknown if the requested database is not returned, or no database rows are visible. | Confirm the instance, filter and metadata permissions. Missing rows do not prove that a database is absent. |
+| DATABASE_STATE | Error for SUSPECT, RECOVERY_PENDING or EMERGENCY; Review for other non-ONLINE states; Pass for ONLINE. | Determine whether the state is planned and investigate errors. Never force repair or recovery solely from this report. |
+| DATABASE_OPTION | Warning when AUTO_CLOSE or AUTO_SHRINK is enabled; otherwise Pass for that option. | Normally disable these options on production databases, subject to application requirements and a validated change plan. |
+| PAGE_VERIFY | Warning when not CHECKSUM; otherwise Pass for the option value. | Prefer CHECKSUM unless an exception applies. This does not validate existing pages or replace integrity checks and backups. |
+| FILE_VISIBILITY | Unknown when no file metadata is returned. | Check permissions before making conclusions about storage or tempdb. Partial visibility can still go undetected. |
+| FILE_GROWTH | Review for percentage growth or disabled autogrowth; otherwise Pass for growth mode only. | Prefer predictable fixed-MB growth with suitable pre-sizing. Verify disk capacity and file limits first; disabled growth may be deliberate. No optimal increment is calculated. |
+| TEMPDB_LAYOUT | With multiple visible tempdb data files, Review when sizes or growth settings differ; otherwise Pass for equality. | Normally align sizes and growth settings after DBA review. The script does not recommend a file count or diagnose contention. This rule is not evaluated with fewer than two visible data files. |
+| CERTIFICATE_VALIDATION | Review when `-TrustServerCertificate` was used; otherwise Pass for this connection's validation setting. | Replace an ongoing bypass with a trusted SQL certificate and matching server name. This is not an audit of server encryption policy or other clients. |
+
+For example, `MEMORY_LIMIT / Warning` with `2147483647` means the running instance has no practical configured memory ceiling. The recommended change is to **plan a suitable memory limit**, not blindly apply a generated number. On a shared application server such as Entra Connect, include the application engine in the RAM budget.
+
+### Turn findings into a change plan
+
+1. Resolve Error findings and collection gaps first; establish whether states are expected.
+2. For each Warning, confirm the evidence and any documented exception with the DBA/application owner.
+3. Evaluate Review findings against capacity, workload and vendor guidance before deciding to change anything.
+4. Record approved changes, backups and rollback steps, then implement in a maintenance window where necessary.
+5. Rerun the script and compare before/after JSON snapshots and performance measurements. The script never executes corrective SQL.
 
 ### Memory on a shared server
 
@@ -96,7 +156,7 @@ Likewise, do not automatically change MAXDOP, recovery model or tempdb layout ba
 
 This first version does not inspect disk free space, backup history, log usage, wait statistics, query performance or all SQL security settings. Missing metadata is not proof that a database or file is absent. An empty review list is not a health certificate.
 
-PowerShell syntax and SELECT-only query content were checked locally. Execution against a live SQL Server instance remains to be validated in the target environment.
+PowerShell syntax, SELECT-only query content, JSON round-trip and HTML export (including special-character encoding and empty sections) were checked locally. Synthetic audit scenarios covered memory limits and missing RAM, database states and options, missing settings, configured/running differences, file growth, tempdb layout and certificate-validation bypass. These tests did not connect to SQL Server. Execution against a live SQL Server instance remains to be validated in the target environment.
 
 ## References
 
