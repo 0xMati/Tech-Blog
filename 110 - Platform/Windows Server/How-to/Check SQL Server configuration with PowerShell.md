@@ -5,9 +5,9 @@ date: 2026-10-19
 
 # Check SQL Server configuration with PowerShell
 
-A small read-only configuration audit for a SQL Server instance: memory limits, basic parallelism settings, database options and file growth. It combines raw evidence with findings, severity levels and recommended next steps. It is not a performance audit or an automatic tuning tool: no SQL setting is changed.
+A basic read-only audit of standard SQL Server configuration settings: memory limits, basic parallelism settings, database options and file growth. Its purpose is to identify common configuration risks and deviations from a production baseline, explain them and recommend next steps, not just inventory values. Context-dependent settings are flagged for review rather than judged against arbitrary universal values. It is not a comprehensive security assessment, performance audit or automatic tuning tool: no SQL setting is changed.
 
-Download the [Get-SqlServerConfiguration.ps1 script](assets/Get-SqlServerConfiguration.ps1).
+Download the [Invoke-SqlServerConfigurationAudit.ps1 script](assets/Invoke-SqlServerConfigurationAudit.ps1).
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ The connection is encrypted and validates the SQL Server certificate by default.
 Run from the directory containing the script. The default target is the local default instance; without a database filter, all visible databases, including system databases, are reported.
 
 ```powershell
-$report = .\Get-SqlServerConfiguration.ps1 -SqlInstance 'localhost'
+$report = .\Invoke-SqlServerConfigurationAudit.ps1 -SqlInstance 'localhost'
 $report.Instance | Format-List
 $report.HostMemory | Format-List
 $report.Configuration | Format-Table -AutoSize
@@ -37,13 +37,13 @@ $report.ReviewNotes
 For a named instance and a specific database, use single quotes to preserve the instance name. With `-Database`, database and file sections include the selected database **and tempdb**; instance settings and RAM information remain instance-wide.
 
 ```powershell
-$report = .\Get-SqlServerConfiguration.ps1 -SqlInstance 'SQL01\APP' -Database 'ApplicationDB'
+$report = .\Invoke-SqlServerConfigurationAudit.ps1 -SqlInstance 'SQL01\APP' -Database 'ApplicationDB'
 ```
 
 For example, on an Entra Connect server using a full local default SQL Server instance and the `ADSync` database:
 
 ```powershell
-$report = .\Get-SqlServerConfiguration.ps1 -SqlInstance 'localhost' -Database 'ADSync'
+$report = .\Invoke-SqlServerConfigurationAudit.ps1 -SqlInstance 'localhost' -Database 'ADSync'
 ```
 
 This example does not discover the SQL instance used by the application. Confirm the actual connection settings first; LocalDB uses a different connection name and access context.
@@ -53,7 +53,7 @@ This example does not discover the SQL instance used by the application. Confirm
 If the connection fails with **"The certificate chain was issued by an authority that is not trusted"**, the SQL endpoint was reached but its certificate chain could not be validated. For an approved local diagnostic exception, run:
 
 ```powershell
-$report = .\Get-SqlServerConfiguration.ps1 -SqlInstance 'localhost' -Database 'ADSync' -TrustServerCertificate
+$report = .\Invoke-SqlServerConfigurationAudit.ps1 -SqlInstance 'localhost' -Database 'ADSync' -TrustServerCertificate
 $report.Configuration | Format-Table -AutoSize
 $report.HostMemory | Format-List
 $report.ReviewNotes
@@ -63,12 +63,12 @@ The connection remains encrypted, but **server certificate validation is bypasse
 
 ## Export the report
 
-Every successful collection automatically creates a `Reports` directory **next to the script**, using `$PSScriptRoot`, not the shell's current working directory. A JSON snapshot is saved there with a timestamp and unique suffix, for example `SqlServerConfiguration_20261019_143000_a1b2c3d4.json`. Previous reports are not overwritten.
+Every successful collection automatically creates a `Reports` directory **next to the script**, using `$PSScriptRoot`, not the shell's current working directory. A JSON snapshot is saved there with a timestamp and unique suffix, for example `SqlServerConfigurationAudit_20261019_143000_a1b2c3d4.json`. Previous reports are not overwritten.
 
-Add `-GenerateHtml` to also create a self-contained HTML report with the same filename stem. The HTML begins with the collection context, audit summary and findings with recommended actions, followed by the raw evidence. It uses no external resources and can be opened directly in a browser. For the local ADSync example, including the approved certificate exception described above:
+Add `-GenerateHtml` to also create a self-contained HTML report with the same filename stem. The HTML begins with collection context, severity counters and expandable findings, followed by collapsed raw-evidence sections. It uses no external resources and can be opened directly in a browser. For the local ADSync example, including the approved certificate exception described above:
 
 ```powershell
-$report = .\Get-SqlServerConfiguration.ps1 -SqlInstance 'localhost' -Database 'ADSync' -TrustServerCertificate -GenerateHtml
+$report = .\Invoke-SqlServerConfigurationAudit.ps1 -SqlInstance 'localhost' -Database 'ADSync' -TrustServerCertificate -GenerateHtml
 $report.ReportFiles | Format-List
 Invoke-Item -LiteralPath $report.ReportFiles.Html
 ```
@@ -84,6 +84,18 @@ $report.Configuration |
 
 The script writes local report files but does not change SQL configuration or application data. Protect the reports: they contain server names, database names and physical file paths. No retention cleanup is performed; manage access, disk space and deletion according to your reporting policy.
 
+### Navigate the HTML audit
+
+- **Severity counters** show totals for the complete collection, regardless of active filters.
+- **Show passed checks** is unchecked by default: successful checks are retained but hidden to prioritize work. Enable it to include Pass findings when viewing all severities.
+- **Severity** selects one level. Selecting Pass explicitly displays passed checks even if the checkbox is unchecked; the checkbox only applies to All severities.
+- **Search findings** filters titles, targets, observations, explanations and recommendations. Search and severity filters combine; the visible/total count and empty state reflect both.
+- Findings are ordered Error, Warning, Unknown, Review, then Pass, and can be individually expanded or collapsed. Unknown appears before Review because missing evidence can block a conclusion.
+- Each finding separates **Observed** (collected evidence), **Why it matters** (potential impact and interpretation limits), and **Recommended next step** (a proposed investigation or change to validate).
+- **Collected evidence** contains expandable source tables. These are not filtered, so supporting data remains available for investigation.
+
+Filtering changes only the view: the JSON and HTML still contain every finding. The HTML runs locally without a server or external library. JavaScript is required for filtering; without it, all findings remain readable. A hidden Pass is not a missing check, and the counters are not a compliance score.
+
 ## Read the results
 
 Start with the mini-audit, then inspect the raw evidence for each finding:
@@ -92,13 +104,13 @@ Start with the mini-audit, then inspect the raw evidence for each finding:
 $report.AuditSummary | Format-List
 $report.AuditFindings |
     Where-Object { $_.Severity -ne 'Pass' } |
-    Format-List RuleId, Severity, Target, Observed, Recommendation
+    Format-List RuleId, Title, Severity, Target, Observed, WhyItMatters, Recommendation
 ```
 
 | Section | What to review |
 | --- | --- |
 | AuditSummary | Counts of Error, Warning, Review, Unknown and Pass findings, with an explicit limited-scope statement. Counts are findings, not distinct servers or rules. There is no global compliance score. |
-| AuditFindings | One row per evaluated rule and target: `RuleId`, `Severity`, `Target`, `Observed` and `Recommendation`. Included in both JSON and HTML. |
+| AuditFindings | One row per evaluated rule and target: `RuleId`, `Title`, `Severity`, `Target`, `Observed`, `WhyItMatters` and `Recommendation`. Included in both JSON and HTML. Titles and impact explanations add context; severity still comes from the documented rules. |
 | Instance | Server, instance, version and edition. Patch currency must be checked separately. |
 | HostMemory | Total and currently available physical RAM on the SQL host, not the workstation running the script. Available RAM is a point-in-time measurement. |
 | Configuration | Configured and running values for min/max memory, MAXDOP, cost threshold for parallelism and default backup compression. Differences require review, not necessarily a restart. |

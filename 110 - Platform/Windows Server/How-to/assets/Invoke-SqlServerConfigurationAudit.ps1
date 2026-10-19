@@ -50,13 +50,31 @@ function Invoke-ConfigurationQuery {
 function Get-SqlConfigurationAudit {
     param([psobject]$Report)
 
+    $ruleHelp = @{
+        MEMORY_LIMIT = @('SQL memory budget', 'Without sufficient headroom, SQL Server can compete with Windows and applications for RAM. This snapshot cannot determine a safe limit for your workload.')
+        MEMORY_RANGE = @('Minimum and maximum memory', 'An inconsistent range needs investigation. A consistent range alone says nothing about memory pressure or whether the chosen limits are appropriate.')
+        HOST_MEMORY = @('Host memory visibility', 'Missing host RAM prevents comparing the SQL limit with physical capacity. A permission failure must not be interpreted as a healthy server.')
+        SETTING_VALUE = @('Configured versus running value', 'A difference can mean a pending change or setting-specific behavior. Equality only confirms that the recorded values match, not that they are optimal.')
+        PARALLELISM = @('Parallel query configuration', 'Parallelism affects CPU use and query execution. Defaults are not automatically wrong; the right choice depends on CPU topology, workload and application requirements.')
+        DATABASE_VISIBILITY = @('Database inventory coverage', 'SQL metadata can be hidden by permissions. An incomplete inventory can hide problems and must not be treated as proof that a database does not exist.')
+        DATABASE_STATE = @('Database availability', 'A database that is not ONLINE may be unavailable to applications. Maintenance and restore operations can explain some states; recovery failures need prompt DBA investigation.')
+        DATABASE_OPTION = @('Automatic database maintenance options', 'AUTO_CLOSE can add reopen overhead. AUTO_SHRINK can cause repeated file growth and fragmentation. Exceptions need an explicit application or capacity justification.')
+        PAGE_VERIFY = @('Page integrity protection', 'CHECKSUM helps detect some storage-related page corruption when pages are read. It does not prevent corruption, verify every existing page immediately, or replace backups and integrity checks.')
+        FILE_VISIBILITY = @('File inventory coverage', 'Without visible file metadata, growth and tempdb layout cannot be assessed. Even a nonempty inventory may be incomplete under restricted permissions.')
+        FILE_GROWTH = @('File growth predictability', 'Percentage growth changes increment size as a file grows. Disabled growth can cause allocation failures when preallocated space is exhausted, but may be intentional in a managed capacity plan.')
+        TEMPDB_LAYOUT = @('tempdb data-file consistency', 'Unequal sizes or growth settings can create uneven allocation patterns. This comparison does not measure contention or determine the correct number of files.')
+        CERTIFICATE_VALIDATION = @('Reporting connection identity', 'Bypassing certificate validation keeps encryption but removes certificate-based verification of the SQL endpoint. This finding concerns only this reporting connection.')
+    }
+
     function New-AuditFinding {
         param([string]$RuleId, [string]$Severity, [string]$Target, [string]$Observed, [string]$Recommendation)
         [pscustomobject]@{
             RuleId = $RuleId
+            Title = $ruleHelp[$RuleId][0]
             Severity = $Severity
             Target = $Target
             Observed = $Observed
+            WhyItMatters = $ruleHelp[$RuleId][1]
             Recommendation = $Recommendation
         }
     }
@@ -152,17 +170,29 @@ function Export-SqlConfigurationReport {
     )
 
     [void][System.IO.Directory]::CreateDirectory($Directory)
-    $fileName = 'SqlServerConfiguration_{0}_{1}' -f (Get-Date -Format 'yyyyMMdd_HHmmss'), ([guid]::NewGuid().ToString('N').Substring(0, 8))
+    $fileName = 'SqlServerConfigurationAudit_{0}_{1}' -f (Get-Date -Format 'yyyyMMdd_HHmmss'), ([guid]::NewGuid().ToString('N').Substring(0, 8))
     $jsonPath = Join-Path $Directory ($fileName + '.json')
     $Report | ConvertTo-Json -Depth 8 | Out-File -FilePath $jsonPath -Encoding utf8
     $htmlPath = $null
 
     if ($GenerateHtml) {
         $htmlPath = Join-Path $Directory ($fileName + '.html')
+        function ConvertTo-ReportText {
+            param([object]$Value)
+            [System.Net.WebUtility]::HtmlEncode([string]$Value)
+        }
+        $severityOrder = @{ Error = 0; Warning = 1; Unknown = 2; Review = 3; Pass = 4 }
+        $findingHtml = foreach ($finding in ($Report.AuditFindings | Sort-Object { $severityOrder[$_.Severity] }, RuleId, Target)) {
+            $severity = if ($severityOrder.ContainsKey([string]$finding.Severity)) { [string]$finding.Severity } else { 'Unknown' }
+            $title = if ($finding.Title) { $finding.Title } else { $finding.RuleId }
+            $impact = if ($finding.WhyItMatters) { $finding.WhyItMatters } else { 'Review this observation with the database owner before deciding on a change.' }
+            '<details class="finding" data-severity="{0}" open><summary><span class="badge {0}">{0}</span><span class="finding-name">{1}<small>{2}</small></span><span class="rule">{3}</span></summary><div class="finding-body"><dl><dt>Observed</dt><dd>{4}</dd><dt>Why it matters</dt><dd>{5}</dd><dt>Recommended next step</dt><dd>{6}</dd></dl></div></details>' -f $severity, (ConvertTo-ReportText $title), (ConvertTo-ReportText $finding.Target), (ConvertTo-ReportText $finding.RuleId), (ConvertTo-ReportText $finding.Observed), (ConvertTo-ReportText $impact), (ConvertTo-ReportText $finding.Recommendation)
+        }
+        $countsHtml = foreach ($severity in @('Error', 'Warning', 'Unknown', 'Review', 'Pass')) {
+            $count = @($Report.AuditFindings | Where-Object Severity -eq $severity).Count
+            '<div class="stat"><span class="badge {0}">{0}</span><strong>{1}</strong></div>' -f $severity, $count
+        }
         $sections = [ordered]@{
-            'Collection' = @($Report | Select-Object CollectedAt, RequestedInstance, RequestedDatabase)
-            'Audit summary' = @($Report.AuditSummary)
-            'Audit findings and recommended actions' = @($Report.AuditFindings)
             'Instance' = @($Report.Instance)
             'Host memory (MB)' = @($Report.HostMemory)
             'Instance settings' = @($Report.Configuration)
@@ -171,7 +201,7 @@ function Export-SqlConfigurationReport {
             'Review notes' = @($Report.ReviewNotes | ForEach-Object { [pscustomobject]@{ Note = $_ } })
         }
         $body = foreach ($section in $sections.GetEnumerator()) {
-            '<h2>{0}</h2>' -f $section.Key
+            '<details class="evidence"><summary>{0}</summary>' -f $section.Key
             $rows = @($section.Value | Where-Object { $null -ne $_ })
             if ($rows.Count) {
                 '<div class="table-scroll">'
@@ -181,23 +211,90 @@ function Export-SqlConfigurationReport {
             else {
                 '<p>No data available.</p>'
             }
+                        '</details>'
         }
-        $head = @'
+                $template = @'
+<!DOCTYPE html>
+<html lang="en"><head><title>SQL Server configuration audit</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body { font-family: "Segoe UI", sans-serif; margin: 2rem; color: #202124; background: #fff; }
-h1 { font-size: 1.7rem; border-bottom: 3px solid #16746b; padding-bottom: .6rem; }
-h2 { font-size: 1.2rem; margin-top: 2rem; }
+* { box-sizing: border-box; } [hidden] { display: none !important; }
+:root { --ink: #20292d; --muted: #58676b; --line: #d6dfe0; --accent: #086f67; }
+body { margin: 0; color: var(--ink); background: #f4f6f6; font: 15px/1.55 "Segoe UI", sans-serif; letter-spacing: 0; }
+header { background: #fff; border-top: 5px solid var(--accent); border-bottom: 1px solid var(--line); padding: 28px max(20px, calc((100% - 1160px)/2)); }
+main { max-width: 1200px; padding: 24px 20px 48px; margin: auto; }
+h1 { font-size: 26px; margin: 0 0 8px; } h2 { font-size: 20px; margin: 28px 0 12px; }
+p { margin: 8px 0; } .context, .scope, small, .rule { color: var(--muted); }
+.context { overflow-wrap: anywhere; } .scope { font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); background: #fff; }
+.stat { padding: 16px; border-right: 1px solid var(--line); } .stat:last-child { border: 0; }
+.stat strong { display: block; font-size: 28px; margin-top: 8px; }
+.badge { display: inline-block; font-size: 12px; font-weight: 650; padding: 2px 8px; border-radius: 4px; }
+.Error { color: #9b2232; background: #fbe8eb; } .Warning { color: #815000; background: #fff0cc; }
+.Unknown { color: #4a4b8b; background: #ededfa; } .Review { color: #075d88; background: #e1f1fa; } .Pass { color: #246342; background: #e4f3ea; }
+.toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; padding: 16px 0; border-block: 1px solid var(--line); }
+label { display: grid; gap: 5px; font-size: 13px; } .search { flex: 1 1 240px; }
+input[type=search], select { min-height: 40px; border: 1px solid #aab9bb; border-radius: 4px; background: #fff; padding: 8px; font: inherit; color: var(--ink); width: 100%; }
+.toggle { display: flex; align-items: center; gap: 8px; min-height: 40px; } input[type=checkbox] { accent-color: var(--accent); width: 17px; height: 17px; }
+:focus-visible { outline: 3px solid #329d97; outline-offset: 3px; }
+#result-count { font-size: 13px; color: var(--muted); margin: 12px 0; }
+.finding { background: #fff; border: 1px solid var(--line); border-radius: 6px; margin: 10px 0; }
+.finding summary { display: flex; align-items: center; gap: 12px; padding: 15px; cursor: pointer; }
+.finding summary::before { content: '+'; color: var(--muted); } .finding[open] summary::before { content: '-'; }
+.finding-name { flex: 1; min-width: 0; font-weight: 650; overflow-wrap: anywhere; } small { display: block; font-size: 12px; font-weight: normal; }
+.rule { font: 11px/1.5 Consolas, monospace; overflow-wrap: anywhere; } .finding-body { padding: 0 18px 16px; border-top: 1px solid #edf0f0; }
+dl { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 10px 18px; margin: 16px 0 0; }
+dt { font-weight: 650; font-size: 13px; } dd { margin: 0; overflow-wrap: anywhere; }
+.evidence { border-bottom: 1px solid var(--line); padding: 12px 0; } .evidence summary { font-weight: 650; cursor: pointer; }
 .table-scroll { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-th, td { border: 1px solid #d5d9dc; padding: .5rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
-th { background: #edf4f3; }
-tr:nth-child(even) { background: #f7f8f9; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 12px; background: #fff; }
+th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+th { background: #eaf0ef; } tr:nth-child(even) { background: #f8fafa; }
+@media (max-width: 640px) { header { padding: 20px; } .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .stat { padding: 10px; border-bottom: 1px solid var(--line); } .stat strong { font-size: 22px; } .badge { padding: 2px 5px; } .finding summary { flex-wrap: wrap; } .rule { flex-basis: 100%; padding-left: 24px; } dl { grid-template-columns: 1fr; gap: 5px; } dd { margin-bottom: 12px; } }
+@media print { .toolbar, #result-count { display: none; } body { background: #fff; } .finding { break-inside: avoid; } }
 </style>
+</head><body><header><h1>SQL Server configuration audit</h1><p class="context">__CONTEXT__</p><p class="scope">Basic configuration review. No SQL changes performed. Metadata visibility may be incomplete; this is not a health or compliance certification.</p></header>
+<main><section class="stats" aria-label="Finding totals">__COUNTS__</section>
+<h2>Findings and recommended actions</h2>
+<div class="toolbar"><label class="search">Search findings<input id="search" type="search" placeholder="Database, setting, observation..."></label><label>Severity<select id="severity"><option value="all">All severities</option><option>Error</option><option>Warning</option><option>Unknown</option><option>Review</option><option>Pass</option></select></label><label class="toggle"><input id="show-pass" type="checkbox">Show passed checks</label></div>
+<p id="result-count" role="status" aria-live="polite"></p><p class="scope">Error: investigate promptly. Warning: configuration risk. Review: context-dependent decision. Unknown: missing evidence. Pass: only the specific condition checked was satisfied.</p>
+<noscript><p>Interactive filters require JavaScript. All findings are displayed below.</p></noscript>
+<section id="findings" aria-label="Audit findings">__FINDINGS__</section><p id="empty" hidden>No findings match the selected filters.</p>
+<h2>Collected evidence</h2>__EVIDENCE__</main>
+<script>
+const findings = Array.from(document.querySelectorAll('.finding'));
+const search = document.getElementById('search');
+const severity = document.getElementById('severity');
+const showPass = document.getElementById('show-pass');
+function filterFindings() {
+    const query = search.value.trim().toLowerCase();
+    let visible = 0;
+    findings.forEach(finding => {
+        const level = finding.dataset.severity;
+        const matchesSeverity = severity.value === 'all' ? (showPass.checked || level !== 'Pass') : level === severity.value;
+        finding.hidden = !(matchesSeverity && finding.textContent.toLowerCase().includes(query));
+        if (!finding.hidden) visible++;
+    });
+    showPass.disabled = severity.value !== 'all';
+    document.getElementById('result-count').textContent = visible + ' of ' + findings.length + ' findings shown';
+    document.getElementById('empty').hidden = visible !== 0;
+}
+search.addEventListener('input', filterFindings);
+severity.addEventListener('change', filterFindings);
+showPass.addEventListener('change', filterFindings);
+filterFindings();
+</script></body></html>
 '@
-        ConvertTo-Html -Title 'SQL Server configuration report' -Head $head -Body (@('<h1>SQL Server configuration report</h1>') + $body -join "`n") |
-            Out-File -FilePath $htmlPath -Encoding utf8
+                $context = '{0} | Database: {1} | Collected: {2}' -f $Report.RequestedInstance, $(if ($Report.RequestedDatabase) { $Report.RequestedDatabase } else { 'All visible databases' }), $Report.CollectedAt
+                $replacements = @{
+                        '__CONTEXT__' = ConvertTo-ReportText $context
+                        '__COUNTS__' = $countsHtml -join "`n"
+                        '__FINDINGS__' = $findingHtml -join "`n"
+                        '__EVIDENCE__' = $body -join "`n"
+                }
+                $html = [regex]::Replace($template, '__CONTEXT__|__COUNTS__|__FINDINGS__|__EVIDENCE__', [System.Text.RegularExpressions.MatchEvaluator]{ param($placeholder) $replacements[$placeholder.Value] })
+                $html | Out-File -FilePath $htmlPath -Encoding utf8
     }
 
     [pscustomobject]@{ Json = $jsonPath; Html = $htmlPath }
@@ -210,7 +307,7 @@ $builder['Integrated Security'] = $true
 $builder['Encrypt'] = $true
 $builder['TrustServerCertificate'] = $TrustServerCertificate.IsPresent
 $builder['Connect Timeout'] = 15
-$builder['Application Name'] = 'SQL Server configuration report'
+$builder['Application Name'] = 'SQL Server configuration audit'
 $connection = New-Object System.Data.SqlClient.SqlConnection $builder.ConnectionString
 $notes = New-Object 'System.Collections.Generic.List[string]'
 
