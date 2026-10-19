@@ -47,6 +47,19 @@ $report = .\Get-SqlServerConfiguration.ps1 -SqlInstance 'localhost' -Database 'A
 
 This example does not discover the SQL instance used by the application. Confirm the actual connection settings first; LocalDB uses a different connection name and access context.
 
+### Untrusted SQL Server certificate
+
+If the connection fails with **"The certificate chain was issued by an authority that is not trusted"**, the SQL endpoint was reached but its certificate chain could not be validated. For an approved local diagnostic exception, run:
+
+```powershell
+$report = .\Get-SqlServerConfiguration.ps1 -SqlInstance 'localhost' -Database 'ADSync' -TrustServerCertificate
+$report.Configuration | Format-Table -AutoSize
+$report.HostMemory | Format-List
+$report.ReviewNotes
+```
+
+The connection remains encrypted, but **server certificate validation is bypassed**. Do not make this the default: the durable fix is a valid SQL Server certificate with a trusted certificate chain, accessed using a server name matching that certificate.
+
 ## Export the report
 
 The script returns one structured PowerShell object. Formatting is optional and separate from collection, so the same object can be exported without losing nested sections.

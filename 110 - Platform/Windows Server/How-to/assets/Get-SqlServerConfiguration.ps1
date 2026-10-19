@@ -46,13 +46,13 @@ function Invoke-ConfigurationQuery {
 }
 
 $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
-$builder.DataSource = $SqlInstance
-$builder.InitialCatalog = 'master'
-$builder.IntegratedSecurity = $true
-$builder.Encrypt = $true
-$builder.TrustServerCertificate = $TrustServerCertificate.IsPresent
-$builder.ConnectTimeout = 15
-$builder.ApplicationName = 'SQL Server configuration report'
+$builder['Data Source'] = $SqlInstance
+$builder['Initial Catalog'] = 'master'
+$builder['Integrated Security'] = $true
+$builder['Encrypt'] = $true
+$builder['TrustServerCertificate'] = $TrustServerCertificate.IsPresent
+$builder['Connect Timeout'] = 15
+$builder['Application Name'] = 'SQL Server configuration report'
 $connection = New-Object System.Data.SqlClient.SqlConnection $builder.ConnectionString
 $notes = New-Object 'System.Collections.Generic.List[string]'
 
