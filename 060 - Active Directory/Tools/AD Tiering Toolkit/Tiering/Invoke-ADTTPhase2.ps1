@@ -1,9 +1,9 @@
-# Tiering\Invoke-MATITieringPhase2.ps1
+# Tiering\Invoke-ADTTPhase2.ps1
 # Phase 2 — Create Recommended Tiered Admin Accounts
 # Creates dedicated admin accounts per tier from a CSV template,
 # applies T0 hardening (Protected Users + AccountNotDelegated), and generates an HTML report.
 
-function Invoke-MATITieringPhase2 {
+function Invoke-ADTTPhase2 {
     <#
     .SYNOPSIS
         Phase 2 — Interactive creation of recommended tiered admin accounts.
@@ -672,11 +672,11 @@ function Invoke-MATITieringPhase2 {
     # ================================================================
     Write-Host "`n  ─── Step 5/5: Generating Report ────────────────────────" -ForegroundColor Yellow
 
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase2-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Phase2-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     Export-TieringPhase2Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
     # Export JSON
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase2-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Phase2-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 

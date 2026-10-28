@@ -6,7 +6,7 @@
     Id          = 'MATI-GPO-016'
     Title       = 'Dangerous user-rights assignment granted to non-default principal on DC'
     Severity    = 'High'
-    Description = "A high-impact user right (such as SeEnableDelegationPrivilege, SeTcbPrivilege, SeDebugPrivilege, SeBackupPrivilege or SeRestorePrivilege) is granted on Domain Controllers via GPO to a principal that is not one of the expected built-in administrative SIDs. These privileges allow bypassing access controls, reading LSASS memory, configuring delegation, or otherwise escalating to full domain compromise. They should only be held by Administrators and the relevant system accounts."
+    Description = "Linked domain/DC OU GPO configuration assigns a high-impact user right to a non-default principal. This is a configuration candidate, not proof of an effective right on every DC: verify security/WMI filtering, site/nested OU links and client RSoP."
     Remediation = "Review the listed GPO user-rights assignment and remove the non-default principal from the privilege. Restrict these rights to BUILTIN\\Administrators and the required system accounts only. SeEnableDelegationPrivilege in particular should never be delegated, as it allows configuring Kerberos delegation that leads to credential theft."
     Collectors  = @('GPOSettings')
     References  = @(
@@ -66,6 +66,7 @@
                             Principal = "$principal"
                             SID       = if ($isSid) { $sid } else { '(name)' }
                             GPO       = "$gpoLabel"
+                            AssessmentBasis = $Data.GPOSettings.PerDomain[$domainDns].AssessmentBasis
                         }
                     }
                 }

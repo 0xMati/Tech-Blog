@@ -5,8 +5,8 @@
     Id          = 'MATI-ADCS-008'
     Title       = 'CA management rights granted to low-privileged principal (ESC7)'
     Severity    = 'Critical'
-    Description = "A low-privileged principal has WriteDACL, WriteOwner, or GenericAll on the Certificate Authority AD object. This allows the attacker to grant themselves certificate enrollment rights, enable the EDITF_ATTRIBUTESUBJECTALTNAME2 flag, or modify CA security settings to escalate privileges."
-    Remediation = "Remove dangerous ACEs from the CA enrollment service AD object. Only Domain Admins, Enterprise Admins, and Cert Publishers should have management rights on the CA."
+    Description = "The CA service security descriptor grants Manage CA or Issue and Manage Certificates to a broad low-privileged group. These CA permissions are distinct from the ACL of the enrollment service object in Active Directory. Review effective permissions, deny ACEs and role separation."
+    Remediation = "Review the Security tab in the Certification Authority console and remove broad low-privileged grants of Manage CA and Issue and Manage Certificates. Assign these permissions only to dedicated authorized CA administrators and certificate managers."
     Collectors  = @('CertificateServices')
     References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/security-best-practices')
     Condition   = {
@@ -24,6 +24,8 @@
                         CAName          = $ca.CAName
                         DNSHostName     = $ca.DNSHostName
                         LowPrivManageCA = 'True'
+                        SecuritySource  = 'CA service security descriptor'
+                        ManagementACEs  = ($ca.ManagementACEs | ForEach-Object { "$($_.SID): ManageCA=$($_.ManageCA), ManageCertificates=$($_.ManageCertificates)" }) -join '; '
                     }
                 }
             }

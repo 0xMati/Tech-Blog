@@ -67,12 +67,19 @@ function Get-MATIRODCInfo {
 
             # Allowed RODC Password Replication Group
             try {
-                $allowedMembers = @(Get-ADGroupMember -Identity 'Allowed RODC Password Replication Group' `
-                    -Server $domainDns -ErrorAction Stop)
+                $allowedMembers = @((Resolve-MATIGroupMembership -Identity 'Allowed RODC Password Replication Group' `
+                    -Server $domainDns -Config $Config -CollectionDatasets @('AllowedGroupIssues') `
+                    -ResolutionDatasets @('AllowedGroupIssues') -ErrorAction Stop).Members)
                 foreach ($m in $allowedMembers) {
+                    if ($m.OutsideAssessmentScope) { continue }
                     # Check if privileged
                     try {
-                        $obj = Get-ADObject -Identity $m.DistinguishedName -Server $domainDns `
+                        $memberDN = if ($m.ResolvedDistinguishedName) { $m.ResolvedDistinguishedName } else { $m.DistinguishedName }
+                        $memberServer = $domainDns
+                        if ($memberDN -match '(?i)(DC=[^,]+(?:,DC=[^,]+)*)$') {
+                            $memberServer = (($Matches[1] -replace '(?i)DC=', '') -replace ',', '.')
+                        }
+                        $obj = Get-ADObject -Identity $memberDN -Server $memberServer `
                             -Properties AdminCount -ErrorAction Stop
                         if ($obj.AdminCount -eq 1) {
                             $allowedGroupIssues.Add([PSCustomObject]@{
@@ -88,8 +95,9 @@ function Get-MATIRODCInfo {
 
             # Denied RODC Password Replication Group - check if it's been emptied/modified
             try {
-                $deniedMembers = @(Get-ADGroupMember -Identity 'Denied RODC Password Replication Group' `
-                    -Server $domainDns -ErrorAction Stop)
+                $deniedMembership = Resolve-MATIGroupMembership -Identity 'Denied RODC Password Replication Group' `
+                    -Server $domainDns -Config $Config -CollectionDatasets @('DeniedGroupIssues') -ErrorAction Stop
+                $deniedMembers = @($deniedMembership.Members)
                 # By default should contain: Domain Admins, Enterprise Admins, Schema Admins,
                 # Administrators, Account Operators, Server Operators, Backup Operators, krbtgt
                 $expectedSIDs = @(
@@ -104,7 +112,7 @@ function Get-MATIRODCInfo {
                 )
                 $memberSIDs = @($deniedMembers | ForEach-Object { [string]$_.SID })
                 $missingSIDs = @($expectedSIDs | Where-Object { $_ -notin $memberSIDs })
-                if ($missingSIDs.Count -gt 0) {
+                if ($missingSIDs.Count -gt 0 -and $deniedMembership.MemberLinksComplete -and $deniedMembership.LocalObjectsComplete) {
                     $deniedGroupIssues.Add([PSCustomObject]@{
                         Domain      = $domainDns
                         MissingSIDs = $missingSIDs

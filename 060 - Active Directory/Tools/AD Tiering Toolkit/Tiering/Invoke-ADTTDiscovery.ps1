@@ -1,8 +1,8 @@
-# Tiering\Invoke-MATITieringDiscovery.ps1
+# Tiering\Invoke-ADTTDiscovery.ps1
 # Phase 0 — Discovery & Tier Classification
 # Read-only assessment of the current environment to prepare for tiering deployment.
 
-function Invoke-MATITieringDiscovery {
+function Invoke-ADTTDiscovery {
     <#
     .SYNOPSIS
         Phase 0 — Discovers and classifies all AD assets by tier.
@@ -1099,13 +1099,13 @@ function Invoke-MATITieringDiscovery {
     # Generate HTML Report
     # ================================================================
     Write-Host "`n  [>] Generating discovery report..." -ForegroundColor Yellow
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Discovery-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Discovery-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     Export-TieringDiscoveryHtml -Discovery $discovery -OutputPath $htmlPath
 
     # ================================================================
     # Export JSON data
     # ================================================================
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Discovery-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Discovery-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $discovery | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 

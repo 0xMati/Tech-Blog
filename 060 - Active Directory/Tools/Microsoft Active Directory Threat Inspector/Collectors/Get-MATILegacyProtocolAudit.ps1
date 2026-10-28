@@ -41,6 +41,7 @@ function Get-MATILegacyProtocolAudit {
     $rc4ClientIPs    = @{}
     $rc4DCs          = @{}
     $rc4AvoidableServices = @{}
+    $rc4ServiceObservations = [System.Collections.Generic.List[object]]::new()
     $failedAccounts  = @{}
     $otherEncTypes   = @{}
     $kdcStrongKeyWarnings = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -50,6 +51,7 @@ function Get-MATILegacyProtocolAudit {
 
     $ntlmV1Total = 0
     $ntlmV2Total = 0
+    $ntlmUnknownTotal = 0
     $ntlmAccounts     = @{}
     $ntlmWorkstations = @{}
     $ntlmIPs          = @{}
@@ -76,6 +78,7 @@ function Get-MATILegacyProtocolAudit {
             TGS_AES256 = 0; TGS_AES128 = 0; TGS_RC4 = 0; TGS_Failed = 0; TGS_Other = 0
             RC4TGTAccounts = @{}
             RC4TGSServices = @{}
+            RC4TGSServiceSIDs = @{}
             RC4TGSAccounts = @{}
             RC4ClientIPs   = @{}
             RC4AvoidableServices = @{}
@@ -86,7 +89,8 @@ function Get-MATILegacyProtocolAudit {
             KdcsvcSamples  = @()
             LogonTypeUsage = @{}
             # NTLM
-            NTLMv1 = 0; NTLMv2 = 0
+            NTLMv1 = 0; NTLMv2 = 0; NTLMUnknown = 0
+            Errors = @()
             NTLMAccounts     = @{}
             NTLMWorkstations = @{}
             NTLMIPs          = @{}
@@ -96,11 +100,26 @@ function Get-MATILegacyProtocolAudit {
             NTLMv2Accounts     = @{}
             NTLMv2Workstations = @{}
             NTLMv2IPs          = @{}
+            NTLMUnknownAccounts = @{}
+            NTLMUnknownWorkstations = @{}
+            NTLMUnknownIPs = @{}
+        }
+        function Read-MATIEvents {
+            [CmdletBinding()]
+            param([hashtable]$FilterHashtable, [string]$FilterXml)
+            try {
+                if ($FilterXml) { Get-WinEvent -FilterXml $FilterXml -ErrorAction Stop }
+                else { Get-WinEvent -FilterHashtable $FilterHashtable -ErrorAction Stop }
+            } catch {
+                if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*') {
+                    $result.Errors += $_.Exception.Message
+                }
+            }
         }
 
         # ---------- Kerberos 4768 / 4769 ----------
         try {
-            $krbEvents = Get-WinEvent -FilterHashtable @{
+            $krbEvents = Read-MATIEvents -FilterHashtable @{
                 LogName   = 'Security'
                 Id        = 4768, 4769
                 StartTime = $since
@@ -111,6 +130,7 @@ function Get-MATILegacyProtocolAudit {
                 $encRaw  = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TicketEncryptionType' }).'#text'
                 $account = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TargetUserName' }).'#text'
                 $service = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'ServiceName' }).'#text'
+                $serviceSID = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'ServiceSid' }).'#text'
                 $ip      = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'IpAddress' }).'#text'
                 $status  = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'Status' }).'#text'
                 # Capability fields (present on 4769 from patched DCs) — used to flag avoidable RC4 TGS.
@@ -120,6 +140,15 @@ function Get-MATILegacyProtocolAudit {
                 if ($ip) { $ip = $ip -replace '::ffff:', '' }
 
                 $prefix = if ($ev.Id -eq 4768) { 'TGT' } else { 'TGS' }
+
+                if ($status -and $status -notmatch '^0x0+$') {
+                    $result["${prefix}_Failed"]++
+                    if ($account) {
+                        if (-not $result.FailedAccounts.ContainsKey($account)) { $result.FailedAccounts[$account] = 0 }
+                        $result.FailedAccounts[$account]++
+                    }
+                    continue
+                }
 
                 switch ($encRaw) {
                     '0x12' { $result["${prefix}_AES256"]++ }
@@ -133,6 +162,10 @@ function Get-MATILegacyProtocolAudit {
                         if ($prefix -eq 'TGS' -and $service) {
                             if (-not $result.RC4TGSServices.ContainsKey($service)) { $result.RC4TGSServices[$service] = 0 }
                             $result.RC4TGSServices[$service]++
+                            if ($serviceSID -match '^S-1-') {
+                                if (-not $result.RC4TGSServiceSIDs.ContainsKey($serviceSID)) { $result.RC4TGSServiceSIDs[$serviceSID] = 0 }
+                                $result.RC4TGSServiceSIDs[$serviceSID]++
+                            }
                             # Avoidable RC4: client advertised AES, service has AES keys, DC supports AES,
                             # yet RC4 was issued. Mirrors Get-TGS RC4ChosenWhileAESAvailable from the audit script.
                             if (($cliAdv -match 'AES') -and ($svcKeys -match 'AES') -and ($dcEnc -match 'AES')) {
@@ -150,27 +183,18 @@ function Get-MATILegacyProtocolAudit {
                         }
                     }
                     default {
-                        # Status 0x0 = success. Any other status = failed auth (no ticket issued, encryption type is meaningless)
-                        if ($status -and $status -ne '0x0') {
-                            $result["${prefix}_Failed"]++
-                            if ($account) {
-                                if (-not $result.FailedAccounts.ContainsKey($account)) { $result.FailedAccounts[$account] = 0 }
-                                $result.FailedAccounts[$account]++
-                            }
-                        } else {
-                            $result["${prefix}_Other"]++
-                            $encLabel = if ($encRaw) { $encRaw } else { '(empty)' }
-                            if (-not $result.OtherEncTypes.ContainsKey($encLabel)) { $result.OtherEncTypes[$encLabel] = 0 }
-                            $result.OtherEncTypes[$encLabel]++
-                        }
+                        $result["${prefix}_Other"]++
+                        $encLabel = if ($encRaw) { $encRaw } else { '(empty)' }
+                        if (-not $result.OtherEncTypes.ContainsKey($encLabel)) { $result.OtherEncTypes[$encLabel] = 0 }
+                        $result.OtherEncTypes[$encLabel]++
                     }
                 }
             }
-        } catch { }
+        } catch { $result.Errors += "Kerberos event parsing: $($_.Exception.Message)" }
 
         # ---------- KDC strong-key warnings (System / Kdcsvc 42) ----------
         try {
-            $kdcEvents = Get-WinEvent -FilterHashtable @{
+            $kdcEvents = Read-MATIEvents -FilterHashtable @{
                 LogName   = 'System'
                 Id        = 42
                 StartTime = $since
@@ -193,13 +217,13 @@ function Get-MATILegacyProtocolAudit {
                     Message   = $message
                 }
             }
-        } catch { }
+        } catch { $result.Errors += "KDC strong-key event parsing: $($_.Exception.Message)" }
 
         # ---------- Kdcsvc RC4 disablement events (System 201-209, KB5073381) ----------
         # Do NOT filter on ProviderName in the hashtable (Get-WinEvent throws if the provider
         # never emitted on this DC). Post-filter on ProviderName instead.
         try {
-            $kdcRc4Events = Get-WinEvent -FilterHashtable @{
+            $kdcRc4Events = Read-MATIEvents -FilterHashtable @{
                 LogName   = 'System'
                 Id        = 201, 202, 203, 204, 205, 206, 207, 208, 209
                 StartTime = $since
@@ -226,7 +250,7 @@ function Get-MATILegacyProtocolAudit {
                     }
                 }
             }
-        } catch { }
+        } catch { $result.Errors += "KDC RC4 event parsing: $($_.Exception.Message)" }
 
         # ---------- NTLM 4624 (XPath filters for NtLmSsp at source → ~90% data reduction) ----------
         try {
@@ -237,7 +261,7 @@ function Get-MATILegacyProtocolAudit {
  and EventData[Data[@Name='LogonProcessName']='NtLmSsp ']]
 </Select></Query></QueryList>
 "@
-            $ntlmEvents = Get-WinEvent -FilterXml $ntlmXml -ErrorAction SilentlyContinue
+            $ntlmEvents = Read-MATIEvents -FilterXml $ntlmXml
 
             foreach ($ev in $ntlmEvents) {
                 $xml = [xml]$ev.ToXml()
@@ -250,10 +274,10 @@ function Get-MATILegacyProtocolAudit {
                 $isV1 = $false
                 if ($lmPkg -match 'V1|v1') { $result.NTLMv1++; $isV1 = $true }
                 elseif ($lmPkg -match 'V2|v2') { $result.NTLMv2++ }
-                else { $result.NTLMv2++ }   # default bucket
+                else { $result.NTLMUnknown++ }
 
                 # Per-version prefix for hashtable keys
-                $vPrefix = if ($isV1) { 'NTLMv1' } else { 'NTLMv2' }
+                $vPrefix = if ($isV1) { 'NTLMv1' } elseif ($lmPkg -match 'V2') { 'NTLMv2' } else { 'NTLMUnknown' }
 
                 if ($acct) {
                     if (-not $result.NTLMAccounts.ContainsKey($acct)) { $result.NTLMAccounts[$acct] = 0 }
@@ -274,7 +298,7 @@ function Get-MATILegacyProtocolAudit {
                     $result."${vPrefix}IPs"[$ip]++
                 }
             }
-        } catch { }
+        } catch { $result.Errors += "NTLM event parsing: $($_.Exception.Message)" }
 
         # ---------- 4624 LogonType usage (service=5, batch=4, interactive=2/10/11) ----------
         # Used by ADMIN-020 to confirm a user account is actually running as a service.
@@ -287,7 +311,7 @@ function Get-MATILegacyProtocolAudit {
  or Data[@Name='LogonType']='2' or Data[@Name='LogonType']='10' or Data[@Name='LogonType']='11']]
 </Select></Query></QueryList>
 "@
-            $logonEvents = Get-WinEvent -FilterXml $logonXml -ErrorAction SilentlyContinue
+            $logonEvents = Read-MATIEvents -FilterXml $logonXml
 
             foreach ($ev in $logonEvents) {
                 $xml = [xml]$ev.ToXml()
@@ -310,7 +334,7 @@ function Get-MATILegacyProtocolAudit {
                     default { $result.LogonTypeUsage[$key].Interactive++ }
                 }
             }
-        } catch { }
+        } catch { $result.Errors += "Logon event parsing: $($_.Exception.Message)" }
 
         $result
     }
@@ -322,6 +346,9 @@ function Get-MATILegacyProtocolAudit {
     foreach ($domainDns in $forest.Domains) {
         try {
             $dcs = Get-ADDomainController -Filter * -Server $domainDns -ErrorAction Stop
+            if (-not $dcs) {
+                $errors.Add([pscustomobject]@{ Domain = $domainDns; DC = '(all)'; Error = 'No domain controllers returned for the audit.' })
+            }
             foreach ($dc in $dcs) {
                 $dcMap[$dc.HostName] = $domainDns
             }
@@ -336,9 +363,9 @@ function Get-MATILegacyProtocolAudit {
             Kerberos   = @{ Totals = $krbTotals; TotalTGT = 0; TotalTGS = 0; TotalAll = 0
                             AESCount = 0; RC4Count = 0; FailedCount = 0; OtherCount = 0
                             AESPercent = 0; RC4Percent = 0; FailedPercent = 0; OtherPercent = 0
-                            TopRC4TGTAccounts = @(); TopRC4TGSServices = @(); TopRC4ClientIPs = @(); TopRC4DCs = @()
+                            TopRC4TGTAccounts = @(); TopRC4TGSServices = @(); RC4ServiceObservations = @(); RC4ServiceObservationsComplete = $false; TopRC4ClientIPs = @(); TopRC4DCs = @()
                             TopFailedAccounts = @(); OtherEncTypes = @() }
-            NTLM       = @{ TotalEvents = 0; NTLMv1Count = 0; NTLMv2Count = 0
+            NTLM       = @{ TotalEvents = 0; NTLMv1Count = 0; NTLMv2Count = 0; UnknownCount = 0; UnknownPercent = 0
                             NTLMv1Percent = 0; NTLMv2Percent = 0
                             TopAccounts = @(); TopWorkstations = @(); TopIPs = @(); TopDCs = @()
                             TopV1Accounts = @(); TopV1Workstations = @(); TopV1IPs = @()
@@ -365,6 +392,7 @@ function Get-MATILegacyProtocolAudit {
             -ThrottleLimit 8)
     } catch {
         Write-Host "    [!] Invoke-Command failed: $($_.Exception.Message)" -ForegroundColor Red
+        $errors.Add([PSCustomObject]@{ Domain = '?'; DC = '(all)'; Error = $_.Exception.Message })
     }
 
     # Capture per-DC errors from ErrorVariable
@@ -372,7 +400,8 @@ function Get-MATILegacyProtocolAudit {
         foreach ($re in $remoteErrors) {
             $failedDC = if ($re.TargetObject) { "$($re.TargetObject)" } else { 'Unknown' }
             $failedDomain = if ($failedDC -and $dcMap.Contains($failedDC)) { $dcMap[$failedDC] } else { '?' }
-            $errors.Add([PSCustomObject]@{ Domain = $failedDomain; DC = $failedDC; Error = $re.Exception.Message })
+            $exception = if ($re -is [System.Exception]) { $re } else { $re.Exception }
+            $errors.Add([PSCustomObject]@{ Domain = $failedDomain; DC = $failedDC; Error = $exception.Message })
         }
     }
 
@@ -407,6 +436,15 @@ function Get-MATILegacyProtocolAudit {
         if (-not $dcHost) { continue }
         $processedDCs[$dcHost] = $true
         $dcDomain = $dcMap[$dcHost]
+        foreach ($message in $dcResult.Errors) {
+            $errors.Add([PSCustomObject]@{ Domain = $dcDomain; DC = $dcHost; Error = [string]$message })
+        }
+        foreach ($entry in $dcResult.RC4TGSServiceSIDs.GetEnumerator()) {
+            $rc4ServiceObservations.Add([pscustomobject]@{ Domain = $dcDomain; SID = $entry.Key; Name = ''; Count = $entry.Value })
+        }
+        foreach ($entry in $dcResult.RC4TGSServices.GetEnumerator()) {
+            $rc4ServiceObservations.Add([pscustomobject]@{ Domain = $dcDomain; SID = ''; Name = $entry.Key; Count = $entry.Value })
+        }
         $domainBucket = if ($dcDomain) { Get-OrCreateKerberosDomainBucket -DomainName $dcDomain } else { $null }
 
         # --- Kerberos aggregation ---
@@ -514,6 +552,7 @@ function Get-MATILegacyProtocolAudit {
         # --- NTLM aggregation ---
         $ntlmV1Total += [int]$dcResult.NTLMv1
         $ntlmV2Total += [int]$dcResult.NTLMv2
+        $ntlmUnknownTotal += [int]$dcResult.NTLMUnknown
         if ($dcResult.NTLMAccounts) {
             foreach ($entry in $dcResult.NTLMAccounts.GetEnumerator()) {
                 if (-not $ntlmAccounts.ContainsKey($entry.Key)) { $ntlmAccounts[$entry.Key] = 0 }
@@ -570,13 +609,13 @@ function Get-MATILegacyProtocolAudit {
                 $ntlmV2IPs[$entry.Key] += $entry.Value
             }
         }
-        $dcNtlm = [int]$dcResult.NTLMv1 + [int]$dcResult.NTLMv2
+        $dcNtlm = [int]$dcResult.NTLMv1 + [int]$dcResult.NTLMv2 + [int]$dcResult.NTLMUnknown
         if ($dcNtlm -gt 0) { $ntlmDCs[$dcHost] = $dcNtlm }
 
         # Per-DC status line
         $kTotal = [int]$dcResult.TGT_AES256 + [int]$dcResult.TGT_AES128 + [int]$dcResult.TGT_RC4 + [int]$dcResult.TGT_Failed + [int]$dcResult.TGT_Other +
                   [int]$dcResult.TGS_AES256 + [int]$dcResult.TGS_AES128 + [int]$dcResult.TGS_RC4 + [int]$dcResult.TGS_Failed + [int]$dcResult.TGS_Other
-        $nTotal = [int]$dcResult.NTLMv1 + [int]$dcResult.NTLMv2
+        $nTotal = $dcNtlm
         Write-Host "    [+] $dcHost — Krb: $kTotal, NTLM: $nTotal" -ForegroundColor Green
     }
 
@@ -678,6 +717,8 @@ function Get-MATILegacyProtocolAudit {
         OtherPercent  = $otherPercent
         TopRC4TGTAccounts = @(ConvertTo-TopN $rc4TGTAccounts $topN)
         TopRC4TGSServices = @(ConvertTo-TopN $rc4TGSServices $topN)
+        RC4ServiceObservations = @($rc4ServiceObservations)
+        RC4ServiceObservationsComplete = $errors.Count -eq 0
         TopRC4TGSAccounts = @(ConvertTo-TopN $rc4TGSAccounts $topN)
         TopRC4ClientIPs   = @(ConvertTo-TopN $rc4ClientIPs   $topN)
         TopRC4DCs         = @(ConvertTo-TopN $rc4DCs          $topN)
@@ -810,7 +851,7 @@ function Get-MATILegacyProtocolAudit {
     # ---------------------------------------------------------------
     # Build NTLM summary
     # ---------------------------------------------------------------
-    $ntlmTotal = $ntlmV1Total + $ntlmV2Total
+    $ntlmTotal = $ntlmV1Total + $ntlmV2Total + $ntlmUnknownTotal
     $v1Percent = if ($ntlmTotal -gt 0) { [math]::Round(100 * $ntlmV1Total / $ntlmTotal, 1) } else { 0 }
     $v2Percent = if ($ntlmTotal -gt 0) { [math]::Round(100 * $ntlmV2Total / $ntlmTotal, 1) } else { 0 }
 
@@ -818,6 +859,8 @@ function Get-MATILegacyProtocolAudit {
         TotalEvents    = $ntlmTotal
         NTLMv1Count    = $ntlmV1Total
         NTLMv2Count    = $ntlmV2Total
+        UnknownCount   = $ntlmUnknownTotal
+        UnknownPercent = if ($ntlmTotal -gt 0) { [math]::Round(100 * $ntlmUnknownTotal / $ntlmTotal, 1) } else { 0 }
         NTLMv1Percent  = $v1Percent
         NTLMv2Percent  = $v2Percent
         TopAccounts      = @(ConvertTo-TopN $ntlmAccounts      $topN)

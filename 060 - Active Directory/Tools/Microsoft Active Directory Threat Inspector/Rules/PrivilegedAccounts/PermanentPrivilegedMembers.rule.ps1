@@ -11,6 +11,7 @@
     Description = "A privileged group (Domain Admins, Administrators, Account Operators, Server Operators, Backup Operators, or Print Operators) has permanent direct members. Best practice recommends that privileged group memberships be time-limited (Just-In-Time access) using PAM features (Forest FFL 2016+, MemberTimeToLive), PIM/PAM solutions, or strict operational procedures. Permanent membership in these groups increases the attack surface and the window of opportunity for credential theft, lateral movement, and privilege escalation. A limited number of dedicated break-glass accounts can be a valid exception when they are tightly controlled, monitored, excluded from daily administration, and protected with strong compensating controls."
     Remediation = "Reduce the number of permanent members in privileged groups to the strict minimum. For Domain Admins, a very small number of dedicated break-glass accounts can be acceptable when they are offline-documented, highly protected, monitored, and reserved for emergency use only. For operator groups (Account Operators, Server Operators, Backup Operators, Print Operators), aim for zero members and use RBAC or JIT instead. Deploy a Privileged Access Management (PAM) solution or leverage native AD time-limited group memberships (requires FFL 2016+)."
     Collectors  = @('PrivilegedAccounts')
+    CollectorDatasets = @{ PrivilegedAccounts = @('Groups/DirectLinks') }
     References  = @(
         'https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/implementing-least-privilege-administrative-models'
         'https://www.anssi.fr/uploads/2025/01/ad_checklist-v2.0.2.html'
@@ -29,11 +30,14 @@
         )
 
         foreach ($group in $Data.PrivilegedAccounts.Groups) {
-            if ($group.GroupName -in $targetGroups -and $group.MemberCount -gt 0) {
+            $groupKey = Get-MATIPrivilegedGroupKey -Group $group
+            $exactCount = if ($null -ne $group.DirectMemberCount) { $group.DirectMemberCount } else { $group.MemberCount }
+            $memberCount = if ($null -ne $exactCount) { $exactCount } else { $group.KnownMemberCount }
+            if ($groupKey -in $targetGroups -and $memberCount -gt 0) {
                 # For Domain Admins, severity escalates with count
-                $sev = switch ($group.GroupName) {
-                    'Domain Admins'     { if ($group.MemberCount -gt 5) { 'High' } else { 'Medium' } }
-                    'Administrators'    { if ($group.MemberCount -gt 5) { 'High' } else { 'Medium' } }
+                $sev = switch ($groupKey) {
+                    'Domain Admins'     { if ($memberCount -gt 5) { 'High' } else { 'Medium' } }
+                    'Administrators'    { if ($memberCount -gt 5) { 'High' } else { 'Medium' } }
                     default             { 'High' }  # Operator groups should ideally be empty
                 }
 
@@ -43,7 +47,8 @@
                     Severity = $sev
                     Details  = @{
                         GroupName   = $group.GroupName
-                        MemberCount = "$($group.MemberCount)"
+                        GroupKey    = $groupKey
+                        MemberCount = if ($null -ne $exactCount) { "$memberCount" } else { "At least $memberCount (partial membership)" }
                         Members     = ($group.DirectMembers | ForEach-Object {
                             ($_ -split ',')[0] -replace '^CN=',''
                         }) -join ', '

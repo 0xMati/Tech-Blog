@@ -1,8 +1,8 @@
-﻿# Tiering\Invoke-MATITieringPhase8.ps1
+# Tiering\Invoke-ADTTPhase8.ps1
 # Phase 8 — Monitoring & Detection
 # Configures tiering violation detection, event forwarding, and generates monitoring KPIs.
 
-function Invoke-MATITieringPhase8 {
+function Invoke-ADTTPhase8 {
     <#
     .SYNOPSIS
         Phase 8 — Tiering monitoring and detection setup.
@@ -264,10 +264,10 @@ function Invoke-MATITieringPhase8 {
     # ================================================================
     Write-Host ""
     Write-Host "  Generating Phase 8 report..." -ForegroundColor Yellow
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase8-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Phase8-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     Export-TieringPhase8Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase8-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Phase8-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 

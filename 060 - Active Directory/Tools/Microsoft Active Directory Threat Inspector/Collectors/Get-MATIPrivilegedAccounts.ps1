@@ -38,11 +38,20 @@ function Get-MATIPrivilegedAccounts {
             SID                 = $memberSid
             Domain              = $memberDomain
             IsForeignSecurityPrincipal = ($Member.objectClass -eq 'foreignSecurityPrincipal')
+            MembershipResolved = if ($Member.PSObject.Properties['MembershipResolved']) { $Member.MembershipResolved } else { $true }
+            ExternalResolutionStatus = if ($Member.ExternalResolutionStatus) { $Member.ExternalResolutionStatus }
+                elseif ($Member.objectClass -eq 'foreignSecurityPrincipal') { 'ReturnedByADWS' } else { 'NotApplicable' }
+            ResolvedName = $Member.ResolvedName
+            ResolvedDistinguishedName = $Member.ResolvedDistinguishedName
+            ResolvedObjectClass = $Member.ResolvedObjectClass
+            ResolutionError = $Member.ResolutionError
+            ResolutionAttempts = @($Member.ResolutionAttempts)
+            OutsideAssessmentScope = [bool]$Member.OutsideAssessmentScope
         }
     }
 
     $forest = $Config['_ForestCache'] ?? (Get-ADForest -ErrorAction Stop)
-    $userProps = $Config.Collectors.UserProperties
+    $userProps = @(@($Config.Collectors.UserProperties) + 'msDS-ResultantPSO' | Select-Object -Unique)
 
     # Well-known privileged group SIDs (relative to domain)
     $privilegedGroupRIDs = @{
@@ -92,43 +101,58 @@ function Get-MATIPrivilegedAccounts {
                 continue
             }
 
-            # Resolve members with resilient fallback chain
-            $members = @()
+            $recursiveResult = @{ Members = @(); Complete = $false; ReadMethod = 'Failed'; UnresolvedMembers = @($group.DistinguishedName) }
             try {
-                $members = @(Get-ADGroupMember -Identity $group.DistinguishedName -Server $domainDns -Recursive -ErrorAction Stop)
+                $recursiveDatasets = @("Groups/Recursive/$groupName", 'Accounts')
+                $recursiveResult = Resolve-MATIGroupMembership -Identity $group.DistinguishedName -Server $domainDns -Recursive `
+                    -Config $Config -CollectionDatasets $recursiveDatasets -ResolutionDatasets $recursiveDatasets -ErrorAction Stop
             }
             catch {
-                Write-Verbose "    Recursive member resolution failed for $($group.Name) in $domainDns, falling back to non-recursive."
-                try {
-                    $members = @(Get-ADGroupMember -Identity $group.DistinguishedName -Server $domainDns -ErrorAction Stop)
-                }
-                catch {
-                    Write-Warning "    Cannot enumerate members of $($group.Name) in $domainDns : $($_.Exception.Message)"
-                    $members = @()
-                }
+                Write-Warning "    Cannot enumerate members of $($group.Name) in $domainDns : $($_.Exception.Message)"
             }
+            $members = @($recursiveResult.Members)
 
-            # Collect direct members for group info (separate protected call)
-            $directMembers = @()
+            $directMembers = @($group.Members | Where-Object { $_ })
             $directMemberDetails = @()
+            $directResult = @{ Members = @(); Complete = $false; UnresolvedMembers = @($group.DistinguishedName) }
             try {
-                $resolvedDirectMembers = @(Get-ADGroupMember -Identity $group.DistinguishedName -Server $domainDns -ErrorAction Stop)
-                $directMembers = @($resolvedDirectMembers | ForEach-Object { $_.DistinguishedName })
-                $directMemberDetails = @($resolvedDirectMembers | ForEach-Object { Get-MATIMemberSnapshot -Member $_ -FallbackDomain $domainDns })
+                $directResult = Resolve-MATIGroupMembership -Identity $group.DistinguishedName -Server $domainDns `
+                    -Config $Config -CollectionDatasets @('Groups/DirectDetails') -ErrorAction Stop
+                if (-not $group.PSObject.Properties['Members']) {
+                    $directMembers = @($directResult.Members | ForEach-Object { $_.DistinguishedName })
+                }
+                $directMemberDetails = @($directResult.Members | ForEach-Object { Get-MATIMemberSnapshot -Member $_ -FallbackDomain $domainDns })
             }
             catch {
-                $directMembers = @()
-                $directMemberDetails = @()
+                Write-Warning "    Cannot resolve direct members of $($group.Name) in $domainDns : $($_.Exception.Message)"
             }
 
             $memberDetails = @($members | ForEach-Object { Get-MATIMemberSnapshot -Member $_ -FallbackDomain $domainDns })
+            $knownMemberCount = @($memberDetails | Where-Object { $_.MembershipResolved -and -not $_.OutsideAssessmentScope }).Count
+            $externalMembers = @($memberDetails | Where-Object OutsideAssessmentScope -eq $true)
+            $membershipComplete = $recursiveResult.Complete -and $directResult.Complete
 
             $allGroups.Add([PSCustomObject]@{
                 GroupName         = $group.Name
+                GroupKey          = $groupName
                 Domain            = $domainDns
                 DistinguishedName = $group.DistinguishedName
                 SID               = [string]$group.SID
-                MemberCount       = $members.Count
+                MemberCount       = if ($membershipComplete -and -not $externalMembers.Count) { $members.Count } else { $null }
+                KnownMemberCount  = $knownMemberCount
+                DirectMemberCount = $directMembers.Count
+                MembershipComplete = $membershipComplete
+                MembershipScope = 'TargetForest'
+                ExternalPrincipalCount = $externalMembers.Count
+                ExternalMembers = $externalMembers
+                DirectMembershipComplete = [bool]$group.PSObject.Properties['Members']
+                LocalMemberObjectsComplete = $directResult.LocalObjectsComplete
+                IdentityResolutionComplete = $directResult.Complete -and @($directMemberDetails | Where-Object {
+                    $_.IsForeignSecurityPrincipal -and -not $_.ResolvedName -and $_.ExternalResolutionStatus -ne 'Resolved'
+                }).Count -eq 0
+                RecursiveMembershipComplete = $recursiveResult.Complete
+                MembershipReadMethod = $recursiveResult.ReadMethod
+                UnresolvedMembers = @(@($recursiveResult.UnresolvedMembers) + @($directResult.UnresolvedMembers) | Select-Object -Unique)
                 Description       = $group.Description
                 DirectMembers     = $directMembers
                 DirectMemberDetails = $directMemberDetails
@@ -137,7 +161,7 @@ function Get-MATIPrivilegedAccounts {
 
             # Collect user accounts (deduplicated across groups)
             foreach ($member in $members) {
-                if ($member.objectClass -eq 'user' -and -not $seenUsers.Contains($member.DistinguishedName)) {
+                if ($member.objectClass -eq 'user' -and -not $member.OutsideAssessmentScope -and -not $seenUsers.Contains($member.DistinguishedName)) {
                     $null = $seenUsers.Add($member.DistinguishedName)
                     try {
                         # Derive the member's domain from its DN (handles cross-domain membership)
@@ -151,9 +175,11 @@ function Get-MATIPrivilegedAccounts {
                             }
                         }
 
+                        if ($memberDomain -notin $forest.Domains) { continue }
                         $user = Get-ADUser -Identity $memberDN -Server $memberDomain `
                             -Properties $userProps -ErrorAction Stop
 
+                        if ($null -eq $user) { throw "No account properties returned for '$memberDN'." }
                         $allAccounts.Add([PSCustomObject]@{
                             SamAccountName        = $user.SamAccountName
                             DistinguishedName     = $user.DistinguishedName
@@ -169,6 +195,7 @@ function Get-MATIPrivilegedAccounts {
                             SIDHistory            = @($user.SIDHistory)
                             ServicePrincipalName  = @($user.ServicePrincipalName)
                             MemberOf              = @($user.MemberOf)
+                            ResultantPasswordPolicy = $user.'msDS-ResultantPSO'
                             Description           = $user.Description
                             WhenCreated           = $user.WhenCreated
                             SID                   = [string]$user.SID
@@ -179,7 +206,8 @@ function Get-MATIPrivilegedAccounts {
                         })
                     }
                     catch {
-                        Write-Warning "    Cannot read user $($member.DistinguishedName): $($_.Exception.Message)"
+                        Write-MATICollectionDiagnostic -Config $Config -Datasets @('Accounts') -HandledError $_ `
+                            -Message "    Cannot read user $($member.DistinguishedName): $($_.Exception.Message)"
                     }
                 }
             }

@@ -47,55 +47,62 @@ function Get-MATIProtocolConfig {
                     Rc4DisablementPhase    = $null   # RC4DefaultDisablementPhase (KB5073381): 0=silent,1=audit,2=enforce; null=absent
                     DsrmAdminLogonBehavior = $null   # DSRM admin network logon: null/0=console only, 1=when ADWS stopped, 2=always (persistence risk)
                     WinRMAccessible        = $false
+                    OSBuildNumber          = $null
+                    OSRevision             = $null
                 }
 
                 try {
                     $regData = Invoke-Command -ComputerName $dc.HostName -ErrorAction Stop -ScriptBlock {
                         $out = @{}
+                        $out.ReadErrors = @()
+                        $out.UnreadableValues = @()
+                        function Read-MATIRegistryValue {
+                            param([string]$Path, [string]$Name)
+                            try {
+                                $values = Get-ItemProperty -LiteralPath $Path -ErrorAction Stop
+                                if (-not $Name) { return $values }
+                                $property = $values.PSObject.Properties[$Name]
+                                if ($property) { return $property.Value }
+                            } catch {
+                                if ($_.CategoryInfo.Category -ne 'ObjectNotFound') {
+                                    $out.ReadErrors += "${Path}\${Name}: $($_.Exception.Message)"
+                                    $out.UnreadableValues += $Name
+                                }
+                            }
+                        }
+                        $versionPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+                        $out.OSBuildNumber = Read-MATIRegistryValue $versionPath 'CurrentBuildNumber'
+                        $out.OSRevision = Read-MATIRegistryValue $versionPath 'UBR'
 
                         # LDAP Server Signing: HKLM\System\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Services\NTDS\Parameters' `
-                                -Name 'LDAPServerIntegrity' -ErrorAction SilentlyContinue
-                            $out['LDAPServerSigning'] = $v.LDAPServerIntegrity
-                        } catch { $out['LDAPServerSigning'] = $null }
+                        $out.LDAPServerSigning = Read-MATIRegistryValue 'HKLM:\System\CurrentControlSet\Services\NTDS\Parameters' 'LDAPServerIntegrity'
 
                         # LDAP Channel Binding: HKLM\System\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Services\NTDS\Parameters' `
-                                -Name 'LdapEnforceChannelBinding' -ErrorAction SilentlyContinue
-                            $out['LDAPChannelBinding'] = $v.LdapEnforceChannelBinding
-                        } catch { $out['LDAPChannelBinding'] = $null }
+                        $out.LDAPChannelBinding = Read-MATIRegistryValue 'HKLM:\System\CurrentControlSet\Services\NTDS\Parameters' 'LdapEnforceChannelBinding'
 
                         # SMB Server Signing: HKLM\System\CurrentControlSet\Services\LanmanServer\Parameters\RequireSecuritySignature
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Services\LanmanServer\Parameters' `
-                                -Name 'RequireSecuritySignature' -ErrorAction SilentlyContinue
-                            $out['SMBServerSigning'] = $v.RequireSecuritySignature
-                        } catch { $out['SMBServerSigning'] = $null }
+                        $out.SMBServerSigning = Read-MATIRegistryValue 'HKLM:\System\CurrentControlSet\Services\LanmanServer\Parameters' 'RequireSecuritySignature'
 
                         # NTLM Level: HKLM\System\CurrentControlSet\Control\Lsa\LmCompatibilityLevel
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Lsa' `
-                                -Name 'LmCompatibilityLevel' -ErrorAction SilentlyContinue
-                            $out['NTLMLevel'] = $v.LmCompatibilityLevel
-                        } catch { $out['NTLMLevel'] = $null }
+                        $out.NTLMLevel = Read-MATIRegistryValue 'HKLM:\System\CurrentControlSet\Control\Lsa' 'LmCompatibilityLevel'
 
                         # LM Hash storage: HKLM\System\CurrentControlSet\Control\Lsa\NoLMHash
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Lsa' `
-                                -Name 'NoLMHash' -ErrorAction SilentlyContinue
-                            $out['NoLMHash'] = $v.NoLMHash
-                        } catch { $out['NoLMHash'] = $null }
+                        $out.NoLMHash = Read-MATIRegistryValue 'HKLM:\System\CurrentControlSet\Control\Lsa' 'NoLMHash'
 
                         # Advanced audit policy (GUID-based parsing for locale-safe subcategory identification)
                         $auditResults = @{}
                         $auditReadError = $null
                         try {
-                            $auditCsv = @(& auditpol /get /subcategory:* /r 2>&1)
-                            $auditLines = @($auditCsv | Where-Object { $_ -and $_.Trim() })
-                            if ($LASTEXITCODE -ne 0) {
-                                $auditReadError = ($auditLines -join ' | ')
+                            $auditCsv = @(& auditpol /get /category:* /r 2>&1)
+                            $auditExitCode = $LASTEXITCODE
+                            $auditLines = @($auditCsv | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+                            $auditStderr = @($auditCsv | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+                            if ($auditExitCode -ne 0) {
+                                $auditReadError = "auditpol exited with code ${auditExitCode}"
+                                if ($auditLines.Count -gt 0) { $auditReadError += ': ' + ($auditLines -join ' | ') }
+                            }
+                            elseif ($auditStderr.Count -gt 0) {
+                                $auditReadError = 'auditpol wrote to stderr: ' + (($auditStderr | ForEach-Object { [string]$_ }) -join ' | ')
                             }
                             elseif ($auditLines.Count -gt 1) {
                                 $auditPayload = @($auditLines | Select-Object -Skip 1)
@@ -133,7 +140,7 @@ function Get-MATIProtocolConfig {
                             } elseif (-not $auditReadError) {
                                 $auditReadError = 'auditpol returned no advanced audit policy rows'
                             }
-                        } catch { }
+                        } catch { $auditReadError = $_.Exception.Message }
                         $out['AuditPolicy'] = $auditResults
                         $out['AuditPolicyReadError'] = $auditReadError
 
@@ -142,29 +149,25 @@ function Get-MATIProtocolConfig {
                         $schBase = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols'
                         foreach ($ver in @('TLS 1.0','TLS 1.1','TLS 1.2')) {
                             $key = $ver -replace '[\s.]', ''
-                            try {
-                                $srv = Get-ItemProperty -Path "$schBase\$ver\Server" -ErrorAction SilentlyContinue
-                                if ($srv) {
-                                    $tls["${key}_Enabled"]           = $srv.Enabled
-                                    $tls["${key}_DisabledByDefault"] = $srv.DisabledByDefault
-                                }
-                            } catch { }
+                            $srv = Read-MATIRegistryValue "$schBase\$ver\Server"
+                            if ($srv) {
+                                $tls["${key}_Enabled"] = $srv.Enabled
+                                $tls["${key}_DisabledByDefault"] = $srv.DisabledByDefault
+                            }
                         }
                         # .NET Strong Crypto (v4)
-                        try {
-                            $net4 = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319' -ErrorAction SilentlyContinue
-                            $tls['DotNetStrongCrypto']       = $net4.SchUseStrongCrypto
-                            $tls['DotNetDefaultTlsVersions'] = $net4.SystemDefaultTlsVersions
-                        } catch { }
+                        $net4 = Read-MATIRegistryValue 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319'
+                        $tls['DotNetStrongCrypto'] = $net4.SchUseStrongCrypto
+                        $tls['DotNetDefaultTlsVersions'] = $net4.SystemDefaultTlsVersions
                         $out['TLS'] = $tls
 
                         # ---- NetSession enumeration (SrvsvcSessionInfo) ----
                         $netSession = @{ Hardened = $null }
                         try {
                             $lmKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\DefaultSecurity'
-                            $prop = Get-ItemProperty -Path $lmKey -Name 'SrvsvcSessionInfo' -ErrorAction SilentlyContinue
-                            if ($prop -and $prop.SrvsvcSessionInfo) {
-                                [byte[]]$raw = $prop.SrvsvcSessionInfo
+                            $sessionBytes = Read-MATIRegistryValue $lmKey 'SrvsvcSessionInfo'
+                            if ($sessionBytes) {
+                                [byte[]]$raw = $sessionBytes
                                 # The NetCease hardened template is 176 bytes; check known hardened signature
                                 # by verifying Authenticated Users SID (S-1-5-11 = 01 01 00 00 00 00 00 05 0B 00 00 00)
                                 # is NOT present in the DACL portion
@@ -173,73 +176,35 @@ function Get-MATIProtocolConfig {
                                 $sidStr = [System.BitConverter]::ToString($authUsersSid)
                                 $netSession['Hardened'] = -not ($rawStr.Contains($sidStr))
                             }
-                        } catch { }
+                        } catch { $out.ReadErrors += "NetSession: $($_.Exception.Message)" }
                         $out['NetSession'] = $netSession
 
                         # ---- WDigest (UseLogonCredential) ----
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' `
-                                -Name 'UseLogonCredential' -ErrorAction SilentlyContinue
-                            $out['WDigest'] = $v.UseLogonCredential
-                        } catch { $out['WDigest'] = $null }
+                        $out.WDigest = Read-MATIRegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' 'UseLogonCredential'
 
                         # ---- Credential Guard (LsaCfgFlags) ----
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' `
-                                -Name 'EnableVirtualizationBasedSecurity' -ErrorAction SilentlyContinue
-                            $out['VBSEnabled'] = $v.EnableVirtualizationBasedSecurity
-                            $v2 = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
-                                -Name 'LsaCfgFlags' -ErrorAction SilentlyContinue
-                            $out['LsaCfgFlags'] = $v2.LsaCfgFlags
-                        } catch { $out['VBSEnabled'] = $null; $out['LsaCfgFlags'] = $null }
+                        $out.VBSEnabled = Read-MATIRegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' 'EnableVirtualizationBasedSecurity'
+                        $out.LsaCfgFlags = Read-MATIRegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' 'LsaCfgFlags'
 
                         # ---- LSASS RunAsPPL ----
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
-                                -Name 'RunAsPPL' -ErrorAction SilentlyContinue
-                            $out['RunAsPPL'] = $v.RunAsPPL
-                        } catch { $out['RunAsPPL'] = $null }
+                        $out.RunAsPPL = Read-MATIRegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' 'RunAsPPL'
 
                         # ---- KDC Kerberos Armoring (FAST) ----
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\KDC\Parameters' `
-                                -Name 'EnableCbacAndArmor' -ErrorAction SilentlyContinue
-                            $out['KdcArmoring'] = $v.EnableCbacAndArmor
-                        } catch { $out['KdcArmoring'] = $null }
+                        $out.KdcArmoring = Read-MATIRegistryValue 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\KDC\Parameters' 'EnableCbacAndArmor'
 
                         # ---- Strong certificate binding / Schannel mapping ----
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc' `
-                                -Name 'StrongCertificateBindingEnforcement' -ErrorAction SilentlyContinue
-                            $out['StrongCertificateBindingEnforcement'] = $v.StrongCertificateBindingEnforcement
-                        } catch { $out['StrongCertificateBindingEnforcement'] = $null }
+                        $out.StrongCertificateBindingEnforcement = Read-MATIRegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc' 'StrongCertificateBindingEnforcement'
 
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL' `
-                                -Name 'CertificateMappingMethods' -ErrorAction SilentlyContinue
-                            $out['CertificateMappingMethods'] = $v.CertificateMappingMethods
-                        } catch { $out['CertificateMappingMethods'] = $null }
+                        $out.CertificateMappingMethods = Read-MATIRegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL' 'CertificateMappingMethods'
 
                         # ---- KDC default supported enc types (per-DC fallback when account attr unset) ----
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc' `
-                                -Name 'DefaultDomainSupportedEncTypes' -ErrorAction SilentlyContinue
-                            $out['KdcDefaultEncTypes'] = $v.DefaultDomainSupportedEncTypes
-                        } catch { $out['KdcDefaultEncTypes'] = $null }
+                        $out.KdcDefaultEncTypes = Read-MATIRegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Services\Kdc' 'DefaultDomainSupportedEncTypes'
 
                         # ---- RC4 disablement phase (KB5073381, Jan-Jul 2026) ----
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters' `
-                                -Name 'RC4DefaultDisablementPhase' -ErrorAction SilentlyContinue
-                            $out['Rc4DisablementPhase'] = $v.RC4DefaultDisablementPhase
-                        } catch { $out['Rc4DisablementPhase'] = $null }
+                        $out.Rc4DisablementPhase = Read-MATIRegistryValue 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters' 'RC4DefaultDisablementPhase'
 
                         # ---- DSRM admin logon behavior (persistence: DsrmAdminLogonBehavior=2) ----
-                        try {
-                            $v = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
-                                -Name 'DsrmAdminLogonBehavior' -ErrorAction SilentlyContinue
-                            $out['DsrmAdminLogonBehavior'] = $v.DsrmAdminLogonBehavior
-                        } catch { $out['DsrmAdminLogonBehavior'] = $null }
+                        $out.DsrmAdminLogonBehavior = Read-MATIRegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' 'DsrmAdminLogonBehavior'
 
                         return $out
                     }
@@ -264,6 +229,20 @@ function Get-MATIProtocolConfig {
                     $result.KdcDefaultEncTypes  = $regData['KdcDefaultEncTypes']
                     $result.Rc4DisablementPhase = $regData['Rc4DisablementPhase']
                     $result.DsrmAdminLogonBehavior = $regData['DsrmAdminLogonBehavior']
+                    $result.OSBuildNumber = $regData.OSBuildNumber
+                    $result.OSRevision = $regData.OSRevision
+                    $effective = Get-MATIEffectiveKdcSettings -Settings $result
+                    if ('StrongCertificateBindingEnforcement' -in $regData.UnreadableValues) {
+                        $effective.EffectiveStrongCertificateBinding = 'Unknown'
+                    }
+                    if ('DefaultDomainSupportedEncTypes' -in $regData.UnreadableValues -or
+                        ($null -eq $result.KdcDefaultEncTypes -and 'RC4DefaultDisablementPhase' -in $regData.UnreadableValues)) {
+                        $effective.EffectiveKdcEncTypes = $null
+                    }
+                    $result | Add-Member -NotePropertyMembers $effective
+                    foreach ($message in @($regData.ReadErrors) + @($regData.AuditPolicyReadError, $effective.KdcSettingsError) | Where-Object { $_ }) {
+                        $errors.Add([pscustomobject]@{ DCName = $dc.Name; HostName = $dc.HostName; Domain = $domainDns; Error = [string]$message })
+                    }
                 }
                 catch {
                     $errors.Add([PSCustomObject]@{
@@ -279,6 +258,7 @@ function Get-MATIProtocolConfig {
         }
         catch {
             Write-Warning "    Cannot query DCs for protocol config in $domainDns : $($_.Exception.Message)"
+            $errors.Add([pscustomobject]@{ Domain = $domainDns; Error = $_.Exception.Message })
         }
     }
 

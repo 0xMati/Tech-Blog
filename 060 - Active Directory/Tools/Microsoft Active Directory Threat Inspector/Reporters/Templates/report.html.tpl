@@ -50,6 +50,39 @@
             margin-bottom: 1.5rem;
         }
 
+        /* ===== Assessment coverage ===== */
+        .assessment-coverage h2 { font-size: 1.3rem; color: var(--accent-blue); }
+        .assessment-coverage h3 { font-size: 1rem; margin-top: 1.25rem; }
+        .coverage-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.65rem;
+            margin: 1rem 0;
+        }
+        .coverage-metric {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.65rem;
+            text-align: center;
+        }
+        .coverage-metric strong { display: block; font-size: 1.5rem; }
+        .coverage-metric span, .coverage-count, .coverage-note { color: var(--text-secondary); font-size: 0.85rem; }
+        .coverage-grade-note { font-size: 0.75rem; }
+        .coverage-count { margin-left: 0.5rem; font-weight: normal; }
+        .coverage-warning { border-left: 3px solid var(--yellow); padding-left: 0.8rem; margin: 0.8rem 0; }
+        .coverage-details { border: 1px solid var(--border); border-radius: 6px; padding: 0.65rem 0.85rem; margin-top: 0.65rem; }
+        .coverage-details > summary { cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+        .coverage-details > summary:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; }
+        .coverage-issues { list-style: none; }
+        .coverage-issue { padding: 0.8rem 0; border-bottom: 1px solid var(--border); }
+        .coverage-issue:last-child { border-bottom: none; padding-bottom: 0; }
+        .coverage-issue p { margin-top: 0.35rem; font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .coverage-issue strong { font-size: 0.85rem; overflow-wrap: anywhere; }
+        .coverage-rule-list { display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; margin-top: 0.8rem; }
+        .coverage-rule-list code { display: block; background: var(--bg); border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.8rem; overflow-wrap: anywhere; }
+        .coverage-filter-list { margin: 0.65rem 0 0 1.2rem; overflow-wrap: anywhere; }
+
         /* ===== Header ===== */
         .header {
             text-align: center;
@@ -145,6 +178,7 @@
         .score-hero.grade-c::before { background: var(--grade-c); }
         .score-hero.grade-d::before { background: var(--grade-d); }
         .score-hero.grade-e::before { background: var(--grade-e); }
+        .score-hero.grade-na::before { background: var(--text-secondary); }
 
         .score-ring {
             width: 140px; height: 140px;
@@ -185,6 +219,7 @@
         .grade-c .score-number, .grade-c .score-grade { color: var(--grade-c); }
         .grade-d .score-number, .grade-d .score-grade { color: var(--grade-d); }
         .grade-e .score-number, .grade-e .score-grade { color: var(--grade-e); }
+        .grade-na .score-number, .grade-na .score-grade { color: var(--text-secondary); }
 
         .score-metrics {
             display: grid;
@@ -698,6 +733,8 @@
         <a href="#findings">Findings</a>
     </nav>
 
+    {{ASSESSMENT_COVERAGE}}
+
     <!-- Score Dashboard -->
     <div id="score" class="score-dashboard">
         <div class="score-hero {{GRADE_CLASS}}">
@@ -705,7 +742,7 @@
                 <span class="score-number">{{SCORE}}</span>
             </div>
             <div class="score-grade">Grade {{GRADE}}</div>
-            <div class="score-label">out of 100</div>
+            <div class="score-label">out of {{BASE_SCORE}}</div>
         </div>
         <div>
             <div class="score-metrics">

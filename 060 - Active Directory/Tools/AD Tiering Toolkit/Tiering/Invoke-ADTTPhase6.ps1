@@ -1,9 +1,9 @@
-# Tiering\Invoke-MATITieringPhase6.ps1
+# Tiering\Invoke-ADTTPhase6.ps1
 # Phase 6 — Create GPO Hardening Per Tier
 # Creates tier-specific hardening GPOs and Windows LAPS GPOs based on the exact
 # OU state exported by Phase 1.
 
-function Invoke-MATITieringPhase6 {
+function Invoke-ADTTPhase6 {
     <#
     .SYNOPSIS
         Phase 6 — Interactive creation of per-tier hardening GPOs and Windows LAPS deployment.
@@ -534,10 +534,10 @@ function Invoke-MATITieringPhase6 {
 
     Write-Host ""
     Write-Host "  Step 3/3 — Generating Report" -ForegroundColor Yellow
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase6-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Phase6-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     Export-TieringPhase6Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase6-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Phase6-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 

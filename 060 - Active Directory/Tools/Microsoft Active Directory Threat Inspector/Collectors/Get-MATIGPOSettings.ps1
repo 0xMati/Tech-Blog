@@ -5,8 +5,9 @@
 function Get-MATIGPOSettings {
     <#
     .SYNOPSIS
-        Parses GPO files from SYSVOL to extract effective security settings
-        applied to Domain Controllers (DC OU + inherited domain-level GPOs).
+        Parses linked GPO configuration from SYSVOL, not client RSoP.
+        Orders domain/DC OU links and enforcement; security/WMI filters,
+        sites, local policy and nested DC OUs require separate verification.
     .OUTPUTS
         [hashtable] with PerDomain → each domain has RegistryPolicies,
         AuditPolicy, SecurityOptions, SystemAccess, RestrictedGroups, ServiceSettings.
@@ -26,11 +27,7 @@ function Get-MATIGPOSettings {
         param([string]$Path)
         if (-not (Test-Path $Path)) { return @{} }
 
-        $content = $null
-        try { $content = Get-Content -Path $Path -Encoding Unicode -ErrorAction Stop } catch { }
-        if (-not $content) {
-            try { $content = Get-Content -Path $Path -Encoding UTF8 -ErrorAction Stop } catch { return @{} }
-        }
+        $content = [System.IO.File]::ReadAllLines($Path)
         if (-not $content) { return @{} }
 
         $result = @{}
@@ -59,12 +56,12 @@ function Get-MATIGPOSettings {
         param([string]$Path)
         if (-not (Test-Path $Path)) { return @() }
 
-        try { $bytes = [System.IO.File]::ReadAllBytes($Path) } catch { return @() }
-        if ($bytes.Length -lt 8) { return @() }
+        $bytes = [System.IO.File]::ReadAllBytes($Path)
+        if ($bytes.Length -lt 8) { throw "Truncated Registry.pol: $Path" }
 
         # Verify PReg signature (0x50 0x52 0x65 0x67)
         if ($bytes[0] -ne 0x50 -or $bytes[1] -ne 0x52 -or $bytes[2] -ne 0x65 -or $bytes[3] -ne 0x67) {
-            return @()
+            throw "Invalid Registry.pol signature: $Path"
         }
 
         $results = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -175,32 +172,26 @@ function Get-MATIGPOSettings {
             # Read gpLink from DC OU and domain root
             $dcOUObj    = $null
             $domRootObj = $null
-            try { $dcOUObj    = Get-ADObject -Identity $dcOUdn -Properties gpLink, gpOptions -Server $domainDns -ErrorAction Stop } catch { }
-            try { $domRootObj = Get-ADObject -Identity $domDN  -Properties gpLink -Server $domainDns -ErrorAction Stop } catch { }
+            $dcOUObj = Get-ADObject -Identity $dcOUdn -Properties gpLink, gpOptions -Server $domainDns -ErrorAction Stop
+            $domRootObj = Get-ADObject -Identity $domDN -Properties gpLink -Server $domainDns -ErrorAction Stop
 
-            $dcGPOLinks  = ConvertFrom-GpLink -GpLink $dcOUObj.gpLink
-            $domGPOLinks = ConvertFrom-GpLink -GpLink $domRootObj.gpLink
+            $dcGPOLinks  = @(ConvertFrom-GpLink -GpLink $dcOUObj.gpLink)
+            $domGPOLinks = @(ConvertFrom-GpLink -GpLink $domRootObj.gpLink)
             $dcBlockInherit = ($dcOUObj.gpOptions -eq 1)
 
-            # Build effective GPO list for DCs (lower precedence first → higher precedence last)
-            # Domain GPOs are inherited; DC OU GPOs override; enforced GPOs always apply
+            [array]::Reverse($dcGPOLinks)
+            [array]::Reverse($domGPOLinks)
+
+            # Apply lower precedence first; enforced parent links win last.
             $effectiveGPOs = [System.Collections.Generic.List[PSCustomObject]]::new()
-            if (-not $dcBlockInherit) {
-                foreach ($g in $domGPOLinks) {
-                    if ($g.Enabled) {
-                        $effectiveGPOs.Add([PSCustomObject]@{ GUID = $g.GUID; DN = $g.DN; LinkedTo = 'Domain'; Enforced = $g.Enforced })
-                    }
-                }
-            } else {
-                foreach ($g in $domGPOLinks) {
-                    if ($g.Enabled -and $g.Enforced) {
-                        $effectiveGPOs.Add([PSCustomObject]@{ GUID = $g.GUID; DN = $g.DN; LinkedTo = 'Domain'; Enforced = $true })
-                    }
-                }
-            }
-            foreach ($g in $dcGPOLinks) {
-                if ($g.Enabled) {
-                    $effectiveGPOs.Add([PSCustomObject]@{ GUID = $g.GUID; DN = $g.DN; LinkedTo = 'DomainControllers'; Enforced = $g.Enforced })
+            foreach ($set in @(
+                @{ Links = @($domGPOLinks | Where-Object { $_.Enabled -and -not $_.Enforced -and -not $dcBlockInherit }); Target = 'Domain' },
+                @{ Links = @($dcGPOLinks | Where-Object { $_.Enabled -and -not $_.Enforced }); Target = 'DomainControllers' },
+                @{ Links = @($dcGPOLinks | Where-Object { $_.Enabled -and $_.Enforced }); Target = 'DomainControllers' },
+                @{ Links = @($domGPOLinks | Where-Object { $_.Enabled -and $_.Enforced }); Target = 'Domain' }
+            )) {
+                foreach ($g in $set.Links) {
+                    $effectiveGPOs.Add([PSCustomObject]@{ GUID = $g.GUID; DN = $g.DN; LinkedTo = $set.Target; Enforced = $g.Enforced })
                 }
             }
 
@@ -218,12 +209,13 @@ function Get-MATIGPOSettings {
             foreach ($gpo in $effectiveGPOs) {
                 if (-not $gpo.GUID) { continue }
                 $gpoPath = Join-Path $sysvolBase $gpo.GUID
+                if (-not (Test-Path -LiteralPath $gpoPath -PathType Container -ErrorAction Stop)) {
+                    throw "Linked GPO SYSVOL directory is unavailable: $gpoPath"
+                }
 
-                $gpoDisplayName = $null
-                try {
-                    $gpoAD = Get-ADObject -Identity $gpo.DN -Properties displayName -Server $domainDns -ErrorAction SilentlyContinue
-                    $gpoDisplayName = $gpoAD.displayName
-                } catch { }
+                $gpoAD = Get-ADObject -Identity $gpo.DN -Properties displayName, flags, gPCWQLFilter -Server $domainDns -ErrorAction Stop
+                if (($gpoAD.flags -band 2) -ne 0) { continue }
+                $gpoDisplayName = $gpoAD.displayName
                 $gpoLabel = $gpoDisplayName ?? $gpo.GUID
                 $gpoNames.Add([PSCustomObject]@{ GUID = $gpo.GUID; DisplayName = $gpoDisplayName; LinkedTo = $gpo.LinkedTo })
 
@@ -276,9 +268,12 @@ function Get-MATIGPOSettings {
                 }
             }
 
+            $mergedRegistry = @{}
+            foreach ($entry in $allRegPolicies) { $mergedRegistry["$($entry.Key)|$($entry.ValueName)"] = $entry }
             $perDomain[$domainDns] = @{
-                EffectiveGPOs    = @($gpoNames)
-                RegistryPolicies = @($allRegPolicies)
+                LinkedGPOs       = @($gpoNames)
+                AssessmentBasis  = 'Linked GPO configuration; not RSoP (security/WMI filters, sites, nested OUs and local policy are not evaluated)'
+                RegistryPolicies = @($mergedRegistry.Values)
                 AuditPolicy      = $mergedAudit
                 SecurityOptions  = $mergedSecOpts
                 SystemAccess     = $mergedSysAccess
@@ -292,7 +287,8 @@ function Get-MATIGPOSettings {
         } catch {
             Write-Warning "    Cannot parse GPO settings for $domainDns : $($_.Exception.Message)"
             $perDomain[$domainDns] = @{
-                EffectiveGPOs    = @()
+                LinkedGPOs       = @()
+                AssessmentBasis  = 'Unavailable'
                 RegistryPolicies = @()
                 AuditPolicy      = @{}
                 SecurityOptions  = @{}

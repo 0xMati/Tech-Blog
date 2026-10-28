@@ -17,6 +17,33 @@ function Export-MATICsv {
     $findings  = $EngineContext.Findings
     $dataCache = $EngineContext.DataCache
     $filePrefix = if ($EngineContext.Config['_ReportFilePrefix']) { $EngineContext.Config['_ReportFilePrefix'] } else { 'MATI_' }
+    $score = $EngineContext.Score
+
+    [pscustomobject]@{
+        TargetForest = $EngineContext.Config['_TargetForest']
+        PrincipalAuditScope = 'TargetForest'
+        ToolVersion = $EngineContext.Config.General.Version
+        AssessmentStatus = $score.AssessmentStatus
+        Score = $score.Score
+        Grade = $score.Grade
+        GradeIsProvisional = $score.GradeIsProvisional
+        PartialAssessment = $score.PartialAssessment
+        FilteredAssessment = $score.FilteredAssessment
+        SelectedRules = $score.SelectedRuleCount
+        EvaluatedRules = $score.EvaluatedRuleCount
+        FullyAssessedRules = $score.FullyAssessedRuleCount
+        CollectionIssueCount = $EngineContext.CollectionIssues.Count
+        Scope = ConvertTo-Json -InputObject @{ Selection = $EngineContext.AssessmentScope; Exclusions = $EngineContext.Config.Exclusions } -Depth 5 -Compress
+    } | Export-Csv -LiteralPath (Join-Path $csvDir "${filePrefix}Assessment_$timestamp.csv") -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
+    $EngineContext.RuleResults |
+        Select-Object Id, Title, Category, Status, Reason, @{ Name = 'FailedCollectors'; Expression = { $_.FailedCollectors -join '; ' } } |
+        Export-Csv -LiteralPath (Join-Path $csvDir "${filePrefix}RuleResults_$timestamp.csv") -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
+    if ($EngineContext.CollectionIssues.Count -gt 0) {
+        $EngineContext.CollectionIssues |
+            Select-Object Collector, Scope, Message, AffectsCoverage,
+                @{ Name = 'Datasets'; Expression = { $_.Datasets -join '; ' } } |
+            Export-Csv -LiteralPath (Join-Path $csvDir "${filePrefix}CollectionIssues_$timestamp.csv") -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
+    }
 
     # ------------------------------------------------------------------
     # 1. Global findings CSV
@@ -24,11 +51,7 @@ function Export-MATICsv {
     $findingsForCsv = $findings | ForEach-Object {
         $detailsText = ($_.Details.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
         $detailsJson = if ($_.Details -and $_.Details.Count -gt 0) {
-            try {
-                $_.Details | ConvertTo-Json -Compress -Depth 10
-            } catch {
-                ''
-            }
+            $_.Details | ConvertTo-Json -Compress -Depth 10 -ErrorAction Stop
         } else { '' }
 
         [PSCustomObject]@{
@@ -178,6 +201,8 @@ function Export-MATICsv {
         if ($ntlm) {
             $ntlmSummary = [PSCustomObject]@{
                 AuditHours    = $audit.AuditHours
+                NTLM_Unknown  = $ntlm.UnknownCount
+                Unknown_Percent = $ntlm.UnknownPercent
                 TotalEvents   = $ntlm.TotalEvents
                 NTLMv1_Count  = $ntlm.NTLMv1Count
                 NTLMv2_Count  = $ntlm.NTLMv2Count

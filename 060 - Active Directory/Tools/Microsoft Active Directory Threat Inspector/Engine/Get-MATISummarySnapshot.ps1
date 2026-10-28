@@ -1,5 +1,5 @@
 ﻿# Engine\Get-MATISummarySnapshot.ps1
-# Shared summary snapshot builder for Threat Detection and Tiering reports.
+# Summary snapshot builder for security assessment reports.
 
 function Test-MATILikelyServiceAccount {
     param(
@@ -127,8 +127,8 @@ function Get-MATISummarySnapshot {
         $trustCount = $trustInfo.Count
         $unsafeTrustCount = @($trustInfo | Where-Object { -not $_.SIDFilteringEnabled -and -not $_.IntraForest }).Count
 
-        $daGroups = if ($privilegedData -and $privilegedData.Groups) { @($privilegedData.Groups | Where-Object GroupName -eq 'Domain Admins') } else { @() }
-        $eaGroups = if ($privilegedData -and $privilegedData.Groups) { @($privilegedData.Groups | Where-Object GroupName -eq 'Enterprise Admins') } else { @() }
+        $daGroups = if ($privilegedData -and $privilegedData.Groups) { @($privilegedData.Groups | Where-Object { (Get-MATIPrivilegedGroupKey -Group $_) -eq 'Domain Admins' }) } else { @() }
+        $eaGroups = if ($privilegedData -and $privilegedData.Groups) { @($privilegedData.Groups | Where-Object { (Get-MATIPrivilegedGroupKey -Group $_) -eq 'Enterprise Admins' }) } else { @() }
         $daEntries = foreach ($group in $daGroups) { @($group.MemberDetails) }
         $eaEntries = foreach ($group in $eaGroups) { @($group.MemberDetails) }
         $daCount = Get-MATIUniqueSamCount -Entries @($daEntries)

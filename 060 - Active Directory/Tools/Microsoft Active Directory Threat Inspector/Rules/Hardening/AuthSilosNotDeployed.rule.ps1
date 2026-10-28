@@ -17,9 +17,8 @@
         $findings = @()
 
         # Check if DFL supports Authentication Policies (2012 R2+ = numeric 6+)
-        foreach ($domain in $Data.DomainInfo.Domains) {
-            if ([int]$domain.DomainModeNumeric -lt 6) { continue }  # Skip domains below 2012 R2
-        }
+        $eligibleDomains = @($Data.DomainInfo.Domains | Where-Object { [int]$_.DomainModeNumeric -ge 6 })
+        if ($eligibleDomains.Count -eq 0) { return $findings }
 
         $silos = $Data.SecurityConfig.AuthSilos
         $policies = $Data.SecurityConfig.AuthPolicies

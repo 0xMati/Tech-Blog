@@ -24,7 +24,19 @@ function Export-MATIJson {
             timestamp        = $timestamp
             generatedAt      = (Get-Date -Format 'o')
             targetForest     = $config['_TargetForest']
+            principalAuditScope = 'TargetForest'
             executionContext = $EngineContext.ExecutionContext
+            assessmentScope  = $EngineContext.AssessmentScope
+            exclusions       = $config.Exclusions
+        }
+        coverage = @{
+            status = $EngineContext.Score.AssessmentStatus
+            selectedRules = $EngineContext.Score.SelectedRuleCount
+            evaluatedRules = $EngineContext.Score.EvaluatedRuleCount
+            fullyAssessedRules = $EngineContext.Score.FullyAssessedRuleCount
+            ruleResults = @($EngineContext.RuleResults)
+            notAssessedRules = @($EngineContext.NotAssessedRules)
+            collectionIssues = @($EngineContext.CollectionIssues)
         }
         score    = $EngineContext.Score
         summary  = @{
@@ -59,6 +71,7 @@ function Export-MATIJson {
             objectDN    = $_.ObjectDN
             domain      = $_.Domain
             ruleFile    = $_.RuleFile
+            references  = @($_.References)
             weight      = $_.Weight
             details     = $_.Details
             timestamp   = $_.Timestamp.ToString('o')
@@ -70,5 +83,5 @@ function Export-MATIJson {
 
     # Also export a lightweight findings-only JSON
     $findingsOnlyPath = Join-Path $jsonDir "${filePrefix}Findings_$timestamp.json"
-    $jsonReport.findings | ConvertTo-Json -Depth 10 | Out-File -FilePath $findingsOnlyPath -Encoding UTF8
+    ConvertTo-Json -InputObject @($jsonReport.findings) -Depth 10 | Out-File -FilePath $findingsOnlyPath -Encoding UTF8
 }

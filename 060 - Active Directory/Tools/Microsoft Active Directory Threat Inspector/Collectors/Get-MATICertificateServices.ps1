@@ -26,6 +26,9 @@ function Get-MATICertificateServices {
         $null = Get-ADObject -Identity $pkiDN -Server $directoryServer -ErrorAction Stop
         $isDeployed = $true
     } catch {
+        if ($_.Exception.GetType().Name -ne 'ADIdentityNotFoundException') {
+            throw "Cannot determine AD CS deployment: $($_.Exception.Message)"
+        }
         Write-Verbose "    ADCS Public Key Services container not found."
         return @{
             EnrollmentServices = @()
@@ -54,7 +57,9 @@ function Get-MATICertificateServices {
                     $certAlgo = $cert.SignatureAlgorithm.FriendlyName
                     $certKeyLength = $cert.PublicKey.Key.KeySize
                     $certExpiry = $cert.NotAfter
-                } catch { }
+                } catch {
+                    Write-Warning "Cannot decode CA certificate for $($ca.Name): $($_.Exception.Message)"
+                }
             }
 
             # Check for HTTP enrollment endpoints
@@ -98,7 +103,9 @@ function Get-MATICertificateServices {
                 if (-not $domSID) { continue }
                 $null = $privilegedSIDs.Add("$domSID-512")  # Domain Admins
                 $null = $privilegedSIDs.Add("$domSID-519")  # Enterprise Admins
-            } catch { }
+            } catch {
+                Write-Warning "Cannot resolve privileged CA principals in ${domainDns}: $($_.Exception.Message)"
+            }
         }
         $null = $privilegedSIDs.Add('S-1-5-32-544')  # Administrators
         $null = $privilegedSIDs.Add('S-1-5-18')       # SYSTEM
@@ -164,7 +171,9 @@ function Get-MATICertificateServices {
                         }
                     }
                 }
-            } catch { }
+            } catch {
+                Write-Warning "Cannot read template ACL for $($tmpl.DistinguishedName): $($_.Exception.Message)"
+            }
 
             # Published on at least one CA?
             $publishedOnCAs = @()
@@ -202,55 +211,75 @@ function Get-MATICertificateServices {
     # ---- ESC7: ManageCA ACL for low-priv principals ----
     # ---- CA cert expiration ----
     $caSecurityInfo = @()
+    $collectionErrors = [System.Collections.Generic.List[object]]::new()
     foreach ($ca in $enrollmentServices) {
+        $editfFlag = $null
+        $lowPrivManageCA = $null
+        $managementACEs = @()
         try {
-            $editfFlag = $null  # null = unknown (cannot read remotely)
-            if ($ca.DNSHostName) {
+            if (-not $ca.DNSHostName) { throw 'CA host name is missing.' }
+            $remote = Invoke-Command -ComputerName $ca.DNSHostName -ArgumentList $ca.Name -ErrorAction Stop -ScriptBlock {
+                param([string]$CAName)
+                $caPath = "HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration\$CAName"
+                $result = @{ EditFlags = $null; SecurityRead = $false; ManagementACEs = @(); Errors = @() }
                 try {
-                    $regVal = Invoke-Command -ComputerName $ca.DNSHostName -ScriptBlock {
-                        try {
-                            $val = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration\*' `
-                                -Name 'EditFlags' -ErrorAction Stop
-                            return $val.EditFlags
-                        } catch { return $null }
-                    } -ErrorAction Stop
-                    if ($null -ne $regVal) {
-                        $editfFlag = ($regVal -band 0x00040000) -ne 0
-                    }
-                } catch { }
-            }
-
-            # ESC7: Check CA AD object ACL for ManageCA rights by low-priv principals
-            $lowPrivManageCA = $false
-            try {
-                $acl = Get-MATIObjectAcl -DistinguishedName $ca.DistinguishedName -Server $directoryServer
-                foreach ($ace in $acl.Access) {
-                    if ($ace.AccessControlType -ne 'Allow') { continue }
-                    $sidStr = try {
-                        $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-                    } catch { $ace.IdentityReference.ToString() }
-                    if ($privilegedSIDs.Contains($sidStr)) { continue }
-                    $rights = $ace.ActiveDirectoryRights.ToString()
-                    if ($rights -match 'GenericAll|WriteDacl|WriteOwner') {
-                        if ($sidStr -in @('S-1-1-0', 'S-1-5-11', 'S-1-5-7') -or
-                            $sidStr -match '-513$' -or $sidStr -match '-515$') {
-                            $lowPrivManageCA = $true
+                    $policyPath = "$caPath\PolicyModules\CertificateAuthority_MicrosoftDefault.Policy"
+                    $result.EditFlags = (Get-ItemProperty -LiteralPath $policyPath -Name EditFlags -ErrorAction Stop).EditFlags
+                } catch { $result.Errors += "CA policy: $($_.Exception.Message)" }
+                try {
+                    $bytes = (Get-ItemProperty -LiteralPath $caPath -Name Security -ErrorAction Stop).Security
+                    $descriptor = [System.Security.AccessControl.RawSecurityDescriptor]::new([byte[]]$bytes, 0)
+                    if ($null -eq $descriptor.DiscretionaryAcl) { throw 'CA has a null DACL; explicit review is required.' }
+                    $denied = @{}
+                    # Windows PowerShell 5.1 requires integer operands for these enum flags.
+                    foreach ($ace in $descriptor.DiscretionaryAcl) {
+                        if ($ace -isnot [System.Security.AccessControl.QualifiedAce] -or
+                            ([int]$ace.AceFlags -band [int][System.Security.AccessControl.AceFlags]::InheritOnly) -ne 0) { continue }
+                        $sid = $ace.SecurityIdentifier.Value
+                        if ($ace.AceQualifier -eq [System.Security.AccessControl.AceQualifier]::AccessDenied) {
+                            $denied[$sid] = [int]$denied[$sid] -bor $ace.AccessMask
                         }
                     }
-                }
-            } catch { }
-
-            $caSecurityInfo += [PSCustomObject]@{
-                CAName             = $ca.Name
-                DNSHostName        = $ca.DNSHostName
-                EditfSANEnabled    = $editfFlag
-                LowPrivManageCA    = $lowPrivManageCA
-                CertExpiry         = $ca.CertExpiry
-                CertExpiresInDays  = if ($ca.CertExpiry) {
-                    [math]::Round(($ca.CertExpiry - (Get-Date)).TotalDays)
-                } else { $null }
+                    foreach ($ace in $descriptor.DiscretionaryAcl) {
+                        if ($ace -isnot [System.Security.AccessControl.QualifiedAce] -or
+                            $ace.AceQualifier -ne [System.Security.AccessControl.AceQualifier]::AccessAllowed -or
+                            ([int]$ace.AceFlags -band [int][System.Security.AccessControl.AceFlags]::InheritOnly) -ne 0) { continue }
+                        $sid = $ace.SecurityIdentifier.Value
+                        $mask = $ace.AccessMask -band (-bnot [int]$denied[$sid])
+                        if (($mask -band 3) -eq 0) { continue }
+                        if ($sid -notin @('S-1-1-0', 'S-1-5-11', 'S-1-5-7') -and $sid -notmatch '^S-1-5-21-.+-(513|515)$') { continue }
+                        $result.ManagementACEs += [pscustomobject]@{
+                            SID = $sid
+                            ManageCA = ($mask -band 1) -ne 0
+                            ManageCertificates = ($mask -band 2) -ne 0
+                        }
+                    }
+                    $result.SecurityRead = $true
+                } catch { $result.Errors += "CA security descriptor: $($_.Exception.Message)" }
+                $result
             }
-        } catch { }
+            if ($null -ne $remote.EditFlags) { $editfFlag = ($remote.EditFlags -band 0x00040000) -ne 0 }
+            if ($remote.SecurityRead) {
+                $managementACEs = @($remote.ManagementACEs)
+                $lowPrivManageCA = $managementACEs.Count -gt 0
+            }
+            foreach ($message in $remote.Errors) {
+                $collectionErrors.Add([pscustomobject]@{ Domain = 'Forest'; DC = $ca.DNSHostName; Error = $message })
+            }
+        } catch {
+            $collectionErrors.Add([pscustomobject]@{ Domain = 'Forest'; DC = $ca.DNSHostName; Error = $_.Exception.Message })
+        }
+        $caSecurityInfo += [PSCustomObject]@{
+            CAName             = $ca.Name
+            DNSHostName        = $ca.DNSHostName
+            EditfSANEnabled    = $editfFlag
+            LowPrivManageCA    = $lowPrivManageCA
+            ManagementACEs     = $managementACEs
+            CertExpiry         = $ca.CertExpiry
+            CertExpiresInDays  = if ($ca.CertExpiry) {
+                [math]::Round(($ca.CertExpiry - (Get-Date)).TotalDays)
+            } else { $null }
+        }
     }
 
     return @{
@@ -258,5 +287,6 @@ function Get-MATICertificateServices {
         Templates          = @($templates)
         IsADCSDeployed     = $isDeployed
         CASecurityInfo     = @($caSecurityInfo)
+        Errors             = @($collectionErrors)
     }
 }

@@ -16,6 +16,7 @@
                   'principals using Set-ADServiceAccount -PrincipalsAllowedToRetrieveManagedPassword <list>. ' +
                   'Prefer a dedicated security group containing only the specific computer accounts that need access.'
     Collectors  = @('SecurityConfig')
+    CollectorDatasets = @{ SecurityConfig = @('GMSAAccounts') }
     References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/group-managed-service-accounts/group-managed-service-accounts-overview')
 
     Condition = {

@@ -5,7 +5,7 @@
     Id          = 'MATI-GPO-010'
     Title       = 'WSUS configured over HTTP via GPO'
     Severity    = 'High'
-    Description = "Windows Server Update Services (WSUS) is configured to use HTTP instead of HTTPS in GPO settings. Attackers on the network can intercept WSUS traffic and inject malicious updates, achieving code execution on all machines in the domain including DCs."
+    Description = "A GPO linked at the domain or DC OU configures WSUS over HTTP. Verify client RSoP, filtering and update-signing controls before concluding which computers are affected. Link-based reconstruction is not proof of effective DC policy."
     Remediation = "Configure WSUS to use HTTPS by setting the WUServer and WUStatusServer GPO registry values to HTTPS URLs (https://wsus.domain.com:8531). Enable SSL on the WSUS server."
     Collectors  = @('GPOSettings')
     References  = @('https://learn.microsoft.com/en-us/windows-server/administration/windows-server-update-services/deploy/2-configure-wsus')
@@ -32,6 +32,7 @@
                             GPO      = "$($entry.GPO)"
                             LinkedTo = "$($entry.LinkedTo)"
                             WUServer = "$($entry.Data)"
+                            AssessmentBasis = $domainData.AssessmentBasis
                         }
                     }
                 }

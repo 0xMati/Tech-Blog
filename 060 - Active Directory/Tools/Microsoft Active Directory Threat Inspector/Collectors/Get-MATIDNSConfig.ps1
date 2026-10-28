@@ -24,7 +24,8 @@ function Get-MATIDNSConfig {
 
             # --- DnsAdmins group members ---
             try {
-                $members = @(Get-ADGroupMember -Identity 'DnsAdmins' -Server $domainDns -ErrorAction Stop)
+                $members = @((Resolve-MATIGroupMembership -Identity 'DnsAdmins' -Server $domainDns -Config $Config `
+                    -CollectionDatasets @('DnsAdmins') -ErrorAction Stop).Members)
                 foreach ($m in $members) {
                     $dnsAdmins.Add([PSCustomObject]@{
                         Domain     = $domainDns
@@ -91,6 +92,17 @@ function Get-MATIDNSConfig {
                             $scavengingServers = @($agingInfo.ScavengingServers)
                         } catch { }
 
+                        $isADIntegrated = $sz.IsDsIntegrated
+                        if ($null -eq $isADIntegrated) {
+                            Write-Warning "    AD integration status unavailable for DNS zone '$($sz.ZoneName)' on '$dc'."
+                        }
+                        $zoneTransferPolicy = [string]$sz.SecureSecondaries
+                        if ($zoneTransferPolicy -notin @('NoTransfer', 'TransferAnyServer',
+                                'TransferToZoneNameServer', 'TransferToSecureServers')) {
+                            Write-Warning "    Zone transfer policy unavailable or unsupported for DNS zone '$($sz.ZoneName)' on '$dc': '$zoneTransferPolicy'."
+                            $zoneTransferPolicy = 'Unknown'
+                        }
+
                         $info = [PSCustomObject]@{
                             Name            = $sz.ZoneName
                             Domain          = $domainDns
@@ -98,12 +110,9 @@ function Get-MATIDNSConfig {
                             SecureOnly      = ($sz.DynamicUpdate -eq 'Secure')
                             IsReverseLookup = $sz.IsReverseLookupZone
                             ZoneType        = [string]$sz.ZoneType
-                            IsADIntegrated  = $sz.IsAutoCreated -eq $false
+                            IsADIntegrated  = $isADIntegrated
                             SecondaryServers = @($sz.SecondaryServers)
-                            ZoneTransferPolicy = if ($sz.SecondaryServers.Count -eq 0 -and
-                                $sz.ZoneName -notlike '_msdcs*') { 'NoTransfer' }
-                                elseif ($sz.SecondaryServers.Count -gt 0) { 'SpecificServers' }
-                                else { 'Unknown' }
+                            ZoneTransferPolicy = $zoneTransferPolicy
                             AgingEnabled       = $agingEnabled
                             NoRefreshInterval  = $noRefreshInterval
                             RefreshInterval    = $refreshInterval

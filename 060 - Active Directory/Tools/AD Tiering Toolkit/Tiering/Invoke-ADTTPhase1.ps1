@@ -1,9 +1,9 @@
-# Tiering\Invoke-MATITieringPhase1.ps1
+# Tiering\Invoke-ADTTPhase1.ps1
 # Phase 1 — Create Recommended OU Structure & Group Model
 # Creates the tiering OU hierarchy, security groups, deny-logon group nesting,
 # and optionally redirects the default Computers/Users containers.
 
-function Invoke-MATITieringPhase1 {
+function Invoke-ADTTPhase1 {
     <#
     .SYNOPSIS
         Phase 1 — Interactive creation of the tiering OU structure and security groups.
@@ -485,11 +485,11 @@ function Invoke-MATITieringPhase1 {
     # ================================================================
     Write-Host ""
     Write-Host "  Generating Phase 1 report..." -ForegroundColor Yellow
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase1-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Phase1-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     Export-TieringPhase1Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
     # Export JSON
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase1-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Phase1-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 

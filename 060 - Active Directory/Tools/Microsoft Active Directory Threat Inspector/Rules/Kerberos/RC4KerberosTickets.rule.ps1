@@ -9,13 +9,15 @@
     Description = 'Kerberos tickets encrypted with the legacy RC4-HMAC cipher were observed in the Security event logs ' +
                   'of the domain controllers. RC4 is cryptographically weak (equivalent to MD4/MD5 based keys) and ' +
                   'susceptible to offline brute-force and relay attacks. All accounts should be migrated to AES.'
-    Remediation = 'Set msDS-SupportedEncryptionTypes = 24 (AES128+AES256) on every account, refresh secrets ' +
-                  '(password change / machine password reset; gMSA rotates automatically), and configure ' +
-                  'DefaultDomainSupportedEncTypes = 0x18 on all DCs once RC4 traffic reaches 0%. ' +
-                  'Reference: KB5021131 / CVE-2022-37966.'
+    Remediation = 'Identify affected service accounts and clients, verify AES support, and coordinate secret rotation with service owners. ' +
+                  'Use explicit msDS-SupportedEncryptionTypes = 0x18 on tested accounts where appropriate; do not bulk-change every account. ' +
+                  'Verify each DC effective fallback against its update level (MATI-HARD-047): patched DCs may already default to AES-only, ' +
+                  'while explicit legacy DefaultDomainSupportedEncTypes overrides can still permit RC4. ' +
+                  'Validate representative workloads and complete event coverage before enforcement; a short window with zero observed RC4 is not proof of readiness.'
     Collectors  = @('LegacyProtocolAudit','DomainInfo')
     References  = @(
-        'https://support.microsoft.com/en-us/topic/kb5021131'
+        'https://support.microsoft.com/help/5021131'
+        'https://support.microsoft.com/help/5073381'
         'https://techcommunity.microsoft.com/t5/core-infrastructure-and-security/decrypting-the-selection-of-supported-kerberos-encryption-types/ba-p/1628797'
     )
 

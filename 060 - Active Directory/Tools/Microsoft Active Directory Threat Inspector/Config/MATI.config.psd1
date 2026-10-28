@@ -9,7 +9,7 @@
     # ----------------------------------------------------------------
     General = @{
         ToolName    = 'MATI - Microsoft Active Directory Threat Inspector'
-        Version     = '2.1.0'
+        Version     = '2.4.0'
         Author      = 'mamotron'
         # Maximum parallel jobs for collectors (0 = sequential)
         MaxParallel = 0
@@ -19,8 +19,8 @@
     # Scoring configuration  (Multiplicative Decay Model)
     #
     # How it works:
-    #   1. Each category has a "budget" representing its share of the
-    #      total 100-point score.
+    #   1. Each category has an independent deduction budget.
+    #      Default budgets total 116; the final score is floored at zero.
     #   2. Each distinct rule that fires reduces its category's
     #      remaining budget by a percentage (SeverityImpact).
     #   3. Multiplicative decay ensures natural diminishing returns:
@@ -241,6 +241,7 @@
             'ServicePrincipalName', 'UserAccountControl', 'MemberOf',
             'msDS-SupportedEncryptionTypes', 'WhenCreated', 'Description',
             'TrustedForDelegation', 'TrustedToAuthForDelegation',
+            'msDS-ResultantPSO',
             'msDS-AllowedToDelegateTo',
             'msDS-KeyCredentialLink',
             'CannotChangePassword', 'SmartcardLogonRequired', 'LastLogonDate',

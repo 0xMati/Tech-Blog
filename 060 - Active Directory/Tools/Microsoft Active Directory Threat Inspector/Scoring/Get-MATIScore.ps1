@@ -28,6 +28,19 @@ function Get-MATIScore {
     $config   = $EngineContext.Config
     $findings = @($EngineContext.Findings)
     $scoring  = $config.Scoring
+    if ($EngineContext.Rules.Count -eq 0) { throw 'Cannot score an empty rule selection.' }
+    if (@($EngineContext.RuleResults).Count -ne $EngineContext.Rules.Count) {
+        throw 'Rule execution results are incomplete. Run rule evaluation before scoring.'
+    }
+    $fullyAssessed = @($EngineContext.RuleResults | Where-Object Status -eq 'Evaluated').Count
+    $evaluated = @($EngineContext.RuleResults | Where-Object Status -in @('Evaluated', 'Partial')).Count
+    $partialAssessment = $fullyAssessed -ne $EngineContext.Rules.Count -or
+        @($EngineContext.CollectionIssues | Where-Object AffectsCoverage -ne $false).Count -gt 0 -or
+        $EngineContext.FailedCollectors.Count -gt 0 -or $EngineContext.WinPSCompat
+    $scope = $EngineContext.AssessmentScope
+    $filteredAssessment = [bool]$scope.CategoriesOnly -or [bool]$scope.RulesOnly -or
+        @($config.Exclusions.DisabledRules).Count -gt 0 -or @($config.Exclusions.DisabledCategories).Count -gt 0 -or
+        @($config.Exclusions.ExcludedDNs).Count -gt 0 -or @($config.Exclusions.ExcludedSamAccountNames).Count -gt 0
 
     $baseScore       = $scoring.BaseScore
     $severityImpact  = $scoring.SeverityImpact
@@ -120,6 +133,8 @@ function Get-MATIScore {
             break
         }
     }
+    $calculatedGrade = $grade
+    if ($filteredAssessment -or $evaluated -eq 0) { $grade = 'N/A' }
 
     # ------------------------------------------------------------------
     # 4. Build result object (backward-compatible keys)
@@ -127,6 +142,13 @@ function Get-MATIScore {
     $scoreResult = @{
         Score              = $finalScore
         Grade              = $grade
+        CalculatedGrade    = $calculatedGrade
+        GradeIsProvisional = [bool]($partialAssessment -and $grade -ne 'N/A')
+        AssessmentStatus   = if ($partialAssessment) { 'Partial' } elseif ($filteredAssessment) { 'Filtered' } else { 'Complete' }
+        SelectedRuleCount  = $EngineContext.Rules.Count
+        EvaluatedRuleCount = $evaluated
+        FullyAssessedRuleCount = $fullyAssessed
+        FilteredAssessment = $filteredAssessment
         BaseScore          = $baseScore
         TotalDeduction     = $totalDeduction
         TotalFindings      = $findings.Count
@@ -142,10 +164,7 @@ function Get-MATIScore {
         }
         NotAssessedCount   = if ($EngineContext.ContainsKey('NotAssessedRules')) { $EngineContext.NotAssessedRules.Count } else { 0 }
         FailedCollectors   = if ($EngineContext.ContainsKey('FailedCollectors')) { @($EngineContext.FailedCollectors) } else { @() }
-        PartialAssessment  = (
-            ($EngineContext.ContainsKey('NotAssessedRules') -and $EngineContext.NotAssessedRules.Count -gt 0) -or
-            ($EngineContext.ContainsKey('WinPSCompat') -and $EngineContext.WinPSCompat)
-        )
+        PartialAssessment  = [bool]$partialAssessment
     }
 
     $EngineContext.Score = $scoreResult
@@ -170,12 +189,13 @@ function Get-MATIScore {
     Write-Host "  Critical: $($scoreResult.BySeverity.Critical) | High: $($scoreResult.BySeverity.High) | Medium: $($scoreResult.BySeverity.Medium) | Low: $($scoreResult.BySeverity.Low)" -ForegroundColor DarkGray
     Write-Host "  Total deduction: $totalDeduction points`n" -ForegroundColor DarkGray
 
-    # Partial-assessment warning: the score is only trustworthy when every rule
-    # was actually evaluated. Failed collectors / compat mode make it optimistic.
     if ($scoreResult.PartialAssessment) {
-        Write-Host "  [!] PARTIAL ASSESSMENT - the score above is NOT fully reliable." -ForegroundColor Yellow
+        $gradeNotice = if ($scoreResult.GradeIsProvisional) { 'Provisional grade - partial assessment.' }
+            elseif ($evaluated -eq 0) { 'Grade unavailable - no rules evaluated.' }
+            else { 'Partial assessment - selected scope only.' }
+        Write-Host "  [!] $gradeNotice" -ForegroundColor Yellow
         if ($scoreResult.NotAssessedCount -gt 0) {
-            Write-Host "      $($scoreResult.NotAssessedCount) rule(s) were NOT ASSESSED because their collector failed." -ForegroundColor Yellow
+            Write-Host "      $($scoreResult.NotAssessedCount) rule(s) were NOT ASSESSED or failed during evaluation." -ForegroundColor Yellow
         }
         if ($scoreResult.FailedCollectors.Count -gt 0) {
             Write-Host "      Failed collectors: $($scoreResult.FailedCollectors -join ', ')" -ForegroundColor Yellow
@@ -184,6 +204,10 @@ function Get-MATIScore {
             Write-Host "      AD module ran in compatibility mode (deserialized objects) - run on a DC for full coverage." -ForegroundColor Yellow
         }
         Write-Host ""
+    }
+
+    if ($filteredAssessment) {
+        Write-Warning 'Selected scope only - no global grade.'
     }
 
     # Category breakdown
@@ -212,11 +236,21 @@ function Save-MATIScoreHistory {
     if (-not (Test-Path $historyDir)) {
         New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
     }
-    $historyPath = Join-Path $historyDir 'MATI_ScoreHistory.csv'
+    $historyPath = Join-Path $historyDir 'MATI_ScoreHistory_v2.csv'
     $score = $EngineContext.Score
 
     $entry = [PSCustomObject]@{
         DateTimeUtc   = (Get-Date).ToUniversalTime().ToString('o')
+        TargetForest  = $EngineContext.Config['_TargetForest']
+        ToolVersion   = $EngineContext.Config.General.Version
+        AssessmentStatus = $score.AssessmentStatus
+        Scope         = ConvertTo-Json -InputObject @{
+            Selection = $EngineContext.AssessmentScope
+            Exclusions = $EngineContext.Config.Exclusions
+        } -Depth 5 -Compress
+        SelectedRules = $score.SelectedRuleCount
+        FullyAssessedRules = $score.FullyAssessedRuleCount
+        PartialAssessment = $score.PartialAssessment
         Score         = $score.Score
         Grade         = $score.Grade
         TotalFindings = $score.TotalFindings

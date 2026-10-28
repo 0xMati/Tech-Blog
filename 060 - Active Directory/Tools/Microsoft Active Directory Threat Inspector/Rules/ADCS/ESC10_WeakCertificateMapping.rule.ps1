@@ -40,7 +40,7 @@
                     HostName                       = $dc.HostName
                     CertificateMappingMethods      = "0x$(([int]$dc.CertificateMappingMethods).ToString('X'))"
                     IncludesUPNMapping             = 'True'
-                    StrongCertificateBinding       = if ($null -ne $dc.StrongCertificateBindingEnforcement) { $dc.StrongCertificateBindingEnforcement } else { 'Unknown' }
+                    StrongCertificateBinding       = $dc.EffectiveStrongCertificateBinding
                     CandidateTemplateCount         = $templateNames.Count
                     CandidateTemplates             = $sampleTemplates
                     ESC                            = 'ESC10'

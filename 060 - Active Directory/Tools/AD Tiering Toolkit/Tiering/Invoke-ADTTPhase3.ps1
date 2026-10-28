@@ -1,9 +1,9 @@
-﻿# Tiering\Invoke-MATITieringPhase3.ps1
+# Tiering\Invoke-ADTTPhase3.ps1
 # Phase 3 — Create Deny Logon GPOs for each Tiers
 # Creates the six cross-tier deny-logon GPOs, configures user-rights assignment,
 # and links them to the correct OUs.
 
-function Invoke-MATITieringPhase3 {
+function Invoke-ADTTPhase3 {
     <#
     .SYNOPSIS
         Phase 3 — Interactive creation of deny-logon GPOs for tier isolation.
@@ -454,10 +454,10 @@ function Invoke-MATITieringPhase3 {
     # ================================================================
     Write-Host ""
     Write-Host "  Generating Phase 3 report..." -ForegroundColor Yellow
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase3-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Phase3-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     Export-TieringPhase3Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase3-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Phase3-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 

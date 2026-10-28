@@ -333,7 +333,6 @@ Write-Host ""
 # 0.05 Define Threat Detection function
 # ==================================================================
 function Invoke-MATIThreatDetection {
-    $global:MATIMode = 'ThreatDetection'
     Write-Host ""
     Write-Host "    [>] Launching Threat Detection & Security Analysis..." -ForegroundColor Green
     Write-Host ""
@@ -378,18 +377,7 @@ function Invoke-MATIThreatDetection {
         }
 
         # Apply runtime filters
-        if ($CategoriesOnly) {
-            $ctx.Rules = [System.Collections.Generic.List[hashtable]]@(
-                $ctx.Rules | Where-Object { $_['_Category'] -in $CategoriesOnly }
-            )
-            Write-Host "  [~] Filtered to categories: $($CategoriesOnly -join ', ')" -ForegroundColor Yellow
-        }
-        if ($RulesOnly) {
-            $ctx.Rules = [System.Collections.Generic.List[hashtable]]@(
-                $ctx.Rules | Where-Object { $_.Id -in $RulesOnly }
-            )
-            Write-Host "  [~] Filtered to rules: $($RulesOnly -join ', ')" -ForegroundColor Yellow
-        }
+        Set-MATIAssessmentScope -EngineContext $ctx -CategoriesOnly $CategoriesOnly -RulesOnly $RulesOnly
 
         # Run collectors
         Invoke-MATICollectors -EngineContext $ctx
@@ -417,6 +405,7 @@ function Invoke-MATIThreatDetection {
         Write-Host "  MATI Assessment Complete" -ForegroundColor Cyan
         Write-Host "================================================================" -ForegroundColor Cyan
         Write-Host "  Score     : $($score.Score) / $($score.BaseScore)  (Grade: $($score.Grade))" -ForegroundColor White
+        Write-Host "  Coverage  : $($score.AssessmentStatus) - $($score.FullyAssessedRuleCount)/$($score.SelectedRuleCount) fully assessed rules" -ForegroundColor White
         Write-Host "  Findings  : $($score.TotalFindings)" -ForegroundColor White
         Write-Host "  Forest    : $($ctx.Config['_TargetForest'])" -ForegroundColor White
         Write-Host "  Duration  : $([math]::Round($sw.Elapsed.TotalSeconds, 1))s" -ForegroundColor White
@@ -436,52 +425,6 @@ function Invoke-MATIThreatDetection {
     }
 }
 
-function Invoke-MATITieringMode {
-    $global:MATIMode = 'TieringModel'
-    Write-Host ""
-    Write-Host "    [>] Launching Tiering Model implementation..." -ForegroundColor Green
-    Write-Host ""
-
-    $tieringOutputRoot = Join-Path $RootPath 'Outputs\Tiering'
-    if (-not (Test-Path $tieringOutputRoot)) {
-        New-Item -ItemType Directory -Path $tieringOutputRoot -Force | Out-Null
-    }
-
-    $transcriptPath = Join-Path $tieringOutputRoot ("MATI.Tiering.transcript.{0}.txt" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
-    $transcriptStarted = $false
-
-    try {
-        try {
-            Start-Transcript -Path $transcriptPath -Force -IncludeInvocationHeader -ErrorAction Stop | Out-Null
-            $transcriptStarted = $true
-            Write-Host "  [+] Tiering transcript started: $transcriptPath" -ForegroundColor Green
-            if ($script:MATIExecutionContext) {
-                Write-MATIExecutionContext -MATIContext $script:MATIExecutionContext -Header '  [~] Execution context recorded in transcript...'
-            }
-        } catch {
-            Write-Warning "  [!] Could not start tiering transcript: $($_.Exception.Message)"
-        }
-
-        $tieringMenuPath = Join-Path $RootPath 'Tiering\Invoke-MATITieringMenu.ps1'
-        if (Test-Path $tieringMenuPath) {
-            . $tieringMenuPath
-            Invoke-MATITieringMenu -RootPath $RootPath -Config @{ ConfigFile = $configFile }
-        } else {
-            Write-Host "    [ERROR] Tiering module not found: $tieringMenuPath" -ForegroundColor Red
-        }
-    }
-    finally {
-        if ($transcriptStarted) {
-            try {
-                Stop-Transcript | Out-Null
-                Write-Host "  [+] Tiering transcript saved: $transcriptPath`n" -ForegroundColor Green
-            } catch {
-                Write-Warning "  [!] Could not stop tiering transcript cleanly: $($_.Exception.Message)"
-            }
-        }
-    }
-}
-
 # ==================================================================
 # 0.05 Main Menu
 # ==================================================================
@@ -492,17 +435,12 @@ Write-Host "    ┌────────────────────�
 Write-Host "    │                  MAIN MENU                      │" -ForegroundColor Cyan
 Write-Host "    ├─────────────────────────────────────────────────┤" -ForegroundColor Cyan
 Write-Host "    │  [1]  Threat Detection & Security Analysis      │" -ForegroundColor Green
-Write-Host "    │  [2]  Implement Tiering Model                    │" -ForegroundColor Green
 Write-Host "    │  [Q]  Quit                                      │" -ForegroundColor Red
 Write-Host "    └─────────────────────────────────────────────────┘" -ForegroundColor Cyan
 Write-Host ""
 
-$menuChoice = Read-Host "    Select an option [1/2/Q]"
+$menuChoice = Read-Host "    Select an option [1/Q]"
 switch ($menuChoice.Trim().ToUpper()) {
-    '2' {
-        Invoke-MATITieringMode
-        # Loop back to main menu
-    }
     'Q' {
         Write-Host "    Exiting MATI. Goodbye!" -ForegroundColor Cyan
         $mainLoop = $false
@@ -514,7 +452,7 @@ switch ($menuChoice.Trim().ToUpper()) {
         # Loop back to main menu
     }
     default {
-        Write-Host "    [!] Invalid option. Please select 1, 2, or Q." -ForegroundColor Yellow
+        Write-Host "    [!] Invalid option. Please select 1 or Q." -ForegroundColor Yellow
     }
 }
 } # end main menu loop

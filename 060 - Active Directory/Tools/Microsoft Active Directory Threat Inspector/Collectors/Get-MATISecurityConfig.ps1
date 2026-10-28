@@ -86,7 +86,8 @@ function Get-MATISecurityConfig {
     $preWin2000Members = @()
     foreach ($domainDns in $forest.Domains) {
         try {
-            $members = Get-ADGroupMember -Identity 'S-1-5-32-554' -Server $domainDns -ErrorAction Stop
+            $members = (Resolve-MATIGroupMembership -Identity 'S-1-5-32-554' -Server $domainDns -Config $Config `
+                -CollectionDatasets @('PreWin2000Members') -ErrorAction Stop).Members
             foreach ($m in $members) {
                 $preWin2000Members += [PSCustomObject]@{
                     Domain          = $domainDns
@@ -129,7 +130,8 @@ function Get-MATISecurityConfig {
             if (-not $domSID) { continue }
             $members = @()
             try {
-                $members = @(Get-ADGroupMember -Identity "$domSID-525" -Server $domainDns -ErrorAction Stop)
+                $members = @((Resolve-MATIGroupMembership -Identity "$domSID-525" -Server $domainDns -Config $Config `
+                    -CollectionDatasets @('ProtectedUsers') -ErrorAction Stop).Members)
             } catch { }
 
             $protectedUsersInfo += [PSCustomObject]@{
@@ -151,7 +153,8 @@ function Get-MATISecurityConfig {
     foreach ($domainDns in $forest.Domains) {
         foreach ($groupName in $operatorRIDs.Keys) {
             try {
-                $members = @(Get-ADGroupMember -Identity $operatorRIDs[$groupName] -Server $domainDns -ErrorAction Stop)
+                $members = @((Resolve-MATIGroupMembership -Identity $operatorRIDs[$groupName] -Server $domainDns -Config $Config `
+                    -CollectionDatasets @('OperatorGroups') -ErrorAction Stop).Members)
                 $operatorGroups += [PSCustomObject]@{
                     GroupName   = $groupName
                     GroupSID    = $operatorRIDs[$groupName]
@@ -306,7 +309,8 @@ function Get-MATISecurityConfig {
             # Get Domain Admins + Enterprise Admins
             foreach ($groupSID in @("$domSID-512", "$domSID-519")) {
                 try {
-                    $members = @(Get-ADGroupMember -Identity $groupSID -Server $domainDns -Recursive -ErrorAction Stop)
+                    $members = @((Resolve-MATIGroupMembership -Identity $groupSID -Server $domainDns -Recursive -Config $Config `
+                        -CollectionDatasets @('DelegatableAdmins') -ResolutionDatasets @('DelegatableAdmins') -ErrorAction Stop).Members)
                     foreach ($m in $members) {
                         if ($m.objectClass -ne 'user') { continue }
                         try {
@@ -410,6 +414,7 @@ function Get-MATISecurityConfig {
             if (-not $domSID) { continue }
             # Get actual privileged members (recursive)
             $actualPrivDNs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            $privilegedMembershipComplete = $true
             foreach ($rid in @('512', '519', '518', '544', '548', '549', '550', '551')) {
                 $grpSID = if ($rid -match '^\d{3}$' -and [int]$rid -lt 600) { "S-1-5-32-$rid" } else { "$domSID-$rid" }
                 # Domain Admins=512, Enterprise Admins=519, Schema Admins=518
@@ -417,9 +422,23 @@ function Get-MATISecurityConfig {
                 # Builtin groups
                 if ($rid -in @('544', '548', '549', '550', '551')) { $grpSID = "S-1-5-32-$rid" }
                 try {
-                    $members = @(Get-ADGroupMember -Identity $grpSID -Server $domainDns -Recursive -ErrorAction SilentlyContinue)
+                    $membership = Resolve-MATIGroupMembership -Identity $grpSID -Server $domainDns -Recursive -Config $Config `
+                        -CollectionDatasets @('AdminCountOrphans') -ResolutionDatasets @('AdminCountOrphans') -ErrorAction Stop
+                    if (-not $membership.Complete) { $privilegedMembershipComplete = $false }
+                    $members = @($membership.Members)
                     foreach ($m in $members) { $null = $actualPrivDNs.Add($m.DistinguishedName) }
-                } catch { }
+                }
+                catch {
+                    if ($_.Exception.GetType().Name -eq 'ADIdentityNotFoundException' -and $rid -in @('518', '519')) { continue }
+                    $privilegedMembershipComplete = $false
+                    Write-MATICollectionDiagnostic -Config $Config -Datasets @('AdminCountOrphans') -HandledError $_ `
+                        -Message "    Cannot establish privileged membership for '$grpSID' in '$domainDns': $($_.Exception.Message)"
+                }
+            }
+            if (-not $privilegedMembershipComplete) {
+                Write-MATICollectionDiagnostic -Config $Config -Datasets @('AdminCountOrphans') `
+                    -Message "    Cannot determine AdminCount orphan status for '$domainDns': privileged membership is incomplete."
+                continue
             }
 
             # Find users with AdminCount=1 who are NOT in any privileged group
@@ -688,7 +707,7 @@ function Get-MATISecurityConfig {
             foreach ($gDN in $memberOfMap.Keys) {
                 if (-not $visited.Contains($gDN)) {
                     $path = [System.Collections.Generic.List[string]]::new()
-                    Find-GroupCycle -Node $gDN -Path $path
+                    $null = Find-GroupCycle -Node $gDN -Path $path
                 }
             }
 

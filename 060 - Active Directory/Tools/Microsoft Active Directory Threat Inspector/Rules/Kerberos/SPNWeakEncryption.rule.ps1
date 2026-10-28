@@ -17,10 +17,12 @@
         param($Data, $Config)
         $findings = @()
         $domainBuckets = @{}
-        $rc4ServiceSpns = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $rc4ServiceSIDs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $rc4ServiceAccounts = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-        foreach ($svc in @($Data.LegacyProtocolAudit.Kerberos.TopRC4TGSServices)) {
-            if ($svc.Name) { $null = $rc4ServiceSpns.Add("$($svc.Name)") }
+        foreach ($svc in @($Data.LegacyProtocolAudit.Kerberos.RC4ServiceObservations)) {
+            if ($svc.SID) { $null = $rc4ServiceSIDs.Add([string]$svc.SID) }
+            if ($svc.Name -and $svc.Domain) { $null = $rc4ServiceAccounts.Add("$($svc.Domain)|$($svc.Name)") }
         }
 
         foreach ($spnAccount in $Data.KerberosConfig.SPNAccounts) {
@@ -29,15 +31,12 @@
             if ($spnAccount.SamAccountName -like 'krbtgt*') { continue }
 
             $encTypes = $spnAccount.SupportedEncryptionTypes
+            if ($encTypes -eq 0) { $encTypes = $null }
             $hasExplicitAES = ($null -ne $encTypes) -and (($encTypes -band 0x18) -ne 0)
             $hasExplicitWeakOnly = ($null -ne $encTypes) -and (-not $hasExplicitAES)
-            $observedRc4ServiceTicket = $false
-            foreach ($spn in @($spnAccount.ServicePrincipalName)) {
-                if ($spn -and $rc4ServiceSpns.Contains("$spn")) {
-                    $observedRc4ServiceTicket = $true
-                    break
-                }
-            }
+            $observedRc4ServiceTicket = ($spnAccount.SID -and $rc4ServiceSIDs.Contains([string]$spnAccount.SID)) -or
+                $rc4ServiceAccounts.Contains("$($spnAccount.Domain)|$($spnAccount.SamAccountName)")
+            $observationComplete = $Data.LegacyProtocolAudit.Kerberos.RC4ServiceObservationsComplete -eq $true
 
             if ($hasExplicitWeakOnly -or $null -eq $encTypes) {
                 $encDisplay = if ($null -eq $encTypes) { 'Not set (verification required)' } else { "0x$($encTypes.ToString('X'))" }
@@ -46,9 +45,13 @@
                 } else {
                     if ($observedRc4ServiceTicket) { 'UnsetObservedRC4' } else { 'UnsetNoObservedRC4' }
                 }
+                if (-not $observedRc4ServiceTicket -and -not $observationComplete) {
+                    $classification = if ($hasExplicitWeakOnly) { 'ExplicitWeakObservationIncomplete' } else { 'UnsetObservationIncomplete' }
+                }
                 $severity = switch ($classification) {
                     'ExplicitWeakObservedRC4' { 'High' }
                     'ExplicitWeakNoObservedRC4' { 'Medium' }
+                    'ExplicitWeakObservationIncomplete' { 'Medium' }
                     'UnsetObservedRC4' { 'Medium' }
                     default { 'Informational' }
                 }
@@ -65,7 +68,7 @@
                 }
                 $domainBuckets[$key].Count++
                 if ($domainBuckets[$key].Examples.Count -lt 10) {
-                    $suffix = if ($observedRc4ServiceTicket) { 'RC4 observed' } else { 'no RC4 observed' }
+                    $suffix = if ($observedRc4ServiceTicket) { 'RC4 observed' } elseif ($observationComplete) { 'no RC4 observed in the audit window' } else { 'RC4 observation incomplete' }
                     $domainBuckets[$key].Examples.Add("$($spnAccount.SamAccountName) ($encDisplay, $suffix)")
                 }
             }

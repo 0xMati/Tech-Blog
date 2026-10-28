@@ -99,10 +99,10 @@ function Get-MATIKerberosConfig {
             # Accounts with unconstrained / constrained delegation
             $compProps = $Config.Collectors.ComputerProperties
 
-            $delegUsers = Get-ADUser -Filter 'TrustedForDelegation -eq $true -or TrustedToAuthForDelegation -eq $true' `
+            $delegUsers = Get-ADUser -Filter 'TrustedForDelegation -eq $true -or TrustedToAuthForDelegation -eq $true -or msDS-AllowedToDelegateTo -like "*"' `
                 -Server $domainDns -Properties $userProps -ErrorAction Stop
 
-            $delegComputers = Get-ADComputer -Filter 'TrustedForDelegation -eq $true -or TrustedToAuthForDelegation -eq $true' `
+            $delegComputers = Get-ADComputer -Filter 'TrustedForDelegation -eq $true -or TrustedToAuthForDelegation -eq $true -or msDS-AllowedToDelegateTo -like "*"' `
                 -Server $domainDns -Properties $compProps -ErrorAction Stop
 
             $allDeleg = @($delegUsers) + @($delegComputers)
@@ -124,7 +124,7 @@ function Get-MATIKerberosConfig {
 
             # Collect all SPNs for duplicate detection
             $allObjects = Get-ADObject -Filter 'ServicePrincipalName -like "*"' -Server $domainDns `
-                -Properties ServicePrincipalName, SamAccountName -ErrorAction SilentlyContinue
+                -Properties ServicePrincipalName, SamAccountName -ErrorAction Stop
             foreach ($obj in $allObjects) {
                 foreach ($spn in $obj.ServicePrincipalName) {
                     $spnNorm = $spn.ToLower()
@@ -166,4 +166,3 @@ function Get-MATIKerberosConfig {
         DuplicateSPNs      = @($duplicateSPNs)
     }
 }
-

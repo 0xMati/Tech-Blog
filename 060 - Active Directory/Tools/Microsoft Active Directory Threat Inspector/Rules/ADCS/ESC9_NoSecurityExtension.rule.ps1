@@ -19,17 +19,17 @@
         if (-not $Data.CertificateServices.IsADCSDeployed) { return $findings }
 
         $dcProtocol = @($Data.ProtocolConfig.DCProtocolSettings | Where-Object {
-            $_.WinRMAccessible -and $null -ne $_.StrongCertificateBindingEnforcement
+            $_.WinRMAccessible
         })
-        $weakBindingDCs = @($dcProtocol | Where-Object { $_.StrongCertificateBindingEnforcement -lt 2 })
-        $fullBindingDCs = @($dcProtocol | Where-Object { $_.StrongCertificateBindingEnforcement -eq 2 })
+        $weakBindingDCs = @($dcProtocol | Where-Object { $_.EffectiveStrongCertificateBinding -eq 'Compatibility' })
+        $fullBindingDCs = @($dcProtocol | Where-Object { $_.EffectiveStrongCertificateBinding -eq 'FullEnforcement' })
         $esc6CAs = @($Data.CertificateServices.CASecurityInfo | Where-Object { $_.EditfSANEnabled -eq $true } | Select-Object -ExpandProperty CAName)
 
         $bindingSummary = 'Unknown'
         if ($weakBindingDCs.Count -gt 0) {
             $bindingSummary = "WeakOrCompatibility: $((@($weakBindingDCs | Select-Object -ExpandProperty DCName | Sort-Object -Unique) -join ', '))"
         }
-        elseif ($fullBindingDCs.Count -gt 0) {
+        elseif ($dcProtocol.Count -gt 0 -and $fullBindingDCs.Count -eq $dcProtocol.Count) {
             $bindingSummary = 'FullEnforcementObserved'
         }
 

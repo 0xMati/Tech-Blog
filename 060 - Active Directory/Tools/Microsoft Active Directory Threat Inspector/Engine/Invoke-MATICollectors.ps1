@@ -17,6 +17,12 @@ function Invoke-MATICollectors {
     )
 
     Write-Host "=== Phase 1: Data Collection ===" -ForegroundColor Cyan
+    if ($EngineContext.Rules.Count -eq 0) { throw 'Cannot collect data for an empty rule selection.' }
+    $EngineContext.CollectionIssues = [System.Collections.Generic.List[object]]::new()
+    $EngineContext.PartialCollectors = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $EngineContext.FailedCollectors.Clear()
+    $EngineContext.Config['_ForeignPrincipalCache'] = @{}
+    $EngineContext.Config.Remove('_ForeignPrincipalTargets')
 
     # ------------------------------------------------------------------
     # 1. Determine required collectors from rules dependencies
@@ -42,6 +48,8 @@ function Invoke-MATICollectors {
     foreach ($collectorName in $requiredCollectors) {
         if (-not $allCollectors.ContainsKey($collectorName)) {
             Write-Warning "  [!] Collector '$collectorName' referenced by rules but not found - skipping"
+            $null = $EngineContext.FailedCollectors.Add($collectorName)
+            $EngineContext.CollectionIssues.Add([pscustomobject]@{ Collector = $collectorName; Scope = 'Collector'; Message = 'Required collector not found' })
             continue
         }
 
@@ -51,13 +59,24 @@ function Invoke-MATICollectors {
 
         Write-Host "  [>] Running collector: $collectorName ..." -ForegroundColor DarkGray -NoNewline
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $collectorWarnings = @()
+        $collectorReadErrors = @()
+        $config['_CollectionDiagnostics'] = [System.Collections.Generic.List[object]]::new()
+        $config['_HandledCollectionErrors'] = [System.Collections.Generic.List[object]]::new()
 
         try {
             # Dot-source the collector file to ensure the function is available in scope
             . $filePath
             # Call the collector function, passing config for thresholds/properties
-            $data = & $funcName -Config $config
+            $data = & $funcName -Config $config -WarningVariable collectorWarnings -ErrorVariable collectorReadErrors -ErrorAction Stop
             $EngineContext.DataCache[$collectorName] = $data
+            foreach ($errorEntry in @($data.Errors | Where-Object { $_ })) {
+                $message = if ($errorEntry.Error) { [string]$errorEntry.Error } else { [string]$errorEntry }
+                $scope = (@($errorEntry.Domain, $errorEntry.DC, $errorEntry.HostName) | Where-Object { $_ }) -join '/'
+                $EngineContext.CollectionIssues.Add([pscustomobject]@{ Collector = $collectorName; Scope = $scope; Message = $message })
+                $null = $EngineContext.PartialCollectors.Add($collectorName)
+                Write-Warning "  [!] ${collectorName}: $scope - $message"
+            }
 
             $sw.Stop()
             $count = if ($data -is [array]) { $data.Count } elseif ($data) { 1 } else { 0 }
@@ -66,9 +85,45 @@ function Invoke-MATICollectors {
         catch {
             $sw.Stop()
             Write-Warning "  [!] Collector '$collectorName' failed: $($_.Exception.Message)"
+            $EngineContext.CollectionIssues.Add([pscustomobject]@{ Collector = $collectorName; Scope = 'Collector'; Message = $_.Exception.Message })
             $EngineContext.DataCache[$collectorName] = @()
             if ($EngineContext.ContainsKey('FailedCollectors')) {
                 $null = $EngineContext.FailedCollectors.Add($collectorName)
+            }
+        }
+        finally {
+            foreach ($diagnostic in $config['_CollectionDiagnostics']) {
+                $EngineContext.CollectionIssues.Add([pscustomobject]@{
+                    Collector = $collectorName
+                    Scope = if ($diagnostic.Datasets.Count) { $diagnostic.Datasets -join '; ' } else { 'Diagnostic' }
+                    Message = $diagnostic.Message
+                    Datasets = @($diagnostic.Datasets)
+                    AffectsCoverage = $diagnostic.AffectsCoverage
+                })
+                if ($diagnostic.AffectsCoverage) { $null = $EngineContext.PartialCollectors.Add($collectorName) }
+            }
+            foreach ($readError in $collectorReadErrors) {
+                $errorRecord = if ($readError -is [System.Management.Automation.RuntimeException]) { $readError.ErrorRecord } else { $readError }
+                $exception = if ($errorRecord -is [System.Exception]) { $errorRecord } else { $errorRecord.Exception }
+                $handled = @($config['_HandledCollectionErrors'] | Where-Object {
+                    [object]::ReferenceEquals($_, $errorRecord) -or
+                    [object]::ReferenceEquals($_.Exception.GetBaseException(), $exception.GetBaseException())
+                })
+                if ($handled.Count) { continue }
+                if ($exception.GetType().Name -in @('ADIdentityNotFoundException', 'IdentityNotMappedException', 'ItemNotFoundException') -or
+                    $errorRecord.FullyQualifiedErrorId -like 'NoMatchingEventsFound*') { continue }
+                $EngineContext.CollectionIssues.Add([pscustomobject]@{
+                    Collector = $collectorName
+                    Scope = [string]$errorRecord.TargetObject
+                    Message = $exception.Message
+                })
+                $null = $EngineContext.PartialCollectors.Add($collectorName)
+                Write-Warning "  [!] ${collectorName}: $($exception.Message)"
+            }
+            foreach ($warning in $collectorWarnings) {
+                if ([string]$warning -in $config['_CollectionDiagnostics'].Message) { continue }
+                $EngineContext.CollectionIssues.Add([pscustomobject]@{ Collector = $collectorName; Scope = 'Collector'; Message = [string]$warning })
+                $null = $EngineContext.PartialCollectors.Add($collectorName)
             }
         }
     }
@@ -111,6 +166,9 @@ function Invoke-MATICollectors {
             }
             elseif ($status -eq 'Reachable' -and -not $ldapOk) {
                 $connectivity = 'ICMP only (LDAP unreachable)'
+            }
+            elseif ($ldapOk) {
+                $connectivity = 'LDAP only (ICMP blocked)'
             }
             else {
                 $connectivity = 'Unreachable'

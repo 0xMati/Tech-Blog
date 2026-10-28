@@ -1,8 +1,8 @@
-# Tiering\Invoke-MATITieringPhase9.ps1
+# Tiering\Invoke-ADTTPhase9.ps1
 # Phase 9 — Health Check & Ongoing Ops
 # Automated compliance checks, break-glass verification, periodic review dashboard.
 
-function Invoke-MATITieringPhase9 {
+function Invoke-ADTTPhase9 {
     <#
     .SYNOPSIS
         Phase 9 — Tiering health check and operational readiness.

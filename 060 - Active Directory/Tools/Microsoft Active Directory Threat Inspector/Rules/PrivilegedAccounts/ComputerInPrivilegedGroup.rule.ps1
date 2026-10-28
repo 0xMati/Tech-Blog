@@ -8,6 +8,7 @@
     Description = "A computer object is a direct or nested member of a privileged administrative group. Machine accounts are frequently exposed through host compromise, delegation abuse, ticket theft, or certificate misuse. Placing them in privileged groups creates a direct path to Tier 0 compromise."
     Remediation = "Remove computer objects from privileged groups. Grant required rights through scoped delegation, gMSA design, or resource ACLs instead of broad admin group membership."
     Collectors  = @('PrivilegedAccounts')
+    CollectorDatasets = @{ PrivilegedAccounts = @('Groups/Recursive') }
     References  = @('https://learn.microsoft.com/en-us/security/privileged-access-workstations/privileged-access-access-model')
     Condition   = {
         param($Data, $Config)

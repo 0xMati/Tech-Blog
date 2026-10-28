@@ -1,6 +1,104 @@
 ﻿# Reporters\Export-MATIHtml.ps1
 # MATIv2 - HTML reporter using template-based generation.
 
+function Get-MATIAssessmentCoverageHtml {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$EngineContext)
+
+    $score = $EngineContext.Score
+    $encode = { param($value) [System.Net.WebUtility]::HtmlEncode([string]$value) }
+    $issues = @($EngineContext.CollectionIssues)
+    $ruleResults = @($EngineContext.RuleResults)
+    $collectorGroups = @($issues | Group-Object -CaseSensitive -Property Collector | Sort-Object Name)
+    $uniqueIssueCount = @($issues | Group-Object -CaseSensitive -Property Collector, Scope, Message).Count
+    $metrics = [ordered]@{
+        'Selected' = $score.SelectedRuleCount
+        'Executed' = $score.EvaluatedRuleCount
+        'Fully assessed' = $score.FullyAssessedRuleCount
+        'Partial' = @($ruleResults | Where-Object Status -eq 'Partial').Count
+        'Not assessed' = @($ruleResults | Where-Object Status -eq 'NotAssessed').Count
+        'Execution errors' = @($ruleResults | Where-Object Status -eq 'Error').Count
+    }
+
+    $html = "<section id=`"coverage`" class=`"card assessment-coverage`"><h2>Assessment coverage: $(& $encode $score.AssessmentStatus)</h2>"
+    $html += '<div class="coverage-metrics">'
+    foreach ($metric in $metrics.GetEnumerator()) {
+        $html += "<div class=`"coverage-metric`"><strong>$(& $encode $metric.Value)</strong><span>$(& $encode $metric.Key)</span></div>"
+    }
+    $html += '</div>'
+    $gradeNotice = if ($score.FilteredAssessment) { 'Selected scope only - no global grade.' }
+        elseif ($score.GradeIsProvisional) { 'Provisional grade - partial assessment.' }
+        elseif ($score.PartialAssessment) { 'No rules evaluated - grade unavailable.' }
+    if ($gradeNotice) {
+        $html += "<p class=`"coverage-note coverage-grade-note`">$gradeNotice</p>"
+    }
+    if ($EngineContext.WinPSCompat) {
+        $html += '<p class="coverage-warning">Windows PowerShell compatibility mode may limit collection.</p>'
+    }
+    $scope = $EngineContext.AssessmentScope
+    $exclusions = $EngineContext.Config.Exclusions
+    $filters = [ordered]@{
+        'Selected categories' = @($scope.CategoriesOnly)
+        'Selected rules' = @($scope.RulesOnly)
+        'Disabled categories' = @($scope.DisabledCategories) + @($exclusions.DisabledCategories)
+        'Disabled rules' = @($scope.DisabledRules) + @($exclusions.DisabledRules)
+        'Excluded distinguished names' = @($exclusions.ExcludedDNs)
+        'Excluded account names' = @($exclusions.ExcludedSamAccountNames)
+    }
+    $activeFilters = @(
+        foreach ($filter in $filters.GetEnumerator()) {
+            $values = @($filter.Value | Where-Object { $_ } | Sort-Object -Unique)
+            if ($values.Count) { [pscustomobject]@{ Label = $filter.Key; Values = $values } }
+        }
+    )
+    if ($activeFilters.Count) {
+        $html += '<details class="coverage-details"><summary>Selection and exclusions</summary><ul class="coverage-filter-list">'
+        foreach ($filter in $activeFilters) {
+            $html += "<li><strong>$(& $encode $filter.Label):</strong> $(& $encode ($filter.Values -join ', '))</li>"
+        }
+        $html += '</ul></details>'
+    }
+    else {
+        $html += '<p class="coverage-note">Scope: all enabled rules. No configured exclusions.</p>'
+    }
+
+    $html += '<h3>Collection issues</h3>'
+    if ($issues.Count) {
+        $html += "<p class=`"coverage-note`">$($collectorGroups.Count) collectors with reported issues; $($issues.Count) raw records, $uniqueIssueCount distinct scoped messages. Repeated records are grouped, not separate failures.</p>"
+        $diagnosticCount = @($issues | Where-Object AffectsCoverage -eq $false).Count
+        if ($diagnosticCount) {
+            $html += "<p class=`"coverage-note`">$diagnosticCount records describe recovered reads or diagnostic guidance, not missing data. Only affected datasets limit rule coverage.</p>"
+        }
+        foreach ($collectorGroup in $collectorGroups) {
+            $messages = @($collectorGroup.Group | Group-Object -CaseSensitive -Property Scope, Message)
+            $html += "<details class=`"coverage-details coverage-collector`"><summary>$(& $encode $collectorGroup.Name) <span class=`"coverage-count`">$($collectorGroup.Count) records / $($messages.Count) distinct messages</span></summary><ul class=`"coverage-issues`">"
+            foreach ($messageGroup in $messages) {
+                $issue = $messageGroup.Group[0]
+                $html += "<li class=`"coverage-issue`"><div><strong>Scope: $(& $encode $issue.Scope)</strong> <span class=`"coverage-count`">$($messageGroup.Count) occurrences</span></div><p>$(& $encode $issue.Message)</p></li>"
+            }
+            $html += '</ul></details>'
+        }
+    }
+    else {
+        $html += '<p class="coverage-note">No collection issues recorded.</p>'
+    }
+
+    $affectedGroups = @($ruleResults | Where-Object Status -ne 'Evaluated' | Group-Object -CaseSensitive -Property Status, Reason)
+    if ($affectedGroups.Count) {
+        $html += '<h3>Rules with limited coverage</h3><p class="coverage-note">Grouped by status and reason. Partial rules may still report known findings; they are not execution errors.</p>'
+        foreach ($group in $affectedGroups) {
+            $result = $group.Group[0]
+            $html += "<details class=`"coverage-details coverage-rule-group`"><summary>$(& $encode $result.Status): $(& $encode $result.Reason) <span class=`"coverage-count`">$($group.Count) rules</span></summary><ul class=`"coverage-rule-list`">"
+            foreach ($rule in $group.Group) {
+                $html += "<li><code>$(& $encode $rule.Id)</code></li>"
+            }
+            $html += '</ul></details>'
+        }
+    }
+    $html += '</section>'
+    return $html
+}
+
 function Export-MATIHtml {
     <#
     .SYNOPSIS
@@ -25,8 +123,7 @@ function Export-MATIHtml {
     # ------------------------------------------------------------------
     $templatePath = Join-Path $EngineContext.RootPath 'Reporters\Templates\report.html.tpl'
     if (-not (Test-Path $templatePath)) {
-        Write-Warning "HTML template not found at $templatePath - generating minimal report."
-        $template = '<html><body><h1>MATI Report</h1><p>Template not found.</p>{{CONTENT}}</body></html>'
+        throw "HTML template not found: $templatePath"
     } else {
         $template = Get-Content -Path $templatePath -Raw -Encoding UTF8
     }
@@ -725,6 +822,7 @@ function Export-MATIHtml {
             $protoBlock += "<div class=`"chart-legend`">"
             $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:#ffc107`"></span>NTLMv2 $($ntlm.NTLMv2Count)</span>"
             $protoBlock += "<span class=`"legend-item`"><span class=`"legend-dot`" style=`"background:$v1Color`"></span>NTLMv1 $($ntlm.NTLMv1Count)</span>"
+            $protoBlock += "<span class=`"legend-item`">Unknown version: $($ntlm.UnknownCount) ($($ntlm.UnknownPercent)%)</span>"
             $protoBlock += "</div></div>`n"
             $protoBlock += "</div>`n"
 
@@ -791,21 +889,22 @@ function Export-MATIHtml {
     # ------------------------------------------------------------------
     # Determine grade
     # ------------------------------------------------------------------
-    $grade = 'E'
-    $grades = $config.Scoring.Grades
-    foreach ($g in ($grades.GetEnumerator() | Sort-Object Value -Descending)) {
-        if ($score.Score -ge $g.Value) {
-            $grade = $g.Key
-            break
-        }
-    }
+    $grade = $score.Grade
 
     $gradeClass = switch ($grade) {
         'A' { 'grade-a' }
         'B' { 'grade-b' }
         'C' { 'grade-c' }
         'D' { 'grade-d' }
-        default { 'grade-e' }
+        'E' { 'grade-e' }
+        default { 'grade-na' }
+    }
+    $coverage = Get-MATIAssessmentCoverageHtml -EngineContext $EngineContext
+    $snapshotCollectors = @('DomainInfo', 'UserAccounts', 'ComputerAccounts', 'PrivilegedAccounts', 'SecurityConfig', 'TrustInfo', 'GPOInfo', 'PasswordPolicy', 'DCInfo')
+    if (@($snapshotCollectors | Where-Object {
+        -not $dataCache.ContainsKey($_) -or $EngineContext.FailedCollectors.Contains($_) -or $EngineContext.PartialCollectors.Contains($_)
+    }).Count -gt 0) {
+        $environmentSummary = '<section class="card"><h2>Environment Snapshot</h2><p>Unavailable: snapshot datasets were not all collected successfully. Missing data must not be interpreted as zero or compliant.</p></section>'
     }
 
     # ------------------------------------------------------------------
@@ -822,6 +921,8 @@ function Export-MATIHtml {
     $html = $html.Replace('{{COMPANY_NAME}}',     [string]$companyName)
     $html = $html.Replace('{{DATE}}',             [string]$dateStr)
     $html = $html.Replace('{{SCORE}}',            [string]$score.Score)
+    $html = $html.Replace('{{BASE_SCORE}}',       [string]$score.BaseScore)
+    $html = $html.Replace('{{ASSESSMENT_COVERAGE}}', $coverage)
     $html = $html.Replace('{{GRADE}}',            [string]$grade)
     $html = $html.Replace('{{GRADE_CLASS}}',      [string]$gradeClass)
     $html = $html.Replace('{{TOTAL_FINDINGS}}',   [string]$findings.Count)
@@ -830,7 +931,7 @@ function Export-MATIHtml {
     $html = $html.Replace('{{MEDIUM_COUNT}}',     [string]$severityCounts.Medium)
     $html = $html.Replace('{{LOW_COUNT}}',        [string]$severityCounts.Low)
     $html = $html.Replace('{{INFO_COUNT}}',       [string]$severityCounts.Informational)
-    $html = $html.Replace('{{RULES_EVALUATED}}',  [string]$EngineContext.Rules.Count)
+    $html = $html.Replace('{{RULES_EVALUATED}}',  [string]$score.EvaluatedRuleCount)
     $html = $html.Replace('{{SEVERITY_BAR}}',     [string]$severityBar)
     $html = $html.Replace('{{ENVIRONMENT_SUMMARY}}', [string]$environmentSummary)
     $html = $html.Replace('{{DOMAIN_POLICIES}}', [string]$domainPoliciesBlock)

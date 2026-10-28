@@ -1,9 +1,9 @@
-# Tiering\Invoke-MATITieringPhase7.ps1
+# Tiering\Invoke-ADTTPhase7.ps1
 # Phase 7 — Implement Tier 0 Object Protection
 # Audits ACLs on critical Tier 0 AD objects, Tier 0-linked GPO ownership and
 # permissions, krbtgt password age, and service account exposure.
 
-function Invoke-MATITieringPhase7 {
+function Invoke-ADTTPhase7 {
     <#
     .SYNOPSIS
         Phase 7 — Audit Tier 0 AD object protection.
@@ -543,10 +543,10 @@ function Invoke-MATITieringPhase7 {
     Write-Host ""
     Write-Host "  Generating Phase 7 report..." -ForegroundColor Yellow
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase7-$timestamp.html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Phase7-$timestamp.html"
     Export-TieringPhase7Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase7-$timestamp.json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Phase7-$timestamp.json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 

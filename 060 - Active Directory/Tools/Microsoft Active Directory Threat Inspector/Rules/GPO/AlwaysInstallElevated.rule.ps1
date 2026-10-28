@@ -5,7 +5,7 @@
     Id          = 'MATI-GPO-014'
     Title       = 'AlwaysInstallElevated is enabled via GPO'
     Severity    = 'Critical'
-    Description = "The AlwaysInstallElevated policy is enabled via GPO, which allows any user to install MSI packages with SYSTEM-level privileges. This is a well-known privilege escalation vector that enables any low-privileged user to gain full system control by crafting a malicious MSI."
+    Description = "The machine-side AlwaysInstallElevated policy is enabled in linked GPO configuration. Privilege escalation requires both machine and user policy to be enabled. Verify user policy, filtering and client RSoP before concluding exploitability."
     Remediation = "Immediately disable AlwaysInstallElevated by removing or setting to 0 the registry value HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer\AlwaysInstallElevated in all GPOs. Also check the HKCU path."
     Collectors  = @('GPOSettings')
     References  = @('https://learn.microsoft.com/en-us/windows/win32/msi/alwaysinstallelevated')
@@ -33,6 +33,8 @@
                             GPO      = $match.GPO
                             LinkedTo = $match.LinkedTo
                             Key      = $match.Key
+                            AssessmentBasis = $domainData.AssessmentBasis
+                            UserPolicyVerified = 'False'
                         }
                     }
                 }

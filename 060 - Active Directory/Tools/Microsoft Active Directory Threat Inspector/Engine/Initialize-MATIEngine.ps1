@@ -81,16 +81,31 @@ function Initialize-MATIEngine {
         foreach ($ruleFile in (Get-ChildItem -Path $categoryDir.FullName -Filter '*.rule.ps1')) {
             $ruleDef = & $ruleFile.FullName  # Execute to get the hashtable definition
 
-            if (-not $ruleDef -or -not $ruleDef.Id) {
-                Write-Warning "  [!] Invalid rule file (no Id): $($ruleFile.Name)"
-                continue
+            if ($ruleDef -isnot [hashtable] -or -not $ruleDef.Id) {
+                throw "Invalid rule definition: $($ruleFile.FullName)"
             }
 
             # Schema validation — warn on missing required keys
             $requiredKeys = @('Id', 'Title', 'Severity', 'Condition', 'Collectors')
             $missingKeys  = $requiredKeys | Where-Object { -not $ruleDef.ContainsKey($_) -or $null -eq $ruleDef[$_] }
             if ($missingKeys) {
-                Write-Warning "  [!] Rule $($ruleDef.Id) ($($ruleFile.Name)) missing keys: $($missingKeys -join ', ')"
+                throw "Rule $($ruleDef.Id) ($($ruleFile.Name)) missing keys: $($missingKeys -join ', ')"
+            }
+            if ($ruleDef.Condition -isnot [scriptblock]) { throw "Rule $($ruleDef.Id) has no executable Condition." }
+            if ($ruleDef.Id -in $rules.Id) { throw "Duplicate rule ID: $($ruleDef.Id)" }
+            foreach ($dependency in $ruleDef.Collectors) {
+                if (-not $collectors.ContainsKey($dependency)) { throw "Rule $($ruleDef.Id) requires missing collector '$dependency'." }
+            }
+            if ($ruleDef.ContainsKey('CollectorDatasets')) {
+                if ($ruleDef.CollectorDatasets -isnot [hashtable]) { throw "Rule $($ruleDef.Id) has invalid CollectorDatasets." }
+                foreach ($dependency in $ruleDef.CollectorDatasets.Keys) {
+                    if ($dependency -notin $ruleDef.Collectors) { throw "Rule $($ruleDef.Id) declares datasets for an unused collector '$dependency'." }
+                    $requirement = $ruleDef.CollectorDatasets[$dependency]
+                    if ($requirement -isnot [scriptblock] -and
+                        (@($requirement).Count -eq 0 -or @($requirement | Where-Object { $_ -isnot [string] -or [string]::IsNullOrWhiteSpace($_) }).Count)) {
+                        throw "Rule $($ruleDef.Id) has invalid dataset requirements for '$dependency'."
+                    }
+                }
             }
 
             if ($ruleDef.Id -in $disabledRules) {
@@ -149,8 +164,7 @@ function Initialize-MATIEngine {
     if ($winPSCompat) {
         Write-Host "" 
         Write-Host "  [!] NOTE: ActiveDirectory module loaded via Windows PowerShell compatibility (WinPSCompatSession)." -ForegroundColor Yellow
-        Write-Host "      Under PowerShell 7 (required by MATI), the AD module always loads through this layer," -ForegroundColor Yellow
-        Write-Host "      so AD objects are deserialized. MATI hardens the critical paths for this mode, but a few" -ForegroundColor Yellow
+        Write-Host "      This installation returns deserialized AD objects. MATI hardens critical paths, but some" -ForegroundColor Yellow
         Write-Host "      checks may be degraded or incomplete depending on the environment." -ForegroundColor Yellow
         Write-Host "      Run MATI on a domain controller or domain-joined admin host with RSAT for the best results." -ForegroundColor Yellow
         Write-Host ""
@@ -208,8 +222,7 @@ function Initialize-MATIEngine {
     # ------------------------------------------------------------------
     $timestamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
     $outputBase = Join-Path $RootPath 'Outputs'
-    $modeFolder = if ($global:MATIMode -eq 'TieringModel') { 'TieringModel' } else { 'ThreatDetection' }
-    $outputRoot = Join-Path $outputBase "$modeFolder\Output_$timestamp"
+    $outputRoot = Join-Path $outputBase "ThreatDetection\Output_$timestamp"
     $csvDir     = Join-Path $outputRoot 'CSV'
     $htmlDir    = Join-Path $outputRoot 'HTML'
     $jsonDir    = Join-Path $outputRoot 'JSON'
@@ -236,6 +249,10 @@ function Initialize-MATIEngine {
         JsonDir          = $jsonDir
         DataCache        = @{}          # Populated by Invoke-MATICollectors
         FailedCollectors = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)  # Collectors that threw
+        PartialCollectors = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        CollectionIssues = [System.Collections.Generic.List[object]]::new()
+        RuleResults      = [System.Collections.Generic.List[object]]::new()
+        AssessmentScope  = @{}
         NotAssessedRules = [System.Collections.Generic.List[object]]::new()   # Rules skipped due to failed collectors
         WinPSCompat      = $winPSCompat
         Findings         = [System.Collections.Generic.List[object]]::new()

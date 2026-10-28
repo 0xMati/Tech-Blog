@@ -1,8 +1,8 @@
-# Tiering\Invoke-MATITieringPhase5.ps1
+# Tiering\Invoke-ADTTPhase5.ps1
 # Phase 5 — Create PAW Hardening GPOs
 # Creates and links hardening GPOs for Tier 0, Tier 1, and Tier 2 PAWs.
 
-function Invoke-MATITieringPhase5 {
+function Invoke-ADTTPhase5 {
     <#
     .SYNOPSIS
         Phase 5 — Interactive creation of PAW hardening GPOs.
@@ -639,10 +639,10 @@ function Invoke-MATITieringPhase5 {
     # ================================================================
     Write-Host ""
     Write-Host "  Generating Phase 5 report..." -ForegroundColor Yellow
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase5-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Phase5-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     Export-TieringPhase5Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase5-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Phase5-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 

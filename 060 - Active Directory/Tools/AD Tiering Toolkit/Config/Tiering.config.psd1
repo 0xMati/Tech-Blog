@@ -1,5 +1,5 @@
 # Config\Tiering.config.psd1
-# MATI - Tiering Model Implementation Configuration
+# ADTT - Tiering Model Implementation Configuration
 # Customize naming conventions, OU structure, and deployment options.
 
 @{

@@ -7,11 +7,11 @@
     Id          = 'MATI-KERB-012'
     Title       = 'KB5073381 RC4 disablement readiness (Kdcsvc 201-209)'
     Severity    = 'Medium'
-    Description = "KB5073381 (January 2026, permanent July 2026) introduces Kdcsvc events 201-209 in the System log that fire when the KDC would have used implicit RC4. Pattern B (201/203/206/208) means a client requested RC4-only; Pattern D (202/204/207/209) means the target service has no AES key (the stale-key trap); event 205 means a DC has an explicit insecure DefaultDomainSupportedEncTypes. Audit-phase events (201/202/206/207) are warnings; enforce-phase events (203/204/208/209) are blocking errors — those accounts are already failing or will fail once enforcement lands. These events are the definitive readiness signal before flipping to AES-only enforcement."
-    Remediation = "For Pattern D (service no AES key), set msDS-SupportedEncryptionTypes = 0x18 on the named service account and rotate its secret so an AES key is materialized — this is the highest priority because the account breaks at enforcement. For Pattern B (client RC4-only), update the client/account to advertise AES. For event 205, fix DefaultDomainSupportedEncTypes on the named DC (see MATI-HARD-047). Re-run after each fix until the audit-phase events stop firing, then enforcement is safe."
+    Description = "KB5073381 introduces Kdcsvc events 201-209 on updated DCs, with rollout phases in January, April and July 2026. Pattern B (201/203/206/208) means a client requested RC4-only; Pattern D (202/204/207/209) means the target service has no AES key (the stale-key trap); event 205 means a DC has an explicit insecure DefaultDomainSupportedEncTypes. Audit-phase events are warnings; enforce-phase events indicate blocking failures. Missing events alone do not establish readiness: verify DC update levels, audit coverage and representative workloads."
+    Remediation = "For Pattern D, verify AES support and coordinate service-account secret rotation so AES keys are available; use explicit msDS-SupportedEncryptionTypes = 0x18 where appropriate after testing. For Pattern B, update the client/account to advertise AES. For event 205, review DefaultDomainSupportedEncTypes (MATI-HARD-047). Check patch-dependent defaults and explicit overrides on every DC. Re-test representative workloads with complete logging before enforcement; absence of events in a short audit window is not a safety guarantee."
     Collectors  = @('LegacyProtocolAudit')
     References  = @(
-        'https://support.microsoft.com/en-us/topic/kb5073381'
+        'https://support.microsoft.com/help/5073381'
         'https://learn.microsoft.com/en-us/windows-server/security/kerberos/preventing-kerberos-change-password-that-uses-rc4-secret-keys'
     )
     Condition   = {

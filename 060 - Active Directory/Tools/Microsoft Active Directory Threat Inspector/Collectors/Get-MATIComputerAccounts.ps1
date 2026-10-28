@@ -27,7 +27,7 @@ function Get-MATIComputerAccounts {
                     }
                 }
             } catch {
-                Write-Verbose "    Could not pre-load Domain Controller DNs for ${domainDns}: $($_.Exception.Message)"
+                Write-Warning "    Could not pre-load Domain Controller DNs for ${domainDns}: $($_.Exception.Message)"
             }
 
             $domainComputers = Get-ADComputer -Filter * -Server $domainDns -Properties $compProps -ErrorAction Stop
@@ -40,6 +40,7 @@ function Get-MATIComputerAccounts {
                     OperatingSystem       = $comp.OperatingSystem
                     OperatingSystemVersion = $comp.OperatingSystemVersion
                     DNSHostName           = $comp.DNSHostName
+                    ServicePrincipalName  = @($comp.ServicePrincipalName)
                     IPv4Address           = $comp.IPv4Address
                     LastLogonTimestamp     = if ($comp.LastLogonTimestamp) {
                         [DateTime]::FromFileTime($comp.LastLogonTimestamp)

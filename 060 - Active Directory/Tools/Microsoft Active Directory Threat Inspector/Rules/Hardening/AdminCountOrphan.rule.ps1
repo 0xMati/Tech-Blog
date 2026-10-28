@@ -3,10 +3,10 @@
 
 @{
     Id          = 'MATI-HARD-024'
-    Title       = 'AdminCount orphan — account with stale elevated flag'
+    Title       = 'AdminCount=1 without an in-forest privileged membership'
     Severity    = 'Medium'
-    Description = "An enabled account has AdminCount=1 set but is no longer a member of any privileged group. This means the account still has SDProp-hardened ACLs (preventing inheritance) but no longer needs them, creating a security blind spot."
-    Remediation = "For each orphan: clear the AdminCount attribute (set to 0 or null), then re-enable ACL inheritance on the account. Investigate why the account was previously privileged."
+    Description = "An enabled account has AdminCount=1 but no privileged membership path was found inside the assessed forest. Review whether its protected status is still needed. Membership paths through external forests are outside this assessment."
+    Remediation = "Verify all intended privileged memberships, including any external paths, before clearing AdminCount or restoring ACL inheritance. Do not remove protection solely on the basis of this finding."
     Collectors  = @('SecurityConfig')
     References  = @('https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/appendix-c--protected-accounts-and-groups-in-active-directory')
     Condition   = {
@@ -20,7 +20,8 @@
                 Details  = @{
                     AccountName = $acct.SamAccountName
                     AdminCount  = 1
-                    InPrivGroup = 'No'
+                    InPrivGroup = 'No in-forest path found'
+                    MembershipScope = 'TargetForest'
                 }
             }
         }

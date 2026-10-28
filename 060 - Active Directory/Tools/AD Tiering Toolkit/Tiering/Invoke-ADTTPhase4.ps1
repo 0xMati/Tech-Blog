@@ -1,9 +1,9 @@
-# Tiering\Invoke-MATITieringPhase4.ps1
+# Tiering\Invoke-ADTTPhase4.ps1
 # Phase 4 — Create Auth Policies & Silos
 # Creates T0 Authentication Policy, Computer Authentication Policy, and Authentication Silo in audit-only mode.
 # Optionally assigns T0 accounts and computers to the silo.
 
-function Invoke-MATITieringPhase4 {
+function Invoke-ADTTPhase4 {
     <#
     .SYNOPSIS
         Phase 4 — Interactive creation of Authentication Policies and Silos.
@@ -191,7 +191,7 @@ function Invoke-MATITieringPhase4 {
     Write-Host "  Step 1/4 — Audit-Only Deployment" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "    This phase now deploys Authentication Policies and Silos in AUDIT mode only." -ForegroundColor White
-    Write-Host "    No enforce flag will be set by MATI during Phase 4." -ForegroundColor DarkGray
+    Write-Host "    No enforce flag will be set by ADTT during Phase 4." -ForegroundColor DarkGray
     Write-Host "    After you analyze Event ID 105/106 and validate the scope, you can move to enforce in a later controlled change." -ForegroundColor DarkGray
     if (-not $results.ClaimsReady) {
         Write-Host "    [WARN] KDC claims/compound auth/armoring is not fully in place. Do not move to enforce until this is corrected." -ForegroundColor Yellow
@@ -377,10 +377,10 @@ function Invoke-MATITieringPhase4 {
     # ================================================================
     Write-Host ""
     Write-Host "  Generating Phase 4 report..." -ForegroundColor Yellow
-    $htmlPath = Join-Path $OutputDir "MATI-Tiering-Phase4-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+    $htmlPath = Join-Path $OutputDir "ADTT-Tiering-Phase4-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     Export-TieringPhase4Html -Results $results -DomainDN $domainDN -TieringConfig $TieringConfig -OutputPath $htmlPath
 
-    $jsonPath = Join-Path $OutputDir "MATI-Tiering-Phase4-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $jsonPath = Join-Path $OutputDir "ADTT-Tiering-Phase4-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     $results | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "    JSON : $jsonPath" -ForegroundColor DarkGray
 
