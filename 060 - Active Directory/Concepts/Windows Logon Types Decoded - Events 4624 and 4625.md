@@ -216,7 +216,7 @@ The raw XML `FailureReason` value can look like `%%2307`. This is a parameter-me
 
 Preserve the provider, event ID/version, raw FailureReason, Status and SubStatus when forwarding events. A collector without the source provider's message resources may display the identifier instead of its localized description. Do not use a hand-maintained message-text table as the sole diagnosis when the structured status fields are available.
 
-Use [Troubleshooting Kerberos Authentication](../Troubleshoot/Troubleshooting%20Kerberos%20Authentication%20-%20SPNs,%20Tickets,%20Error%20Codes%20and%20NTLM%20Fallback.md) for protocol errors and [Auditing and Reducing NTLM](../Hardening/Auditing%20and%20Reducing%20NTLM%20-%20Versions,%20Dependencies,%20Exceptions%20and%20Enforcement.md) when the evidence identifies NTLM.
+Use [Troubleshooting Kerberos Authentication](../Troubleshoot/Troubleshooting%20Kerberos%20Authentication%20-%20SPNs,%20Tickets,%20Error%20Codes%20and%20NTLM%20Fallback.md) for protocol errors and [Auditing and Reducing NTLM](../Hardening/Auditing%20and%20Reducing%20NTLM/Auditing%20and%20Reducing%20NTLM%20-%20Versions,%20Dependencies,%20Exceptions%20and%20Enforcement.md) when the evidence identifies NTLM.
 
 ## 13. Query and normalize the events
 

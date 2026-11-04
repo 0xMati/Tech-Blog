@@ -271,7 +271,7 @@ Do not grant the application account **Act as part of the operating system** or 
 
 | Finding | Next guide |
 |---|---|
-| NTLM is actually selected or explicitly requested | [Auditing and Reducing NTLM](../Hardening/Auditing%20and%20Reducing%20NTLM%20-%20Versions,%20Dependencies,%20Exceptions%20and%20Enforcement.md) |
+| NTLM is actually selected or explicitly requested | [Auditing and Reducing NTLM](../Hardening/Auditing%20and%20Reducing%20NTLM/Auditing%20and%20Reducing%20NTLM%20-%20Versions,%20Dependencies,%20Exceptions%20and%20Enforcement.md) |
 | First hop works, delegated second hop fails | [Kerberos Delegation Explained](../Concepts/Kerberos%20Delegation%20Explained%20-%20KCD,%20Protocol%20Transition%20and%20RBCD.md) |
 | Cross-realm referral, selective authentication or trust routing fails | [Troubleshooting Active Directory Trusts](Troubleshooting%20Active%20Directory%20Trusts%20-%20DNS,%20Firewall,%20Time,%20Secure%20Channels%20and%20Name%20Suffix%20Routing.md) |
 | DC-to-DC replication authentication fails | [Troubleshooting Active Directory Replication](Troubleshooting%20Active%20Directory%20Replication%20-%20repadmin,%20dcdiag,%20DNS,%20RPC,%20Time%20and%20Kerberos.md) |
