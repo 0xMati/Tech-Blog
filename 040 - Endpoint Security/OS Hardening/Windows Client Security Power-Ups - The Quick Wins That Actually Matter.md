@@ -213,6 +213,8 @@ Confirm-SecureBootUEFI
 Get-Tpm | Select-Object TpmPresent, TpmReady, TpmEnabled, TpmActivated
 ```
 
+**Enabled is not the same as updated.** The 2011-to-2023 Secure Boot certificate transition needs its own verification. See [Secure Boot Certificate Renewal on Windows Server](../../110%20-%20Platform/Windows%20Server/Hardening/Secure%20Boot%20Certificate%20Renewal%20-%20Audit,%20Deployment%20and%20Validation.md) for the trust model, registry values and events; use the [Windows client playbook](https://aka.ms/SecureBootPlaybook) for client deployment rather than assuming the server rollout applies unchanged.
+
 ---
 
 ## Level 2 — Test first
