@@ -55,15 +55,88 @@ Server 2025-certified hardware may already contain the new certificates. Install
 
 **Start with an inventory, not a deployment GPO.** These checks do not change firmware or restart machines.
 
-### A. For a fleet: use Microsoft's collector
+### A. For a fleet: choose a collector
 
-Get Microsoft's [Sample Secure Boot Inventory Data Collection script](https://support.microsoft.com/topic/d02971d2-d4b5-42c9-b58a-8527f0ffa30b) and save the reviewed sample as **`Detect-SecureBootCertUpdateStatus.ps1`**.
+**Our remote version:** [Invoke-SecureBootAudit.ps1](./Invoke-SecureBootAudit.ps1) uses the inventory checks described by Microsoft, adds **WinRM collection from a CSV**, and generates **HTML, CSV and JSON**. It is an independent community implementation, not a Microsoft-supported tool.
 
-It collects Secure Boot state, deployment status/errors, events, hardware/firmware/OS and servicing-task details. It **does not deploy certificates**.
+Edit [Computers.example.csv](./Computers.example.csv), using UTF-8 and **semicolons**:
 
-Run it on each endpoint using Configuration Manager, a GPO-deployed scheduled task or existing WinRM orchestration. **It does not discover the fleet for you.** Use an authorized identity with the required read permissions; test the sample first.
+```csv
+ComputerName;Description
+server01.example.test;Physical server pilot
+server02.example.test;Virtual machine pilot
+```
 
-To save the result to an approved share:
+From this directory, in **PowerShell 7.2+ on Windows**:
+
+```powershell
+.\Invoke-SecureBootAudit.ps1 -CsvPath .\Computers.example.csv -OpenReport
+```
+
+Every listed target uses **existing WinRM**; remote code supports Windows PowerShell **5.1**. The account needs endpoint access and permission to read Secure Boot, registry, CIM, System events and task state; Domain Admin is not required. No RSAT, AD discovery or Internet download is needed.
+
+Open **`SecureBootAudit.html`**. Start with collection errors, then Windows status and latest events. Unreachable machines remain visible; collection continues on the others.
+
+**`UpdatedReported` means Windows evidence agrees, not "firmware certified".** Still validate boot, applications and recovery. Missing data stays unknown.
+
+<details>
+<summary>Our collector: parameters, outputs and interpretation</summary>
+
+| Parameter | Meaning |
+|---|---|
+| `CsvPath` | Required semicolon CSV; `ComputerName` required, `Description` optional; extra columns ignored |
+| `Credential` | Optional `Get-Credential` identity, never written to reports |
+| `UseSSL` | Existing WinRM HTTPS listener, TCP **5986**, with normal certificate validation |
+| `TimeoutSeconds` | Per-machine deadline including connection and collection; default **120**, range 1-3600 |
+| `MaxEvents` | Newest matching retained events per machine; default **50**, range 1-10000 |
+| `OutputDir` | New local output folder; default unique folder under `Outputs`; existing folders rejected |
+| `OpenReport` | Open HTML after saving all files, including partial reports |
+
+Default transport is WinRM HTTP **TCP 5985**, with normal authentication/message encryption. DNS/Kerberos connectivity is also needed in a domain. Use FQDNs; do not weaken WinRM with TrustedHosts/AllowUnencrypted or certificate bypasses. Event/CIM reads run **inside WinRM**, not direct Event Log RPC/DCOM from the reporting computer. `localhost` also uses WinRM.
+
+Blank/invalid/duplicate computer names are rejected **before any connection**. Targets are processed sequentially; the timeout applies per computer, not to the whole CSV. Job cancellation/cleanup can take a few additional seconds.
+
+The inventory includes Secure Boot state/source, Windows deployment status/errors, deployment registry controls, OS/build/architecture/last boot, model/firmware/baseboard, device attributes, task state and System events. WinCS is queried only if its tool is installed; raw output/exit code are kept, without guessing "Applied" from localized text.
+
+**Events are not a 24-hour query.** The collector reads up to `MaxEvents` of the newest matching **System / Microsoft-Windows-TPM-WMI** records: **1795, 1796, 1800-1803, 1808**. An extra record detects truncation. Counts describe only collected records; older history may be unavailable. Named XML fields and raw XML are retained.
+
+| File | Contents |
+|---|---|
+| `SecureBootAudit.html` | Self-contained, searchable offline report; expandable per-machine evidence and notes |
+| `Computers.csv` | One row per requested machine, including failures, status and inventory |
+| `Events.csv` | Collected events, UTC timestamps, named fields and raw XML |
+| `Issues.csv` | Collection errors, missing data, fallbacks and event-limit notices |
+| `SecureBootAudit.json` | Complete run/transport metadata, targets, inventory, events and issues |
+
+All CSV exports use **`;`**, UTF-8 BOM and spreadsheet-formula protection; JSON preserves original values. Keep exports beside the HTML. Reports contain infrastructure identifiers: use controlled storage. Generated `Outputs` are ignored by Git.
+
+| Assessment | Interpretation |
+|---|---|
+| `UpdatedReported` | Secure Boot enabled, Windows `Updated`, latest collected event **1808**, no collection errors/nonzero servicing error; still not attestation |
+| `ReviewRequired` | Servicing error, latest failure/block, or `Updated` without matching completion evidence |
+| `RestartIndicated` | Latest relevant event **1800**; arrange an approved restart, then recheck |
+| `InProgress` / `NotStarted` | Windows deployment state, not completion |
+| `Disabled` | Secure Boot disabled; enablement is a separate change |
+| `Unknown` / `CollectionFailed` | Missing/unreadable/unsupported evidence or failed/timed-out remote collection |
+
+Old 1801 followed by newer 1808 does not automatically remain a failure. Conversely, an older 1808 does not hide a newer firmware error. Vendor-preprovisioned systems without Windows history require separate certificate/boot-chain evidence. This collector does **not** enumerate or attest the entire PK/KEK/DB/DBX trust store.
+
+**Exit codes concern collection, not certificate compliance:** target/read errors save partial reports and exit **1**; findings, missing history or a deployment still pending can exit **0** without being updated. Invalid input, report-write and report-open failures remain terminating errors. Dot-sourced `Invoke-SecureBootAuditRun` callers inspect `ErrorCount` and `Status`.
+
+[Collector tests](./Tests/Invoke-SecureBootAudit.Tests.ps1) use synthetic XML and mocked Windows/WinRM reads; no production targets. They cover CSV scope, deadlines, failures, event ordering, evidence interpretation and safe exports.
+
+</details>
+
+<details>
+<summary>Microsoft's endpoint inventory sample remains an option</summary>
+
+Microsoft's [Sample Secure Boot Inventory Data Collection script](https://support.microsoft.com/topic/d02971d2-d4b5-42c9-b58a-8527f0ffa30b) is the original reference for these checks.
+
+**Microsoft marks that page as retired.** With updates released on/after **May 12, 2026**, examples are supplied under **`%systemroot%\SecureBoot\ExampleRolloutScripts`**. Review the detection/inventory example and its help; not every rollout script is read-only.
+
+The published sample, named **`Detect-SecureBootCertUpdateStatus.ps1`**, collects status/errors, events, hardware/firmware/OS and servicing-task details. It **does not deploy certificates** or discover machines.
+
+Run the reviewed detection sample **on each endpoint**, through Configuration Manager, a GPO-deployed scheduled task or existing orchestration. Its published share-output example is:
 
 ```powershell
 .\Detect-SecureBootCertUpdateStatus.ps1 `
@@ -74,7 +147,9 @@ To save the result to an approved share:
 
 Protect the share and grant only necessary permissions. On domain-joined endpoints running as SYSTEM, account for the computer account's network access.
 
-Compare the JSON files with the expected machine list. Missing/stale results mean **unknown**, not updated. This is a collector, not an all-in-one dashboard.
+Compare the JSON files with the expected machine list. Missing/stale results mean **unknown**, not updated. Unlike our remote version, this is endpoint JSON collection, not a ready-made fleet dashboard.
+
+</details>
 
 <details>
 <summary>Windows clients: an Autopatch report is also available</summary>
@@ -415,8 +490,8 @@ The separate `Servicing` subkey contains the deployment status/error values read
 
 ## Related reading
 
-- [Windows Client Security Power-Ups - The Quick Wins That Actually Matter](../../../040%20-%20Endpoint%20Security/OS%20Hardening/Windows%20Client%20Security%20Power-Ups%20-%20The%20Quick%20Wins%20That%20Actually%20Matter.md): client-side Secure Boot/TPM health and related platform controls.
-- [Securing the Hyper-V Fabric Hosting Domain Controllers and Tier 0 Assets](../../../060%20-%20Active%20Directory/Concepts/Securing%20the%20Hyper-V%20Fabric%20Hosting%20Domain%20Controllers%20and%20Tier%200%20Assets.md): the virtualization platform as part of the trust boundary.
+- [Windows Client Security Power-Ups - The Quick Wins That Actually Matter](../../../../040%20-%20Endpoint%20Security/OS%20Hardening/Windows%20Client%20Security%20Power-Ups%20-%20The%20Quick%20Wins%20That%20Actually%20Matter.md): client-side Secure Boot/TPM health and related platform controls.
+- [Securing the Hyper-V Fabric Hosting Domain Controllers and Tier 0 Assets](../../../../060%20-%20Active%20Directory/Concepts/Securing%20the%20Hyper-V%20Fabric%20Hosting%20Domain%20Controllers%20and%20Tier%200%20Assets.md): the virtualization platform as part of the trust boundary.
 
 ## References
 
