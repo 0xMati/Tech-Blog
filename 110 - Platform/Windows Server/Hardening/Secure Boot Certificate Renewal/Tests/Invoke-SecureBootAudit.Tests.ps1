@@ -151,6 +151,8 @@ Describe 'Secure Boot local collection without writes' {
         $script:eventMode = 'Read'
         $script:registryMode = 'Read'
         $script:confirmFails = $false
+        $script:confirmMode = 'Read'
+        $script:retryTime = 133000000000000000
         $script:taskFails = $false
         $script:invalidDate = $false
         $script:highBit = $false
@@ -161,11 +163,14 @@ Describe 'Secure Boot local collection without writes' {
         Mock Get-ItemProperty {
             if ($script:registryMode -eq 'Denied') { throw [UnauthorizedAccessException]::new('Synthetic registry denial') }
             if ($script:registryMode -eq 'Absent') { throw [Management.Automation.ItemNotFoundException]::new('Synthetic absent key') }
+            if ($script:registryMode -eq 'NoState' -and $LiteralPath -like '*\State') {
+                throw [Management.Automation.ItemNotFoundException]::new('Synthetic absent State key')
+            }
             [pscustomobject]@{
                 UEFISecureBootEnabled = 1; UEFICA2023Status = 'Updated'; UEFICA2023Error = 0
                 AvailableUpdates = if ($script:highBit) { [int]::MinValue } else { 0x5944 }; AvailableUpdatesPolicy = 0x5944
                 HighConfidenceOptOut = 1; MicrosoftUpdateManagedOptIn = 0
-                OEMManufacturerName = 'Test OEM'; CanAttemptUpdateAfter = 133000000000000000
+                OEMManufacturerName = 'Test OEM'; CanAttemptUpdateAfter = $script:retryTime
             }
         }
         Mock Get-CimInstance {
@@ -176,6 +181,9 @@ Describe 'Secure Boot local collection without writes' {
             }
         }
         Mock Confirm-SecureBootUEFI {
+            if ($script:confirmMode -eq 'Unsupported') { throw 'Cmdlet not supported on this platform: 0xC0000002' }
+            if ($script:confirmMode -eq 'Denied') { throw [UnauthorizedAccessException]::new('Synthetic Secure Boot denial') }
+            if ($script:confirmMode -eq 'OtherFailure') { throw 'Synthetic unexpected Secure Boot failure' }
             if ($script:confirmFails) { throw 'Synthetic unsupported command' }
             $true
         }
@@ -240,6 +248,73 @@ Describe 'Secure Boot local collection without writes' {
         $result.Data.SecureBootEnabled | Should Be $true
         $result.Data.SecureBootSource | Should Be 'RegistryFallback'
         @($result.Issues | Where-Object Kind -eq 'Fallback').Count | Should Be 1
+    }
+    It 'decodes the observed eight-byte FILETIME without unrolling its byte array' {
+        $script:retryTime = [byte[]](32,206,102,174,148,106,221,1)
+        $result = Get-SecureBootLocalData
+        $result.Data.CanAttemptUpdateAfter | Should Be '2026-11-02T06:37:50.4660000Z'
+        $result.Data.CanAttemptUpdateAfterRaw | Should Be '20-CE-66-AE-94-6A-DD-01'
+        @($result.Issues | Where-Object Kind -eq 'Error').Count | Should Be 0
+    }
+    It 'still supports an integer FILETIME' {
+        $result = Get-SecureBootLocalData
+        $result.Data.CanAttemptUpdateAfter | Should Be ([datetime]::FromFileTimeUtc(133000000000000000).ToString('o'))
+    }
+    It 'keeps absent retry metadata absent rather than inventing a date' {
+        $script:retryTime = $null
+        $result = Get-SecureBootLocalData
+        $result.Data.CanAttemptUpdateAfter | Should BeNullOrEmpty
+        @($result.Issues | Where-Object Area -eq 'CanAttemptUpdateAfter').Count | Should Be 0
+    }
+    It 'records an invalid binary length and preserves the raw evidence' {
+        $script:retryTime = [byte[]](1,2,3)
+        $result = Get-SecureBootLocalData
+        $result.Data.CanAttemptUpdateAfter | Should BeNullOrEmpty
+        $result.Data.CanAttemptUpdateAfterRaw | Should Be '01-02-03'
+        @($result.Issues | Where-Object { $_.Area -eq 'CanAttemptUpdateAfter' -and $_.Kind -eq 'Error' }).Count | Should Be 1
+    }
+    It 'rejects a numeric array that is not REG_BINARY instead of casting it to bytes' {
+        $script:retryTime = [object[]](32,206,102,174,148,106,221,1)
+        $result = Get-SecureBootLocalData
+        $result.Data.CanAttemptUpdateAfter | Should BeNullOrEmpty
+        @($result.Issues | Where-Object { $_.Area -eq 'CanAttemptUpdateAfter' -and $_.Kind -eq 'Error' }).Count | Should Be 1
+    }
+    It 'records an out-of-range FILETIME without losing the machine inventory' {
+        $script:retryTime = [byte[]](255,255,255,255,255,255,255,255)
+        $result = Get-SecureBootLocalData
+        $result.Data.CanAttemptUpdateAfter | Should BeNullOrEmpty
+        $result.Data.Model | Should Be 'Model A'
+        @($result.Issues | Where-Object { $_.Area -eq 'CanAttemptUpdateAfter' -and $_.Kind -eq 'Error' }).Count | Should Be 1
+    }
+    It 'separates unsupported Secure Boot from remote collection failure and disabled state' {
+        $script:confirmMode = 'Unsupported'
+        $script:registryMode = 'NoState'
+        $result = Get-SecureBootLocalData
+        $result.Data.SecureBootEnabled | Should BeNullOrEmpty
+        $result.Data.SecureBootSource | Should Be 'UnsupportedPlatform'
+        @($result.Issues | Where-Object Kind -eq 'Error').Count | Should Be 0
+        @($result.Issues | Where-Object Kind -eq 'Unsupported').Count | Should Be 1
+        Get-SecureBootAssessment $result.Data | Should Be 'Unsupported'
+        Get-SecureBootAssessment $result.Data -ErrorCount 1 | Should Be 'Unknown'
+    }
+    It 'retains a valid registry fallback even when the cmdlet is unsupported' {
+        $script:confirmMode = 'Unsupported'
+        $result = Get-SecureBootLocalData
+        $result.Data.SecureBootSource | Should Be 'RegistryFallback'
+        $result.Data.SecureBootEnabled | Should Be $true
+    }
+    It 'does not classify a permission denial as unsupported' {
+        $script:confirmMode = 'Denied'
+        $script:registryMode = 'NoState'
+        $result = Get-SecureBootLocalData
+        @($result.Issues | Where-Object { $_.Area -eq 'SecureBoot' -and $_.Kind -eq 'Error' }).Count | Should Be 1
+        @($result.Issues | Where-Object Kind -eq 'Unsupported').Count | Should Be 0
+    }
+    It 'does not classify an unexpected cmdlet failure as unsupported' {
+        $script:confirmMode = 'OtherFailure'
+        $script:registryMode = 'NoState'
+        $result = Get-SecureBootLocalData
+        @($result.Issues | Where-Object { $_.Area -eq 'SecureBoot' -and $_.Kind -eq 'Error' }).Count | Should Be 1
     }
     It 'keeps unreadable registry values unknown and records the denial' {
         $script:registryMode = 'Denied'
@@ -341,6 +416,17 @@ Describe 'Secure Boot reports and partial runs' {
             if ($ComputerName -eq 'offline' -or $script:targetMode -eq 'AllFailed') { throw 'Synthetic WinRM failure' }
             $result = New-TestSecureBootResult
             if ($script:targetMode -eq 'Unknown') { $result.Data.UEFICA2023Status = $null; $result.Data.LatestEventId = $null }
+            if ($script:targetMode -eq 'Unsupported') {
+                $result.Data.SecureBootEnabled = $null
+                Add-Member -InputObject $result.Data -NotePropertyName SecureBootSource -NotePropertyValue 'UnsupportedPlatform'
+                $result.Issues = @([pscustomobject]@{
+                    Area = 'SecureBoot'; Kind = 'Unsupported'; Message = 'Cmdlet not supported on this platform: 0xC0000002'
+                })
+            }
+            if ($script:targetMode -in 'ReadError','DisabledReadError') {
+                $result.Issues = @([pscustomobject]@{ Area = 'Events'; Kind = 'Error'; Message = 'Synthetic event read denial' })
+                if ($script:targetMode -eq 'DisabledReadError') { $result.Data.SecureBootEnabled = $false }
+            }
             $result
         }
         Mock Invoke-Item {}
@@ -387,6 +473,45 @@ Describe 'Secure Boot reports and partial runs' {
         $json.Status | Should Be 'Collected'
         $json.Computers[0].Assessment | Should Be 'Unknown'
     }
+    It 'shows returned inventory separately from a partial read and a remote failure' {
+        $script:targetMode = 'ReadError'
+        $result = Invoke-SecureBootAuditRun -CsvPath $script:inputCsv -OutputDir (Join-Path $TestDrive 'read-error') -WarningAction SilentlyContinue
+        $html = Get-Content -LiteralPath $result.HtmlPath -Raw
+        $html | Should Match '1 / 2 returned inventory'
+        $html | Should Match 'Data received'
+        $html | Should Match 'Partial reads'
+        $html | Should Match 'No inventory'
+        $html | Should Match 'Synthetic event read denial'
+        $html | Should Match 'id="state"'
+        $html | Should Match 'id="reset"'
+        $json = Get-Content -LiteralPath $result.JsonPath -Raw | ConvertFrom-Json
+        $json.Computers[1].CollectionStatus | Should Be 'Partial'
+        $json.Computers[1].Assessment | Should Be 'Unknown'
+    }
+    It 'reports platform limitations without claiming a remote failure or disabled Secure Boot' {
+        $script:targetMode = 'Unsupported'
+        "ComputerName`nserver01" | Set-Content -LiteralPath $script:inputCsv
+        $result = Invoke-SecureBootAuditRun -CsvPath $script:inputCsv -OutputDir (Join-Path $TestDrive 'unsupported') -WarningAction SilentlyContinue
+        $result.ErrorCount | Should Be 0
+        $json = Get-Content -LiteralPath $result.JsonPath -Raw | ConvertFrom-Json
+        $json.Computers[0].CollectionStatus | Should Be 'Collected'
+        $json.Computers[0].Assessment | Should Be 'Unsupported'
+        $html = Get-Content -LiteralPath $result.HtmlPath -Raw
+        $html | Should Match '1 / 1 returned inventory'
+        $html | Should Match 'Platform unsupported'
+        $html | Should Match '0xC0000002'
+        $html | Should Match 'Check firmware mode'
+    }
+    It 'keeps a measured disabled state filterable even if another read makes the assessment unknown' {
+        $script:targetMode = 'DisabledReadError'
+        "ComputerName`nserver01" | Set-Content -LiteralPath $script:inputCsv
+        $result = Invoke-SecureBootAuditRun -CsvPath $script:inputCsv -OutputDir (Join-Path $TestDrive 'disabled-partial') -WarningAction SilentlyContinue
+        $html = Get-Content -LiteralPath $result.HtmlPath -Raw
+        $html | Should Match 'data-assessment="Unknown" data-boot="Disabled"'
+        $json = Get-Content -LiteralPath $result.JsonPath -Raw | ConvertFrom-Json
+        $json.Computers[0].Data.SecureBootEnabled | Should Be $false
+        $json.Computers[0].Assessment | Should Be 'Unknown'
+    }
     It 'rejects existing output directories before contacting a computer' {
         Assert-SecureBootTestThrows { Invoke-SecureBootAuditRun -CsvPath $script:inputCsv -OutputDir $TestDrive }
         $script:observedNames.Count | Should Be 0
@@ -413,6 +538,78 @@ Describe 'Secure Boot reports and partial runs' {
         $html | Should Not Match '<script>alert\(1\)</script>'
         $html | Should Match '&lt;script&gt;alert\(1\)&lt;/script&gt;'
         $html | Should Match 'not firmware certificate attestation'
+    }
+}
+
+Describe 'Secure Boot Windows PowerShell 5.1 payload execution' {
+    It 'executes binary timestamp, unsupported and denied reads under the actual target runtime' {
+        $runner = Join-Path $TestDrive 'payload51.ps1'
+        $definitions = @"
+function ConvertFrom-SecureBootEventXml { ${function:ConvertFrom-SecureBootEventXml} }
+function Get-SecureBootLocalData { ${function:Get-SecureBootLocalData} }
+"@
+        $syntheticReads = @'
+$ErrorActionPreference = 'Stop'
+function Get-ItemProperty {
+    [CmdletBinding()]param($LiteralPath)
+    if ($LiteralPath -like '*\State' -and $script:platformMode -ne 'Enabled') {
+        throw [Management.Automation.ItemNotFoundException]::new('Synthetic absent State key')
+    }
+    [pscustomobject]@{
+        UEFISecureBootEnabled = 1; UEFICA2023Status = 'Updated'
+        CanAttemptUpdateAfter = [byte[]](32,206,102,174,148,106,221,1)
+    }
+}
+function Get-CimInstance {
+    [CmdletBinding()]param($ClassName)
+    [pscustomobject]@{ Caption = 'Synthetic Windows'; Model = 'Synthetic model' }
+}
+function Confirm-SecureBootUEFI {
+    [CmdletBinding()]param()
+    if ($script:platformMode -eq 'Unsupported') { throw 'Cmdlet not supported on this platform: 0xC0000002' }
+    if ($script:platformMode -eq 'Denied') { throw [UnauthorizedAccessException]::new('Synthetic permission denial') }
+    $true
+}
+function Get-ScheduledTask {
+    [CmdletBinding()]param($TaskPath, $TaskName)
+    [pscustomobject]@{ State = 'Ready'; Settings = [pscustomobject]@{ Enabled = $true } }
+}
+function Get-WinEvent {
+    [CmdletBinding()]param($FilterHashtable, $MaxEvents)
+    throw [Management.Automation.ErrorRecord]::new([Exception]::new('No events'), 'NoMatchingEventsFound',
+        [Management.Automation.ErrorCategory]::ObjectNotFound, $null)
+}
+function Test-Path {
+    [CmdletBinding()]param($LiteralPath)
+    $false
+}
+$results = foreach ($mode in 'Enabled','Unsupported','Denied') {
+    $script:platformMode = $mode
+    $result = Get-SecureBootLocalData
+    [pscustomobject]@{ Mode = $mode; Result = $result }
+}
+[pscustomobject]@{
+    Version = $PSVersionTable.PSVersion.ToString()
+    Results = [Management.Automation.PSSerializer]::Deserialize([Management.Automation.PSSerializer]::Serialize(@($results)))
+} | ConvertTo-Json -Depth 12 -Compress
+'@
+        $definitions + "`n" + $syntheticReads | Set-Content -LiteralPath $runner -Encoding utf8
+        $legacy = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $output = & $legacy -NoProfile -NonInteractive -File $runner | Out-String
+        $LASTEXITCODE | Should Be 0
+        $output | Should Match '"CanAttemptUpdateAfter":"2026-11-02T06:37:50.4660000Z"'
+        $result = $output | ConvertFrom-Json
+        $result.Version | Should Match '^5\.1\.'
+        $result.Results.Count | Should Be 3
+        foreach ($entry in $result.Results) {
+            ([datetime]$entry.Result.Data.CanAttemptUpdateAfter).ToUniversalTime().ToString('o') | Should Be '2026-11-02T06:37:50.4660000Z'
+            $entry.Result.Data.CanAttemptUpdateAfterRaw | Should Be '20-CE-66-AE-94-6A-DD-01'
+        }
+        $result.Results[0].Result.Data.SecureBootEnabled | Should Be $true
+        $result.Results[1].Result.Data.SecureBootEnabled | Should BeNullOrEmpty
+        $result.Results[1].Result.Data.SecureBootSource | Should Be 'UnsupportedPlatform'
+        @($result.Results[1].Result.Issues | Where-Object Kind -eq 'Error').Count | Should Be 0
+        @($result.Results[2].Result.Issues | Where-Object { $_.Area -eq 'SecureBoot' -and $_.Kind -eq 'Error' }).Count | Should Be 1
     }
 }
 

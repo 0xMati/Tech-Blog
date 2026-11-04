@@ -75,7 +75,7 @@ From this directory, in **PowerShell 7.2+ on Windows**:
 
 Every listed target uses **existing WinRM**; remote code supports Windows PowerShell **5.1**. The account needs endpoint access and permission to read Secure Boot, registry, CIM, System events and task state; Domain Admin is not required. No RSAT, AD discovery or Internet download is needed.
 
-Open **`SecureBootAudit.html`**. Start with collection errors, then Windows status and latest events. Unreachable machines remain visible; collection continues on the others.
+Open **`SecureBootAudit.html`**. Start with **Needs attention**, then the computer inventory. **Data received** confirms that the remote payload answered: partial reads or an unsupported Secure Boot check are not WinRM failures. Unreachable machines remain visible; collection continues on the others. Search and status filters affect only the inventory table.
 
 **`UpdatedReported` means Windows evidence agrees, not "firmware certified".** Still validate boot, applications and recovery. Missing data stays unknown.
 
@@ -98,6 +98,8 @@ Blank/invalid/duplicate computer names are rejected **before any connection**. T
 
 The inventory includes Secure Boot state/source, Windows deployment status/errors, deployment registry controls, OS/build/architecture/last boot, model/firmware/baseboard, device attributes, task state and System events. WinCS is queried only if its tool is installed; raw output/exit code are kept, without guessing "Applied" from localized text.
 
+`CanAttemptUpdateAfter` is decoded from an **8-byte binary FILETIME** (or an integer FILETIME) into UTC. `CanAttemptUpdateAfterRaw` preserves the original bytes as hexadecimal, or the scalar value. Invalid formats produce an explicit read error without discarding the other inventory.
+
 **Events are not a 24-hour query.** The collector reads up to `MaxEvents` of the newest matching **System / Microsoft-Windows-TPM-WMI** records: **1795, 1796, 1800-1803, 1808**. An extra record detects truncation. Counts describe only collected records; older history may be unavailable. Named XML fields and raw XML are retained.
 
 | File | Contents |
@@ -117,13 +119,14 @@ All CSV exports use **`;`**, UTF-8 BOM and spreadsheet-formula protection; JSON 
 | `RestartIndicated` | Latest relevant event **1800**; arrange an approved restart, then recheck |
 | `InProgress` / `NotStarted` | Windows deployment state, not completion |
 | `Disabled` | Secure Boot disabled; enablement is a separate change |
-| `Unknown` / `CollectionFailed` | Missing/unreadable/unsupported evidence or failed/timed-out remote collection |
+| `Unsupported` | Secure Boot cmdlet explicitly unsupported (for example `0xC0000002`), with no reliable registry fallback; state remains unknown, not disabled. Check firmware mode and platform/VM generation |
+| `Unknown` / `CollectionFailed` | Missing/unreadable evidence or failed/timed-out remote collection; review the actual error |
 
 Old 1801 followed by newer 1808 does not automatically remain a failure. Conversely, an older 1808 does not hide a newer firmware error. Vendor-preprovisioned systems without Windows history require separate certificate/boot-chain evidence. This collector does **not** enumerate or attest the entire PK/KEK/DB/DBX trust store.
 
-**Exit codes concern collection, not certificate compliance:** target/read errors save partial reports and exit **1**; findings, missing history or a deployment still pending can exit **0** without being updated. Invalid input, report-write and report-open failures remain terminating errors. Dot-sourced `Invoke-SecureBootAuditRun` callers inspect `ErrorCount` and `Status`.
+**Exit codes concern collection, not certificate compliance:** target/read errors save partial reports and exit **1**; findings, an explicitly unsupported platform, missing history or a deployment still pending can exit **0** without being updated. Without a reliable fallback, access denied and unexpected cmdlet failures remain errors, not platform limitations. Invalid input, report-write and report-open failures remain terminating errors. Dot-sourced `Invoke-SecureBootAuditRun` callers inspect `ErrorCount` and `Status`.
 
-[Collector tests](./Tests/Invoke-SecureBootAudit.Tests.ps1) use synthetic XML and mocked Windows/WinRM reads; no production targets. They cover CSV scope, deadlines, failures, event ordering, evidence interpretation and safe exports.
+[Collector tests](./Tests/Invoke-SecureBootAudit.Tests.ps1) use synthetic XML and mocked Windows/WinRM reads; no production targets. They cover CSV scope, deadlines, failures, event ordering, binary timestamps, platform limitations, evidence interpretation and safe exports. A child Windows PowerShell **5.1** process executes the payload with simulated reads and a remoting serialization round trip.
 
 </details>
 
