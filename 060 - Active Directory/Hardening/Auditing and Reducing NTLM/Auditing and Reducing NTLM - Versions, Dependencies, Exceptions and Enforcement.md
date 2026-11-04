@@ -1,86 +1,39 @@
 ---
-title: "Auditing and Reducing NTLM: Versions, Dependencies, Exceptions and Enforcement"
+title: "Auditing and Reducing NTLM: A Practical Guide"
 date: 2026-09-24
 ---
 
-# Auditing and Reducing NTLM: Versions, Dependencies, Exceptions and Enforcement
+# Auditing and Reducing NTLM: A Practical Guide
 
 > **Update 04/11/2026**
 >
-> Enhanced NTLM auditing (**402x/403x**), logging-policy screenshots and the read-only [Invoke-NtlmAudit.ps1](./Invoke-NtlmAudit.ps1) collector: **HTML, CSV and JSON**. Prerequisites below; usage in section 10.
+> Includes enhanced NTLM auditing (**402x/403x**) and the read-only [Invoke-NtlmAudit.ps1](./Invoke-NtlmAudit.ps1) collector: **HTML, CSV and JSON**.
 
-**NTLM cleanup is an application quest, not a GPO speedrun.** Find the caller, identity and target; fix the dependency; then block.
+**NTLM cleanup is an application quest, not a GPO speedrun.**
 
-Scope: **Windows Server 2019/2022/2025 and Windows clients**. Server 2025 removes NTLMv1; NTLMv2 is deprecated, not disabled. Keep classic evidence where enhanced logging is unavailable.
+The practical path: [enable auditing](#2-turn-on-auditing-not-blocking), [collect a report](#3-collect-a-first-report), [read the results](#4-read-the-report-in-the-right-order), then fix dependencies before restricting NTLM. Detailed event tables and manual queries are optional references at the end.
 
-> **TL;DR**
->
-> - Audit **clients + resource servers + DCs**. DC-only visibility misses dependencies.
-> - `Negotiate` does not prove Kerberos; "not Kerberos" does not prove NTLM.
-> - **402x/403x** add version/protection evidence and client usage reasons. **Warning != NTLMv1**.
-> - **4624/4625** describe logons; **4776** describes credential validation, not the complete application flow.
-> - Fix, pilot, then restrict. Exceptions need an **exact target, owner and expiry**.
+## 1. Understand the goal
 
-## 1. Keep the versions and protections separate
+NTLM is a legacy authentication protocol. The job is to find **which application uses it, with which account, against which service**, then move that application to a supported replacement.
 
-| Term | Meaning and current implication |
+Scope: **Windows Server 2019/2022/2025 and Windows clients**. Server 2025 removes **NTLMv1**; **NTLMv2 is deprecated, not automatically disabled**. Refusing LM/NTLMv1 does not block NTLMv2.
+
+Collect from all three roles:
+
+| Where | What you learn |
 |---|---|
-| LM | Obsolete authentication/credential technology; not an acceptable compatibility target |
-| NTLMv1 | Legacy challenge-response authentication; removed from Windows Server 2025 |
-| NTLMv2 | Stronger challenge-response construction, but still a legacy dependency to reduce |
-| LAN Manager authentication level | Controls response/version compatibility; refusing LM/NTLMv1 is not the same as blocking NTLMv2 |
-| Restrict NTLM policies | Audit or restrict NTLM by outgoing, incoming or domain-validation boundary |
-| Negotiate / SPNEGO | Selects a supported authentication mechanism, normally preferring Kerberos when its prerequisites are met |
-| Signing, channel binding and Extended Protection | Protocol/application-specific protections; not interchangeable with replacing NTLM |
+| Client: the machine starting the connection | Application/process, account, target and sometimes the reason for NTLM |
+| Resource server: the destination | Incoming authentication and its local result |
+| Domain controller (DC) | Domain-account credential validation, not the whole application connection |
 
-NTLMv2 is not "NTLM with TLS": authentication, signing/sealing and transport encryption are separate. Relay risks remain; Credential Guard does not erase every dependency. **Password hash != captured challenge-response; SMB version != NTLM version.**
+One machine can play several roles. **DC-only collection misses dependencies**, especially local-account paths.
 
-### Enhanced audit availability
+## 2. Turn on auditing, not blocking
 
-Enhanced auditing availability, per [Microsoft KB5064479](https://support.microsoft.com/en-au/servicing/os/windows/2025/07/overview-of-ntlm-auditing-enhancements-in-windows-11-version-24h2-and-windows-server-2025):
+### A. Configure classic NTLM auditing
 
-| Operating system | Enhanced NTLM audit availability |
-|---|---|
-| Windows 11 | Version 24H2 and later |
-| Windows Server 2025 | Supported |
-| Windows Server 2022 | Updates released on or after October 13, 2026 |
-| Windows Server 2019 | Updates released on or after October 13, 2026 |
-| Other releases or unverified builds | Verify support/provider definitions; retain classic collection |
-
-Verify **build, updates, event definitions and effective logging**. Installed definitions do not prove that the workload was observed.
-
-## 2. Understand the observation points
-
-Domain account: the resource server normally asks a DC through Netlogon. Local account: the resource computer is the credential authority.
-
-```mermaid
-sequenceDiagram
-    participant Client as Client application
-    participant Server as Resource server
-    participant DC as Account-domain DC
-    Client->>Server: NTLM NEGOTIATE_MESSAGE
-    Server-->>Client: NTLM CHALLENGE_MESSAGE
-    Client->>Server: NTLM AUTHENTICATE_MESSAGE with identity and response
-    Server->>DC: Netlogon pass-through validation for a domain account
-    DC-->>Server: Credential-validation result
-    Server-->>Client: Authentication result and application access decision
-```
-
-**Credential validation != application authorization.** The server creates the logon context and decides resource access.
-
-| Observation point | Evidence | Blind spot |
-|---|---|---|
-| Client | 4020/4021: process, target, reason; classic outgoing events | Attempt does not prove success |
-| Resource server | 4022/4023: incoming details/status; classic incoming events; Security 4624/4625 | Local server process != initiating client application |
-| Domain controller | 4032/4033 or 4030/4031; classic domain audit including 8004; Security 4776 | Local-account validation may never reach a DC |
-
-Trusts do not imply NTLM: Kerberos supports cross-realm authentication with appropriate trusts and name routing.
-
-## 3. Deploy audit policy to the correct roles
-
-### Classic Restrict NTLM auditing
-
-Under **Computer Configuration > Policies > Windows Settings > Security Settings > Local Policies > Security Options**, configure the appropriate audit-only settings:
+In a computer GPO, go to **Computer Configuration > Policies > Windows Settings > Security Settings > Local Policies > Security Options**:
 
 | Policy | Audit setting | Where to apply it |
 |---|---|---|
@@ -88,22 +41,49 @@ Under **Computer Configuration > Policies > Windows Settings > Security Settings
 | Network security: Restrict NTLM: Audit Incoming NTLM Traffic | Enable auditing for all accounts | Any Windows NTLM receiver: servers, workstations and DCs |
 | Network security: Restrict NTLM: Audit NTLM authentication in this domain | Enable all | All DCs in each relevant domain; not workstations/member servers |
 
-Scope by **role**, not machine label: servers initiate, workstations receive, DCs can do both. Domain-wide auditing is DC-only; it does not replace caller/resource evidence.
+Apply by role: servers also initiate connections, workstations can receive them, and DCs can do both. The domain-wide setting belongs on **all relevant DCs**, not member servers/workstations.
 
-These are **audit settings, not blocks**. Incoming audit and enforcement are separate; the outgoing policy also offers **Deny**. Check the value before linking the GPO.
+**These values audit; they do not block.** Incoming audit and enforcement are separate policies. The outgoing policy also offers **Deny**: check the value before linking the GPO.
 
-### Enhanced NTLM logging
+### B. Enable enhanced logging where supported
 
-Enhanced logging defaults to enabled on supported, updated systems. Its controls are separate from classic Restrict NTLM policies:
+Enhanced events add version/protection details and client-side usage reasons. Availability per [Microsoft KB5064479](https://support.microsoft.com/en-au/servicing/os/windows/2025/07/overview-of-ntlm-auditing-enhancements-in-windows-11-version-24h2-and-windows-server-2025):
+
+| Operating system | Requirement |
+|---|---|
+| Windows 11 | Version 24H2 and later |
+| Windows Server 2025 | Supported |
+| Windows Server 2019/2022 | Updates released on or after **October 13, 2026** |
+| Other releases/unverified builds | Verify support; keep classic collection |
+
+Use the following settings independently of classic auditing:
 
 | Policy | Full GPO path | Scope |
 |---|---|---|
 | NTLM Enhanced Logging | Computer Configuration > Policies > Administrative Templates > System > NTLM > NTLM Enhanced Logging | Client-side and server-side enhanced logging |
 | Log Enhanced Domain-wide NTLM Logs | Computer Configuration > Policies > Administrative Templates > System > Netlogon > Log Enhanced Domain-wide NTLM Logs | Domain-wide enhanced logging on DCs |
 
-**Default enabled != verified coverage.** Check effective policy and channel state. These controls neither deny NTLM nor replace classic auditing.
+Set the applicable policies to **Enabled** and verify their effective values. On supported, updated systems, Enabled/Not Configured allow logging; Disabled suppresses it. These controls **do not deny NTLM** or replace classic auditing.
 
-#### If the settings are missing: check the ADMX source
+Client/resource events: **4020-4023**. DC events: **4032/4033**, plus **4030/4031** for applicable cross-domain validation. Enable the DC setting on **all relevant DCs in each domain**, not just the PDC emulator.
+
+<details>
+<summary>Policy screenshots</summary>
+
+**NTLM Enhanced Logging** controls client/server enhanced logging:
+
+![NTLM Enhanced Logging policy and its client/server logging help text](<./assets/Auditing and Reducing NTLM/2026-11-04-10-10-08.png>)
+
+**Log Enhanced Domain-wide NTLM Logs** controls DC enhanced logging independently:
+
+![Log Enhanced Domain-wide NTLM Logs policy and its domain-controller logging help text](<./assets/Auditing and Reducing NTLM/2026-11-04-10-10-09.png>)
+
+Both captures show **Not Configured**. Explicit Enabled avoids relying on defaults. Check OS/build support above, not just the template's "Supported on" label.
+
+</details>
+
+<details>
+<summary>If the settings are missing: check ADMX/ADML</summary>
 
 Expand **System**, not Windows Components. Then check GPMC's Administrative Templates header:
 
@@ -137,33 +117,20 @@ Follow Microsoft's [Central Store guidance](https://learn.microsoft.com/en-us/tr
 
 **Templates expose settings; OS updates supply telemetry. Neither proves the other.** GPMC's template source, not the DC OS alone, determines policy visibility.
 
-#### Client and resource-server side: NTLM Enhanced Logging
+</details>
 
-1. Scope a computer GPO to the clients/resource servers to observe.
-2. Set **NTLM Enhanced Logging** to **Enabled**, using the path above.
-3. Verify effective policy and **Applications and Services Logs > Microsoft > Windows > NTLM > Operational**: **4020/4021** outgoing, **4022/4023** incoming.
+### C. Add Security-log evidence and verify logging
 
-![NTLM Enhanced Logging policy and its client/server logging help text](<./assets/Auditing and Reducing NTLM/2026-11-04-10-10-08.png>)
+Separately configure **Advanced Audit Policy**: **Audit Logon** for Security **4624/4625** on resource systems; **Audit Credential Validation** for **4776** on credential authorities. Neither enables NTLM Operational auditing.
 
-The capture shows **Not Configured**. On supported builds, Enabled/Not Configured allow logging; Disabled suppresses it. Explicit Enabled avoids relying on defaults. Check section 1, not just the policy's "Supported on" label.
+Check the effective settings and **Applications and Services Logs > Microsoft > Windows > NTLM > Operational**. Size/forward the logs for your observation period and test an existing NTLM business flow **without weakening authentication**.
 
-#### Domain-controller side: Log Enhanced Domain-wide NTLM Logs
+**An empty or unreadable log does not prove zero NTLM.** Check OS/build, updates, installed events, channel state and retained history. The collector enables neither policies nor channels.
 
-1. Scope a computer GPO to **all relevant DCs in each domain**, not just the PDC emulator.
-2. Set **Log Enhanced Domain-wide NTLM Logs** to **Enabled**.
-3. Verify effective policy and **Microsoft-Windows-NTLM/Operational**: **4032/4033**, plus **4030/4031** for applicable cross-domain validation.
+<details>
+<summary>Detailed policy, channel and event-definition checks</summary>
 
-![Log Enhanced Domain-wide NTLM Logs policy and its domain-controller logging help text](<./assets/Auditing and Reducing NTLM/2026-11-04-10-10-09.png>)
-
-Also **Not Configured**: supported DCs default to logging; Disabled suppresses it. This DC-specific control is independent of the client/server setting.
-
-For both: verify the channel, size/forward it for the observation window and test a known flow **without weakening authentication**. The collector enables neither policies nor channels.
-
-### Security-log auditing and effective configuration
-
-Separately configure **Advanced Audit Policy**: **Audit Logon** for Security 4624/4625 on resource systems; **Audit Credential Validation** for 4776 on credential authorities. Neither enables NTLM Operational auditing.
-
-Check representative systems:
+On representative machines:
 
 ```powershell
 Get-CimInstance -ClassName Win32_OperatingSystem |
@@ -176,7 +143,7 @@ auditpol.exe /get /subcategory:"Credential Validation"
 
 English subcategory names above: use `auditpol /list /subcategory:* /v` for localized names/GUIDs. `gpresult /r` lists GPOs; use detailed results to confirm values. Coordinate with Defender for Identity/management tooling to avoid competing policies.
 
-## 4. Verify logging before trusting an empty result
+Check the channel and installed provider definitions:
 
 ```powershell
 $logName = 'Microsoft-Windows-NTLM/Operational'
@@ -191,31 +158,123 @@ foreach ($provider in 'Microsoft-Windows-NTLM', 'Microsoft-Windows-Security-Netl
 }
 ```
 
-Record channel state, retention, forwarding and build. Test an existing NTLM business flow; do not manufacture a production fallback. Read the installed manifest and XML, not an assumed universal schema. **Disabled, inaccessible, unsupported or rolled-over != zero usage.**
+Read the installed manifest and XML, not an assumed universal schema. Installed definitions alone do not prove the workload was observed. Record channel state, retention, forwarding and build.
 
-### Enhanced event map
+</details>
 
-Two journals, not one giant DC bucket. Events stay on the source machine unless forwarded:
+## 3. Collect a first report
+
+Use [Invoke-NtlmAudit.ps1](./Invoke-NtlmAudit.ps1). **Read-only collection:** it writes local reports, not audit/channel, restriction, SPN or account changes.
+
+- Run from this directory in **PowerShell 7.2+**, on Windows for live collection. Remote code supports Windows PowerShell **5.1**.
+- For remote targets, use existing **WinRM (TCP 5985)** and an identity allowed to use its endpoint, read OS/role CIM data and read event logs including Security. Event Log Readers alone does not grant WinRM access; Domain Admin is not required.
+- **ActiveDirectory/RSAT is needed only for `-AllDomainControllers`**; discovery also uses ADWS **TCP 9389**. The reporting computer need not be a DC.
+- No Internet access is needed for collection. Download the script's **Raw** content on a connected computer and transfer it through an approved method if necessary.
+
+Choose **one scope** below. Default window: **the last 24 rolling hours**, ending at launch.
+
+```powershell
+# One local machine, last 24 hours; no WinRM required
+.\Invoke-NtlmAudit.ps1 -ComputerName localhost -OpenReport
+
+# Explicit client/resource-server/DC scope, last 24 hours
+.\Invoke-NtlmAudit.ps1 `
+    -ComputerName 'workstation01.example.test','app01.example.test','dc01.example.test' `
+    -OpenReport
+
+# All DCs in the default domain, last FOUR hours; requires RSAT
+.\Invoke-NtlmAudit.ps1 `
+    -AllDomainControllers `
+    -StartTime ([datetimeoffset]::Now.AddHours(-4)) `
+    -OpenReport
+```
+
+`-AllDomainControllers` finds **DCs/RODCs in one domain only**, not the whole forest, clients or member servers. Include those explicitly with `-ComputerName`. `localhost` uses the current identity and ignores `-Credential`.
+
+One target unavailable? Collection continues on the others, keeps the failure visible and opens the partial HTML with `-OpenReport`. Error/exit-code details are below.
+
+## 4. Read the report in the right order
+
+Start with **`NtlmAudit.html`**, then:
+
+1. **Coverage:** did every expected machine respond? Were logs enabled, supported and retained for the requested period?
+2. **Versions:** look for explicit version evidence. Missing fields mean **unknown**, not NTLMv1 or safe.
+3. **Dependencies:** identify caller, account and destination. The log computer/local server process is not necessarily the initiating application.
+4. **Reasons:** use client Usage Id/Reason as an investigation lead, then assign an owner and retest.
+
+| File | Use it for |
+|---|---|
+| `NtlmAudit.html` | Offline dashboard: coverage, versions, reasons, results and searchable evidence |
+| `Events.csv` | All normalized observations and their source/account/process/target/version/protection fields |
+| `Dependencies.csv` | Groups by observation point/source; counts, first/last seen, evidence IDs, investigation and `Unassigned` owners |
+| `Coverage.csv` | Source state, supported IDs, requested/retained history, truncation and errors |
+| `NtlmAudit.json` | Full scope/domain/targets, templates, coverage, dependencies, issues, raw fields/XML and rejected events |
+
+**HTML is capped at 500 rows per table; filters search displayed rows only.** Caps are flagged. Use CSV/JSON for the full collected dataset, and keep exports beside the HTML.
+
+### Where are these events?
+
+Two journals. Events stay on their source machine unless forwarded:
 
 | Channel | Provider and selected events |
 |---|---|
 | `Microsoft-Windows-NTLM/Operational` | `Microsoft-Windows-NTLM`: **4020-4023, 8001-8003**; `Microsoft-Windows-Security-Netlogon`: **4030-4033, 8004** |
 | `Security` | `Microsoft-Windows-Security-Auditing`: **4776**, and **4624/4625** explicitly identifying NTLM |
 
-Keep **provider + ID** in filters/evidence. All enhanced pairs below share NTLM Operational; each pair has the same observation point/fields but Information or Warning severity.
+`Security-Netlogon` is a provider, not a third journal. Keep classic **8001-8004** too: enhanced logging does not replace them.
 
-| Information | Warning | Observation point | What it tells you |
-|---|---|---|---|
-| 4020 | 4021 | Client, outgoing authentication | Initiating process/PID, account, target, NTLM version/protections and usage reason |
-| 4022 | 4023 | Resource server, incoming authentication | Local process, remote client, NTLM version/protections and authentication status |
-| 4032 | 4033 | DC processing same-domain validation, or the resource-server domain side of a cross-domain path | Client and server context, NTLM version/protections and validation status |
-| 4030 | 4031 | Account-domain DC in a cross-domain validation path | Client/server context, forwarding DC/domain information and validation status |
+### Avoid the usual traps
 
-**Warning != NTLMv1; Information != a green light.** Warnings can concern Extended Protection/channel binding or MIC. Read explicit version/protection fields. Client records describe attempts; server/DC statuses describe processing, not application access. Preserve status codes/namespaces: severity is not the result.
+- **Warning does not mean NTLMv1.** Information does not mean safe. Read version, protections and status separately.
+- **`Negotiate` lets Windows choose the method; it does not prove Kerberos.** "Not Kerberos" does not prove NTLM.
+- **Anonymous/null-session + "NTLM V1" does not prove a password-bearing NTLMv1 exchange.**
+- **4624/4625** concern logons; **4776** concerns credential validation, not application access.
+- One connection can generate client/server/DC records. **Event counts are not unique-authentication counts.**
 
-### Understand the client Usage Id/Reason
+<details>
+<summary>Partial results, warnings and dashboard limits</summary>
 
-Client **4020/4021** explains NTLM selection. Keep the **numeric ID and source text**; other observation points may not supply them.
+- **History:** affected logs show the requested start/end and oldest entry in UTC. Earlier history is **unverified**, not proof of overwriting or authentication failure.
+- **Live collection cap:** default **10000 matching events per computer/provider/channel**. The newest records are kept when capped; truncation is flagged. Increase `MaxEventsPerSource` or shorten the window and use a new output directory. Neither recovers overwritten logs.
+- **Results:** attempts, NTLM processing, logon and unknown outcomes stay separate. A 4776 authority need not be a DC.
+- **Review required:** failures and interpretation notes are separate. Grouped notes count affected records, not authentications; one record may have several notes. Raw warnings/IDs/statuses stay intact; friendly labels retain searchable export codes.
+- **Computers checked:** every live target remains visible, including failed/empty reads, OS, counts and limitations. Provider counts precede deduplication/parsing; they are not caller/authentication counts. Offline **Computers in imported logs** counts normalized event machines, not files/contacted hosts.
+- **Browser:** self-contained, offline and UTC; guides start collapsed, errors/retention stay visible, technical tables build on opening. Metrics/exports use all collected data. Without JavaScript, summaries/native details remain; use CSV/JSON for technical tables.
+
+**Coverage is not compliance:** `AuditPolicyCoverage = NotVerified`; reads do not prove continuous logging. Collection is non-atomic: reconcile clocks, duration and workload/failover cycles. `Collected` means no recorded gaps, not NTLM-free; `Partial` includes every offline assessment. Missing version/protection fields stay unknown.
+
+| Outcome | Behavior |
+|---|---|
+| Unreachable/unauthorized target, XML import or event-normalization error | Continue remaining inputs; save partial outputs and warnings; **`-OpenReport` still opens HTML**; exit **1** |
+| Retention/truncation, disabled/unsupported source or interpretation caution without errors | Warnings/`Partial`; exit **0** when `ErrorCount = 0`, not a clean bill of health |
+| Invalid input, discovery failure, report-write or report-open failure | Terminating error; no fake-success fallback |
+
+Direct invocation returns the result object and sets `$LASTEXITCODE`; `pwsh -File` uses the same process exit code. Dot-sourced `Invoke-NtlmAuditRun` callers must inspect **`ErrorCount` and `Status`**.
+
+</details>
+
+**Protect the reports:** identities, process paths, machine names, IPs and raw XML belong in controlled storage, not public posts.
+
+## 5. Fix one application at a time
+
+For each dependency, record **caller/process, account, target service, owner, action and retest**. If it cannot move yet, give the exception an **exact target, owner and expiry**.
+
+Start with the client **4020/4021 Usage Id/Reason**, when available. It explains why NTLM was selected, not necessarily the whole root cause.
+
+An **SPN (Service Principal Name)** maps a Kerberos service name to its owning account. Common leads:
+
+| Lead | First check |
+|---|---|
+| Target is an IP address | Use a supported DNS/service name and its correct SPN |
+| Target missing, unresolved or duplicated | Check the application's target name, DNS and SPN ownership |
+| Application explicitly requests NTLM | Review supported authentication settings/APIs with its owner |
+| No reachable DC | Check DNS, routing, firewall rules and DC access |
+| Local/cloud account, loopback or null session | Qualify the identity/flow; do not assume a simple domain-Kerberos migration |
+
+<details>
+<summary>Full client Usage Id/Reason table</summary>
+
+Keep the **numeric ID and original text**. Other observation points may not supply them.
 
 | ID | Documented reason | First investigation |
 |---|---|---|
@@ -232,125 +291,12 @@ Client **4020/4021** explains NTLM selection. Keep the **numeric ID and source t
 | 10 | NTLM called through a loopback interface | Qualify the local application flow; do not treat it automatically as remote lateral movement |
 | 11 | NTLM called with a null session | Separate anonymous/null-session activity from credential-bearing authentication |
 
-A reason is a lead, not the whole root cause. **Missing = unknown**, not unprotected. Parse named XML fields/version, not localized Message text or positional indexes; retain extras and raw XML.
+Missing fields mean **unknown**, not unprotected. Parse named XML fields/version, not localized Message text or positional indexes; retain extras and raw XML.
 
-### Keep classic evidence and collect a bounded window
+</details>
 
-Keep **8001-8004** alongside enhanced/Security evidence: enhanced logging does not disable classic auditing. This bounded query keeps both Operational families:
-
-```powershell
-$computer = 'app01.corp.example'
-$startTime = (Get-Date).AddHours(-24)
-$endTime = Get-Date
-
-Get-WinEvent -ComputerName $computer -FilterHashtable @{
-    LogName = 'Microsoft-Windows-NTLM/Operational'
-    StartTime = $startTime
-    EndTime = $endTime
-} -ErrorAction Stop |
-    Select-Object TimeCreated, Id, Version, MachineName, RecordId, Message,
-        @{Name = 'EventXml'; Expression = { $_.ToXml() }}
-```
-
-Centralize a full workload cycle: jobs, failovers, admin tasks and rare applications. **One flow can produce several records** across client/server/DC; do not add them up as unique authentications.
-
-## 5. Identify explicit NTLM logons in Security events
-
-This helper selects Security **4624 + `AuthenticationPackageName = NTLM`** and preserves unknown subpackages:
-
-```powershell
-function Convert-NtlmLogonEvent {
-    [CmdletBinding()]
-    param([Parameter(Mandatory)][xml]$EventXml)
-
-    if ([int]$EventXml.Event.System.EventID -ne 4624 -or
-        $EventXml.Event.System.Provider.GetAttribute('Name') -ne 'Microsoft-Windows-Security-Auditing') {
-        return
-    }
-
-    $data = @{}
-    foreach ($item in $EventXml.Event.EventData.Data) {
-        $data[$item.GetAttribute('Name')] = $item.InnerText
-    }
-    if ($data['AuthenticationPackageName'] -ne 'NTLM') { return }
-
-    $subpackage = $data['LmPackageName']
-    $versionEvidence = 'Not established'
-    if ($subpackage -in 'NTLM V1', 'NTLM V2', 'LM') {
-        $versionEvidence = $subpackage
-    }
-
-    [pscustomobject]@{
-        TimeUtc = ([datetimeoffset]$EventXml.Event.System.TimeCreated.SystemTime).UtcDateTime
-        Computer = [string]$EventXml.Event.System.Computer
-        RecordId = [long]$EventXml.Event.System.EventRecordID
-        Account = '{0}\{1}' -f $data['TargetDomainName'], $data['TargetUserName']
-        AccountSid = $data['TargetUserSid']
-        LogonType = $data['LogonType']
-        LogonId = $data['TargetLogonId']
-        AuthenticationPackage = $data['AuthenticationPackageName']
-        RawSubpackage = $subpackage
-        VersionEvidence = $versionEvidence
-        SourceAddress = $data['IpAddress']
-        Workstation = $data['WorkstationName']
-        ProcessName = $data['ProcessName']
-    }
-}
-```
-
-Filter named fields on the resource server:
-
-```powershell
-$resourceServer = 'app01.corp.example'
-$ntlmQuery = @'
-<QueryList>
-  <Query Id="0" Path="Security">
-    <Select Path="Security">
-      *[System[(EventID=4624) and TimeCreated[timediff(@SystemTime) &lt;= 86400000]]]
-      and *[EventData[Data[@Name='AuthenticationPackageName']='NTLM']]
-    </Select>
-  </Query>
-</QueryList>
-'@
-
-$ntlmLogons = @(Get-WinEvent -ComputerName $resourceServer -FilterXml $ntlmQuery -ErrorAction Stop |
-    ForEach-Object { Convert-NtlmLogonEvent -EventXml ([xml]$_.ToXml()) })
-
-$ntlmLogons | Group-Object Computer, Account, SourceAddress, VersionEvidence |
-    Sort-Object Count -Descending | Select-Object Count, Name
-```
-
-Positive evidence, not an exhaustive detector. `Negotiate`, missing fields and paths without this event need other sources:
-
-- `!= Kerberos` also matches unrelated/unspecified packages.
-- Missing `LmPackageName` does **not** establish NTLMv1.
-- Anonymous/null-session + "NTLM V1" does **not** prove a password-bearing NTLMv1 exchange.
-- `LogonType = 3` means network logon, not NTLM.
-- Local process != initiating client application.
-
-Retain raw XML/context. Correlation limits: [Windows Logon Types Decoded](../../Concepts/Windows%20Logon%20Types%20Decoded%20-%20Events%204624%20and%204625.md).
-
-## 6. Add credential-authority evidence
-
-Domain-account validation: query relevant DCs or their central collection:
-
-```powershell
-$domainController = 'dc01.corp.example'
-
-Get-WinEvent -ComputerName $domainController -FilterHashtable @{
-    LogName = 'Security'
-    ProviderName = 'Microsoft-Windows-Security-Auditing'
-    Id = 4776
-    StartTime = (Get-Date).AddHours(-24)
-} -ErrorAction Stop |
-    Select-Object TimeCreated, Id, MachineName, RecordId, Message
-```
-
-**4776 = credential validation**, result and source workstation when supplied; not a process-to-resource map. `MICROSOFT_AUTHENTICATION_PACKAGE_V1_0` **does not mean NTLMv1**.
-
-Correlate with resource 4624/4625 and Operational records. Local accounts may be validated locally; success does not prove application access. Add supported DC 4032/4033 and account-domain cross-domain 4030/4031. **Logon IDs are not globally unique across machines.**
-
-## 7. Turn events into an application backlog
+<details>
+<summary>Fields to keep in the application backlog</summary>
 
 | Field | Purpose |
 |---|---|
@@ -362,11 +308,15 @@ Correlate with resource 4624/4625 and Operational records. Local accounts may be
 | Coverage and workload | Unreachable/disabled/unsupported sources, retention/truncation, frequency and business cycle |
 | Delivery | Owner, remediation, retest, exact exception scope and expiry |
 
+</details>
+
 Prefer Negotiate over hard-coded NTLM, but prove names/SPN ownership, service identity and connectivity with [Troubleshooting Kerberos Authentication](../../Troubleshoot/Troubleshooting%20Kerberos%20Authentication%20-%20SPNs,%20Tickets,%20Error%20Codes%20and%20NTLM%20Fallback.md). Some Kerberos failures stop authentication rather than falling back.
 
 Multi-hop? Use [Kerberos Delegation Explained](../../Concepts/Kerberos%20Delegation%20Explained%20-%20KCD,%20Protocol%20Transition%20and%20RBCD.md). **Unconstrained delegation is not your migration cheat code.** Some applications need a supported replacement other than Kerberos.
 
-## 8. Restrict in stages
+## 6. Restrict a small pilot
+
+Only after remediation and retesting, restrict **one boundary on a limited pilot**. Do not start by denying NTLM across the domain.
 
 ```mermaid
 flowchart TD
@@ -393,7 +343,7 @@ Test **fresh authentication**, alternate names, service restarts and failover: e
 
 No "fix" by disabling signing/Extended Protection, sharing privileged accounts or embedding passwords. That is a security downgrade wearing a compatibility hat.
 
-## 9. Define completion and residual risk
+## 7. Confirm and expand
 
 - Coverage includes intended systems and business cycles.
 - Migrated apps demonstrably use the replacement; restrictions pass fresh-authentication tests.
@@ -401,13 +351,16 @@ No "fix" by disabling signing/Extended Protection, sharing privileged accounts o
 - Unreachable hosts, local-account paths, non-Windows systems and unsupported telemetry remain explicit unknowns.
 - Version reports use evidence, preserve unknowns and do not count multi-point observations as unique authentications.
 
+Observe a full business cycle: scheduled jobs, admin tasks, failover and rarely used applications. Expand only after the pilot passes; investigate new authentication failures before continuing.
+
 **Empty query != NTLM-free. Audit != enforcement.**
 
-## 10. Companion audit/report script
+## Reference: collection and event details
 
-Script: [Invoke-NtlmAudit.ps1](./Invoke-NtlmAudit.ps1).
+<details>
+<summary>Collector parameters, network flows and additional examples</summary>
 
-**Read-only collection, not remediation.** Only local reports are written; no audit/channel, restriction, SPN or account changes. Configure logging first (section 3).
+These supplement the first-report examples in section 3. Configure auditing first using section 2.
 
 ### Prerequisites and scope
 
@@ -432,7 +385,7 @@ The **reporting host** launches the script and initiates these connections; it n
 
 Allow destination inbound and return traffic; **no reverse WinRM**. DNS/Kerberos are normal domain prerequisites, not an exhaustive AD/trust firewall matrix. Prefer FQDNs.
 
-The script runs event/CIM reads **inside WinRM**: no direct SMB **445**, RPC **135**, dynamic Event Log RPC or CIM/DCOM connection. The standalone `Get-WinEvent -ComputerName` examples above instead use Event Log RPC.
+The script runs event/CIM reads **inside WinRM**: no direct SMB **445**, RPC **135**, dynamic Event Log RPC or CIM/DCOM connection. The manual `Get-WinEvent -ComputerName` examples in the reference below instead use Event Log RPC.
 
 **HTTPS-only is not supported by this interface:** no `UseSSL`/custom `Port`; opening **5986** alone will not work. It needs explicit script support and a valid listener/certificate.
 
@@ -504,38 +457,192 @@ Use the export's actual window: the default last 24 hours can exclude older evid
 
 **ImportedEvidenceOnly**: no proof of source reachability, logging policy, retention or export completeness.
 
-### Outputs and interpretation
+</details>
 
-| File | Contents |
+<details>
+<summary>Authentication flow, terminology and enhanced event map</summary>
+
+### Terms worth keeping separate
+
+| Term | Meaning |
 |---|---|
-| `NtlmAudit.html` | Offline dashboard: coverage, versions, reasons, results, usage groups and expandable/searchable evidence |
-| `Events.csv` | Normalized observations, provenance and account/process/target/version/protection fields |
-| `Dependencies.csv` | Groups by observation point/source; counts, first/last seen, evidence IDs, investigation, `Unassigned` owner |
-| `Coverage.csv` | Source state, supported IDs, requested/retained history, truncation and errors |
-| `NtlmAudit.json` | Full scope/domain/target list, templates, coverage, dependencies, issues, raw fields/XML and rejected events |
+| LM | Obsolete authentication/credential technology, not an acceptable compatibility target |
+| NTLMv1 | Legacy challenge-response authentication; removed from Windows Server 2025 |
+| NTLMv2 | Stronger challenge-response construction, still a legacy dependency to reduce |
+| LAN Manager authentication level | Response/version compatibility; refusing LM/NTLMv1 does not block NTLMv2 |
+| Restrict NTLM policies | Audit/restrict outgoing, incoming or domain-validation boundaries |
+| Negotiate / SPNEGO | Selects a supported mechanism, normally preferring Kerberos when prerequisites are met |
+| Signing, channel binding and Extended Protection | Protocol/application protections, not substitutes for replacing NTLM |
 
-**Read the dashboard, not the tea leaves:**
+NTLMv2 is not "NTLM with TLS": authentication, signing/sealing and transport encryption are separate. Relay risks remain; Credential Guard does not erase every dependency. **Password hash != captured challenge-response; SMB version != NTLM version.**
 
-- **Browser:** offline, self-contained, UTC. Guides start collapsed; errors/retention stay visible. Technical tables build once, on opening.
-- **Limits:** **500 rows per HTML table**, flagged when capped; filters search displayed rows only. Metrics/exports use all collected data. Without JavaScript, summaries/native details remain; use CSV/JSON for technical tables. Keep exports beside HTML.
-- **Computers checked:** live targets, including failed/empty reads, OS, counts and limitations. Provider counts precede deduplication/parsing; not callers/authentications. Offline **Computers in imported logs** lists normalized event-machine counts, not files/contacted hosts.
-- **Roles/results:** log computer != caller != destination; local process != client application. A 4776 authority need not be a DC. Attempts, NTLM processing, logon and unknown results stay separate.
-- **Review required:** failures and interpretation notes are separate. Grouped notes count affected records, not authentications; one record may have several notes. Raw warnings/IDs/statuses stay intact; friendly labels retain searchable export codes.
-- **Retention:** **affected logs only**, with requested start/end and oldest entry in UTC. Earlier history is **unverified**, not proof of overwriting/authentication failure.
+### Where validation happens
+
+Domain account: the resource server normally asks a DC through Netlogon. Local account: the resource computer is the credential authority.
+
+```mermaid
+sequenceDiagram
+    participant Client as Client application
+    participant Server as Resource server
+    participant DC as Account-domain DC
+    Client->>Server: NTLM NEGOTIATE_MESSAGE
+    Server-->>Client: NTLM CHALLENGE_MESSAGE
+    Client->>Server: NTLM AUTHENTICATE_MESSAGE with identity and response
+    Server->>DC: Netlogon pass-through validation for a domain account
+    DC-->>Server: Credential-validation result
+    Server-->>Client: Authentication result and application access decision
+```
+
+**Credential validation != application authorization.** The server creates the logon context and decides resource access.
+
+| Observation point | Evidence | Blind spot |
+|---|---|---|
+| Client | 4020/4021: process, target, reason; classic outgoing events | Attempt does not prove success |
+| Resource server | 4022/4023: incoming details/status; classic incoming events; Security 4624/4625 | Local server process != initiating client application |
+| Domain controller | 4032/4033 or 4030/4031; classic domain audit including 8004; Security 4776 | Local-account validation may never reach a DC |
+
+Trusts do not imply NTLM: Kerberos supports cross-realm authentication with appropriate trusts and name routing.
+
+### Enhanced events
+
+Keep **provider + ID** in filters/evidence. All pairs below use **Microsoft-Windows-NTLM/Operational**. Each pair shares its observation point/fields but differs in Information/Warning severity:
+
+| Information | Warning | Observation point | What it tells you |
+|---|---|---|---|
+| 4020 | 4021 | Client, outgoing authentication | Initiating process/PID, account, target, NTLM version/protections and usage reason |
+| 4022 | 4023 | Resource server, incoming authentication | Local process, remote client, NTLM version/protections and authentication status |
+| 4032 | 4033 | DC processing same-domain validation, or the resource-server domain side of a cross-domain path | Client and server context, NTLM version/protections and validation status |
+| 4030 | 4031 | Account-domain DC in a cross-domain validation path | Client/server context, forwarding DC/domain information and validation status |
+
+Warnings can concern Extended Protection/channel binding or MIC. Read explicit version/protection fields. Client records describe attempts; server/DC statuses describe processing, not application access. Preserve status codes/namespaces: severity is not the result.
+
+</details>
+
+<details>
+<summary>Manual PowerShell queries without the collector</summary>
+
+These are optional, not prerequisites for running the collector. **Remote `Get-WinEvent -ComputerName` uses Event Log RPC**, unlike the collector's WinRM transport. Appropriate event-log permissions and network access are required.
+
+### Read Operational events for a bounded window
+
+This keeps classic and enhanced Operational events:
+
+```powershell
+$computer = 'app01.corp.example'
+$startTime = (Get-Date).AddHours(-24)
+$endTime = Get-Date
+
+Get-WinEvent -ComputerName $computer -FilterHashtable @{
+    LogName = 'Microsoft-Windows-NTLM/Operational'
+    StartTime = $startTime
+    EndTime = $endTime
+} -ErrorAction Stop |
+    Select-Object TimeCreated, Id, Version, MachineName, RecordId, Message,
+        @{Name = 'EventXml'; Expression = { $_.ToXml() }}
+```
+
+### Identify explicit NTLM logons in Security
+
+This helper selects **4624 + `AuthenticationPackageName = NTLM`**, preserving unknown subpackages:
+
+```powershell
+function Convert-NtlmLogonEvent {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][xml]$EventXml)
+
+    if ([int]$EventXml.Event.System.EventID -ne 4624 -or
+        $EventXml.Event.System.Provider.GetAttribute('Name') -ne 'Microsoft-Windows-Security-Auditing') {
+        return
+    }
+
+    $data = @{}
+    foreach ($item in $EventXml.Event.EventData.Data) {
+        $data[$item.GetAttribute('Name')] = $item.InnerText
+    }
+    if ($data['AuthenticationPackageName'] -ne 'NTLM') { return }
+
+    $subpackage = $data['LmPackageName']
+    $versionEvidence = 'Not established'
+    if ($subpackage -in 'NTLM V1', 'NTLM V2', 'LM') {
+        $versionEvidence = $subpackage
+    }
+
+    [pscustomobject]@{
+        TimeUtc = ([datetimeoffset]$EventXml.Event.System.TimeCreated.SystemTime).UtcDateTime
+        Computer = [string]$EventXml.Event.System.Computer
+        RecordId = [long]$EventXml.Event.System.EventRecordID
+        Account = '{0}\{1}' -f $data['TargetDomainName'], $data['TargetUserName']
+        AccountSid = $data['TargetUserSid']
+        LogonType = $data['LogonType']
+        LogonId = $data['TargetLogonId']
+        AuthenticationPackage = $data['AuthenticationPackageName']
+        RawSubpackage = $subpackage
+        VersionEvidence = $versionEvidence
+        SourceAddress = $data['IpAddress']
+        Workstation = $data['WorkstationName']
+        ProcessName = $data['ProcessName']
+    }
+}
+```
+
+Then filter named fields on the resource server:
+
+```powershell
+$resourceServer = 'app01.corp.example'
+$ntlmQuery = @'
+<QueryList>
+  <Query Id="0" Path="Security">
+    <Select Path="Security">
+      *[System[(EventID=4624) and TimeCreated[timediff(@SystemTime) &lt;= 86400000]]]
+      and *[EventData[Data[@Name='AuthenticationPackageName']='NTLM']]
+    </Select>
+  </Query>
+</QueryList>
+'@
+
+$ntlmLogons = @(Get-WinEvent -ComputerName $resourceServer -FilterXml $ntlmQuery -ErrorAction Stop |
+    ForEach-Object { Convert-NtlmLogonEvent -EventXml ([xml]$_.ToXml()) })
+
+$ntlmLogons | Group-Object Computer, Account, SourceAddress, VersionEvidence |
+    Sort-Object Count -Descending | Select-Object Count, Name
+```
+
+Positive evidence, not an exhaustive detector. Other sources are needed for `Negotiate`, missing fields or flows without this event:
+
+- `!= Kerberos` also matches unrelated/unspecified packages.
+- Missing `LmPackageName` does **not** establish NTLMv1.
+- Anonymous/null-session + "NTLM V1" does **not** prove a password-bearing NTLMv1 exchange.
+- `LogonType = 3` means network logon, not NTLM.
+- Local process != initiating client application.
+
+Retain raw XML/context. Correlation limits: [Windows Logon Types Decoded](../../Concepts/Windows%20Logon%20Types%20Decoded%20-%20Events%204624%20and%204625.md).
+
+### Add credential-authority evidence
+
+Domain-account validation: query relevant DCs or their central collection:
+
+```powershell
+$domainController = 'dc01.corp.example'
+
+Get-WinEvent -ComputerName $domainController -FilterHashtable @{
+    LogName = 'Security'
+    ProviderName = 'Microsoft-Windows-Security-Auditing'
+    Id = 4776
+    StartTime = (Get-Date).AddHours(-24)
+} -ErrorAction Stop |
+    Select-Object TimeCreated, Id, MachineName, RecordId, Message
+```
+
+**4776 = credential validation**, result and source workstation when supplied; not a process-to-resource map. `MICROSOFT_AUTHENTICATION_PACKAGE_V1_0` **does not mean NTLMv1**.
+
+Correlate with resource 4624/4625 and Operational records. Local accounts may be validated locally; success does not prove application access. Add supported DC 4032/4033 and account-domain cross-domain 4030/4031. **Logon IDs are not globally unique across machines.**
+
+</details>
+
+<details>
+<summary>Collector internals and tests</summary>
 
 **Parser/safety:** named XML; manifest-verified enhanced v0 (`Mic Status`, client `AvlFlags`). Retain extras/raw XML; warn on unverified event versions. Deduplicate identical provenance/payload; conflicts go to `RejectedEvents`; never merge observation points heuristically. Escape HTML, prefix formula-like CSV values with an apostrophe; preserve JSON originals.
-
-**Coverage is not compliance:** `AuditPolicyCoverage = NotVerified`; reads do not prove continuous logging. Collection is non-atomic: reconcile clocks, duration and workload/failover cycles. `Collected` means no recorded gaps, not NTLM-free; `Partial` includes every offline assessment. Missing version/protection fields stay unknown; anonymous activity alone does not prove credential-bearing NTLMv1.
-
-| Outcome | Behavior |
-|---|---|
-| Unreachable/unauthorized target, XML import or event-normalization error | Continue remaining inputs; save partial outputs and warnings; **`-OpenReport` still opens HTML**; exit **1** |
-| Retention/truncation, disabled/unsupported source or interpretation caution without errors | Warnings/`Partial`; exit **0** when `ErrorCount = 0`, not a clean bill of health |
-| Invalid input, discovery failure, report-write or report-open failure | Terminating error; no fake-success fallback |
-
-Direct invocation returns the result object and sets `$LASTEXITCODE`; `pwsh -File` uses the same process exit code. Dot-sourced `Invoke-NtlmAuditRun` callers must inspect **`ErrorCount` and `Status`**.
-
-**Protect the reports:** identities, process paths, machine names, IPs and raw XML belong in controlled storage, not public posts.
 
 ### Validation
 
@@ -547,6 +654,8 @@ Invoke-Pester -Script '.\Tests\Invoke-NtlmAudit.Tests.ps1'
 ```
 
 Coverage: discovery/credentials/scopes, normalization/providers/filters, caps, partial failures, exit codes, dashboard metrics/labels/escaping and complete exports. **Not a live WinRM or migration certification.** Pilot supported builds and real XML/status values before enforcement.
+
+</details>
 
 ## References
 
