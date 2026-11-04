@@ -30,7 +30,7 @@
 .PARAMETER OutputDir
     New local output directory. Existing directories are rejected.
 .PARAMETER OpenReport
-    Open the HTML report after writing all outputs.
+    Open the HTML report after writing all outputs, including partial reports.
 .EXAMPLE
     .\Invoke-NtlmAudit.ps1 -ComputerName workstation01,app01,dc01 -OpenReport
 .EXAMPLE
@@ -43,6 +43,9 @@
     PowerShell 7.2+ on the reporting host; Windows PowerShell 5.1-compatible
     collection on Windows targets. The ActiveDirectory module is required only
     for AllDomainControllers; explicit targets and offline analysis do not need it.
+    Collection/import/normalization errors produce warnings and partial results.
+    Direct script invocation sets exit code 1 for these errors, or 0 without them.
+    Invalid input, discovery and output failures remain terminating errors.
     Reports contain account, process and network information. Protect the outputs.
 #>
 [CmdletBinding(DefaultParameterSetName = 'Live')]
@@ -1237,7 +1240,7 @@ function Invoke-NtlmAuditRun {
     $status = if ($errors.Count -gt 0 -or $issues.Count -gt 0) { 'Partial' } else { 'Collected' }
     $report = [pscustomobject][ordered]@{
         Run = [pscustomobject]@{
-            ToolVersion = '1.1.0'; Mode = $mode; Status = $status
+            ToolVersion = '1.1.1'; Mode = $mode; Status = $status
             Scope = $(if ($AllDomainControllers) { 'AllDomainControllers' } elseif ($mode -eq 'Xml') { 'EventXmlPath' } else { 'ComputerName' })
             Domain = $(if ($AllDomainControllers -and $Domain) { $Domain } else { $null })
             Computers = @($ComputerName | Sort-Object -Unique)
@@ -1257,7 +1260,9 @@ function Invoke-NtlmAuditRun {
     $htmlPath = Export-NtlmReport -Report $report -Directory $OutputDir
     foreach ($issue in $report.Issues) { Write-Warning $issue }
     Write-Host ("NTLM report: {0}" -f $htmlPath)
-    if ($errors.Count -gt 0) { throw "Audit incomplete: $($errors.Count) collection/normalization error(s). Partial reports were saved to $OutputDir." }
+    if ($errors.Count -gt 0) {
+        Write-Warning "Audit incomplete: $($errors.Count) collection/normalization error(s). Partial reports were saved to $OutputDir. Review Collection checks in the HTML report."
+    }
     if ($OpenReport) { Invoke-Item -LiteralPath $htmlPath -ErrorAction Stop }
     [pscustomobject]@{
         Status = $status; ObservationCount = $events.Count; DependencyGroupCount = $dependencies.Count
@@ -1270,5 +1275,8 @@ if ($MyInvocation.InvocationName -ne '.') {
     $arguments.StartTime = $StartTime
     $arguments.EndTime = $EndTime
     $arguments.OutputDir = $OutputDir
-    Invoke-NtlmAuditRun @arguments
+    $result = Invoke-NtlmAuditRun @arguments
+    $result
+    if ($result.ErrorCount -gt 0) { exit 1 }
+    exit 0
 }

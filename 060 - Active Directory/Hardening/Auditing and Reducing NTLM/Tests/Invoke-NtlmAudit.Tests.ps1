@@ -449,15 +449,53 @@ Describe 'NTLM domain controller discovery' {
     }
 
     It 'retains unreachable discovered DCs as coverage errors and continues collecting the others' {
-        $script:unreachableDc = 'dc02.example.test'
-        { Invoke-NtlmAuditRun @script:discoveryRunArgs -AllDomainControllers } | Should Throw 'Audit incomplete'
+        $script:unreachableDc = 'dc01.example.test'
+        Mock Invoke-Item {}
+        $result = Invoke-NtlmAuditRun @script:discoveryRunArgs -AllDomainControllers -OpenReport
+        $result.Status | Should Be 'Partial'
+        $result.ErrorCount | Should Be 1
+        $result.ObservationCount | Should Be 1
         $script:remoteCalls.Count | Should Be 2
+        ($script:remoteCalls.ComputerName -join ',').ToLowerInvariant() | Should Be 'dc01.example.test,dc02.example.test'
         $report = Get-Content -LiteralPath (Join-Path $script:discoveryRunArgs.OutputDir 'NtlmAudit.json') -Raw | ConvertFrom-Json
         $report.Run.Status | Should Be 'Partial'
         $report.Run.Computers.Count | Should Be 2
         $report.Run.ErrorCount | Should Be 1
         $report.Events.Count | Should Be 1
-        @($report.Coverage | Where-Object { $_.Computer -eq 'dc02.example.test' -and $_.Status -eq 'Error' }).Count | Should Be 1
+        $report.Events[0].SourceComputer | Should Be 'dc02.example.test'
+        @($report.Coverage | Where-Object { $_.Computer -eq 'dc01.example.test' -and $_.Status -eq 'Error' }).Count | Should Be 1
+        Assert-MockCalled Invoke-Item -Times 1 -Exactly -ParameterFilter { $LiteralPath -eq $result.HtmlPath }
+        Assert-MockCalled Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like 'Audit incomplete: 1*' }
+        $html = Get-Content -LiteralPath $result.HtmlPath -Raw
+        $html | Should Match 'WinRM unavailable'
+        $html | Should Match 'Errors: 1'
+    }
+
+    It 'handles an unavailable explicit computer without requiring AD discovery or losing the next computer' {
+        $script:unreachableDc = 'app01.example.test'
+        $result = Invoke-NtlmAuditRun @script:discoveryRunArgs -ComputerName 'app01.example.test','server02.example.test'
+        $script:moduleImports | Should Be 0
+        $script:discoveryCalls.Count | Should Be 0
+        $script:remoteCalls.Count | Should Be 2
+        $result.Status | Should Be 'Partial'
+        $result.ErrorCount | Should Be 1
+        $result.ObservationCount | Should Be 1
+        $report = Get-Content -LiteralPath $result.JsonPath -Raw | ConvertFrom-Json
+        $report.Run.Computers.Count | Should Be 2
+        $report.Events[0].SourceComputer | Should Be 'server02.example.test'
+        @($report.Coverage | Where-Object { $_.Computer -eq 'app01.example.test' -and $_.Status -eq 'Error' }).Count | Should Be 1
+    }
+
+    It 'returns an explicitly partial empty report when every discovered DC is unavailable' {
+        Mock Invoke-Command { throw 'WinRM unavailable.' }
+        $result = Invoke-NtlmAuditRun @script:discoveryRunArgs -AllDomainControllers
+        $result.Status | Should Be 'Partial'
+        $result.ErrorCount | Should Be 2
+        $result.ObservationCount | Should Be 0
+        $report = Get-Content -LiteralPath $result.JsonPath -Raw | ConvertFrom-Json
+        $report.Run.Computers.Count | Should Be 2
+        @($report.Coverage | Where-Object { $_.Status -eq 'Error' }).Count | Should Be 2
+        @($report.Events).Count | Should Be 0
     }
 
     It 'supports direct script invocation with discovery and live collection options' {
@@ -663,6 +701,7 @@ Describe 'NTLM offline reports and failure behavior' {
             OutputDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         }
         $script:inputPath = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.xml')
+        $script:reportSaveFailurePath = $null
         Mock Write-Host {}
         Mock Write-Warning {}
     }
@@ -992,14 +1031,50 @@ Describe 'NTLM offline reports and failure behavior' {
         $html | Should Match 'Explicit computer list: only the computers supplied'
     }
 
-    It 'retains partial reports and fails explicitly for malformed events' {
-        Set-Content -LiteralPath $script:inputPath -Value '<Event><EventData/></Event>'
-        { Invoke-NtlmAuditRun @script:runArgs -EventXmlPath $script:inputPath } | Should Throw 'Audit incomplete'
+    It 'opens partial reports and retains valid evidence alongside rejected malformed events' {
+        Mock Invoke-Item {}
+        $valid = New-TestNtlmXml
+        Set-Content -LiteralPath $script:inputPath -Value "<Events><Event><EventData/></Event>$valid</Events>"
+        $result = Invoke-NtlmAuditRun @script:runArgs -EventXmlPath $script:inputPath -OpenReport
+        $result.Status | Should Be 'Partial'
+        $result.ErrorCount | Should Be 1
+        $result.ObservationCount | Should Be 1
         $report = Get-Content -LiteralPath (Join-Path $script:runArgs.OutputDir 'NtlmAudit.json') -Raw | ConvertFrom-Json
         $report.Run.ErrorCount | Should Be 1
         $report.Run.Status | Should Be 'Partial'
         $report.RejectedEvents.Count | Should Be 1
         $report.RejectedEvents[0].RawXml | Should Match 'EventData'
+        Assert-MockCalled Invoke-Item -Times 1 -Exactly -ParameterFilter { $LiteralPath -eq $result.HtmlPath }
+        Assert-MockCalled Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like 'Audit incomplete: 1*' }
+    }
+
+    It 'records an unreadable XML input and continues with another file' {
+        $missing = Join-Path $TestDrive 'missing-events.xml'
+        Set-Content -LiteralPath $script:inputPath -Value (New-TestNtlmXml)
+        $result = Invoke-NtlmAuditRun @script:runArgs -EventXmlPath $missing,$script:inputPath
+        $result.Status | Should Be 'Partial'
+        $result.ErrorCount | Should Be 1
+        $result.ObservationCount | Should Be 1
+        $report = Get-Content -LiteralPath $result.JsonPath -Raw | ConvertFrom-Json
+        ($report.Issues -join "`n") | Should Match 'XML import:'
+    }
+
+    It 'still surfaces failures to save the report' {
+        Set-Content -LiteralPath $script:inputPath -Value (New-TestNtlmXml)
+        $script:reportSaveFailurePath = $script:runArgs.OutputDir
+        Mock Export-NtlmReport { throw 'Report output unavailable.' } -ParameterFilter {
+            $Directory -eq $script:reportSaveFailurePath
+        }
+        { Invoke-NtlmAuditRun @script:runArgs -EventXmlPath $script:inputPath } | Should Throw 'Report output unavailable'
+    }
+
+    It 'still surfaces failures to open a saved partial report' {
+        Set-Content -LiteralPath $script:inputPath -Value '<Event><EventData/></Event>'
+        Mock Invoke-Item { throw 'Report viewer unavailable.' }
+        { Invoke-NtlmAuditRun @script:runArgs -EventXmlPath $script:inputPath -OpenReport } | Should Throw 'Report viewer unavailable'
+        $report = Get-Content -LiteralPath (Join-Path $script:runArgs.OutputDir 'NtlmAudit.json') -Raw | ConvertFrom-Json
+        $report.Run.Status | Should Be 'Partial'
+        $report.Run.ErrorCount | Should Be 1
     }
 
     It 'does not overwrite existing output directories' {
@@ -1014,26 +1089,54 @@ Describe 'NTLM offline reports and failure behavior' {
         { Invoke-NtlmAuditRun @script:runArgs -ComputerName 'localhost' } | Should Throw 'StartTime'
     }
 
-    It 'saves a failed remote computer as a coverage error and then fails' {
+    It 'opens saved partial outputs even when the only remote computer fails' {
+        $script:openedReport = $null
+        Mock Invoke-Item {
+            param($LiteralPath)
+            foreach ($name in 'NtlmAudit.html','NtlmAudit.json','Events.csv','Dependencies.csv','Coverage.csv') {
+                if (-not (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $LiteralPath) $name))) {
+                    throw "Report opened before $name was saved."
+                }
+            }
+            $script:openedReport = $LiteralPath
+        }
         Mock Invoke-Command { throw [UnauthorizedAccessException]::new('Access denied') }
-        { Invoke-NtlmAuditRun @script:runArgs -ComputerName 'remote.example.test' } | Should Throw 'Audit incomplete'
+        $result = Invoke-NtlmAuditRun @script:runArgs -ComputerName 'remote.example.test' -OpenReport
+        $result.Status | Should Be 'Partial'
+        $result.ErrorCount | Should Be 1
+        $result.ObservationCount | Should Be 0
+        $script:openedReport | Should Be $result.HtmlPath
         $report = Get-Content -LiteralPath (Join-Path $script:runArgs.OutputDir 'NtlmAudit.json') -Raw | ConvertFrom-Json
         $report.Coverage[0].Computer | Should Be 'remote.example.test'
         $report.Coverage[0].Status | Should Be 'Error'
+        $report.Coverage[0].Error | Should Match 'Access denied'
         $report.Events.Count | Should Be 0
     }
 
     It 'rejects an empty remote response instead of reporting a clean collection' {
         Mock Invoke-Command {}
-        { Invoke-NtlmAuditRun @script:runArgs -ComputerName 'remote.example.test' } | Should Throw 'Audit incomplete'
+        $result = Invoke-NtlmAuditRun @script:runArgs -ComputerName 'remote.example.test'
+        $result.Status | Should Be 'Partial'
+        $result.ErrorCount | Should Be 1
         $report = Get-Content -LiteralPath (Join-Path $script:runArgs.OutputDir 'NtlmAudit.json') -Raw | ConvertFrom-Json
         $report.Coverage[0].Status | Should Be 'Error'
+        $report.Coverage[0].Error | Should Match 'expected collection/coverage object'
     }
 
     It 'supports direct script invocation with explicit dates and output path' {
         Set-Content -LiteralPath $script:inputPath -Value (New-TestNtlmXml)
         $result = & $scriptPath @script:runArgs -EventXmlPath $script:inputPath
+        $LASTEXITCODE | Should Be 0
         $result.ObservationCount | Should Be 1
+    }
+
+    It 'returns partial results and a nonzero exit code to the caller without a final exception' {
+        Set-Content -LiteralPath $script:inputPath -Value '<Event><EventData/></Event>'
+        $result = & $scriptPath @script:runArgs -EventXmlPath $script:inputPath
+        $LASTEXITCODE | Should Be 1
+        $result.Status | Should Be 'Partial'
+        $result.ErrorCount | Should Be 1
+        Test-Path -LiteralPath $result.HtmlPath | Should Be $true
     }
 
     It 'contains no commands that alter source auditing, accounts or registry values' {
@@ -1045,5 +1148,50 @@ Describe 'NTLM offline reports and failure behavior' {
             ForEach-Object { $_.GetCommandName() })
         @($commands | Where-Object { $_ -match '^(Set-AD|New-AD|Remove-AD|Set-ItemProperty|New-ItemProperty|Remove-ItemProperty|Enable-WinEvent|wevtutil|auditpol)' }).Count |
             Should Be 0
+    }
+}
+
+Describe 'NTLM command-line exit codes' {
+    BeforeEach {
+        $script:cliDirectory = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        $script:cliInputPath = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.xml')
+    }
+
+    It 'returns exit code zero for warning-only partial assessments' {
+        $PSNativeCommandUseErrorActionPreference = $false
+        Set-Content -LiteralPath $script:cliInputPath -Value (New-TestNtlmXml)
+        $engine = (Get-Process -Id $PID).Path
+        $output = @(& $engine -NoLogo -NoProfile -File $scriptPath -EventXmlPath $script:cliInputPath `
+            -StartTime '2025-11-01T00:00:00Z' -EndTime '2025-11-03T00:00:00Z' `
+            -OutputDir $script:cliDirectory 2>&1)
+        $exitCode = $LASTEXITCODE
+        $exitCode | Should Be 0
+        ($output -join "`n") | Should Not Match 'Audit incomplete:'
+        $report = Get-Content -LiteralPath (Join-Path $script:cliDirectory 'NtlmAudit.json') -Raw | ConvertFrom-Json
+        $report.Run.Status | Should Be 'Partial'
+        $report.Run.ErrorCount | Should Be 0
+        $report.Events.Count | Should Be 1
+    }
+
+    It 'returns exit code one without a final exception after saving partial evidence' {
+        $PSNativeCommandUseErrorActionPreference = $false
+        $valid = New-TestNtlmXml
+        Set-Content -LiteralPath $script:cliInputPath -Value "<Events><Event><EventData/></Event>$valid</Events>"
+        $engine = (Get-Process -Id $PID).Path
+        $output = @(& $engine -NoLogo -NoProfile -File $scriptPath -EventXmlPath $script:cliInputPath `
+            -StartTime '2025-11-01T00:00:00Z' -EndTime '2025-11-03T00:00:00Z' `
+            -OutputDir $script:cliDirectory 2>&1)
+        $exitCode = $LASTEXITCODE
+        $exitCode | Should Be 1
+        ($output -join "`n") | Should Match 'Audit incomplete: 1'
+        ($output -join "`n") | Should Not Match 'Exception:'
+        foreach ($name in 'NtlmAudit.html','NtlmAudit.json','Events.csv','Dependencies.csv','Coverage.csv') {
+            Test-Path -LiteralPath (Join-Path $script:cliDirectory $name) | Should Be $true
+        }
+        $report = Get-Content -LiteralPath (Join-Path $script:cliDirectory 'NtlmAudit.json') -Raw | ConvertFrom-Json
+        $report.Run.Status | Should Be 'Partial'
+        $report.Run.ErrorCount | Should Be 1
+        $report.Events.Count | Should Be 1
+        $report.RejectedEvents.Count | Should Be 1
     }
 }

@@ -480,7 +480,7 @@ WinRM HTTP does not by itself mean that the remoting payload is unencrypted: nor
 | `MaxEventsPerSource` | Live-only cap, default **10000 per computer/provider/channel**, range 1-1000000; one extra record detects truncation |
 | `Credential` | Optional credential for remote WinRM calls and, with `AllDomainControllers`, AD discovery; use the approved authentication/access process |
 | `OutputDir` | A **new** local output directory; default is a unique timestamped directory under `Outputs` beside the script |
-| `OpenReport` | Open the generated HTML after a run without collection/normalization errors |
+| `OpenReport` | Open the generated HTML after all outputs are saved, including partial reports with collection/normalization errors |
 
 Choose exactly one input scope: `ComputerName`, `AllDomainControllers` or `EventXmlPath`. `Domain` is valid only with `AllDomainControllers`. The script rejects missing/mixed input scopes, reversed windows and an existing output path. `EndTime` must not be more than five minutes in the future. If a live source reaches its cap, the report marks it truncated and retains the newest matching records; increase the cap or reduce the window and rerun into a new directory.
 
@@ -566,7 +566,11 @@ Keep these limitations visible:
 - Live evidence is a snapshot, not an atomic estate-wide collection. Reconcile collection duration, clock accuracy, workload cycles and failover paths before drawing migration conclusions.
 - `Collected` means collection completed without the recorded gaps, **not** that the estate is NTLM-free. `Partial` identifies recorded limitations; offline imports are always partial assessments.
 
-Access, import and normalization errors are retained in the partial reports, then the script throws so automation does not receive a clean-success result. Disabled/unsupported sources, truncation and other limitations produce warnings and `Partial` status without necessarily throwing. Inspect both the returned status and the report.
+An unreachable or unauthorized computer does **not** prevent collection from the remaining targets. Access, import and normalization errors remain visible in the partial reports and console warnings. All outputs are saved, and `-OpenReport` opens the HTML even when the audit is incomplete; there is no final collection-error exception hiding the report.
+
+Direct script invocation returns the result object and sets `$LASTEXITCODE` to **1** when `ErrorCount` is nonzero, or **0** otherwise. With `pwsh -File`, these are the process exit codes. A nonzero code still alerts automation to missing evidence; it does not mean the partial reports were lost. Callers using the dot-sourced `Invoke-NtlmAuditRun` function receive the same result object and must inspect its `ErrorCount` and `Status`.
+
+Disabled/unsupported sources, truncation and other limitations produce warnings and `Partial` status without necessarily setting a nonzero exit code. Invalid input, discovery failures, and failures to save or open the report remain terminating errors. Inspect the result and report; never treat an unreachable machine as NTLM-free.
 
 **Protect the outputs:** reports contain identities, process paths, machine names, IPs and raw event XML. The tool is generic and intended for public distribution; generated reports are not intended for public publication.
 
