@@ -34,7 +34,8 @@ Have the following information and files available offline:
 | Domain controllers | Hostname, site, IP, OS, DNS/GC roles, backup coverage |
 | Preferred recovery DC | Writable DC with current, regularly tested backups |
 | FSMO roles | Current owners before the incident |
-| DSRM | Valid credentials for the recovery DC |
+| Domain administrator | RID-500 account name and password valid at the backup date; another usable domain administrator if RID-500 was disabled |
+| DSRM | Separate local DSRM administrator password valid at the backup date, for offline troubleshooting |
 | Network | Recovery VLAN, firewall rules, DNS, gateway, NTP source |
 | Backup | Full-server/Bare Metal recovery backup, source DC, version ID, timestamp, and accessible backup media |
 | SYSVOL | DFSR state and expected GPO count |
@@ -44,7 +45,7 @@ Have the following information and files available offline:
 
 Prepare a target VM or physical server with the same firmware boot mode as the source, the required disks, and disk sizes at least as large as those in the backup. Keep the backup disk separate from the disks to be restored. Have storage/network drivers and BitLocker recovery keys available if required.
 
-For a **Windows Server 2022 backup, prepare the Windows Server 2022 installation ISO**. Bare Metal Recovery restores the backed-up OS; it does not upgrade the DC to Windows Server 2025. No OS needs to be preinstalled on the target.
+Prepare the **installation ISO matching the Windows Server version of the backed-up DC**. Bare Metal Recovery restores the backed-up OS; it does not upgrade Windows Server. No OS needs to be preinstalled on the target.
 
 Before the session, verify the backup catalog on the source DC or a prepared Windows Server Backup host. Replace both values:
 
@@ -146,7 +147,18 @@ The recovered machine keeps the backed-up DC's name, OS, directory database, and
 
 ### 3.2 Log on and check the network
 
-Boot normally and log on through the console with a domain administrator password valid at the backup date. Do not use a cached credential from the current production environment. Keep the DSRM password available for troubleshooting, but do not continue with AD cmdlets in DSRM.
+**DSRM is not a mandatory step in this full-server recovery.** Use the accounts as follows:
+
+| Moment | Account and mode |
+|---|---|
+| Boot from the ISO and restore the server image | No DSRM logon. If the backup is on a share, use that share's access credentials |
+| First normal boot after recovery | The **domain RID-500 administrator**, using its actual account name and password valid at the backup date |
+| SYSVOL, FSMO, metadata cleanup, RID allocation, and account resets | A domain administrator in **normal startup mode**, with elevated PowerShell |
+| Offline troubleshooting in DSRM, only if needed | The **local DSRM administrator** and its separate password. AD DS is stopped; do not run AD-management cmdlets |
+
+If you entered DSRM, exit that startup mode and reboot normally before logging on as `DOMAIN\<RID500AccountName>` and continuing this runbook. The DSRM account is not the domain RID-500 account, even if both are named Administrator.
+
+If RID-500 was disabled in the backup or its password is unknown, use another restored domain administrator to log on and enable/reset it in step 5.1. **DSRM credentials cannot replace domain credentials for these commands.** If no usable domain administrator is available, stop and resolve access before continuing.
 
 Check the restored IP configuration:
 
@@ -297,7 +309,7 @@ Confirm that the account is enabled, controlled, and usable. In the forest root 
 
 Run the following commands in an **elevated Windows PowerShell session on the isolated, restored DC, in normal startup mode**, using an account with the required domain permissions. AD account-management commands are not run in DSRM.
 
-If RID-500 is disabled, enable it:
+If RID-500 is disabled, enable it **while logged on as another usable domain administrator**. This cannot be done with `Enable-ADAccount` in DSRM:
 
 ```powershell
 Enable-ADAccount -Identity $rid500.SID `
@@ -1006,7 +1018,7 @@ Get-ADSyncExportDeletionThreshold
 
 ### Domain ownership
 
-- [ ] RID-500 enabled, password known, and fresh console logon tested.
+- [ ] RID-500 enabled, password known, and fresh domain console logon tested in normal startup mode, not DSRM.
 - [ ] All five FSMO roles seized.
 - [ ] All other writable DC metadata removed.
 - [ ] Stale DNS records removed.
