@@ -112,7 +112,7 @@ if ($LASTEXITCODE -ne 0) {
 - **No extra module:** `Microsoft/OSInfo` is bundled with DSC.
 - **Not needed yet:** PowerShell 7, Gallery resource modules, or inbound WinRM configuration on the administration server.
 - **Ready for the next step:** the ZIP is cached, the local engine runs, and a bundled resource returns state.
-- **Lab checkpoint:** administration-server commands completed successfully, as confirmed by the operator. Remote deployment and checks are not yet validated.
+- **Lab checkpoint:** administration-server commands completed successfully, as confirmed by the operator. Remote DSC deployment and configuration checks are not yet validated.
 
 ## 2. Prepare Remote Execution
 
@@ -120,9 +120,9 @@ if ($LASTEXITCODE -ne 0) {
 - **Context:** a Windows Server target in the same AD domain.
 - **Authentication:** Kerberos with the current domain account; use the target's FQDN, not an IP address.
 - **Permissions:** the account must be allowed to use the target endpoint and have administrator rights there for the later deployment.
-- **Transport below:** the existing WinRM HTTP listener on port 5985. For an HTTPS-only endpoint, add `-UseSSL` to both `Test-WSMan` and `Invoke-Command` to use port 5986.
+- **Transport below:** the existing WinRM HTTP listener on port 5985. For an HTTPS-only endpoint, add `-UseSSL` to `Test-WSMan`, `New-PSSession`, and `Invoke-Command` calls using `-ComputerName` to use port 5986.
 - **Session:** run these blocks in order in the same console.
-- **Scope:** read-only connection tests; DSC does not need to be installed on the target yet.
+- **Scope:** steps 2.1-2.3 test the connection without changing configuration; step 2.4 installs the runtime files; step 2.5 verifies them with a read-only DSC operation.
 
 ### 2.1. Select the First Target and Check DNS
 
@@ -181,10 +181,91 @@ if ($remoteInfo.PowerShellVersion -notlike '5.1.*' -or
 - **Expected:** the target's name and OS, the intended domain account, PowerShell `5.1.*`, and both boolean properties set to `True`.
 - **Effect:** reads the execution context and OS only; no installation or configuration change.
 - **On failure:** stop and investigate DNS, the existing listener, firewall, authentication, or endpoint permissions. Do not bypass the problem with wildcard TrustedHosts, disabled certificate validation, or weaker authentication.
-- **Next checkpoint:** validate these tests before preparing DSC on the first target.
+- **Lab checkpoint:** steps 2.1-2.3 completed successfully on the first target, as confirmed by the operator.
 
-- [ ] Deploy the verified runtime and required resources to the first target.
-- [ ] Verify a read-only DSC run on that target.
+### 2.4. Deploy the Runtime from the Administration Server
+
+- **Run on:** the administration server; the session commands execute on `$target`.
+- **Reuse:** `$target` from step 2.1, and `$zipPath` and `$expectedHash` from step 1.2. In a new console, rerun those steps first.
+- **Transfer:** WinRM only; no SMB share or Internet access from the target is needed.
+- **Effects on the target:** create `C:\DSC\Packages`, copy the verified archive, and extract the complete package into `C:\DSC\Runtime`.
+- **Existing runtime:** skip this deployment and run step 2.5 instead. This procedure refuses to overwrite an existing Runtime directory.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+
+if ((Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash -ne $expectedHash) {
+    throw 'The administration server archive does not match the pinned SHA256.'
+}
+
+$remoteZipPath = 'C:\DSC\Packages\' + (Split-Path -Path $zipPath -Leaf)
+$session = New-PSSession -ComputerName $target `
+    -ConfigurationName 'Microsoft.PowerShell' `
+    -Authentication Kerberos -ErrorAction Stop
+
+try {
+    Invoke-Command -Session $session -ErrorAction Stop -ScriptBlock {
+        $ErrorActionPreference = 'Stop'
+        if (Test-Path -LiteralPath 'C:\DSC\Runtime') {
+            throw 'The target Runtime directory already exists. Verify it with step 2.5; it was not overwritten.'
+        }
+        New-Item -ItemType Directory -Path 'C:\DSC\Packages' -Force | Out-Null
+    }
+
+    Copy-Item -LiteralPath $zipPath -Destination $remoteZipPath `
+        -ToSession $session -ErrorAction Stop
+
+    Invoke-Command -Session $session -ArgumentList $remoteZipPath, $expectedHash `
+        -ErrorAction Stop -ScriptBlock {
+            param([string]$ZipPath, [string]$ExpectedHash)
+            $ErrorActionPreference = 'Stop'
+
+            if ((Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash -ne $ExpectedHash) {
+                throw 'The transferred DSC archive failed SHA256 verification.'
+            }
+
+            Expand-Archive -LiteralPath $ZipPath -DestinationPath 'C:\DSC\Runtime' -ErrorAction Stop
+            Write-Output "Runtime extracted on $env:COMPUTERNAME."
+        }
+}
+finally {
+    Remove-PSSession -Session $session
+}
+```
+
+- **Expected:** `Runtime extracted on <target name>.`
+- **Installation only:** no service, registry setting, security policy, or scheduled task is configured.
+- **On failure:** stop and inspect the error and any partial Runtime directory before retrying; successful extraction is not yet a working-engine verdict.
+
+### 2.5. Verify DSC on the Target
+
+- **Run on:** the administration server; DSC executes on `$target`, not locally.
+
+```powershell
+Invoke-Command -ComputerName $target -ConfigurationName 'Microsoft.PowerShell' `
+    -Authentication Kerberos -ErrorAction Stop -ScriptBlock {
+        $ErrorActionPreference = 'Stop'
+        $env:PATH = "C:\DSC\Runtime;$env:PATH"
+        $dsc = 'C:\DSC\Runtime\dsc.exe'
+
+        Write-Output "Server: $env:COMPUTERNAME"
+        $version = & $dsc --version
+        if ($LASTEXITCODE -ne 0 -or $version -ne 'dsc 3.2.3') {
+            throw 'Expected DSC 3.2.3 at C:\DSC\Runtime\dsc.exe on the target.'
+        }
+        $version
+
+        & $dsc resource get --resource Microsoft/OSInfo --output-format yaml
+        if ($LASTEXITCODE -ne 0) {
+            throw "Remote DSC read failed with exit code $LASTEXITCODE."
+        }
+    }
+```
+
+- **Expected:** the target's name, `dsc 3.2.3`, and `actualState` describing the target OS.
+- **Resource:** `Microsoft/OSInfo` comes with the copied package; no additional resource module is needed.
+- **Effect:** read-only; the PATH change applies only to this remote session.
+- **Next checkpoint:** confirm this result before adding the first configuration compliance check.
 
 ## 3. Add Remote Checks
 
