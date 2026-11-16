@@ -112,13 +112,79 @@ if ($LASTEXITCODE -ne 0) {
 - **No extra module:** `Microsoft/OSInfo` is bundled with DSC.
 - **Not needed yet:** PowerShell 7, Gallery resource modules, or inbound WinRM configuration on the administration server.
 - **Ready for the next step:** the ZIP is cached, the local engine runs, and a bundled resource returns state.
+- **Lab checkpoint:** administration-server commands completed successfully, as confirmed by the operator. Remote deployment and checks are not yet validated.
 
 ## 2. Prepare Remote Execution
 
-- [ ] Identify the administration server and first target.
-- [ ] Verify name resolution, connectivity, and remote execution permissions.
-- [ ] Prepare DSC and the required resources on the target where checks will execute.
-- [ ] Verify a read-only remote run.
+- **Run on:** the administration server.
+- **Context:** a Windows Server target in the same AD domain.
+- **Authentication:** Kerberos with the current domain account; use the target's FQDN, not an IP address.
+- **Permissions:** the account must be allowed to use the target endpoint and have administrator rights there for the later deployment.
+- **Transport below:** the existing WinRM HTTP listener on port 5985. For an HTTPS-only endpoint, add `-UseSSL` to both `Test-WSMan` and `Invoke-Command` to use port 5986.
+- **Session:** run these blocks in order in the same console.
+- **Scope:** read-only connection tests; DSC does not need to be installed on the target yet.
+
+### 2.1. Select the First Target and Check DNS
+
+- **Replace:** `server01.contoso.com` with the target's FQDN.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$target = 'server01.contoso.com'
+
+Resolve-DnsName -Name $target -ErrorAction Stop
+```
+
+- **Expected:** the name resolves to the intended target's address.
+
+### 2.2. Check WinRM with Kerberos
+
+```powershell
+Test-WSMan -ComputerName $target -Authentication Kerberos -ErrorAction Stop
+```
+
+- **Expected:** a WinRM identification response without authentication or connection errors.
+- **Limit:** this alone does not prove access to a PowerShell session or sufficient privileges.
+
+### 2.3. Check the Remote PowerShell Context
+
+```powershell
+$remoteInfo = Invoke-Command -ComputerName $target `
+    -ConfigurationName 'Microsoft.PowerShell' `
+    -Authentication Kerberos -ErrorAction Stop -ScriptBlock {
+        $ErrorActionPreference = 'Stop'
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [System.Security.Principal.WindowsPrincipal]::new($identity)
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+
+        [pscustomobject]@{
+            ComputerName = $env:COMPUTERNAME
+            Account = $identity.Name
+            OperatingSystem = $os.Caption
+            PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+            Is64BitProcess = [Environment]::Is64BitProcess
+            IsAdministrator = $principal.IsInRole(
+                [System.Security.Principal.WindowsBuiltInRole]::Administrator
+            )
+        }
+    }
+
+$remoteInfo | Format-List
+
+if ($remoteInfo.PowerShellVersion -notlike '5.1.*' -or
+    $remoteInfo.Is64BitProcess -ne $true -or
+    $remoteInfo.IsAdministrator -ne $true) {
+    throw 'Expected an elevated, 64-bit Windows PowerShell 5.1 target session.'
+}
+```
+
+- **Expected:** the target's name and OS, the intended domain account, PowerShell `5.1.*`, and both boolean properties set to `True`.
+- **Effect:** reads the execution context and OS only; no installation or configuration change.
+- **On failure:** stop and investigate DNS, the existing listener, firewall, authentication, or endpoint permissions. Do not bypass the problem with wildcard TrustedHosts, disabled certificate validation, or weaker authentication.
+- **Next checkpoint:** validate these tests before preparing DSC on the first target.
+
+- [ ] Deploy the verified runtime and required resources to the first target.
+- [ ] Verify a read-only DSC run on that target.
 
 ## 3. Add Remote Checks
 
@@ -140,4 +206,5 @@ if ($LASTEXITCODE -ne 0) {
 
 - [Microsoft DSC installation guide](https://learn.microsoft.com/en-us/powershell/dsc/install?view=dsc-3.0).
 - [DSC 3.2.3 release and packages](https://github.com/PowerShell/DSC/releases/tag/v3.2.3).
+- [Windows PowerShell remoting requirements](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_remote_requirements?view=powershell-5.1).
 si besoin 
