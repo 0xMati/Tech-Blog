@@ -1,0 +1,265 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="29" errors="0" failures="26" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2026-11-16" time="15:12:35">
+  <environment cwd="C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog" machine-name="MATI-PC1" platform="Microsoft Windows 11 Enterprise|C:\WINDOWS|\Device\Harddisk1\Partition3" os-version="10.0.26300" clr-version="10.0.15" user="mamotron" nunit-version="2.5.8.0" user-domain="EUROPE" />
+  <culture-info current-culture="en-US" current-uiculture="en-US" />
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="4.0256" asserts="0" description="Pester">
+    <results>
+      <test-suite type="TestFixture" name="C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1" executed="True" result="Failure" success="False" time="4.0256" asserts="0" description="C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Initialize-PimGroups" executed="True" result="Failure" success="False" time="2.7328" asserts="0" description="Initialize-PimGroups">
+            <results>
+              <test-case description="deploys the exact active-role and eligible-member design, then verifies it" name="Initialize-PimGroups.deploys the exact active-role and eligible-member design, then verifies it" time="0.6575" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:257</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="resolves new policy IDs after onboarding and leaves Owner, CA and notification policies alone" name="Initialize-PimGroups.resolves new policy IDs after onboarding and leaves Owner, CA and notification policies alone" time="0.0856" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:286</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="makes a second execution a true no-op without extending eligibility" name="Initialize-PimGroups.makes a second execution a true no-op without extending eligibility" time="0.06" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:299</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="performs no Graph writes in WhatIf for a new group" name="Initialize-PimGroups.performs no Graph writes in WhatIf for a new group" time="0.0563" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:309</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="performs no Graph writes in WhatIf for an existing group with drift" name="Initialize-PimGroups.performs no Graph writes in WhatIf for an existing group with drift" time="0.0568" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:317</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="rejects the unedited example before authentication" name="Initialize-PimGroups.rejects the unedited example before authentication" time="0.1559" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects unknown configuration keys before authentication" name="Initialize-PimGroups.rejects unknown configuration keys before authentication" time="0.0773" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects an expired eligibility window and overlapping administrators" name="Initialize-PimGroups.rejects an expired eligibility window and overlapping administrators" time="0.0875" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects activation and eligibility durations of zero and an eligibility window over its limit" name="Initialize-PimGroups.rejects activation and eligibility durations of zero and an eligibility window over its limit" time="0.1202" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*within maximumEligibilityDuration*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*within maximumEligibilityDuration*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:354
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:354</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="rejects duplicate configured role and scope pairs" name="Initialize-PimGroups.rejects duplicate configured role and scope pairs" time="0.0701" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*duplicate role and scope*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*duplicate role and scope*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:361
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:361</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="refuses a connection to another tenant or an app-only connection" name="Initialize-PimGroups.refuses a connection to another tenant or an app-only connection" time="0.0612" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*delegated Global-cloud*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*delegated Global-cloud*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:367
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:367</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="checks delegated scopes and active administrative rights before any write" name="Initialize-PimGroups.checks delegated scopes and active administrative rights before any write" time="0.059" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*missing scope*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*missing scope*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:376
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:376</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="recognizes an active administrative role inherited through a group" name="Initialize-PimGroups.recognizes an active administrative role inherited through a group" time="0.0777" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:387</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="requests a process-scoped connection to the explicit tenant by default" name="Initialize-PimGroups.requests a process-scoped connection to the explicit tenant by default" time="0.0584" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:391</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="refuses a disabled referenced user before creating a group" name="Initialize-PimGroups.refuses a disabled referenced user before creating a group" time="0.0669" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*disabled*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*disabled*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:399
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:399</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="does not try to convert an ordinary existing group" name="Initialize-PimGroups.does not try to convert an ordinary existing group" time="0.0635" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*No conversion or rename*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*No conversion or rename*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:406
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:406</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="follows pagination and refuses ambiguous group names" name="Initialize-PimGroups.follows pagination and refuses ambiguous group names" time="0.0639" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*Ambiguous group name*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*Ambiguous group name*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:413
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:413</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="never follows a pagination link outside Microsoft Graph" name="Initialize-PimGroups.never follows a pagination link outside Microsoft Graph" time="0.0666" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*unexpected Graph URL*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*unexpected Graph URL*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:420
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:420</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="does not adopt owners or standing active members outside the intended design" name="Initialize-PimGroups.does not adopt owners or standing active members outside the intended design" time="0.0634" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*owners outside ownerIds*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*owners outside ownerIds*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:427
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:427</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="allows a rerun while a configured beneficiary has a legitimate PIM activation" name="Initialize-PimGroups.allows a rerun while a configured beneficiary has a legitimate PIM activation" time="0.0498" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:435</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="refuses extra active roles rather than silently retaining an oversized bundle" name="Initialize-PimGroups.refuses extra active roles rather than silently retaining an oversized bundle" time="0.0559" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:448</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="refuses permanent or differently dated existing eligibility without renewing it" name="Initialize-PimGroups.refuses permanent or differently dated existing eligibility without renewing it" time="0.0506" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:458</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="does not bypass a role policy requiring an assignment end date" name="Initialize-PimGroups.does not bypass a role policy requiring an assignment end date" time="0.0584" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*requires an end date*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*requires an end date*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:467
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:467</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="supports explicitly time-bound active roles covering the eligibility window" name="Initialize-PimGroups.supports explicitly time-bound active roles covering the eligibility window" time="0.0631" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:477</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="refuses an unfinished role request instead of submitting another" name="Initialize-PimGroups.refuses an unfinished role request instead of submitting another" time="0.0532" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*unfinished schedule request pending-role*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*unfinished schedule request pending-role*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:490
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:490</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="does not replace complex existing approval policies" name="Initialize-PimGroups.does not replace complex existing approval policies" time="0.0729" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*requires manual review*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*requires manual review*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:498
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:498</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="preserves additional activation controls rather than weakening them" name="Initialize-PimGroups.preserves additional activation controls rather than weakening them" time="0.0522" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.</message>
+                  <stack-trace>at ConvertTo-UtcDate, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65
+at Read-Configuration, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:110
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:447
+at Invoke-Deployment, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:99
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:504</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="does not grant eligibility if the Member policy cannot be verified" name="Initialize-PimGroups.does not grant eligibility if the Member policy cannot be verified" time="0.0537" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*Timed out waiting for Member policy*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*Timed out waiting for Member policy*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:510
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:510</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="requires the additional read scope for administrative-unit targets" name="Initialize-PimGroups.requires the additional read scope for administrative-unit targets" time="0.0615" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected an exception with message like '*missing scope AdministrativeUnit.Read.All*' to be thrown, but the message was 'eligibilityEndDateTime must be an absolute UTC timestamp, for example 2030-01-08T12:00:00Z.'. from C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Initialize-PimGroups.ps1:65 char:9
+    +         throw "$Context must be an absolute UTC timestamp, for exampl …
+    +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</message>
+                  <stack-trace>at { Invoke-Deployment } | Should -Throw '*missing scope AdministrativeUnit.Read.All*', C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:521
+at &lt;ScriptBlock&gt;, C:\Users\mamotron\OneDrive - Microsoft\Github\Tech-Blog\010 - Entra ID\Identity Governance\PIM for Groups\Tests\Initialize-PimGroups.Tests.ps1:521</stack-trace>
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+    </results>
+  </test-suite>
+</test-results>

@@ -29,6 +29,7 @@ date: 2026-09-15
     - [3. Bring the Group Under PIM Management](#3-bring-the-group-under-pim-management)
     - [4. Configure the Member Activation Policy](#4-configure-the-member-activation-policy)
     - [5. Make Darth.Vader an Eligible Member](#5-make-darthvader-an-eligible-member)
+- [Automate the Configuration with PowerShell](#automate-the-configuration-with-powershell)
 - [Operational Details That Matter](#operational-details-that-matter)
 - [When the Result Does Not Match the Diagram](#when-the-result-does-not-match-the-diagram)
 - [The Takeaway](#the-takeaway)
@@ -129,7 +130,7 @@ Configure these values:
 
 Select **Create** and confirm the warning about the role-assignment capability.
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-25-07.png>)
+![](<./assets/2026-09-15-20-25-07.png>)
 
 **Expected:** the group exists, is role-assignable, and has no active member named `Darth.Vader`. Record the group's **Object ID** so later checks do not depend only on its display name.
 
@@ -149,9 +150,9 @@ Select **Create** and confirm the warning about the role-assignment capability.
 6. Make the assignment **permanent** if the role's assignment policy permits it, then select **Assign**.
 7. Repeat the process for **Groups Administrator**.
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-30-44.png>)
+![](<./assets/2026-09-15-20-30-44.png>)
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-31-48.png>)
+![](<./assets/2026-09-15-20-31-48.png>)
 
 If the role policy requires an end date, use **time-bound active** assignments covering the period during which the group should provide those roles. The mechanism needs the group-to-role assignments to be **active**, not permanent. If one expires first, membership no longer supplies that role, even if the membership itself is still active.
 
@@ -162,7 +163,7 @@ If the role policy requires an end date, use **time-bound active** assignments c
 | `PIM-Identity-Admins` | User Administrator | Active | Directory |
 | `PIM-Identity-Admins` | Groups Administrator | Active | Directory |
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-20-40-43.png>)
+![](<./assets/2026-09-15-20-40-43.png>)
 
 If these records are **Eligible**, fix this step before continuing. Also confirm that `Darth.Vader` has not accidentally received a direct active role assignment.
 
@@ -200,11 +201,11 @@ Use these settings:
 | **Permanent active member assignments** | **Not allowed** |
 
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-45-13.png>)
+![](<./assets/2026-09-15-21-45-13.png>)
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-46-50.png>)
+![](<./assets/2026-09-15-21-46-50.png>)
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-47-10.png>)
+![](<./assets/2026-09-15-21-47-10.png>)
 
 Review the notification recipients and save with **Update**. Configure **Member**, not **Owner**: they have independent policies.
 
@@ -224,11 +225,11 @@ Microsoft [recommends approval](https://learn.microsoft.com/en-us/entra/id-gover
 4. Set the eligibility window to start now and end in **seven days**, within the saved policy limits.
 5. Select **Assign**.
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-42-45.png>)
+![](<./assets/2026-09-15-21-42-45.png>)
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-43-10.png>)
+![](<./assets/2026-09-15-21-43-10.png>)
 
-![](<./assets/PIM for Groups - One Activation, Multiple Entra Roles/2026-09-15-21-43-51.png>)
+![](<./assets/2026-09-15-21-43-51.png>)
 
 **Expected:** `Darth.Vader` appears under **Eligible assignments** as **Member**. The user must not appear as an active member before activation.
 
@@ -242,6 +243,130 @@ There are different clocks here:
 | **Requested activation duration** | Up to one hour | Duration chosen by the user when requesting activation, within the Member policy limit. |
 
 **Eligible for a week does not mean administrator for a week.** It means the user can request time-limited membership during that week.
+
+---
+
+## Automate the Configuration with PowerShell
+
+The accompanying [Initialize-PimGroups.ps1](./Initialize-PimGroups.ps1) deploys this pattern through **Microsoft Graph v1.0**. Start its **interactive assistant** to configure the article's example, or use the [JSON example configuration](./pim-groups.example.json) for repeatable, non-interactive input. It creates **assigned, role-assignable security groups**, assigns their Entra roles as **active**, configures the **Member** policy, and only then adds eligible users.
+
+The Member policy requires **MFA, justification, and single-stage approval by the configured users**. It limits activation duration, allows either permanent or time-bound eligibility as explicitly selected, and disallows permanent active membership assignments through PIM. It does not configure the Owner policy, replace Conditional Access authentication contexts, or change notification recipients.
+
+### Prepare the Connection and Configuration
+
+Use **PowerShell 5.1 or later**; PowerShell 7 is recommended. Install the authentication module if needed:
+
+```powershell
+Install-Module Microsoft.Graph.Authentication -Scope CurrentUser
+```
+
+The script checks whether the module is already loaded or available locally. If it is installed but not loaded, the script imports it. If it is missing, execution stops before authentication and displays the installation command. **It never installs the module automatically**, including with `-WhatIf`.
+
+Run the script with an **active, directory-scoped Privileged Role Administrator** account. Global Administrator also works, but is not necessary. The script supports **delegated authentication in the Global cloud**, not app-only connections or sovereign clouds.
+
+The Graph client needs admin consent for these delegated permissions:
+
+| Permission | Purpose |
+| --- | --- |
+| `Group.ReadWrite.All` | Create the groups and manage their owners. |
+| `User.Read.All` | Resolve user UPNs or object IDs and verify their accounts are enabled. |
+| `RoleManagement.ReadWrite.Directory` | Create role-assignable groups, verify administrative rights, and request active Entra role assignments through PIM. |
+| `RoleManagementPolicy.ReadWrite.AzureADGroup` | Read and update the group's Member policy. |
+| `PrivilegedEligibilitySchedule.ReadWrite.AzureADGroup` | Create and verify eligible group membership. |
+| `PrivilegedAssignmentSchedule.Read.AzureADGroup` | Distinguish legitimate PIM activations from standing active membership. |
+| `AdministrativeUnit.Read.All` | Only required if a role uses an administrative-unit scope. |
+
+**Licensing remains a manual prerequisite.** The script does not inspect or assign licenses; confirm coverage for eligible users and approvers before deployment.
+
+### Guided Setup: No JSON Required
+
+Start with a preview:
+
+```powershell
+.\Initialize-PimGroups.ps1 -Interactive -WhatIf
+```
+
+Running without `-ConfigurationPath` also starts the assistant. The module check happens **before any questions**. The assistant asks for the tenant ID, connects to Graph, verifies administrative rights, and then asks for:
+
+1. **Group name and mail nickname**, defaulting to `PIM-Identity-Admins` for a new group. If the name uniquely identifies an existing group, its **actual mail nickname** is proposed and kept; it does not have to equal the display name. The assistant binds subsequent checks to that group's object ID.
+2. **Owners, activation approvers, and eligible members**, entered as **UPNs or object IDs**, separated by commas or semicolons. Users must exist and be enabled in the selected tenant; beneficiaries must be separate from owners and approvers.
+3. **Activation maximum duration**, from **1 to 24 whole hours**, defaulting to one hour for a new group. MFA, justification, and approval remain required.
+4. **Eligibility mode**: `P` for permanent or `T` for time-bound. The new-group default is the article's time-bound example. Time-bound eligibility asks for a maximum duration and a fixed end date; permanent eligibility does not require an eligibility deadline.
+5. **The active lifetime of each role assignment on the group**. Permanent assignments are proposed only when the Entra role policy allows them; otherwise a policy-compatible end date is proposed. Existing active role assignment dates are kept.
+6. **A deployment justification**.
+
+The assistant always uses **User Administrator + Groups Administrator at directory scope**. This is the walkthrough example, not the eight-group catalog at the end of the article. Use JSON to specify other role bundles, supported administrative-unit scopes, or multiple groups.
+
+Press **Enter** to keep a displayed default, or **Ctrl+C** to cancel. Invalid input is reported and requested again. Graph authorization and service errors stop execution rather than being treated as input mistakes. Existing eligible membership dates, approval users, and duration settings are reused as defaults where supported; rerunning does not renew or convert existing eligibility.
+
+After preflight checks, the assistant prints a summary before confirmation. It builds the configuration **in memory** and does not create or overwrite a JSON file. To apply, run it again without `-WhatIf`:
+
+```powershell
+.\Initialize-PimGroups.ps1 -Interactive
+```
+
+**Permanent eligibility is not permanent membership.** The user remains allowed to request activation, but every activation is still time-limited and subject to the Member controls. If an active role on the group is time-bound, its expiry still removes that role's access path; the script warns about this combination and never renews it automatically.
+
+### Non-Interactive JSON Configuration
+
+From this article's directory, make a local copy:
+
+```powershell
+Copy-Item -LiteralPath .\pim-groups.example.json -Destination .\pim-groups.json
+```
+
+Replace the example tenant and user IDs with real **object IDs**. The unchanged example deliberately fails validation before authentication. The local filename `pim-groups.json` is ignored by Git; do not commit tenant-specific configuration.
+
+| Configuration field | Meaning |
+| --- | --- |
+| `description` | Description used when creating the group. Existing descriptions are not overwritten. |
+| `ownerIds` | Enabled user accounts managing the group. Existing owners outside this list cause the script to stop, not remove them. |
+| `approverIds` | Enabled users approving Member activations. Use at least two available approvers. |
+| `eligibleMemberIds` | Enabled users receiving eligibility, never direct active membership. They must be separate from the owners and approvers. |
+| `eligibilityEndDateTime` | Explicit `null` for permanent eligibility, or a fixed future timestamp with a time zone, normalized to UTC and within `maximumEligibilityDuration`. The key must be present. Rerunning does not move an existing deadline. |
+| `maximumActivationDuration` | An ISO 8601 duration from one to 24 hours, such as `PT1H`. |
+| `maximumEligibilityDuration` | An ISO 8601 duration, such as `P7D`, used for time-bound eligibility only. Keep the key in JSON even when eligibility is permanent; it is ignored in that mode. |
+| `roles[].roleDefinitionId` | The Entra role definition ID, not its localized display name. The example uses User Administrator and Groups Administrator. |
+| `roles[].directoryScopeId` | `/` for directory scope, or `/administrativeUnits/{object-id}` where the role supports that scope. |
+| `roles[].endDateTime` | `null` requests a permanent active role, only if its policy allows it. Otherwise supply a future UTC end date within the role policy limit. It must cover a finite eligibility window; with permanent eligibility, role expiry is independent and generates a warning. |
+| `groupId` | Optional binding to a particular existing group. Without it, the script requires a unique matching display name. |
+
+For example, obtain a UTC deadline seven days from now, then save that **fixed value** in the configuration:
+
+```powershell
+[datetimeoffset]::UtcNow.AddDays(7).ToString('o')
+```
+
+**Seven days is a demonstration choice, not a PIM requirement.** This deadline limits the eligibility window; `PT1H` limits each membership activation. For permanent eligibility, set `"eligibilityEndDateTime": null`; the script allows permanent eligible assignments in the Member policy, while keeping permanent active membership disallowed.
+
+### Preview, Apply, and Rerun
+
+```powershell
+.\Initialize-PimGroups.ps1 -ConfigurationPath .\pim-groups.json -WhatIf
+.\Initialize-PimGroups.ps1 -ConfigurationPath .\pim-groups.json
+```
+
+The script connects to the configured tenant with a **process-scoped** Graph context. Use `-UseExistingConnection` to reuse an already connected delegated session; the tenant, cloud, scopes, and active administrative role are still checked.
+
+`-WhatIf` performs configuration checks and Graph reads, but no Graph writes. When changes are needed, it reports `Planned`, not a successful deployment; an already conforming group reports `Unchanged`. For a new group, its group-specific PIM settings can only be inspected after creation. Normal execution asks for confirmation per group needing changes. A successful deployment returns `Configured`; a conforming rerun returns `Unchanged` and makes no writes.
+
+**PIM onboarding happens when the Member policy is updated**, before eligible membership is assigned. Graph changes the policy IDs during onboarding, so the script resolves the Member policy again before verifying the saved settings. See [the documented onboarding behavior](https://learn.microsoft.com/en-us/graph/api/resources/privilegedidentitymanagement-for-groups-api-overview#onboarding-groups-to-pim-for-groups).
+
+### Safety Boundaries
+
+- Start with the one-group pilot. The example role pair demonstrates the mechanism; it is not a recommendation to bundle overlapping roles everywhere.
+- Existing groups must match the configured cloud security-group type, role-assignment capability, display name, and mail nickname. A compatibility failure lists each blocking property with its actual and expected values, rather than a generic mismatch. Ordinary groups cannot be converted: `isAssignableToRole` is immutable. Microsoft 365 and synchronized groups are not supported by this script.
+- Unexpected owners, standing active members, extra active role assignments, extra eligibility, different expiration dates, or unfinished schedule requests stop deployment for manual review. Compatible ongoing PIM activations are allowed.
+- The script does not remove assignments, renew or convert existing eligibility, activate beneficiaries, or weaken Entra role policies. Changing an existing finite eligibility to permanent, or the reverse, requires manual review. Existing multi-stage, escalated, or group-based approval configurations require manual review rather than replacement.
+- Conditional Access authentication contexts, notification recipients, and additional activation requirements are preserved. Requiring MFA still does not guarantee a fresh MFA prompt.
+- Graph operations are **not a transaction**. Errors stop execution; group and request IDs are printed as work progresses. Already completed changes remain in the tenant, and no destructive rollback is attempted. Inspect the partial state before rerunning. Propagation waits are bounded by `-PropagationTimeoutSeconds` (120 seconds by default).
+- This verifies the configured group access path, not every direct role, other privileged group, application cache, or Microsoft 365 workload behavior.
+
+The [offline Pester tests](./Tests/Initialize-PimGroups.Tests.ps1) mock every Graph call. With Pester 5 installed, run:
+
+```powershell
+Invoke-Pester -Path .\Tests\Initialize-PimGroups.Tests.ps1 -Output Detailed
+```
 
 ---
 

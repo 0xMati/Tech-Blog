@@ -1,0 +1,36 @@
+{
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "justification": "Deploy the reviewed PIM for Groups pilot.",
+  "groups": [
+    {
+      "displayName": "PIM-Identity-Admins",
+      "mailNickname": "PIM-Identity-Admins",
+      "description": "Temporary user and group administration through PIM membership.",
+      "ownerIds": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "approverIds": [
+        "11111111-1111-1111-1111-111111111111",
+        "22222222-2222-2222-2222-222222222222"
+      ],
+      "eligibleMemberIds": [
+        "33333333-3333-3333-3333-333333333333"
+      ],
+      "eligibilityEndDateTime": "REPLACE_WITH_A_FUTURE_UTC_TIMESTAMP",
+      "maximumActivationDuration": "PT1H",
+      "maximumEligibilityDuration": "P7D",
+      "roles": [
+        {
+          "roleDefinitionId": "fe930be7-5e62-47db-91af-98c3a49a38b1",
+          "directoryScopeId": "/",
+          "endDateTime": null
+        },
+        {
+          "roleDefinitionId": "fdd7a751-b60b-444a-984c-02652fe8fa1c",
+          "directoryScopeId": "/",
+          "endDateTime": null
+        }
+      ]
+    }
+  ]
+}
